@@ -1,0 +1,3 @@
+# intentionally incomplete
+[*.cs]
+indent_style = space

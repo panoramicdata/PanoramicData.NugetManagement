@@ -1,0 +1,3 @@
+# FailArmy
+
+Bad repo.

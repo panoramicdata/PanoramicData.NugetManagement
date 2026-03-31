@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PanoramicData.NugetManagement/PanoramicData.NugetManagement.csproj" />
+  <Project Path="PanoramicData.NugetManagement.Test/PanoramicData.NugetManagement.Test.csproj" />
+</Solution>

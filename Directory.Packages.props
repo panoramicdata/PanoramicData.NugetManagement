@@ -1,0 +1,32 @@
+<Project>
+
+	<PropertyGroup>
+		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Main project dependencies -->
+		<PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+		<PackageVersion Include="Nerdbank.GitVersioning" Version="3.7.115" />
+		<PackageVersion Include="NuGet.Protocol" Version="6.13.2" />
+		<PackageVersion Include="Octokit" Version="14.0.0" />
+		<PackageVersion Include="Refit" Version="8.0.0" />
+
+		<!-- Test project dependencies -->
+		<PackageVersion Include="AwesomeAssertions" Version="9.0.0" />
+		<PackageVersion Include="AwesomeAssertions.Analyzers" Version="9.0.0" />
+		<PackageVersion Include="coverlet.collector" Version="6.0.4" />
+		<PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
+		<PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
+		<PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" />
+		<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+		<PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+		<PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.0" />
+		<PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+		<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+		<PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+		<PackageVersion Include="xunit.v3" Version="3.2.2" />
+		<PackageVersion Include="Xunit.Microsoft.DependencyInjection" Version="10.0.0" />
+	</ItemGroup>
+
+</Project>
