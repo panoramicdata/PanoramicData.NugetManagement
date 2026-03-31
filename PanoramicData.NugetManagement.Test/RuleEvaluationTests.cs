@@ -93,6 +93,60 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	[Fact]
+	public async Task VER01_ShouldPass_WhenVersionJsonMatchesDefaultPublishingRefSpec()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["version.json"] = """
+				{
+					"version": "1.0",
+					"publicReleaseRefSpec": [
+						"^refs/heads/main$",
+						"^refs/tags/\\d+\\.\\d+\\.\\d+$"
+					]
+				}
+				"""
+		});
+
+		var rule = GetRule("VER-01");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task VER01_ShouldPass_WhenVersionJsonMatchesOverriddenPublishingRefSpec()
+	{
+		var options = new RepoOptions
+		{
+			Publishing = new PublishingOptions
+			{
+				PublicReleaseRefSpec =
+				[
+					"^refs/heads/main$",
+					"^refs/tags/v\\d+\\.\\d+\\.\\d+$"
+				]
+			}
+		};
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["version.json"] = """
+				{
+					"version": "1.0",
+					"publicReleaseRefSpec": [
+						"^refs/heads/main$",
+						"^refs/tags/v\\d+\\.\\d+\\.\\d+$"
+					]
+				}
+				"""
+		}, options);
+
+		var rule = GetRule("VER-01");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
 	private static IRule GetRule(string ruleId)
 		=> RuleRegistry.Rules.Single(r => r.RuleId == ruleId);
 
@@ -106,12 +160,12 @@ public class RuleEvaluationTests : TestWithOutput
 		FileContents = new Dictionary<string, string>()
 	};
 
-	private static RepositoryContext CreateContext(Dictionary<string, string> files) => new()
+	private static RepositoryContext CreateContext(Dictionary<string, string> files, RepoOptions? options = null) => new()
 	{
 		FullName = "test-org/test-repo",
 		Name = "test-repo",
 		DefaultBranch = "main",
-		Options = new RepoOptions(),
+		Options = options ?? new RepoOptions(),
 		FilePaths = [.. files.Keys],
 		FileContents = files
 	};

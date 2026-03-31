@@ -64,6 +64,11 @@ public class RepoOptions
 	public CodacyOptions? Codacy { get; set; }
 
 	/// <summary>
+	/// Publishing-related options, including expected public release ref patterns.
+	/// </summary>
+	public PublishingOptions Publishing { get; set; } = new();
+
+	/// <summary>
 	/// Gets the text that should appear in the LICENSE file.
 	/// </summary>
 	/// <returns>The expected license file text.</returns>

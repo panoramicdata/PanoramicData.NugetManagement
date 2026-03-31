@@ -1,4 +1,5 @@
 using PanoramicData.NugetManagement.Models;
+using System.Text.Json;
 
 namespace PanoramicData.NugetManagement.Rules;
 
@@ -30,14 +31,50 @@ public class NerdbankVersionJsonRule : RuleBase
 				"Create version.json with a version and publicReleaseRefSpec for Nerdbank.GitVersioning."));
 		}
 
-		var hasVersion = Contains(content, "\"version\"");
-		var hasRefSpec = Contains(content, "publicReleaseRefSpec");
+		try
+		{
+			using var doc = JsonDocument.Parse(content);
+			var root = doc.RootElement;
 
-		return Task.FromResult(hasVersion && hasRefSpec
-			? Pass("version.json found with version and publicReleaseRefSpec.")
-			: Fail(
-				"version.json is missing 'version' or 'publicReleaseRefSpec'.",
-				"Ensure version.json contains both a 'version' field and 'publicReleaseRefSpec' array."));
+			if (!root.TryGetProperty("version", out var versionElement) || string.IsNullOrWhiteSpace(versionElement.GetString()))
+			{
+				return Task.FromResult(Fail(
+					"version.json is missing a non-empty 'version' value.",
+					"Set the 'version' property in version.json (for example, \"1.0\")."));
+			}
+
+			if (!root.TryGetProperty("publicReleaseRefSpec", out var refSpecElement) || refSpecElement.ValueKind != JsonValueKind.Array)
+			{
+				return Task.FromResult(Fail(
+					"version.json is missing 'publicReleaseRefSpec' array.",
+					"Add publicReleaseRefSpec with patterns for release branches/tags."));
+			}
+
+			var actualRefSpecs = refSpecElement
+				.EnumerateArray()
+				.Where(item => item.ValueKind == JsonValueKind.String)
+				.Select(item => item.GetString())
+				.Where(value => !string.IsNullOrWhiteSpace(value))
+				.Select(value => value!)
+				.ToList();
+
+			var expectedRefSpecs = context.Options.Publishing.PublicReleaseRefSpec;
+			var missing = expectedRefSpecs
+				.Where(expected => !actualRefSpecs.Contains(expected, StringComparer.Ordinal))
+				.ToList();
+
+			return Task.FromResult(missing.Count == 0
+				? Pass("version.json found with version and expected publicReleaseRefSpec patterns.")
+				: Fail(
+					"version.json does not include all expected publicReleaseRefSpec patterns.",
+					$"Add missing patterns: {string.Join(", ", missing)}"));
+		}
+		catch (JsonException)
+		{
+			return Task.FromResult(Fail(
+				"version.json is not valid JSON.",
+				"Fix JSON syntax in version.json."));
+		}
 	}
 }
 
