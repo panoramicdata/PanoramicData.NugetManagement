@@ -1,43 +1,50 @@
-<#
-.SYNOPSIS
-	Publishes the NuGet package to nuget.org.
-
-.DESCRIPTION
-	Packs the project in Release configuration and pushes the resulting
-	.nupkg and .snupkg to nuget.org using the API key stored in nuget-key.txt.
-
-.EXAMPLE
-	.\Publish.ps1
-#>
-
-[CmdletBinding()]
-param()
+# Panoramic Data NuGet Publish Script (Standard)
+# Tags the current commit with the NBGV version and pushes to trigger CI/CD publishing.
+# Usage: .\Publish.ps1
 
 $ErrorActionPreference = 'Stop'
 
-$keyFile = Join-Path $PSScriptRoot 'nuget-key.txt'
-if (-not (Test-Path $keyFile)) {
-	Write-Error "nuget-key.txt not found. Create it in the repo root with your NuGet API key."
-	exit 1
+# Check for clean working tree (porcelain)
+$status = git status --porcelain
+if ($status) {
+    Write-Error "Working tree is not clean. Commit or stash changes before publishing.`n$status"
+    exit 1
 }
 
-$apiKey = (Get-Content $keyFile -Raw).Trim()
-if ([string]::IsNullOrWhiteSpace($apiKey)) {
-	Write-Error "nuget-key.txt is empty."
-	exit 1
+# Ensure we are on the main branch
+$branch = git rev-parse --abbrev-ref HEAD
+if ($branch -ne 'main') {
+    Write-Error "Publishing is only supported from the 'main' branch (currently on '$branch')."
+    exit 1
 }
 
-$projectDir = Join-Path $PSScriptRoot 'PanoramicData.NugetManagement'
-
-Write-Host "Packing..." -ForegroundColor Cyan
-dotnet pack $projectDir --configuration Release --output ./artifacts
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-$packages = Get-ChildItem ./artifacts -Filter '*.nupkg'
-foreach ($pkg in $packages) {
-	Write-Host "Pushing $($pkg.Name)..." -ForegroundColor Cyan
-	dotnet nuget push $pkg.FullName --api-key $apiKey --source https://api.nuget.org/v3/index.json --skip-duplicate
-	if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# Ensure local main is up to date with remote
+git fetch origin main --quiet
+$localHead = git rev-parse HEAD
+$remoteHead = git rev-parse origin/main
+if ($localHead -ne $remoteHead) {
+    Write-Error "Local branch is not up to date with origin/main. Pull or push first."
+    exit 1
 }
 
-Write-Host "Done." -ForegroundColor Green
+# Get version from NBGV
+$versionJson = nbgv get-version -f json | ConvertFrom-Json
+$version = $versionJson.SimpleVersion
+
+if (-not $version) {
+    Write-Error "Failed to determine version from nbgv."
+    exit 1
+}
+
+# Check tag doesn't already exist
+$existingTag = git tag -l $version
+if ($existingTag) {
+    Write-Error "Tag '$version' already exists."
+    exit 1
+}
+
+Write-Host "Tagging as $version ..." -ForegroundColor Cyan
+git tag $version
+git push origin $version
+
+Write-Host "✅ Published tag $version — CI will build and push to NuGet." -ForegroundColor Green

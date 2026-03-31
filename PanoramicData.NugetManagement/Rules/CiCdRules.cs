@@ -69,7 +69,7 @@ public class CiWorkflowTriggersRule : RuleBase
 }
 
 /// <summary>
-/// Checks that the CI workflow restores, builds Release, and tests.
+/// Checks that the CI workflow restores, builds Release, and packs artifacts.
 /// </summary>
 public class CiWorkflowStepsRule : RuleBase
 {
@@ -77,7 +77,7 @@ public class CiWorkflowStepsRule : RuleBase
 	public override string RuleId => "CI-03";
 
 	/// <inheritdoc />
-	public override string RuleName => "CI restores, builds Release, and tests";
+	public override string RuleName => "CI restores, builds Release, and packs";
 
 	/// <inheritdoc />
 	public override AssessmentCategory Category => AssessmentCategory.CiCd;
@@ -99,13 +99,13 @@ public class CiWorkflowStepsRule : RuleBase
 		var hasRestore = Contains(content, "dotnet restore");
 		var hasBuild = Contains(content, "dotnet build");
 		var hasRelease = Contains(content, "--configuration Release");
-		var hasTest = Contains(content, "dotnet test");
+		var hasPack = Contains(content, "dotnet pack");
 
-		return Task.FromResult(hasRestore && hasBuild && hasRelease && hasTest
-			? Pass("CI workflow contains restore, build (Release), and test steps.")
+		return Task.FromResult(hasRestore && hasBuild && hasRelease && hasPack
+			? Pass("CI workflow contains restore, build (Release), and pack steps.")
 			: Fail(
-				"CI workflow is missing one or more required steps (restore, build --configuration Release, test).",
-				"Ensure ci.yml has 'dotnet restore', 'dotnet build --configuration Release', and 'dotnet test' steps."));
+				"CI workflow is missing one or more required steps (restore, build --configuration Release, pack).",
+				"Ensure ci.yml has 'dotnet restore', 'dotnet build --configuration Release', and 'dotnet pack' steps."));
 	}
 }
 
@@ -252,6 +252,113 @@ public class PublishScriptExistsRule : RuleBase
 			? Pass("Publish.ps1 found.")
 			: Fail(
 				"Publish.ps1 not found at repository root.",
-				"Add a Publish.ps1 script that checks porcelain, uses nbgv, validates nuget-key.txt, runs tests, and publishes."));
+				"Add a Publish.ps1 script that tags from nbgv and pushes the tag to trigger trusted publishing in CI."));
+	}
+}
+
+/// <summary>
+/// Checks that ci.yml matches the Meraki.Api trusted publishing workflow shape.
+/// </summary>
+public class CiWorkflowMatchesMerakiRule : RuleBase
+{
+	/// <inheritdoc />
+	public override string RuleId => "CI-08";
+
+	/// <inheritdoc />
+	public override string RuleName => "CI workflow matches Meraki.Api standard";
+
+	/// <inheritdoc />
+	public override AssessmentCategory Category => AssessmentCategory.CiCd;
+
+	/// <inheritdoc />
+	public override AssessmentSeverity Severity => AssessmentSeverity.Error;
+
+	/// <inheritdoc />
+	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
+	{
+		var content = context.GetFileContent(".github/workflows/ci.yml");
+		if (content is null)
+		{
+			return Task.FromResult(Fail(
+				"CI workflow not found.",
+				"Copy the standard .github/workflows/ci.yml from Meraki.Api and adapt only repository-specific project paths."));
+		}
+
+		var requiredSnippets = new[]
+		{
+			"tags: ['[0-9]*.[0-9]*.[0-9]*']",
+			"uses: actions/upload-artifact@v4",
+			"publish:",
+			"if: startsWith(github.ref, 'refs/tags/')",
+			"id-token: write",
+			"uses: NuGet/login@v1",
+			"dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }}"
+		};
+
+		var missing = requiredSnippets
+			.Where(snippet => !Contains(content, snippet))
+			.ToList();
+
+		return Task.FromResult(missing.Count == 0
+			? Pass("CI workflow matches the Meraki.Api trusted publishing standard.")
+			: Fail(
+				"CI workflow does not match the Meraki.Api standard trusted publishing shape.",
+				$"Ensure ci.yml includes all standard sections; missing snippets include: {string.Join(" | ", missing)}"));
+	}
+}
+
+/// <summary>
+/// Checks that Publish.ps1 matches the Meraki.Api tagging-and-trigger standard.
+/// </summary>
+public class PublishScriptMatchesMerakiRule : RuleBase
+{
+	/// <inheritdoc />
+	public override string RuleId => "CI-09";
+
+	/// <inheritdoc />
+	public override string RuleName => "Publish.ps1 matches Meraki.Api standard";
+
+	/// <inheritdoc />
+	public override AssessmentCategory Category => AssessmentCategory.CiCd;
+
+	/// <inheritdoc />
+	public override AssessmentSeverity Severity => AssessmentSeverity.Error;
+
+	/// <inheritdoc />
+	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
+	{
+		if (!context.Options.IsPackable)
+		{
+			return Task.FromResult(Pass("Repository is not packable — Publish.ps1 standard not required."));
+		}
+
+		var content = context.GetFileContent("Publish.ps1");
+		if (content is null)
+		{
+			return Task.FromResult(Fail(
+				"Publish.ps1 not found.",
+				"Copy the standard Publish.ps1 from Meraki.Api (clean tree, nbgv version, tag push)."));
+		}
+
+		var requiredSnippets = new[]
+		{
+			"git status --porcelain",
+			"git rev-parse --abbrev-ref HEAD",
+			"git fetch origin main --quiet",
+			"nbgv get-version -f json",
+			"git tag -l $version",
+			"git tag $version",
+			"git push origin $version"
+		};
+
+		var missing = requiredSnippets
+			.Where(snippet => !Contains(content, snippet))
+			.ToList();
+
+		return Task.FromResult(missing.Count == 0
+			? Pass("Publish.ps1 matches the Meraki.Api tagging-and-trigger standard.")
+			: Fail(
+				"Publish.ps1 does not match the Meraki.Api standard.",
+				$"Ensure Publish.ps1 contains all standard checks and tag operations; missing snippets include: {string.Join(" | ", missing)}"));
 	}
 }

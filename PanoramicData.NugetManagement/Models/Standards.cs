@@ -22,14 +22,14 @@ public static class Standards
 	public const string LatestDotNetVersionSpecifier = "10.0.x";
 
 	/// <summary>
-	/// The latest actions/checkout version.
+	/// The standard actions/checkout version used in Meraki.Api workflow.
 	/// </summary>
-	public const string LatestActionsCheckoutVersion = "v6";
+	public const string LatestActionsCheckoutVersion = "v4";
 
 	/// <summary>
-	/// The latest actions/setup-dotnet version.
+	/// The standard actions/setup-dotnet version used in Meraki.Api workflow.
 	/// </summary>
-	public const string LatestActionsSetupDotnetVersion = "v5";
+	public const string LatestActionsSetupDotnetVersion = "v4";
 
 	/// <summary>
 	/// The expected copyright holder name.
