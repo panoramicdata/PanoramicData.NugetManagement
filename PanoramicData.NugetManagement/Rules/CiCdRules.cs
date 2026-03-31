@@ -2,6 +2,18 @@ using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Rules;
 
+internal static class CiWorkflowPathResolver
+{
+	public static string Resolve(RepositoryContext context)
+	{
+		var fileName = string.IsNullOrWhiteSpace(context.Options.CiFileName)
+			? "ci.yml"
+			: context.Options.CiFileName.Trim();
+
+		return $".github/workflows/{fileName}";
+	}
+}
+
 /// <summary>
 /// Checks that a CI workflow exists at .github/workflows/ci.yml.
 /// </summary>
@@ -21,11 +33,15 @@ public class CiWorkflowExistsRule : RuleBase
 
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
-		=> Task.FromResult(context.FileExists(".github/workflows/ci.yml")
-			? Pass("CI workflow found at .github/workflows/ci.yml")
+	{
+		var ciWorkflowPath = CiWorkflowPathResolver.Resolve(context);
+
+		return Task.FromResult(context.FileExists(ciWorkflowPath)
+			? Pass($"CI workflow found at {ciWorkflowPath}")
 			: Fail(
-				"No CI workflow found at .github/workflows/ci.yml",
-				"Create a .github/workflows/ci.yml that restores, builds Release, and tests."));
+				$"No CI workflow found at {ciWorkflowPath}",
+				$"Create {ciWorkflowPath} that restores, builds Release, and tests."));
+	}
 }
 
 /// <summary>
@@ -48,12 +64,13 @@ public class CiWorkflowTriggersRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var content = context.GetFileContent(".github/workflows/ci.yml");
+		var ciWorkflowPath = CiWorkflowPathResolver.Resolve(context);
+		var content = context.GetFileContent(ciWorkflowPath);
 		if (content is null)
 		{
 			return Task.FromResult(Fail(
 				"CI workflow not found — cannot check triggers.",
-				"Create .github/workflows/ci.yml with push and pull_request triggers for the main branch."));
+				$"Create {ciWorkflowPath} with push and pull_request triggers for the main branch."));
 		}
 
 		var hasPush = Contains(content, "push:");
@@ -88,12 +105,13 @@ public class CiWorkflowStepsRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var content = context.GetFileContent(".github/workflows/ci.yml");
+		var ciWorkflowPath = CiWorkflowPathResolver.Resolve(context);
+		var content = context.GetFileContent(ciWorkflowPath);
 		if (content is null)
 		{
 			return Task.FromResult(Fail(
 				"CI workflow not found — cannot check steps.",
-				"Create .github/workflows/ci.yml with dotnet restore, dotnet build --configuration Release, and dotnet test steps."));
+				$"Create {ciWorkflowPath} with dotnet restore, dotnet build --configuration Release, and dotnet test steps."));
 		}
 
 		var hasRestore = Contains(content, "dotnet restore");
@@ -129,12 +147,13 @@ public class CiCheckoutFetchDepthRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var content = context.GetFileContent(".github/workflows/ci.yml");
+		var ciWorkflowPath = CiWorkflowPathResolver.Resolve(context);
+		var content = context.GetFileContent(ciWorkflowPath);
 		if (content is null)
 		{
 			return Task.FromResult(Fail(
 				"CI workflow not found — cannot check fetch-depth.",
-				"Create .github/workflows/ci.yml and configure actions/checkout with 'fetch-depth: 0'."));
+				$"Create {ciWorkflowPath} and configure actions/checkout with 'fetch-depth: 0'."));
 		}
 
 		return Task.FromResult(Contains(content, "fetch-depth: 0")
@@ -165,12 +184,13 @@ public class CiActionsCheckoutVersionRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var content = context.GetFileContent(".github/workflows/ci.yml");
+		var ciWorkflowPath = CiWorkflowPathResolver.Resolve(context);
+		var content = context.GetFileContent(ciWorkflowPath);
 		if (content is null)
 		{
 			return Task.FromResult(Fail(
 				"CI workflow not found.",
-				$"Create .github/workflows/ci.yml and use 'actions/checkout@{Standards.LatestActionsCheckoutVersion}'."));
+				$"Create {ciWorkflowPath} and use 'actions/checkout@{Standards.LatestActionsCheckoutVersion}'."));
 		}
 
 		var expected = $"actions/checkout@{Standards.LatestActionsCheckoutVersion}";
@@ -203,12 +223,13 @@ public class CiSetupDotnetVersionRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var content = context.GetFileContent(".github/workflows/ci.yml");
+		var ciWorkflowPath = CiWorkflowPathResolver.Resolve(context);
+		var content = context.GetFileContent(ciWorkflowPath);
 		if (content is null)
 		{
 			return Task.FromResult(Fail(
 				"CI workflow not found.",
-				$"Create .github/workflows/ci.yml and use 'actions/setup-dotnet@{Standards.LatestActionsSetupDotnetVersion}' with dotnet-version '{Standards.LatestDotNetVersionSpecifier}'."));
+				$"Create {ciWorkflowPath} and use 'actions/setup-dotnet@{Standards.LatestActionsSetupDotnetVersion}' with dotnet-version '{Standards.LatestDotNetVersionSpecifier}'."));
 		}
 
 		var expectedAction = $"actions/setup-dotnet@{Standards.LatestActionsSetupDotnetVersion}";
@@ -276,12 +297,13 @@ public class CiWorkflowMatchesMerakiRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var content = context.GetFileContent(".github/workflows/ci.yml");
+		var ciWorkflowPath = CiWorkflowPathResolver.Resolve(context);
+		var content = context.GetFileContent(ciWorkflowPath);
 		if (content is null)
 		{
 			return Task.FromResult(Fail(
 				"CI workflow not found.",
-				"Copy the standard .github/workflows/ci.yml from Meraki.Api and adapt only repository-specific project paths."));
+				"Copy the standard CI workflow from Meraki.Api and adapt only repository-specific project paths."));
 		}
 
 		var requiredSnippets = new[]

@@ -23,6 +23,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="Codacy.Api" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 		<PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
 		<PackageReference Include="NuGet.Protocol" />

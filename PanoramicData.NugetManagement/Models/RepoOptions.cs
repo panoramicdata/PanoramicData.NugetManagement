@@ -28,6 +28,12 @@ public class RepoOptions
 	public List<string> SuppressedRules { get; set; } = [];
 
 	/// <summary>
+	/// The exact CI workflow file name under .github/workflows/.
+	/// Defaults to "ci.yml" and can be overridden per repository.
+	/// </summary>
+	public string CiFileName { get; set; } = "ci.yml";
+
+	/// <summary>
 	/// The expected SPDX license expression (e.g. "MIT", "Apache-2.0").
 	/// Defaults to <see cref="Standards.LicenseType"/>.
 	/// </summary>
@@ -51,6 +57,11 @@ public class RepoOptions
 	/// Defaults to <see cref="Standards.ExpectedHttpClientPackage"/>.
 	/// </summary>
 	public string ExpectedHttpClientPackage { get; set; } = Standards.ExpectedHttpClientPackage;
+
+	/// <summary>
+	/// Optional Codacy quality gate settings. When provided, Codacy.Api checks are executed.
+	/// </summary>
+	public CodacyOptions? Codacy { get; set; }
 
 	/// <summary>
 	/// Gets the text that should appear in the LICENSE file.
