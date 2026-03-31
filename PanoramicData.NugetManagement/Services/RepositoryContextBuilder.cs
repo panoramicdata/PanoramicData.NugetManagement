@@ -27,6 +27,7 @@ public class RepositoryContextBuilder
 		"Directory.Packages.props",
 		"global.json",
 		"LICENSE",
+		"Publish.ps1",
 		"README.md",
 		"renovate.json",
 		"SECURITY.md",
