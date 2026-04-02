@@ -5,6 +5,7 @@ root = true
 [*]
 indent_style = tab
 indent_size = 4
+tab_width = 4
 end_of_line = crlf
 charset = utf-8
 trim_trailing_whitespace = true
@@ -14,11 +15,13 @@ insert_final_newline = true
 [*.{xml,csproj,props,targets,slnx}]
 indent_style = tab
 indent_size = 4
+tab_width = 4
 
 # JSON files
 [*.json]
 indent_style = tab
 indent_size = 4
+tab_width = 4
 
 # YAML files
 [*.{yml,yaml}]
@@ -123,6 +126,13 @@ csharp_style_prefer_range_operator = true:warning
 csharp_style_throw_expression = true:warning
 csharp_style_unused_value_assignment_preference = discard_variable:warning
 csharp_style_unused_value_expression_statement_preference = discard_variable:silent
+csharp_style_prefer_local_over_anonymous_function = true:warning
+csharp_style_prefer_method_group_conversion = true:warning
+csharp_style_prefer_extended_property_pattern = true:warning
+csharp_style_prefer_top_level_statements = true:silent
+
+# Operator wrapping
+dotnet_style_operator_placement_when_wrapping = beginning_of_line
 
 # using directive placement
 csharp_using_directive_placement = outside_namespace:warning
@@ -240,3 +250,15 @@ dotnet_diagnostic.IDE0058.severity = none
 
 # IDE0290: Use primary constructor
 csharp_style_prefer_primary_constructors = false:suggestion
+
+# IDE0090: Simplify new expression
+dotnet_diagnostic.IDE0090.severity = error
+
+# IDE0305: Collection initialization can be simplified (use collection expression)
+dotnet_diagnostic.IDE0305.severity = error
+
+# CA1050: Declare types in namespaces
+dotnet_diagnostic.CA1050.severity = error
+
+# SYSLIB1045: Convert to GeneratedRegexAttribute
+dotnet_diagnostic.SYSLIB1045.severity = error

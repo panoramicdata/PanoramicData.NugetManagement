@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Rules;
@@ -41,8 +42,10 @@ public class CpmEnabledRule : RuleBase
 /// <summary>
 /// Checks that .csproj files do not have Version= attributes on PackageReference elements.
 /// </summary>
-public class CpmNoVersionInCsprojRule : RuleBase
+public partial class CpmNoVersionInCsprojRule : RuleBase
 {
+	[GeneratedRegex(@"<PackageReference\s+[^>]*Version\s*=", RegexOptions.IgnoreCase)]
+	private static partial Regex PackageReferenceVersionPattern();
 	/// <inheritdoc />
 	public override string RuleId => "CPM-02";
 
@@ -70,10 +73,7 @@ public class CpmNoVersionInCsprojRule : RuleBase
 			}
 
 			// Check for PackageReference with Version= attribute (but not PackageVersion which is correct)
-			if (System.Text.RegularExpressions.Regex.IsMatch(
-				content,
-				@"<PackageReference\s+[^>]*Version\s*=",
-				System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+			if (PackageReferenceVersionPattern().IsMatch(content))
 			{
 				violations.Add(csproj);
 			}

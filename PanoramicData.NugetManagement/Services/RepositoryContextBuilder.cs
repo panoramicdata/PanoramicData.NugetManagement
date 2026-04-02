@@ -13,7 +13,7 @@ public class RepositoryContextBuilder
 	/// Files that are always fetched because rules need their content.
 	/// Paths are relative to the repo root.
 	/// </summary>
-	private static readonly string[] AlwaysFetchFiles =
+	private static readonly string[] _alwaysFetchFiles =
 	[
 		".editorconfig",
 		".gitignore",
@@ -93,10 +93,9 @@ public class RepositoryContextBuilder
 		try
 		{
 			var tree = await _github.Git.Tree.GetRecursive(owner, repoName, branch).ConfigureAwait(false);
-			return tree.Tree
+			return [.. tree.Tree
 				.Where(t => t.Type.Value == TreeType.Blob)
-				.Select(t => t.Path)
-				.ToList();
+				.Select(t => t.Path)];
 		}
 		catch (NotFoundException)
 		{
@@ -110,7 +109,7 @@ public class RepositoryContextBuilder
 		var toFetch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
 		// Always fetch the standard files if they exist
-		foreach (var file in AlwaysFetchFiles)
+		foreach (var file in _alwaysFetchFiles)
 		{
 			if (filePaths.Contains(file, StringComparer.OrdinalIgnoreCase))
 			{
@@ -128,6 +127,12 @@ public class RepositoryContextBuilder
 		foreach (var path in filePaths.Where(p =>
 			p.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase) &&
 			(p.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase))))
+		{
+			toFetch.Add(path);
+		}
+
+		// Fetch all .slnx solution files
+		foreach (var path in filePaths.Where(p => p.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)))
 		{
 			toFetch.Add(path);
 		}

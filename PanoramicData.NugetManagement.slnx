@@ -1,4 +1,18 @@
 <Solution>
   <Project Path="PanoramicData.NugetManagement/PanoramicData.NugetManagement.csproj" />
+  <Folder Name="/Solution Items/">
+    <File Path=".codacy.yml" />
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="CONTRIBUTING.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+    <File Path="Publish.ps1" />
+    <File Path="README.md" />
+    <File Path="SECURITY.md" />
+    <File Path="version.json" />
+  </Folder>
   <Project Path="PanoramicData.NugetManagement.Test/PanoramicData.NugetManagement.Test.csproj" />
 </Solution>

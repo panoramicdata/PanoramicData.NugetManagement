@@ -217,3 +217,81 @@ public class CodacyConfiguredRule : RuleBase
 			_ => 1
 		};
 }
+
+/// <summary>
+/// Checks that .editorconfig enforces tab indentation for C# and XML files.
+/// </summary>
+public class TabIndentationRule : RuleBase
+{
+	/// <inheritdoc />
+	public override string RuleId => "CQ-04";
+
+	/// <inheritdoc />
+	public override string RuleName => "Tab indentation enforced for C# and XML";
+
+	/// <inheritdoc />
+	public override AssessmentCategory Category => AssessmentCategory.CodeQuality;
+
+	/// <inheritdoc />
+	public override AssessmentSeverity Severity => AssessmentSeverity.Warning;
+
+	/// <inheritdoc />
+	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
+	{
+		var content = context.GetFileContent(".editorconfig");
+		if (content is null)
+		{
+			return Task.FromResult(Fail(
+				".editorconfig not found.",
+				"Create an .editorconfig with indent_style = tab for C# and XML files."));
+		}
+
+		// Check that the global [*] section uses tabs
+		var hasGlobalTab = Contains(content, "indent_style = tab");
+		if (!hasGlobalTab)
+		{
+			return Task.FromResult(Fail(
+				".editorconfig does not set indent_style = tab.",
+				"Set indent_style = tab in the [*] section of .editorconfig."));
+		}
+
+		// Check there is no override to spaces for C# or XML sections
+		// We look for indent_style = space after a [*.cs] or [*.{xml,...}] section header
+		var lines = content.Split('\n');
+		var currentSection = "";
+		foreach (var rawLine in lines)
+		{
+			var line = rawLine.Trim();
+			if (line.StartsWith('[') && line.EndsWith(']'))
+			{
+				currentSection = line;
+				continue;
+			}
+
+			if (line.Equals("indent_style = space", StringComparison.OrdinalIgnoreCase) &&
+				IsCSharpOrXmlSection(currentSection))
+			{
+				return Task.FromResult(Fail(
+					$".editorconfig overrides indent_style to space in section {currentSection}.",
+					$"Change indent_style = space to indent_style = tab in the {currentSection} section."));
+			}
+		}
+
+		return Task.FromResult(Pass("Tab indentation is enforced for C# and XML files."));
+	}
+
+	private static bool IsCSharpOrXmlSection(string sectionHeader)
+	{
+		if (string.IsNullOrEmpty(sectionHeader))
+		{
+			return false;
+		}
+
+		var inner = sectionHeader.TrimStart('[').TrimEnd(']');
+		return inner.Contains("*.cs", StringComparison.OrdinalIgnoreCase) ||
+			inner.Contains("*.xml", StringComparison.OrdinalIgnoreCase) ||
+			inner.Contains("*.csproj", StringComparison.OrdinalIgnoreCase) ||
+			inner.Contains("*.props", StringComparison.OrdinalIgnoreCase) ||
+			inner.Contains("*.targets", StringComparison.OrdinalIgnoreCase);
+	}
+}

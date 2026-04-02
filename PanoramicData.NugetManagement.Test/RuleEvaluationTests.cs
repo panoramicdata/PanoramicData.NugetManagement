@@ -147,6 +147,182 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeTrue();
 	}
 
+	[Fact]
+	public async Task REPO04_ShouldPass_WhenSlnxExists()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.slnx"] = "<Solution><Project Path=\"MyProject/MyProject.csproj\" /></Solution>"
+		});
+
+		var rule = GetRule("REPO-04");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task REPO04_ShouldFail_WhenSlnxMissing()
+	{
+		var context = CreateEmptyContext();
+
+		var rule = GetRule("REPO-04");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Remediation.Should().NotBeNullOrEmpty();
+	}
+
+	[Fact]
+	public async Task REPO05_ShouldPass_WhenSolutionItemsContainsAllStandardFiles()
+	{
+		var slnxContent = """
+			<Solution>
+			  <Folder Name="/Solution Items/">
+				<File Path=".editorconfig" />
+				<File Path=".gitignore" />
+				<File Path="Directory.Build.props" />
+				<File Path="Directory.Packages.props" />
+				<File Path="global.json" />
+				<File Path="LICENSE" />
+				<File Path="README.md" />
+				<File Path="SECURITY.md" />
+				<File Path="CONTRIBUTING.md" />
+				<File Path="version.json" />
+			  </Folder>
+			</Solution>
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.slnx"] = slnxContent,
+			[".editorconfig"] = "root = true",
+			[".gitignore"] = "[Bb]in/",
+			["Directory.Build.props"] = "<Project/>",
+			["Directory.Packages.props"] = "<Project/>",
+			["global.json"] = "{}",
+			["LICENSE"] = "MIT",
+			["README.md"] = "# Readme",
+			["SECURITY.md"] = "# Security",
+			["CONTRIBUTING.md"] = "# Contributing",
+			["version.json"] = "{}"
+		});
+
+		var rule = GetRule("REPO-05");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task REPO05_ShouldFail_WhenSolutionItemsMissing()
+	{
+		var slnxContent = """
+			<Solution>
+			  <Project Path="MyProject/MyProject.csproj" />
+			</Solution>
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.slnx"] = slnxContent,
+			[".editorconfig"] = "root = true"
+		});
+
+		var rule = GetRule("REPO-05");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task REPO05_ShouldFail_WhenSolutionItemsMissingFiles()
+	{
+		var slnxContent = """
+			<Solution>
+			  <Folder Name="/Solution Items/">
+				<File Path=".editorconfig" />
+			  </Folder>
+			</Solution>
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.slnx"] = slnxContent,
+			[".editorconfig"] = "root = true",
+			["README.md"] = "# Readme",
+			["LICENSE"] = "MIT"
+		});
+
+		var rule = GetRule("REPO-05");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("README.md");
+		result.Message.Should().Contain("LICENSE");
+	}
+
+	[Fact]
+	public async Task CQ04_ShouldPass_WhenTabIndentationEnforced()
+	{
+		var editorconfig = """
+			root = true
+
+			[*]
+			indent_style = tab
+			indent_size = 4
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".editorconfig"] = editorconfig
+		});
+
+		var rule = GetRule("CQ-04");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task CQ04_ShouldFail_WhenSpaceIndentationUsed()
+	{
+		var editorconfig = """
+			root = true
+
+			[*]
+			indent_style = space
+			indent_size = 4
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".editorconfig"] = editorconfig
+		});
+
+		var rule = GetRule("CQ-04");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task CQ04_ShouldFail_WhenCsSectionOverridesToSpaces()
+	{
+		var editorconfig = """
+			root = true
+
+			[*]
+			indent_style = tab
+
+			[*.cs]
+			indent_style = space
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".editorconfig"] = editorconfig
+		});
+
+		var rule = GetRule("CQ-04");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("[*.cs]");
+	}
+
 	private static IRule GetRule(string ruleId)
 		=> RuleRegistry.Rules.Single(r => r.RuleId == ruleId);
 

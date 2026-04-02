@@ -75,6 +75,7 @@ internal static class LocalRepositoryContextFactory
 			path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) ||
 			path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
 			path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
+			path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) ||
 			path.EndsWith(".editorconfig", StringComparison.OrdinalIgnoreCase) ||
 			path.EndsWith(".gitignore", StringComparison.OrdinalIgnoreCase) ||
 			path.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
