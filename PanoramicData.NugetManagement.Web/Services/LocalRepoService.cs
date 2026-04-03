@@ -45,6 +45,28 @@ public class LocalRepoService
     }
 
     /// <summary>
+    /// Finds the first .slnx file in a local repository, or null if none exists.
+    /// </summary>
+    public string? FindSlnxFile(string repoName)
+    {
+        var path = GetLocalPath(repoName);
+        if (!Directory.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Directory.EnumerateFiles(path, "*.slnx", SearchOption.TopDirectoryOnly).FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to search for .slnx in {Path}", path);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Gets the current branch name for a local repository.
     /// </summary>
     public async Task<string?> GetCurrentBranchAsync(string repoName, CancellationToken cancellationToken = default)

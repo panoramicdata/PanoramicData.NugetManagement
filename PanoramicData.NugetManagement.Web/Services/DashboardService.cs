@@ -53,6 +53,7 @@ public class DashboardService
                 RepositoryUrl = pkg.RepositoryUrl,
                 IsClonedLocally = isCloned,
                 LocalPath = repoName is not null ? _localRepo.GetLocalPath(repoName) : null,
+                SlnxPath = isCloned && repoName is not null ? _localRepo.FindSlnxFile(repoName) : null,
                 Status = isCloned ? PackageStatus.NotAssessed : PackageStatus.NotCloned
             };
 
@@ -206,6 +207,25 @@ public class DashboardService
         }
 
         var failures = row.Assessment.RuleResults.Where(r => !r.Passed).ToList();
+        return GeneratePromptFromFailures(row, failures);
+    }
+
+    /// <summary>
+    /// Generates an AI remediation prompt for a specific category's failed rules.
+    /// </summary>
+    public static string GenerateCategoryRemediationPrompt(PackageDashboardRow row, AssessmentCategory category)
+    {
+        if (row.Assessment is null)
+        {
+            return string.Empty;
+        }
+
+        var failures = row.Assessment.RuleResults.Where(r => !r.Passed && r.Category == category).ToList();
+        return GeneratePromptFromFailures(row, failures);
+    }
+
+    private static string GeneratePromptFromFailures(PackageDashboardRow row, List<RuleResult> failures)
+    {
         if (failures.Count == 0)
         {
             return string.Empty;

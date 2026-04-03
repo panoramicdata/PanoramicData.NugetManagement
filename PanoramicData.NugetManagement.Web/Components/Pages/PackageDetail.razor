@@ -31,12 +31,29 @@ else
             <span class="brand-icon">📦</span>
             <span class="brand-text">@_row.PackageId</span>
             <span class="pkg-version" style="margin-left: 0.5rem;">@_row.LatestVersion</span>
+            @if (_row.IsClonedLocally)
+            {
+                <span class="local-badge local-yes" title="@_row.LocalPath">📂 Local</span>
+            }
+            else
+            {
+                <span class="local-badge local-no">☁️ Not cloned</span>
+            }
+            @if (_row.SlnxPath is not null)
+            {
+                <a href="file:///@_row.SlnxPath.Replace('\\', '/')" class="btn btn-sm slnx-link" title="Open @Path.GetFileName(_row.SlnxPath) in Visual Studio">
+                    🔗 @Path.GetFileName(_row.SlnxPath)
+                </a>
+            }
         </div>
         <div class="header-actions">
             @if (_isAssessing)
             {
                 <span class="progress-indicator"><span class="spinner"></span> @_progressMessage</span>
             }
+            <button class="btn" @onclick="ResolveAllAsync"
+                disabled="@(_isAssessing || _isRunning || _row.Assessment is null || _row.TotalFailures == 0)"
+                title="Generate AI remediation prompt for all failing rules">🤖 Resolve All</button>
             <button class="btn btn-primary" @onclick="ReassessAllAsync" disabled="@_isAssessing">🔄 Re-assess All</button>
             <button class="btn" @onclick="NavigateToDashboard">← Dashboard</button>
         </div>
@@ -70,6 +87,8 @@ else
                                 <span>@group.Category</span>
                             </div>
                             <div class="issue-group-actions">
+                                <button class="btn btn-sm" @onclick="() => ResolveCategoryAsync(group.Category)"
+                                    disabled="@(_isAssessing || _isRunning)" title="Generate AI prompt for @group.Category">🤖 Resolve</button>
                                 <button class="btn btn-sm" @onclick="() => ReassessCategoryAsync(group.Category)"
                                     disabled="@_isAssessing" title="Re-assess this category">🔄</button>
                             </div>
@@ -140,10 +159,6 @@ else
                     <button class="btn btn-sm btn-success" @onclick="RunPublishAsync"
                         disabled="@(_isRunning)" title="Run Publish.ps1">
                         🚀 Publish
-                    </button>
-                    <button class="btn btn-sm" @onclick="ShowAiPrompt"
-                        disabled="@(_row.Assessment is null || _row.TotalFailures == 0)" title="Generate AI remediation prompt">
-                        🤖 AI Prompt
                     </button>
                 </div>
             }
@@ -372,7 +387,7 @@ else
         }
     }
 
-    private void ShowAiPrompt()
+    private void ResolveAllAsync()
     {
         if (_row is null)
         {
@@ -380,9 +395,36 @@ else
         }
 
         var prompt = DashboardService.GenerateRemediationPrompt(_row);
-        AppendConsole("── AI Remediation Prompt ──");
+        if (string.IsNullOrEmpty(prompt))
+        {
+            AppendConsole("ℹ️ No failing rules to resolve.");
+            return;
+        }
+
+        AppendConsole("── AI Remediation Prompt (All) ──");
         AppendConsole(prompt);
         AppendConsole("── End Prompt ──");
+        StateHasChanged();
+    }
+
+    private void ResolveCategoryAsync(AssessmentCategory category)
+    {
+        if (_row is null)
+        {
+            return;
+        }
+
+        var prompt = DashboardService.GenerateCategoryRemediationPrompt(_row, category);
+        if (string.IsNullOrEmpty(prompt))
+        {
+            AppendConsole($"ℹ️ No failing rules in {category} to resolve.");
+            return;
+        }
+
+        AppendConsole($"── AI Remediation Prompt ({category}) ──");
+        AppendConsole(prompt);
+        AppendConsole("── End Prompt ──");
+        StateHasChanged();
     }
 
     private void AppendConsole(string line)

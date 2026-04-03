@@ -815,6 +815,42 @@ html, body {
     background: rgba(255, 255, 255, 0.03);
 }
 
+/* === Local/Clone Indicators === */
+.local-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    font-weight: 500;
+}
+
+.local-yes {
+    background: rgba(76, 175, 80, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.local-no {
+    background: rgba(255, 152, 0, 0.1);
+    color: var(--warning);
+    border: 1px solid rgba(255, 152, 0, 0.2);
+}
+
+.slnx-link {
+    margin-left: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--accent);
+    border-color: rgba(79, 195, 247, 0.3);
+    background: rgba(79, 195, 247, 0.08);
+}
+
+.slnx-link:hover {
+    background: rgba(79, 195, 247, 0.18);
+}
+
 /* === Existing Blazor styles === */
 h1:focus {
     outline: none;

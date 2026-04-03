@@ -38,6 +38,11 @@ public class PackageDashboardRow
     public string? LocalPath { get; set; }
 
     /// <summary>
+    /// The full path to the .slnx file in the local repository, if found.
+    /// </summary>
+    public string? SlnxPath { get; set; }
+
+    /// <summary>
     /// Whether the local working tree is clean.
     /// </summary>
     public bool? IsWorkingTreeClean { get; set; }
