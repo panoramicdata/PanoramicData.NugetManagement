@@ -333,9 +333,26 @@ else
 
         try
         {
-            _rows = await Dashboard.DiscoverPackagesAsync();
+            var freshRows = await Dashboard.DiscoverPackagesAsync();
 
-            // Cache rows immediately so they're available to other pages
+            // Merge: preserve existing cached assessments for rows that
+            // already have data so the UI never flashes back to a blank state.
+            var existingByPackageId = _rows
+                .Where(r => r.Assessment is not null)
+                .ToDictionary(r => r.PackageId, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var row in freshRows)
+            {
+                if (existingByPackageId.TryGetValue(row.PackageId, out var existing))
+                {
+                    row.Assessment = existing.Assessment;
+                    row.CategorySummaries = existing.CategorySummaries;
+                }
+            }
+
+            _rows = freshRows;
+
+            // Cache the merged rows (with preserved assessments) immediately
             Cache.SetRows(_rows);
             StateHasChanged();
 
