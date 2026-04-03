@@ -17,12 +17,13 @@ builder.Services.AddScoped<DashboardService>();
 
 // GitHub OAuth authentication
 var settings = builder.Configuration.GetSection("AppSettings").Get<AppSettings>() ?? new AppSettings();
+var gitHubAuthConfigured = !string.IsNullOrEmpty(settings.GitHubClientId) && !string.IsNullOrEmpty(settings.GitHubClientSecret);
 
-builder.Services
+var authBuilder = builder.Services
     .AddAuthentication(options =>
     {
         options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = "GitHub";
+        options.DefaultChallengeScheme = gitHubAuthConfigured ? "GitHub" : CookieAuthenticationDefaults.AuthenticationScheme;
     })
     .AddCookie(options =>
     {
@@ -30,8 +31,11 @@ builder.Services
         options.LogoutPath = "/logout";
         options.ExpireTimeSpan = TimeSpan.FromDays(30);
         options.SlidingExpiration = true;
-    })
-    .AddGitHub("GitHub", options =>
+    });
+
+if (gitHubAuthConfigured)
+{
+    authBuilder.AddGitHub("GitHub", options =>
     {
         options.ClientId = settings.GitHubClientId;
         options.ClientSecret = settings.GitHubClientSecret;
@@ -39,6 +43,7 @@ builder.Services
         options.Scope.Add("read:org");
         options.SaveTokens = true;
     });
+}
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddAuthorization();
@@ -64,6 +69,13 @@ app.UseAntiforgery();
 // Authentication endpoints
 app.MapGet("/login", (HttpContext context) =>
 {
+    if (!gitHubAuthConfigured)
+    {
+        return Results.Text(
+            "GitHub OAuth is not configured. Set GitHubClientId and GitHubClientSecret in user secrets. See secrets.example.json for details.",
+            statusCode: 503);
+    }
+
     return Results.Challenge(
         new AuthenticationProperties { RedirectUri = "/" },
         ["GitHub"]);
