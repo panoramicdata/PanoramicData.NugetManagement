@@ -107,7 +107,11 @@ public class DependabotConfiguredRule : RuleBase
 				{
 					Summary = "Create `.github/dependabot.yml` with NuGet and GitHub Actions ecosystems",
 					Detail = "Create a `.github/dependabot.yml` file configuring automatic dependency updates for both NuGet packages and GitHub Actions.",
-					Data = new() { ["expected_path"] = ".github/dependabot.yml" }
+					Data = new()
+					{
+						["expected_path"] = ".github/dependabot.yml",
+						["template_content"] = Standards.DependabotYmlContent
+					}
 				}));
 	}
 }

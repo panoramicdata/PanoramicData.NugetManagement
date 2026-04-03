@@ -165,6 +165,21 @@ public enum PackageStatus
     TestsFailed,
 
     /// <summary>
+    /// Building in progress.
+    /// </summary>
+    Building,
+
+    /// <summary>
+    /// Build succeeded.
+    /// </summary>
+    BuildSucceeded,
+
+    /// <summary>
+    /// Build failed.
+    /// </summary>
+    BuildFailed,
+
+    /// <summary>
     /// Publishing in progress.
     /// </summary>
     Publishing,
@@ -173,6 +188,16 @@ public enum PackageStatus
     /// Published successfully.
     /// </summary>
     Published,
+
+    /// <summary>
+    /// Git sync in progress.
+    /// </summary>
+    GitSyncing,
+
+    /// <summary>
+    /// Git sync complete.
+    /// </summary>
+    GitSynced,
 
     /// <summary>
     /// An error occurred.

@@ -34,6 +34,14 @@ else
             @if (_row.IsClonedLocally)
             {
                 <span class="local-badge local-yes" title="@_row.LocalPath">📂 Local</span>
+                @if (_row.IsWorkingTreeClean == false)
+                {
+                    <span class="git-dirty-badge" title="Working tree has uncommitted changes">● Dirty</span>
+                }
+                else if (_row.IsWorkingTreeClean == true)
+                {
+                    <span class="git-clean-badge" title="Working tree is clean">● Clean</span>
+                }
             }
             else
             {
@@ -51,6 +59,9 @@ else
             {
                 <span class="progress-indicator"><span class="spinner"></span> @_progressMessage</span>
             }
+            <button class="btn" @onclick="FixAllAsync"
+                disabled="@(_isAssessing || _isRunning || !_row.IsClonedLocally || _row.Assessment is null || _row.TotalFailures == 0)"
+                title="Auto-fix remediable issues by writing files to disk">🔧 Fix All</button>
             <button class="btn" @onclick="ResolveAllAsync"
                 disabled="@(_isAssessing || _isRunning || _row.Assessment is null || _row.TotalFailures == 0)"
                 title="Generate AI remediation prompt for all failing rules">🤖 Resolve All</button>
@@ -87,6 +98,11 @@ else
                                 <span>@group.Category</span>
                             </div>
                             <div class="issue-group-actions">
+                                @if (HasAutoRemediableFailures(group.Category))
+                                {
+                                    <button class="btn btn-sm btn-fix" @onclick="() => FixCategoryAsync(group.Category)"
+                                        disabled="@(_isAssessing || _isRunning || !_row.IsClonedLocally)" title="Auto-fix remediable issues in @group.Category">🔧 Fix</button>
+                                }
                                 <button class="btn btn-sm" @onclick="() => ResolveCategoryAsync(group.Category)"
                                     disabled="@(_isAssessing || _isRunning)" title="Generate AI prompt for @group.Category">🤖 Resolve</button>
                                 <button class="btn btn-sm" @onclick="() => ReassessCategoryAsync(group.Category)"
@@ -99,6 +115,11 @@ else
                                 <div class="issue-item-header">
                                     <span class="badge @GetSeverityBadgeClass(result)">@result.RuleId</span>
                                     <span class="issue-rule-name">@result.RuleName</span>
+                                    @if (DashboardService.IsAutoRemediable(result) && _row.IsClonedLocally)
+                                    {
+                                        <button class="btn btn-xs btn-fix" @onclick="() => FixSingleRuleAsync(result)"
+                                            disabled="@(_isAssessing || _isRunning)" title="Auto-fix this issue">🔧</button>
+                                    }
                                 </div>
                                 <div class="issue-message">@result.Message</div>
                                 @if (result.Advisory is not null)
@@ -152,9 +173,17 @@ else
             @if (_row.IsClonedLocally)
             {
                 <div class="console-panel-footer">
+                    <button class="btn btn-sm" @onclick="BuildAsync"
+                        disabled="@(_isRunning)" title="Build the solution">
+                        🔨 Build
+                    </button>
                     <button class="btn btn-sm" @onclick="RunTestsAsync"
                         disabled="@(_isRunning)" title="Run unit tests">
-                        🧪 Run Tests
+                        🧪 Test
+                    </button>
+                    <button class="btn btn-sm" @onclick="GitSyncAsync"
+                        disabled="@(_isRunning)" title="Fetch, pull --rebase, push">
+                        🔄 Git Sync
                     </button>
                     <button class="btn btn-sm btn-success" @onclick="RunPublishAsync"
                         disabled="@(_isRunning)" title="Run Publish.ps1">
@@ -319,6 +348,205 @@ else
         }
     }
 
+    private async Task FixAllAsync()
+    {
+        if (_row is null || !_row.IsClonedLocally)
+        {
+            return;
+        }
+
+        _isRunning = true;
+        AppendConsole("▶ Applying auto-remediations...");
+        StateHasChanged();
+
+        try
+        {
+            var applied = await Dashboard.ApplyRemediationsAsync(_row, line =>
+            {
+                AppendConsole(line);
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (applied.Count > 0)
+            {
+                // Refresh git status since we wrote files
+                await Dashboard.RefreshGitStatusAsync(_row);
+                AppendConsole($"ℹ️ {applied.Count} file(s) written — working tree is now dirty.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendConsole($"❌ Error: {ex.Message}");
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FixCategoryAsync(AssessmentCategory category)
+    {
+        if (_row is null || !_row.IsClonedLocally)
+        {
+            return;
+        }
+
+        _isRunning = true;
+        AppendConsole($"▶ Applying auto-remediations for {category}...");
+        StateHasChanged();
+
+        try
+        {
+            var applied = await Dashboard.ApplyCategoryRemediationsAsync(_row, category, line =>
+            {
+                AppendConsole(line);
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (applied.Count > 0)
+            {
+                await Dashboard.RefreshGitStatusAsync(_row);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendConsole($"❌ Error: {ex.Message}");
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FixSingleRuleAsync(RuleResult result)
+    {
+        if (_row is null || !_row.IsClonedLocally || _row.LocalPath is null || result.Advisory is null)
+        {
+            return;
+        }
+
+        if (!result.Advisory.Data.TryGetValue("expected_path", out var pathObj) || pathObj is not string expectedPath)
+        {
+            return;
+        }
+
+        if (!result.Advisory.Data.TryGetValue("template_content", out var contentObj) || contentObj is not string templateContent)
+        {
+            return;
+        }
+
+        _isRunning = true;
+        AppendConsole($"▶ Fixing [{result.RuleId}] {result.RuleName}...");
+        StateHasChanged();
+
+        try
+        {
+            var fullPath = Path.Combine(_row.LocalPath, expectedPath.Replace('/', Path.DirectorySeparatorChar));
+
+            if (File.Exists(fullPath))
+            {
+                AppendConsole($"⏭️ [{result.RuleId}] {expectedPath} already exists — skipping.");
+            }
+            else
+            {
+                var dir = Path.GetDirectoryName(fullPath);
+                if (dir is not null && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                await File.WriteAllTextAsync(fullPath, templateContent);
+                AppendConsole($"✅ [{result.RuleId}] Created {expectedPath}");
+                await Dashboard.RefreshGitStatusAsync(_row);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendConsole($"❌ [{result.RuleId}] Failed: {ex.Message}");
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task BuildAsync()
+    {
+        if (_row is null)
+        {
+            return;
+        }
+
+        _isRunning = true;
+        AppendConsole("▶ Building...");
+        StateHasChanged();
+
+        try
+        {
+            await Dashboard.BuildAsync(_row, line =>
+            {
+                AppendConsole(line);
+                InvokeAsync(StateHasChanged);
+            });
+
+            AppendConsole(_row.Status == PackageStatus.BuildSucceeded
+                ? "✅ Build succeeded"
+                : "❌ Build failed");
+        }
+        catch (Exception ex)
+        {
+            AppendConsole($"❌ Error building: {ex.Message}");
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GitSyncAsync()
+    {
+        if (_row is null)
+        {
+            return;
+        }
+
+        _isRunning = true;
+        AppendConsole("▶ Git syncing (fetch → pull --rebase → push)...");
+        StateHasChanged();
+
+        try
+        {
+            await Dashboard.GitSyncAsync(_row, line =>
+            {
+                AppendConsole(line);
+                InvokeAsync(StateHasChanged);
+            });
+
+            AppendConsole(_row.Status == PackageStatus.GitSynced
+                ? "✅ Git sync complete"
+                : "❌ Git sync failed");
+
+            // Show updated branch/clean status
+            if (_row.CurrentBranch is not null)
+            {
+                AppendConsole($"ℹ️ Branch: {_row.CurrentBranch} | Clean: {_row.IsWorkingTreeClean}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendConsole($"❌ Error syncing: {ex.Message}");
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task RunTestsAsync()
     {
         if (_row is null)
@@ -440,6 +668,17 @@ else
     private void NavigateToDashboard()
     {
         Navigation.NavigateTo("/");
+    }
+
+    private bool HasAutoRemediableFailures(AssessmentCategory category)
+    {
+        if (_row?.Assessment is null)
+        {
+            return false;
+        }
+
+        return _row.Assessment.RuleResults
+            .Any(r => !r.Passed && r.Category == category && DashboardService.IsAutoRemediable(r));
     }
 
     private List<CategoryGroup> GetGroupedFailures()

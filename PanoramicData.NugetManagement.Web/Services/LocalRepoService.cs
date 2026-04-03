@@ -180,6 +180,49 @@ public class LocalRepoService
     }
 
     /// <summary>
+    /// Runs dotnet build on the repository.
+    /// </summary>
+    public async Task<(bool Success, string Output)> BuildAsync(
+        string repoName,
+        Action<string>? onOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var path = GetLocalPath(repoName);
+        _logger.LogInformation("Building in {Path}", path);
+        return await RunCommandWithStreamingAsync(path, "dotnet", "build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Syncs a local repository with its remote: fetch, pull (rebase), push.
+    /// </summary>
+    public async Task<(bool Success, string Output)> GitSyncAsync(
+        string repoName,
+        Action<string>? onOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var path = GetLocalPath(repoName);
+        _logger.LogInformation("Git syncing {Path}", path);
+
+        // Fetch
+        var (ok, output) = await RunCommandWithStreamingAsync(path, "git", "fetch --prune", onOutput, cancellationToken).ConfigureAwait(false);
+        if (!ok)
+        {
+            return (false, output);
+        }
+
+        // Pull with rebase
+        (ok, output) = await RunCommandWithStreamingAsync(path, "git", "pull --rebase", onOutput, cancellationToken).ConfigureAwait(false);
+        if (!ok)
+        {
+            return (false, output);
+        }
+
+        // Push
+        (ok, output) = await RunCommandWithStreamingAsync(path, "git", "push", onOutput, cancellationToken).ConfigureAwait(false);
+        return (ok, output);
+    }
+
+    /// <summary>
     /// Runs dotnet test on the repository.
     /// </summary>
     public async Task<(bool Success, string Output)> RunTestsAsync(

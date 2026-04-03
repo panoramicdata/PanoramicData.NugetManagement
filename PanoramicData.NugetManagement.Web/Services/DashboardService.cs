@@ -264,6 +264,232 @@ public class DashboardService
     }
 
     /// <summary>
+    /// Applies automatic file-based remediations for failed rules that have
+    /// <c>expected_path</c> and <c>template_content</c> in their advisory data.
+    /// Returns the list of files created/modified.
+    /// </summary>
+    public Task<List<string>> ApplyRemediationsAsync(
+        PackageDashboardRow row,
+        Action<string>? onOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var applied = new List<string>();
+
+        if (row.Assessment is null || row.LocalPath is null)
+        {
+            onOutput?.Invoke("⚠️ No assessment data or local path — cannot apply remediations.");
+            return Task.FromResult(applied);
+        }
+
+        var failures = row.Assessment.RuleResults.Where(r => !r.Passed && r.Advisory is not null).ToList();
+
+        foreach (var failure in failures)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var advisory = failure.Advisory!;
+            if (!advisory.Data.TryGetValue("expected_path", out var pathObj) || pathObj is not string expectedPath)
+            {
+                continue;
+            }
+
+            if (!advisory.Data.TryGetValue("template_content", out var contentObj) || contentObj is not string templateContent)
+            {
+                continue;
+            }
+
+            var fullPath = Path.Combine(row.LocalPath, expectedPath.Replace('/', Path.DirectorySeparatorChar));
+
+            if (File.Exists(fullPath))
+            {
+                onOutput?.Invoke($"⏭️ [{failure.RuleId}] {expectedPath} already exists — skipping.");
+                continue;
+            }
+
+            try
+            {
+                var dir = Path.GetDirectoryName(fullPath);
+                if (dir is not null && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                File.WriteAllText(fullPath, templateContent);
+                applied.Add(expectedPath);
+                onOutput?.Invoke($"✅ [{failure.RuleId}] Created {expectedPath}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create {Path} for rule {RuleId}", expectedPath, failure.RuleId);
+                onOutput?.Invoke($"❌ [{failure.RuleId}] Failed to create {expectedPath}: {ex.Message}");
+            }
+        }
+
+        if (applied.Count == 0)
+        {
+            onOutput?.Invoke("ℹ️ No auto-remediable issues found (rules need expected_path + template_content).");
+        }
+        else
+        {
+            onOutput?.Invoke($"✅ Applied {applied.Count} remediation(s).");
+        }
+
+        return Task.FromResult(applied);
+    }
+
+    /// <summary>
+    /// Applies automatic remediations for a specific category.
+    /// </summary>
+    public Task<List<string>> ApplyCategoryRemediationsAsync(
+        PackageDashboardRow row,
+        AssessmentCategory category,
+        Action<string>? onOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var applied = new List<string>();
+
+        if (row.Assessment is null || row.LocalPath is null)
+        {
+            onOutput?.Invoke("⚠️ No assessment data or local path — cannot apply remediations.");
+            return Task.FromResult(applied);
+        }
+
+        var failures = row.Assessment.RuleResults
+            .Where(r => !r.Passed && r.Category == category && r.Advisory is not null)
+            .ToList();
+
+        foreach (var failure in failures)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var advisory = failure.Advisory!;
+            if (!advisory.Data.TryGetValue("expected_path", out var pathObj) || pathObj is not string expectedPath)
+            {
+                continue;
+            }
+
+            if (!advisory.Data.TryGetValue("template_content", out var contentObj) || contentObj is not string templateContent)
+            {
+                continue;
+            }
+
+            var fullPath = Path.Combine(row.LocalPath, expectedPath.Replace('/', Path.DirectorySeparatorChar));
+
+            if (File.Exists(fullPath))
+            {
+                onOutput?.Invoke($"⏭️ [{failure.RuleId}] {expectedPath} already exists — skipping.");
+                continue;
+            }
+
+            try
+            {
+                var dir = Path.GetDirectoryName(fullPath);
+                if (dir is not null && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                File.WriteAllText(fullPath, templateContent);
+                applied.Add(expectedPath);
+                onOutput?.Invoke($"✅ [{failure.RuleId}] Created {expectedPath}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create {Path} for rule {RuleId}", expectedPath, failure.RuleId);
+                onOutput?.Invoke($"❌ [{failure.RuleId}] Failed to create {expectedPath}: {ex.Message}");
+            }
+        }
+
+        if (applied.Count == 0)
+        {
+            onOutput?.Invoke($"ℹ️ No auto-remediable issues found in {category}.");
+        }
+
+        return Task.FromResult(applied);
+    }
+
+    /// <summary>
+    /// Checks if a specific failed rule can be auto-remediated.
+    /// </summary>
+    public static bool IsAutoRemediable(RuleResult result)
+        => !result.Passed
+            && result.Advisory is not null
+            && result.Advisory.Data.ContainsKey("expected_path")
+            && result.Advisory.Data.ContainsKey("template_content");
+
+    /// <summary>
+    /// Builds a local repository.
+    /// </summary>
+    public async Task BuildAsync(
+        PackageDashboardRow row,
+        Action<string>? onOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var repoName = ExtractRepoName(row.RepositoryUrl);
+        if (repoName is null)
+        {
+            row.Status = PackageStatus.Error;
+            row.StatusMessage = "Cannot determine repo name.";
+            return;
+        }
+
+        row.Status = PackageStatus.Building;
+        row.StatusMessage = "Building...";
+
+        var (success, _) = await _localRepo.BuildAsync(repoName, onOutput, cancellationToken).ConfigureAwait(false);
+
+        row.Status = success ? PackageStatus.BuildSucceeded : PackageStatus.BuildFailed;
+        row.StatusMessage = success ? "Build succeeded." : "Build failed.";
+    }
+
+    /// <summary>
+    /// Syncs a local repository with remote (fetch, pull --rebase, push).
+    /// </summary>
+    public async Task GitSyncAsync(
+        PackageDashboardRow row,
+        Action<string>? onOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var repoName = ExtractRepoName(row.RepositoryUrl);
+        if (repoName is null)
+        {
+            row.Status = PackageStatus.Error;
+            row.StatusMessage = "Cannot determine repo name.";
+            return;
+        }
+
+        row.Status = PackageStatus.GitSyncing;
+        row.StatusMessage = "Syncing with remote...";
+
+        var (success, _) = await _localRepo.GitSyncAsync(repoName, onOutput, cancellationToken).ConfigureAwait(false);
+
+        if (success)
+        {
+            // Refresh git status after sync
+            row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
+            row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
+        }
+
+        row.Status = success ? PackageStatus.GitSynced : PackageStatus.Error;
+        row.StatusMessage = success ? "Synced with remote." : "Git sync failed.";
+    }
+
+    /// <summary>
+    /// Refreshes the git status for a row (branch and working tree clean state).
+    /// </summary>
+    public async Task RefreshGitStatusAsync(PackageDashboardRow row, CancellationToken cancellationToken = default)
+    {
+        var repoName = ExtractRepoName(row.RepositoryUrl);
+        if (repoName is null || !row.IsClonedLocally)
+        {
+            return;
+        }
+
+        row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
+        row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Runs tests on a local repository.
     /// </summary>
     public async Task RunTestsAsync(

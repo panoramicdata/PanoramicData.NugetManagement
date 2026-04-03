@@ -105,6 +105,17 @@ else
                             {
                                 <span class="pkg-name">@row.PackageId</span>
                             }
+                            @if (row.IsClonedLocally)
+                            {
+                                @if (row.IsWorkingTreeClean == false)
+                                {
+                                    <span class="git-dirty" title="Working tree has uncommitted changes">●</span>
+                                }
+                                else if (row.IsWorkingTreeClean == true)
+                                {
+                                    <span class="git-clean" title="Working tree is clean">●</span>
+                                }
+                            }
                         </td>
                         <td><span class="pkg-version">@row.LatestVersion</span></td>
                         @foreach (var cat in _categories)
