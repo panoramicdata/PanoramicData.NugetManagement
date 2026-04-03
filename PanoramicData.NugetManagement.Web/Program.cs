@@ -21,29 +21,29 @@ var settings = builder.Configuration.GetSection("AppSettings").Get<AppSettings>(
 var gitHubAuthConfigured = !string.IsNullOrEmpty(settings.GitHubClientId) && !string.IsNullOrEmpty(settings.GitHubClientSecret);
 
 var authBuilder = builder.Services
-    .AddAuthentication(options =>
-    {
-        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = gitHubAuthConfigured ? "GitHub" : CookieAuthenticationDefaults.AuthenticationScheme;
-    })
-    .AddCookie(options =>
-    {
-        options.LoginPath = "/login";
-        options.LogoutPath = "/logout";
-        options.ExpireTimeSpan = TimeSpan.FromDays(30);
-        options.SlidingExpiration = true;
-    });
+	.AddAuthentication(options =>
+	{
+		options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+		options.DefaultChallengeScheme = gitHubAuthConfigured ? "GitHub" : CookieAuthenticationDefaults.AuthenticationScheme;
+	})
+	.AddCookie(options =>
+	{
+		options.LoginPath = "/login";
+		options.LogoutPath = "/logout";
+		options.ExpireTimeSpan = TimeSpan.FromDays(30);
+		options.SlidingExpiration = true;
+	});
 
 if (gitHubAuthConfigured)
 {
-    authBuilder.AddGitHub("GitHub", options =>
-    {
-        options.ClientId = settings.GitHubClientId;
-        options.ClientSecret = settings.GitHubClientSecret;
-        options.Scope.Add("repo");
-        options.Scope.Add("read:org");
-        options.SaveTokens = true;
-    });
+	authBuilder.AddGitHub("GitHub", options =>
+	{
+		options.ClientId = settings.GitHubClientId;
+		options.ClientSecret = settings.GitHubClientSecret;
+		options.Scope.Add("repo");
+		options.Scope.Add("read:org");
+		options.SaveTokens = true;
+	});
 }
 
 builder.Services.AddCascadingAuthenticationState();
@@ -52,14 +52,14 @@ builder.Services.AddHttpContextAccessor();
 
 // Add Blazor services
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+	.AddInteractiveServerComponents();
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+	app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
@@ -70,42 +70,42 @@ app.UseAntiforgery();
 // Authentication endpoints
 app.MapGet("/login", (HttpContext context) =>
 {
-    if (!gitHubAuthConfigured)
-    {
-        return Results.Text(
-            "GitHub OAuth is not configured. Set GitHubClientId and GitHubClientSecret in user secrets. See secrets.example.json for details.",
-            statusCode: 503);
-    }
+	if (!gitHubAuthConfigured)
+	{
+		return Results.Text(
+			"GitHub OAuth is not configured. Set GitHubClientId and GitHubClientSecret in user secrets. See secrets.example.json for details.",
+			statusCode: 503);
+	}
 
-    return Results.Challenge(
-        new AuthenticationProperties { RedirectUri = "/" },
-        ["GitHub"]);
+	return Results.Challenge(
+		new AuthenticationProperties { RedirectUri = "/" },
+		["GitHub"]);
 });
 
 app.MapGet("/logout", async (HttpContext context) =>
 {
-    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme).ConfigureAwait(false);
-    return Results.Redirect("/");
+	await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme).ConfigureAwait(false);
+	return Results.Redirect("/");
 });
 
 app.MapGet("/api/user", (HttpContext context) =>
 {
-    if (context.User.Identity?.IsAuthenticated != true)
-    {
-        return Results.Json(new { authenticated = false });
-    }
+	if (context.User.Identity?.IsAuthenticated != true)
+	{
+		return Results.Json(new { authenticated = false });
+	}
 
-    return Results.Json(new
-    {
-        authenticated = true,
-        name = context.User.FindFirstValue(ClaimTypes.Name),
-        login = context.User.FindFirstValue("urn:github:login") ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier),
-        avatar = context.User.FindFirstValue("urn:github:avatar")
-    });
+	return Results.Json(new
+	{
+		authenticated = true,
+		name = context.User.FindFirstValue(ClaimTypes.Name),
+		login = context.User.FindFirstValue("urn:github:login") ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier),
+		avatar = context.User.FindFirstValue("urn:github:avatar")
+	});
 });
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+	.AddInteractiveServerRenderMode();
 
 app.Run();
