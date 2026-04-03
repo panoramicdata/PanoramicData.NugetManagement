@@ -8,7 +8,7 @@ namespace PanoramicData.NugetManagement.Services;
 /// <summary>
 /// Assesses all repositories in a GitHub organization against best practice rules.
 /// </summary>
-public class OrganizationAssessor
+public class OrganizationAssessor : IDisposable
 {
 	private readonly IGitHubClient _github;
 	private readonly RepositoryContextBuilder _contextBuilder;
@@ -30,6 +30,13 @@ public class OrganizationAssessor
 		_contextBuilder = new RepositoryContextBuilder(github, contextBuilderLogger);
 		_rules = RuleRegistry.Rules;
 		_logger = logger;
+	}
+
+	/// <inheritdoc />
+	public void Dispose()
+	{
+		_contextBuilder.Dispose();
+		GC.SuppressFinalize(this);
 	}
 
 	/// <summary>
