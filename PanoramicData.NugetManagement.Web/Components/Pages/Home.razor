@@ -4,6 +4,7 @@
 @rendermode InteractiveServer
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
+@inject NavigationManager Navigation
 @inject IHttpContextAccessor HttpContextAccessor
 @inject ILogger<Home> Logger
 @implements IDisposable
@@ -65,6 +66,16 @@ else
     </div>
 
     <!-- Main governance table -->
+    <div class="table-toolbar">
+        @if (_highlightedRow is not null)
+        {
+            <button class="btn btn-primary btn-sm" @onclick="NavigateToDetail">📋 View @_highlightedRow.PackageId</button>
+        }
+        else
+        {
+            <span class="toolbar-hint">Click a row to select, double-click to view details</span>
+        }
+    </div>
     <div style="overflow-x: auto;">
         <table class="governance-table">
             <thead>
@@ -82,7 +93,9 @@ else
             <tbody>
                 @foreach (var row in _rows)
                 {
-                    <tr>
+                    <tr class="@(row == _highlightedRow ? "row-selected" : "")"
+                        @onclick="() => SelectRow(row)"
+                        @ondblclick="() => NavigateToPackage(row)">
                         <td>
                             @if (row.RepositoryUrl is not null)
                             {
@@ -243,6 +256,7 @@ else
     private List<PackageDashboardRow> _rows = [];
     private AssessmentCategory[] _categories = [];
     private PackageDashboardRow? _selectedRow;
+    private PackageDashboardRow? _highlightedRow;
     private ModalView _modalView = ModalView.Issues;
     private string _aiPrompt = string.Empty;
     private string _consoleOutput = string.Empty;
@@ -309,6 +323,9 @@ else
         try
         {
             _rows = await Dashboard.DiscoverPackagesAsync();
+
+            // Cache rows immediately so they're available to other pages
+            Cache.SetRows(_rows);
             StateHasChanged();
 
             var github = CreateGitHubClient();
@@ -324,7 +341,7 @@ else
                 StateHasChanged();
             }
 
-            // Update cache with fresh results
+            // Mark the full refresh as complete
             Cache.Update(_rows);
             _lastRefreshUtc = Cache.LastRefreshUtc;
 
@@ -408,6 +425,24 @@ else
     private void CloseModal()
     {
         _selectedRow = null;
+    }
+
+    private void SelectRow(PackageDashboardRow row)
+    {
+        _highlightedRow = row;
+    }
+
+    private void NavigateToPackage(PackageDashboardRow row)
+    {
+        Navigation.NavigateTo($"/{Uri.EscapeDataString(row.PackageId)}");
+    }
+
+    private void NavigateToDetail()
+    {
+        if (_highlightedRow is not null)
+        {
+            NavigateToPackage(_highlightedRow);
+        }
     }
 
     private static string GetCategoryAbbrev(AssessmentCategory cat) => cat switch

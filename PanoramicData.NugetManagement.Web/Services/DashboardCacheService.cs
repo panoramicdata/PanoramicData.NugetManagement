@@ -58,12 +58,48 @@ public class DashboardCacheService
 
     /// <summary>
     /// Updates the cached rows and refresh timestamp.
+    /// Called when a full refresh cycle completes.
     /// </summary>
     public void Update(List<PackageDashboardRow> rows)
     {
         lock (_lock)
         {
             _cachedRows = rows;
+            _lastRefreshUtc = DateTimeOffset.UtcNow;
+        }
+    }
+
+    /// <summary>
+    /// Sets the cached rows without updating the refresh timestamp.
+    /// Used for incremental updates (e.g. after discovering packages but before full assessment).
+    /// </summary>
+    public void SetRows(List<PackageDashboardRow> rows)
+    {
+        lock (_lock)
+        {
+            _cachedRows = rows;
+        }
+    }
+
+    /// <summary>
+    /// Gets a single cached row by package ID.
+    /// </summary>
+    public PackageDashboardRow? GetRow(string packageId)
+    {
+        lock (_lock)
+        {
+            return _cachedRows?.FirstOrDefault(r =>
+                string.Equals(r.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
+    /// Notifies that a single row's assessment was updated (refreshes the timestamp).
+    /// </summary>
+    public void NotifyRowUpdated()
+    {
+        lock (_lock)
+        {
             _lastRefreshUtc = DateTimeOffset.UtcNow;
         }
     }

@@ -1,0 +1,479 @@
+@page "/{PackageId}"
+@using Microsoft.AspNetCore.Authentication
+@using Octokit
+@rendermode InteractiveServer
+@inject DashboardService Dashboard
+@inject DashboardCacheService Cache
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+@inject ILogger<PackageDetail> Logger
+
+<PageTitle>@PackageId — NuGet Governance</PageTitle>
+
+@if (_row is null)
+{
+    <div class="detail-loading">
+        @if (_notFound)
+        {
+            <p>Package <strong>@PackageId</strong> not found in the cache. <a href="/">← Back to dashboard</a></p>
+        }
+        else
+        {
+            <span class="spinner"></span> <span>Loading...</span>
+        }
+    </div>
+}
+else
+{
+    <header class="app-header">
+        <div class="header-brand">
+            <a href="/" class="back-link" title="Back to dashboard">←</a>
+            <span class="brand-icon">📦</span>
+            <span class="brand-text">@_row.PackageId</span>
+            <span class="pkg-version" style="margin-left: 0.5rem;">@_row.LatestVersion</span>
+        </div>
+        <div class="header-actions">
+            @if (_isAssessing)
+            {
+                <span class="progress-indicator"><span class="spinner"></span> @_progressMessage</span>
+            }
+            <button class="btn btn-primary" @onclick="ReassessAllAsync" disabled="@_isAssessing">🔄 Re-assess All</button>
+            <button class="btn" @onclick="NavigateToDashboard">← Dashboard</button>
+        </div>
+    </header>
+
+    <div class="detail-layout">
+        <!-- Left panel: Issues grouped by category -->
+        <div class="detail-issues">
+            @if (_row.Assessment is null)
+            {
+                <div class="detail-empty">
+                    <p>No assessment data available.</p>
+                    <button class="btn btn-primary" @onclick="ReassessAllAsync" disabled="@_isAssessing">🔄 Assess Now</button>
+                </div>
+            }
+            else if (_row.TotalFailures == 0)
+            {
+                <div class="detail-empty detail-pass">
+                    <p>✅ All @_row.Assessment.RuleResults.Count rules pass!</p>
+                    <button class="btn" @onclick="ReassessAllAsync" disabled="@_isAssessing">🔄 Re-assess</button>
+                </div>
+            }
+            else
+            {
+                @foreach (var group in GetGroupedFailures())
+                {
+                    <div class="issue-group">
+                        <div class="issue-group-header">
+                            <div class="issue-group-title">
+                                <span class="badge @GetGroupBadgeClass(group)">@group.Failures.Count</span>
+                                <span>@group.Category</span>
+                            </div>
+                            <div class="issue-group-actions">
+                                <button class="btn btn-sm" @onclick="() => ReassessCategoryAsync(group.Category)"
+                                    disabled="@_isAssessing" title="Re-assess this category">🔄</button>
+                            </div>
+                        </div>
+                        @foreach (var result in group.Failures)
+                        {
+                            <div class="issue-item">
+                                <div class="issue-item-header">
+                                    <span class="badge @GetSeverityBadgeClass(result)">@result.RuleId</span>
+                                    <span class="issue-rule-name">@result.RuleName</span>
+                                </div>
+                                <div class="issue-message">@result.Message</div>
+                                @if (result.Advisory is not null)
+                                {
+                                    <div class="issue-advisory">
+                                        <span class="advisory-icon">💡</span>
+                                        <span>@result.Advisory.Summary</span>
+                                    </div>
+                                    @if (result.Advisory.Data.Count > 0)
+                                    {
+                                        <div class="issue-data">
+                                            @foreach (var (key, value) in result.Advisory.Data)
+                                            {
+                                                <div class="issue-data-item">
+                                                    <span class="data-key">@key:</span>
+                                                    <span class="data-value">@FormatDataValue(value)</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        <!-- Right panel: Console output -->
+        <div class="detail-console-panel">
+            <div class="console-panel-header">
+                <span>Console</span>
+                @if (_consoleLines.Count > 0)
+                {
+                    <button class="btn btn-sm btn-icon" @onclick="ClearConsole" title="Clear console">🗑️</button>
+                }
+            </div>
+            <div class="detail-console-output" @ref="_consoleElement">
+                @if (_consoleLines.Count == 0)
+                {
+                    <span class="console-placeholder">Actions and assessment output will appear here...</span>
+                }
+                else
+                {
+                    @foreach (var line in _consoleLines)
+                    {
+                        <div class="@GetConsoleLineClass(line)">@line</div>
+                    }
+                }
+            </div>
+            @if (_row.IsClonedLocally)
+            {
+                <div class="console-panel-footer">
+                    <button class="btn btn-sm" @onclick="RunTestsAsync"
+                        disabled="@(_isRunning)" title="Run unit tests">
+                        🧪 Run Tests
+                    </button>
+                    <button class="btn btn-sm btn-success" @onclick="RunPublishAsync"
+                        disabled="@(_isRunning)" title="Run Publish.ps1">
+                        🚀 Publish
+                    </button>
+                    <button class="btn btn-sm" @onclick="ShowAiPrompt"
+                        disabled="@(_row.Assessment is null || _row.TotalFailures == 0)" title="Generate AI remediation prompt">
+                        🤖 AI Prompt
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string PackageId { get; set; } = string.Empty;
+
+    private PackageDashboardRow? _row;
+    private string? _accessToken;
+    private bool _notFound;
+    private bool _isAssessing;
+    private bool _isRunning;
+    private string _progressMessage = string.Empty;
+    private List<string> _consoleLines = [];
+    private ElementReference _consoleElement;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext?.User.Identity?.IsAuthenticated == true)
+        {
+            _accessToken = await httpContext.GetTokenAsync("access_token");
+        }
+
+        _row = Cache.GetRow(PackageId);
+        if (_row is not null)
+        {
+            return;
+        }
+
+        // Package not in cache — discover all packages to populate the cache,
+        // then find and assess the requested one
+        _progressMessage = "Discovering packages...";
+        _isAssessing = true;
+        StateHasChanged();
+
+        try
+        {
+            var rows = await Dashboard.DiscoverPackagesAsync();
+            Cache.SetRows(rows);
+
+            _row = rows.FirstOrDefault(r =>
+                string.Equals(r.PackageId, PackageId, StringComparison.OrdinalIgnoreCase));
+
+            if (_row is null)
+            {
+                _notFound = true;
+                return;
+            }
+
+            StateHasChanged();
+
+            if (_row.RepositoryFullName is not null)
+            {
+                _progressMessage = $"Assessing {_row.PackageId}...";
+                StateHasChanged();
+
+                var github = CreateGitHubClient();
+                await Dashboard.AssessRepositoryAsync(_row, github);
+                Cache.NotifyRowUpdated();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load package {PackageId}", PackageId);
+            AppendConsole($"❌ Error loading package: {ex.Message}");
+        }
+        finally
+        {
+            _isAssessing = false;
+            _progressMessage = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    private IGitHubClient CreateGitHubClient()
+    {
+        var client = new GitHubClient(new ProductHeaderValue("PanoramicData.NugetManagement.Web"));
+        if (_accessToken is not null)
+        {
+            client.Credentials = new Credentials(_accessToken);
+        }
+
+        return client;
+    }
+
+    private async Task ReassessAllAsync()
+    {
+        if (_row is null)
+        {
+            return;
+        }
+
+        _isAssessing = true;
+        _progressMessage = $"Re-assessing {_row.PackageId}...";
+        AppendConsole($"▶ Re-assessing all rules for {_row.PackageId}...");
+        StateHasChanged();
+
+        try
+        {
+            var github = CreateGitHubClient();
+            await Dashboard.AssessRepositoryAsync(_row, github);
+            Cache.NotifyRowUpdated();
+
+            AppendConsole($"✅ Assessment complete — {_row.TotalFailures} issue(s), {_row.Assessment?.PassedCount ?? 0} passed");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to re-assess {PackageId}", _row.PackageId);
+            AppendConsole($"❌ Error: {ex.Message}");
+        }
+        finally
+        {
+            _isAssessing = false;
+            _progressMessage = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReassessCategoryAsync(AssessmentCategory category)
+    {
+        if (_row is null)
+        {
+            return;
+        }
+
+        // Re-assess all rules (we can't run individual categories, so re-run all and report on the category)
+        _isAssessing = true;
+        _progressMessage = $"Re-assessing {category}...";
+        AppendConsole($"▶ Re-assessing {category} rules for {_row.PackageId}...");
+        StateHasChanged();
+
+        try
+        {
+            var github = CreateGitHubClient();
+            await Dashboard.AssessRepositoryAsync(_row, github);
+            Cache.NotifyRowUpdated();
+
+            var catResults = _row.Assessment?.RuleResults.Where(r => r.Category == category).ToList() ?? [];
+            var failed = catResults.Count(r => !r.Passed);
+            var passed = catResults.Count(r => r.Passed);
+            AppendConsole($"✅ {category}: {passed} passed, {failed} failed");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to re-assess {Category} for {PackageId}", category, _row.PackageId);
+            AppendConsole($"❌ Error: {ex.Message}");
+        }
+        finally
+        {
+            _isAssessing = false;
+            _progressMessage = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunTestsAsync()
+    {
+        if (_row is null)
+        {
+            return;
+        }
+
+        _isRunning = true;
+        AppendConsole("▶ Running tests...");
+        StateHasChanged();
+
+        try
+        {
+            await Dashboard.RunTestsAsync(_row, line =>
+            {
+                AppendConsole(line);
+                InvokeAsync(StateHasChanged);
+            });
+
+            AppendConsole(_row.Status == PackageStatus.TestsPassed
+                ? "✅ All tests passed"
+                : "❌ Tests failed");
+        }
+        catch (Exception ex)
+        {
+            AppendConsole($"❌ Error running tests: {ex.Message}");
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunPublishAsync()
+    {
+        if (_row is null)
+        {
+            return;
+        }
+
+        _isRunning = true;
+        AppendConsole("▶ Running Publish.ps1...");
+        StateHasChanged();
+
+        try
+        {
+            await Dashboard.RunPublishAsync(_row, line =>
+            {
+                AppendConsole(line);
+                InvokeAsync(StateHasChanged);
+            });
+
+            AppendConsole(_row.Status == PackageStatus.Published
+                ? "✅ Published successfully"
+                : "❌ Publish failed");
+        }
+        catch (Exception ex)
+        {
+            AppendConsole($"❌ Error publishing: {ex.Message}");
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowAiPrompt()
+    {
+        if (_row is null)
+        {
+            return;
+        }
+
+        var prompt = DashboardService.GenerateRemediationPrompt(_row);
+        AppendConsole("── AI Remediation Prompt ──");
+        AppendConsole(prompt);
+        AppendConsole("── End Prompt ──");
+    }
+
+    private void AppendConsole(string line)
+    {
+        _consoleLines.Add(line);
+    }
+
+    private void ClearConsole()
+    {
+        _consoleLines.Clear();
+    }
+
+    private void NavigateToDashboard()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private List<CategoryGroup> GetGroupedFailures()
+    {
+        if (_row?.Assessment is null)
+        {
+            return [];
+        }
+
+        return _row.Assessment.RuleResults
+            .Where(r => !r.Passed)
+            .GroupBy(r => r.Category)
+            .OrderBy(g => g.Key.ToString())
+            .Select(g => new CategoryGroup
+            {
+                Category = g.Key,
+                Failures = [.. g.OrderBy(r => r.RuleId)]
+            })
+            .ToList();
+    }
+
+    private static string GetGroupBadgeClass(CategoryGroup group)
+    {
+        if (group.Failures.Any(f => f.Severity == AssessmentSeverity.Error))
+        {
+            return "badge-fail";
+        }
+
+        return group.Failures.Any(f => f.Severity == AssessmentSeverity.Warning)
+            ? "badge-warn"
+            : "badge-info";
+    }
+
+    private static string GetSeverityBadgeClass(RuleResult result) => result.Severity switch
+    {
+        AssessmentSeverity.Error => "badge-fail",
+        AssessmentSeverity.Warning => "badge-warn",
+        _ => "badge-info"
+    };
+
+    private static string GetConsoleLineClass(string line)
+    {
+        if (line.StartsWith("✅"))
+        {
+            return "console-line console-success";
+        }
+
+        if (line.StartsWith("❌"))
+        {
+            return "console-line console-error";
+        }
+
+        if (line.StartsWith("▶"))
+        {
+            return "console-line console-action";
+        }
+
+        if (line.StartsWith("──"))
+        {
+            return "console-line console-divider";
+        }
+
+        return "console-line";
+    }
+
+    private static string FormatDataValue(object value) => value switch
+    {
+        string s => s,
+        string[] arr => string.Join(", ", arr),
+        IEnumerable<object> list => string.Join(", ", list),
+        _ => value?.ToString() ?? string.Empty
+    };
+
+    private sealed class CategoryGroup
+    {
+        public AssessmentCategory Category { get; init; }
+        public List<RuleResult> Failures { get; init; } = [];
+    }
+}

@@ -293,7 +293,7 @@ public class DashboardService
         row.StatusMessage = success ? "Published successfully." : "Publish failed.";
     }
 
-    private static Dictionary<AssessmentCategory, CategorySummary> BuildCategorySummaries(List<RuleResult> results)
+    internal static Dictionary<AssessmentCategory, CategorySummary> BuildCategorySummaries(List<RuleResult> results)
     {
         var summaries = new Dictionary<AssessmentCategory, CategorySummary>();
 
