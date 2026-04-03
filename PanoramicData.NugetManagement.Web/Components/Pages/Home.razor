@@ -1,0 +1,393 @@
+@page "/"
+@using Microsoft.AspNetCore.Authentication
+@using Octokit
+@rendermode InteractiveServer
+@inject DashboardService Dashboard
+@inject IHttpContextAccessor HttpContextAccessor
+@inject ILogger<Home> Logger
+
+<PageTitle>NuGet Package Governance</PageTitle>
+
+@if (!_isAuthenticated)
+{
+    <div class="login-page">
+        <div class="login-card">
+            <h1>📦 NuGet Governance</h1>
+            <p>Sign in with GitHub to assess and remediate your organization's NuGet packages.</p>
+            <a href="/login" class="btn btn-primary">🔑 Sign in with GitHub</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="dashboard-header">
+        <div>
+            <h1>NuGet Package Governance</h1>
+            <p>A package passes when all governance checks are green. The failure count shows how many checks need attention.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            @if (_isLoading)
+            {
+                <span class="progress-indicator"><span class="spinner"></span> @_progressMessage</span>
+            }
+            <button class="btn btn-primary" @onclick="RefreshAsync" disabled="@_isLoading">🔄 Refresh</button>
+            <a href="/settings" class="btn">⚙️ Settings</a>
+            <a href="/logout" class="btn">👤 @_userName — Sign out</a>
+        </div>
+    </div>
+
+    <!-- Summary strip -->
+    <div class="summary-strip">
+        <div class="summary-card">
+            <div class="label">Packages</div>
+            <div class="value blue">@_rows.Count</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Passing</div>
+            <div class="value green">@_rows.Count(r => r.Assessment is not null && r.TotalFailures == 0)</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Failing</div>
+            <div class="value red">@_rows.Count(r => r.Assessment is not null && r.TotalErrors > 0)</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Warnings</div>
+            <div class="value amber">@_rows.Count(r => r.Assessment is not null && r.TotalWarnings > 0 && r.TotalErrors == 0)</div>
+        </div>
+    </div>
+
+    <!-- Main governance table -->
+    <div style="overflow-x: auto;">
+        <table class="governance-table">
+            <thead>
+                <tr>
+                    <th>Package</th>
+                    <th>Version</th>
+                    @foreach (var cat in _categories)
+                    {
+                        <th class="category-col" title="@cat.ToString()">@GetCategoryAbbrev(cat)</th>
+                    }
+                    <th class="total-col">Total</th>
+                    <th class="action-col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    <tr>
+                        <td>
+                            @if (row.RepositoryUrl is not null)
+                            {
+                                <a href="@row.RepositoryUrl" target="_blank" class="pkg-name">@row.PackageId</a>
+                            }
+                            else
+                            {
+                                <span class="pkg-name">@row.PackageId</span>
+                            }
+                        </td>
+                        <td><span class="pkg-version">@row.LatestVersion</span></td>
+                        @foreach (var cat in _categories)
+                        {
+                            <td>
+                                @if (row.Assessment is null)
+                                {
+                                    @if (row.Status == PackageStatus.Assessing)
+                                    {
+                                        <span class="spinner"></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge-none">—</span>
+                                    }
+                                }
+                                else if (row.CategorySummaries.TryGetValue(cat, out var summary))
+                                {
+                                    @if (summary.TotalFailures == 0)
+                                    {
+                                        <span class="badge badge-pass">✓</span>
+                                    }
+                                    else if (summary.Errors > 0)
+                                    {
+                                        <span class="badge badge-fail">@summary.TotalFailures</span>
+                                    }
+                                    else if (summary.Warnings > 0)
+                                    {
+                                        <span class="badge badge-warn">@summary.TotalFailures</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-info">@summary.TotalFailures</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="badge-none">—</span>
+                                }
+                            </td>
+                        }
+                        <td>
+                            @if (row.Assessment is not null)
+                            {
+                                @if (row.TotalFailures == 0)
+                                {
+                                    <span class="badge badge-pass">0</span>
+                                }
+                                else if (row.TotalErrors > 0)
+                                {
+                                    <span class="badge badge-fail">@row.TotalFailures</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-warn">@row.TotalFailures</span>
+                                }
+                            }
+                        </td>
+                        <td>
+                            @if (row.Status == PackageStatus.NotCloned)
+                            {
+                                <button class="btn btn-sm" @onclick="() => CloneAsync(row)" title="Clone repository">📥</button>
+                            }
+                            else if (row.Assessment is not null && row.TotalFailures > 0)
+                            {
+                                <button class="btn btn-sm" @onclick="() => ShowDetails(row)" title="View issues & remediate">🔧</button>
+                            }
+                            else if (row.Status == PackageStatus.Cloning || row.Status == PackageStatus.Assessing)
+                            {
+                                <span class="spinner"></span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Detail/Remediation Modal -->
+    @if (_selectedRow is not null)
+    {
+        <div class="modal-backdrop" @onclick="CloseModal">
+            <div class="modal-panel" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h2>@_selectedRow.PackageId — @_selectedRow.TotalFailures Issue(s)</h2>
+                    <button class="btn btn-icon" @onclick="CloseModal">✕</button>
+                </div>
+                <div class="modal-body">
+                    @if (_modalView == ModalView.Issues)
+                    {
+                        <ul class="rule-list">
+                            @foreach (var result in _selectedRow.Assessment!.RuleResults.Where(r => !r.Passed))
+                            {
+                                <li class="rule-item">
+                                    <span class="rule-id">
+                                        <span class="badge @(result.Severity == AssessmentSeverity.Error ? "badge-fail" : result.Severity == AssessmentSeverity.Warning ? "badge-warn" : "badge-info")">@result.RuleId</span>
+                                    </span>
+                                    <div>
+                                        <div class="rule-message">@result.Message</div>
+                                        @if (result.Advisory is not null)
+                                        {
+                                            <div class="rule-advisory">💡 @result.Advisory.Summary</div>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else if (_modalView == ModalView.AiPrompt)
+                    {
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Copy this prompt to an AI assistant for automated remediation:</p>
+                        <div class="ai-prompt">@_aiPrompt</div>
+                    }
+                    else if (_modalView == ModalView.Console)
+                    {
+                        <div class="console-output">@_consoleOutput</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    @if (_modalView == ModalView.Issues)
+                    {
+                        <button class="btn" @onclick="ShowAiPrompt">🤖 AI Prompt</button>
+                        <button class="btn btn-primary" @onclick="() => RunTestsAsync(_selectedRow)" disabled="@(_selectedRow.Status == PackageStatus.Testing)">
+                            @if (_selectedRow.Status == PackageStatus.Testing) { <span class="spinner"></span> } 🧪 Run Tests
+                        </button>
+                        <button class="btn btn-success" @onclick="() => RunPublishAsync(_selectedRow)"
+                            disabled="@(_selectedRow.Status != PackageStatus.TestsPassed)">
+                            🚀 Publish
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn" @onclick="() => _modalView = ModalView.Issues">← Back to Issues</button>
+                    }
+                    <button class="btn" @onclick="CloseModal">Close</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool _isAuthenticated;
+    private string _userName = string.Empty;
+    private string? _accessToken;
+    private bool _isLoading;
+    private string _progressMessage = string.Empty;
+    private List<PackageDashboardRow> _rows = [];
+    private AssessmentCategory[] _categories = [];
+    private PackageDashboardRow? _selectedRow;
+    private ModalView _modalView = ModalView.Issues;
+    private string _aiPrompt = string.Empty;
+    private string _consoleOutput = string.Empty;
+
+    private enum ModalView { Issues, AiPrompt, Console }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext?.User.Identity?.IsAuthenticated == true)
+        {
+            _isAuthenticated = true;
+            _userName = httpContext.User.Identity.Name ?? "User";
+            _accessToken = await httpContext.GetTokenAsync("access_token");
+            _categories = Enum.GetValues<AssessmentCategory>();
+        }
+    }
+
+    private IGitHubClient CreateGitHubClient()
+    {
+        var client = new GitHubClient(new ProductHeaderValue("PanoramicData.NugetManagement.Web"));
+        if (_accessToken is not null)
+        {
+            client.Credentials = new Credentials(_accessToken);
+        }
+
+        return client;
+    }
+
+    private async Task RefreshAsync()
+    {
+        _isLoading = true;
+        _progressMessage = "Discovering packages...";
+        StateHasChanged();
+
+        try
+        {
+            _rows = await Dashboard.DiscoverPackagesAsync();
+            StateHasChanged();
+
+            var github = CreateGitHubClient();
+            var assessable = _rows.Where(r => r.IsClonedLocally && r.RepositoryFullName is not null).ToList();
+
+            for (var i = 0; i < assessable.Count; i++)
+            {
+                var row = assessable[i];
+                _progressMessage = $"Assessing package health ({i + 1} / {assessable.Count}): {row.PackageId}...";
+                StateHasChanged();
+
+                await Dashboard.AssessRepositoryAsync(row, github);
+                StateHasChanged();
+            }
+
+            _progressMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh dashboard");
+            _progressMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CloneAsync(PackageDashboardRow row)
+    {
+        row.Status = PackageStatus.Cloning;
+        StateHasChanged();
+
+        await Dashboard.CloneRepositoryAsync(row, _ => InvokeAsync(StateHasChanged));
+        StateHasChanged();
+
+        // Auto-assess after cloning
+        if (row.IsClonedLocally)
+        {
+            var github = CreateGitHubClient();
+            await Dashboard.AssessRepositoryAsync(row, github);
+            StateHasChanged();
+        }
+    }
+
+    private void ShowDetails(PackageDashboardRow row)
+    {
+        _selectedRow = row;
+        _modalView = ModalView.Issues;
+        _consoleOutput = string.Empty;
+    }
+
+    private void ShowAiPrompt()
+    {
+        if (_selectedRow is not null)
+        {
+            _aiPrompt = DashboardService.GenerateRemediationPrompt(_selectedRow);
+            _modalView = ModalView.AiPrompt;
+        }
+    }
+
+    private async Task RunTestsAsync(PackageDashboardRow row)
+    {
+        _modalView = ModalView.Console;
+        _consoleOutput = "Running tests...\n";
+        StateHasChanged();
+
+        await Dashboard.RunTestsAsync(row, line =>
+        {
+            _consoleOutput += line + "\n";
+            InvokeAsync(StateHasChanged);
+        });
+
+        StateHasChanged();
+    }
+
+    private async Task RunPublishAsync(PackageDashboardRow row)
+    {
+        _modalView = ModalView.Console;
+        _consoleOutput = "Running Publish.ps1...\n";
+        StateHasChanged();
+
+        await Dashboard.RunPublishAsync(row, line =>
+        {
+            _consoleOutput += line + "\n";
+            InvokeAsync(StateHasChanged);
+        });
+
+        StateHasChanged();
+    }
+
+    private void CloseModal()
+    {
+        _selectedRow = null;
+    }
+
+    private static string GetCategoryAbbrev(AssessmentCategory cat) => cat switch
+    {
+        AssessmentCategory.CiCd => "CI",
+        AssessmentCategory.Versioning => "VER",
+        AssessmentCategory.CentralPackageManagement => "CPM",
+        AssessmentCategory.NuGetHygiene => "PKG",
+        AssessmentCategory.TargetFramework => "TFM",
+        AssessmentCategory.BuildQuality => "BLD",
+        AssessmentCategory.CodeQuality => "CQ",
+        AssessmentCategory.Testing => "TST",
+        AssessmentCategory.Serialization => "SER",
+        AssessmentCategory.Licensing => "LIC",
+        AssessmentCategory.ReadmeBadges => "DOC",
+        AssessmentCategory.RepositoryHygiene => "REPO",
+        AssessmentCategory.ProjectMetadata => "META",
+        AssessmentCategory.HttpClient => "HTTP",
+        AssessmentCategory.Documentation => "XML",
+        AssessmentCategory.DependencyAutomation => "DEP",
+        AssessmentCategory.CommunityHealth => "COM",
+        _ => cat.ToString()[..3].ToUpperInvariant()
+    };
+}

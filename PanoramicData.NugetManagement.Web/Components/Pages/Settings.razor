@@ -1,0 +1,77 @@
+@page "/settings"
+@using Microsoft.Extensions.Options
+@rendermode InteractiveServer
+@inject IOptions<AppSettings> SettingsOptions
+
+<PageTitle>Settings</PageTitle>
+
+<div style="max-width: 600px; margin: 0 auto;">
+    <h1>⚙️ Settings</h1>
+    <p style="color: var(--text-secondary);">
+        These settings are read from user secrets. To update them, run:<br />
+        <code style="color: var(--accent);">dotnet user-secrets set "AppSettings:KeyName" "value" --project PanoramicData.NugetManagement.Web</code>
+    </p>
+
+    <div class="settings-form">
+        <div class="form-group">
+            <label>GitHub Organization</label>
+            <input type="text" value="@_settings.GitHubOrganization" readonly />
+        </div>
+        <div class="form-group">
+            <label>NuGet Organization</label>
+            <input type="text" value="@_settings.NuGetOrganization" readonly />
+        </div>
+        <div class="form-group">
+            <label>GitHub OAuth Client ID</label>
+            <input type="text" value="@MaskSecret(_settings.GitHubClientId)" readonly />
+        </div>
+        <div class="form-group">
+            <label>GitHub OAuth Client Secret</label>
+            <input type="text" value="@MaskSecret(_settings.GitHubClientSecret)" readonly />
+        </div>
+        <div class="form-group">
+            <label>Expected License</label>
+            <input type="text" value="@_settings.ExpectedLicense" readonly />
+        </div>
+        <div class="form-group">
+            <label>Copyright Holder</label>
+            <input type="text" value="@_settings.CopyrightHolder" readonly />
+        </div>
+        <div class="form-group">
+            <label>Codacy API Token</label>
+            <input type="text" value="@(string.IsNullOrEmpty(_settings.CodacyApiToken) ? "(not set)" : MaskSecret(_settings.CodacyApiToken))" readonly />
+        </div>
+        <div class="form-group">
+            <label>Local Repos Root</label>
+            <input type="text" value="@(_settings.LocalReposRoot ?? "(auto-detected from working directory)")" readonly />
+        </div>
+    </div>
+
+    <div style="margin-top: 2rem;">
+        <a href="/" class="btn btn-primary">← Back to Dashboard</a>
+    </div>
+</div>
+
+@code {
+    private AppSettings _settings = new();
+
+    protected override void OnInitialized()
+    {
+        _settings = SettingsOptions.Value;
+    }
+
+    private static string MaskSecret(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "(not set)";
+        }
+
+        if (value.Length <= 8)
+        {
+            return new string('•', value.Length);
+        }
+
+        return value[..4] + new string('•', value.Length - 8) + value[^4..];
+    }
+}
