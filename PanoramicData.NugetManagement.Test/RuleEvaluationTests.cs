@@ -731,6 +731,18 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	[Fact]
+	public async Task CQ03_ShouldPass_WhenCodacyBadgeInReadme()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["README.md"] = "# My Package\n[![Codacy Badge](https://app.codacy.com/project/badge/Grade/abc123)](https://app.codacy.com/gh/org/repo/dashboard)"
+		});
+
+		var result = await GetRule("CQ-03").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
 	// ── COM-01 ──────────────────────────────────────────────────────────
 
 	[Fact]

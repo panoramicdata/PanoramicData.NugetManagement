@@ -29,14 +29,10 @@ public class CodacyConfiguredRule : RuleBase
 			return await EvaluateUsingCodacyApiAsync(context, context.Options.Codacy, cancellationToken).ConfigureAwait(false);
 		}
 
-		var hasCodacyDir = context.FilePaths.Any(p =>
-			p.StartsWith(".codacy/", StringComparison.OrdinalIgnoreCase));
-		var hasCodacyYml = context.FileExists(".codacy.yml") || context.FileExists(".codacy.yaml");
-
-		return hasCodacyDir || hasCodacyYml
+		return HasLocalCodacyEvidence(context)
 			? Pass("Codacy is configured.")
 			: Fail(
-				"No Codacy configuration found (.codacy/ directory or .codacy.yml).",
+				"No Codacy configuration found (.codacy/ directory, .codacy.yml, or Codacy badge in README).",
 				new RuleAdvisory
 				{
 					Summary = "Set up Codacy integration and add .codacy/cli.sh or .codacy.yml.",
@@ -148,15 +144,44 @@ public class CodacyConfiguredRule : RuleBase
 		}
 		catch (Exception ex)
 		{
+			// If the Codacy API is unreachable or returns 404, fall back to
+			// checking for local evidence of Codacy integration (config files
+			// or a Codacy badge in the README).
+			if (HasLocalCodacyEvidence(context))
+			{
+				return Pass($"Codacy API unavailable ({ex.Message}), but local Codacy configuration found.");
+			}
+
 			return Fail(
 				$"Failed to evaluate Codacy quality gate via Codacy API: {ex.Message}",
 				new RuleAdvisory
 				{
 					Summary = "Verify Codacy token validity and repository/provider mapping (GitHub provider).",
-					Detail = $"An exception occurred when calling the Codacy API: `{ex.Message}`. Verify that the API token is valid and that the repository is correctly mapped to the GitHub provider.",
+					Detail = $"An exception occurred when calling the Codacy API: `{ex.Message}`. Verify that the API token is valid and that the repository is correctly mapped to the GitHub provider. Alternatively, add a `.codacy.yml` file or Codacy badge to the README.",
 					Data = new() { ["exception"] = ex.Message }
 				});
 		}
+	}
+
+	/// <summary>
+	/// Checks for local evidence of Codacy integration: config files
+	/// (.codacy.yml, .codacy.yaml, .codacy/ directory) or a Codacy badge in README.md.
+	/// </summary>
+	private static bool HasLocalCodacyEvidence(RepositoryContext context)
+	{
+		if (context.FilePaths.Any(p =>
+			p.StartsWith(".codacy/", StringComparison.OrdinalIgnoreCase)))
+		{
+			return true;
+		}
+
+		if (context.FileExists(".codacy.yml") || context.FileExists(".codacy.yaml"))
+		{
+			return true;
+		}
+
+		var readme = context.GetFileContent("README.md");
+		return readme is not null && Contains(readme, "codacy");
 	}
 
 	private static bool TryParseCodacyLevel(string? gradeLetter, out CodacyLevel level)

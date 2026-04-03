@@ -11,9 +11,7 @@ public static class Standards
 	/// <summary>
 	/// The fallback SDK version used when detection fails.
 	/// </summary>
-	private const string FallbackDotNetSdkVersion = "10.0.201";
-
-	private static string? _detectedSdkVersion;
+	private const string _fallbackDotNetSdkVersion = "10.0.201";
 
 	/// <summary>
 	/// The latest .NET target framework moniker.
@@ -22,9 +20,9 @@ public static class Standards
 
 	/// <summary>
 	/// The latest installed .NET SDK version for global.json, detected via <c>dotnet --list-sdks</c>.
-	/// Falls back to <see cref="FallbackDotNetSdkVersion"/> if detection fails.
+	/// Falls back to <see cref="_fallbackDotNetSdkVersion"/> if detection fails.
 	/// </summary>
-	public static string LatestDotNetSdkVersion => _detectedSdkVersion ??= DetectLatestSdkVersion();
+	public static string LatestDotNetSdkVersion => field ??= DetectLatestSdkVersion();
 
 	/// <summary>
 	/// Detects the latest installed .NET SDK version by running <c>dotnet --list-sdks</c>
@@ -57,11 +55,11 @@ public static class Standards
 				.OrderByDescending(v => v, StringComparer.Ordinal)
 				.FirstOrDefault();
 
-			return best ?? FallbackDotNetSdkVersion;
+			return best ?? _fallbackDotNetSdkVersion;
 		}
 		catch
 		{
-			return FallbackDotNetSdkVersion;
+			return _fallbackDotNetSdkVersion;
 		}
 	}
 
