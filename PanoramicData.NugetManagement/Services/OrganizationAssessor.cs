@@ -84,19 +84,17 @@ public class OrganizationAssessor : IDisposable
 		{
 			OrganizationName = options.OrganizationName,
 			AssessedAtUtc = DateTimeOffset.UtcNow,
-			RepositoryAssessments = assessments
-				.OrderBy(a => a.RepositoryFullName, StringComparer.OrdinalIgnoreCase)
-				.ToList()
+			RepositoryAssessments = [.. assessments.OrderBy(a => a.RepositoryFullName, StringComparer.OrdinalIgnoreCase)]
 		};
 	}
 
 	private async Task<IReadOnlyList<Repository>> GetRepositoriesAsync(
 		AssessmentOptions options,
-		CancellationToken cancellationToken)
+		CancellationToken _)
 	{
 		var allRepos = await _github.Repository.GetAllForOrg(options.OrganizationName).ConfigureAwait(false);
 
-		return allRepos
+		return [.. allRepos
 			.Where(r => !r.Archived && !r.Fork)
 			.Where(r =>
 			{
@@ -107,8 +105,7 @@ public class OrganizationAssessor : IDisposable
 
 				return true;
 			})
-			.OrderBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
-			.ToList();
+			.OrderBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)];
 	}
 
 	private async Task<RepoAssessment> AssessRepositoryAsync(
