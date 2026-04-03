@@ -27,7 +27,12 @@ public class SystemTextJsonPreferredRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				"Newtonsoft.Json is referenced in Directory.Packages.props.",
-				"Migrate to System.Text.Json. Remove Newtonsoft.Json references."));
+				new RuleAdvisory
+				{
+					Summary = "Migrate to System.Text.Json. Remove Newtonsoft.Json references.",
+					Detail = "Newtonsoft.Json is referenced in `Directory.Packages.props`. Migrate all serialization code to `System.Text.Json` and remove the Newtonsoft.Json package reference.",
+					Data = new() { ["file"] = "Directory.Packages.props", ["package"] = "Newtonsoft.Json" }
+				}));
 		}
 
 		var csprojFiles = context.FindFiles(".csproj");
@@ -38,7 +43,12 @@ public class SystemTextJsonPreferredRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$"Newtonsoft.Json is referenced in {csproj}.",
-					"Migrate to System.Text.Json. Remove Newtonsoft.Json references."));
+					new RuleAdvisory
+					{
+						Summary = "Migrate to System.Text.Json. Remove Newtonsoft.Json references.",
+						Detail = $"Newtonsoft.Json is referenced in `{csproj}`. Migrate all serialization code to `System.Text.Json` and remove the Newtonsoft.Json package reference.",
+						Data = new() { ["file"] = csproj, ["package"] = "Newtonsoft.Json" }
+					}));
 			}
 		}
 
@@ -80,6 +90,11 @@ public class ExpectedHttpClientPackageRule : RuleBase
 			? Pass($"Expected HTTP client package \"{expected}\" is referenced.")
 			: Fail(
 				$"Expected HTTP client package \"{expected}\" is not referenced in any non-test project.",
-				$"Add a {expected} package reference. Use {expected} for HTTP client interfaces."));
+				new RuleAdvisory
+				{
+					Summary = $"Add a {expected} package reference. Use {expected} for HTTP client interfaces.",
+					Detail = $"The expected HTTP client package `{expected}` is not referenced in any non-test project. Add a `{expected}` package reference and use it for HTTP client interfaces.",
+					Data = new() { ["expected_package"] = expected }
+				}));
 	}
 }

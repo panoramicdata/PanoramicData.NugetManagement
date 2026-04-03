@@ -37,7 +37,12 @@ public class PackageIdSetRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not have PackageId set.",
-					"Add <PackageId>YourPackageId</PackageId> to the .csproj."));
+					new RuleAdvisory
+					{
+						Summary = "Add <PackageId>YourPackageId</PackageId> to the .csproj.",
+						Detail = $"The project `{csproj}` does not have `<PackageId>` set. Add `<PackageId>YourPackageId</PackageId>` to a `<PropertyGroup>`.",
+						Data = new() { ["file"] = csproj }
+					}));
 			}
 		}
 
@@ -80,7 +85,12 @@ public class RepositoryUrlSetRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not have RepositoryUrl set.",
-					"Add <RepositoryUrl>https://github.com/org/repo</RepositoryUrl> to the .csproj."));
+					new RuleAdvisory
+					{
+						Summary = "Add <RepositoryUrl>https://github.com/org/repo</RepositoryUrl> to the .csproj.",
+						Detail = $"The project `{csproj}` does not have `<RepositoryUrl>` set. Add `<RepositoryUrl>https://github.com/org/repo</RepositoryUrl>` to a `<PropertyGroup>`.",
+						Data = new() { ["file"] = csproj }
+					}));
 			}
 		}
 
@@ -114,7 +124,12 @@ public class AuthorsAndCompanyRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				"Directory.Build.props not found.",
-				"Create Directory.Build.props with <Authors> and <Company>."));
+				new RuleAdvisory
+				{
+					Summary = "Create Directory.Build.props with <Authors> and <Company>.",
+					Detail = $"No `Directory.Build.props` file was found. Create one with `<Authors>{expected}</Authors>` and `<Company>{expected}</Company>`.",
+					Data = new() { ["file"] = "Directory.Build.props", ["expected_holder"] = expected }
+				}));
 		}
 
 		var hasAuthors = Contains(content, "<Authors>");
@@ -124,7 +139,12 @@ public class AuthorsAndCompanyRule : RuleBase
 			? Pass("Authors and Company are set in Directory.Build.props.")
 			: Fail(
 				"Directory.Build.props is missing <Authors> and/or <Company>.",
-				$"Add <Authors>{expected}</Authors> and <Company>{expected}</Company>."));
+				new RuleAdvisory
+				{
+					Summary = $"Add <Authors>{expected}</Authors> and <Company>{expected}</Company>.",
+					Detail = $"`Directory.Build.props` is missing `<Authors>` and/or `<Company>`. Add `<Authors>{expected}</Authors>` and `<Company>{expected}</Company>` to a `<PropertyGroup>`.",
+					Data = new() { ["file"] = "Directory.Build.props", ["expected_holder"] = expected }
+				}));
 	}
 }
 
@@ -180,6 +200,11 @@ public class PackageProjectUrlAndIconRule : RuleBase
 			? Pass("All packable projects have PackageProjectUrl and PackageIcon set.")
 			: Fail(
 				string.Join("; ", issues),
-				"Set <PackageProjectUrl> and <PackageIcon> with a corresponding <None Include> in the .csproj."));
+				new RuleAdvisory
+				{
+					Summary = "Set <PackageProjectUrl> and <PackageIcon> with a corresponding <None Include> in the .csproj.",
+					Detail = $"The following issues were found: {string.Join("; ", issues)}. Add `<PackageProjectUrl>` and `<PackageIcon>` to the `<PropertyGroup>` and include the icon file via `<None Include>` in an `<ItemGroup>`.",
+					Data = new() { ["issues"] = issues.ToArray() }
+				}));
 	}
 }

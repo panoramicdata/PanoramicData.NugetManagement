@@ -51,7 +51,7 @@ public class RuleEvaluationTests : TestWithOutput
 		var rule = GetRule("CI-01");
 		var result = await rule.EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
-		result.Remediation.Should().NotBeNullOrEmpty();
+		result.Advisory.Should().NotBeNull();
 	}
 
 	[Fact]
@@ -168,7 +168,7 @@ public class RuleEvaluationTests : TestWithOutput
 		var rule = GetRule("REPO-04");
 		var result = await rule.EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
-		result.Remediation.Should().NotBeNullOrEmpty();
+		result.Advisory.Should().NotBeNull();
 	}
 
 	[Fact]

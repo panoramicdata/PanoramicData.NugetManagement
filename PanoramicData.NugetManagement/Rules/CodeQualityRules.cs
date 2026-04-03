@@ -29,14 +29,24 @@ public class EditorConfigExistsRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				".editorconfig not found at repository root.",
-				"Create an .editorconfig file with root = true and standard C# formatting rules."));
+				new RuleAdvisory
+				{
+					Summary = "Create an .editorconfig file with root = true and standard C# formatting rules.",
+					Detail = "Create a `.editorconfig` file at the repository root with `root = true` at the top, followed by standard C# formatting rules.",
+					Data = new() { ["expected_path"] = ".editorconfig" }
+				}));
 		}
 
 		return Task.FromResult(Contains(content, "root = true")
 			? Pass(".editorconfig found with root = true.")
 			: Fail(
 				".editorconfig does not contain 'root = true'.",
-				"Add 'root = true' at the top of .editorconfig."));
+				new RuleAdvisory
+				{
+					Summary = "Add 'root = true' at the top of .editorconfig.",
+					Detail = "The `.editorconfig` file exists but is missing `root = true`. Add this as the first non-comment line to prevent editors from searching parent directories.",
+					Data = new() { ["file"] = ".editorconfig" }
+				}));
 	}
 }
 
@@ -65,14 +75,24 @@ public class FileScopedNamespacesRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				".editorconfig not found.",
-				"Create an .editorconfig file and set csharp_style_namespace_declarations = file_scoped:error."));
+				new RuleAdvisory
+				{
+					Summary = "Create an .editorconfig file and set csharp_style_namespace_declarations = file_scoped:error.",
+					Detail = "Create a `.editorconfig` file at the repository root and add `csharp_style_namespace_declarations = file_scoped:error` in the `[*.cs]` section.",
+					Data = new() { ["file"] = ".editorconfig" }
+				}));
 		}
 
 		return Task.FromResult(Contains(content, "csharp_style_namespace_declarations = file_scoped")
 			? Pass("File-scoped namespaces are enforced in .editorconfig.")
 			: Fail(
 				".editorconfig does not enforce file-scoped namespaces.",
-				"Add 'csharp_style_namespace_declarations = file_scoped:error' to .editorconfig."));
+				new RuleAdvisory
+				{
+					Summary = "Add 'csharp_style_namespace_declarations = file_scoped:error' to .editorconfig.",
+					Detail = "The `.editorconfig` file does not enforce file-scoped namespaces. Add `csharp_style_namespace_declarations = file_scoped:error` to the `[*.cs]` section.",
+					Data = new() { ["file"] = ".editorconfig" }
+				}));
 	}
 }
 
@@ -109,7 +129,12 @@ public class CodacyConfiguredRule : RuleBase
 			? Pass("Codacy is configured.")
 			: Fail(
 				"No Codacy configuration found (.codacy/ directory or .codacy.yml).",
-				"Set up Codacy integration and add .codacy/cli.sh or .codacy.yml.");
+				new RuleAdvisory
+				{
+					Summary = "Set up Codacy integration and add .codacy/cli.sh or .codacy.yml.",
+					Detail = "No Codacy configuration was found. Set up Codacy integration at app.codacy.com and add a `.codacy.yml` or `.codacy/cli.sh` file to the repository root.",
+					Data = new() { ["expected_files"] = new[] { ".codacy.yml", ".codacy.yaml", ".codacy/cli.sh" } }
+				});
 	}
 
 	private async Task<RuleResult> EvaluateUsingCodacyApiAsync(
@@ -121,7 +146,12 @@ public class CodacyConfiguredRule : RuleBase
 		{
 			return Fail(
 				"Codacy options are present but ApiToken is missing.",
-				"Set RepoOptions.Codacy.ApiToken to a valid Codacy API token.");
+				new RuleAdvisory
+				{
+					Summary = "Set RepoOptions.Codacy.ApiToken to a valid Codacy API token.",
+					Detail = "Codacy options were provided but the `ApiToken` is empty. Set `RepoOptions.Codacy.ApiToken` to a valid Codacy API token to enable API-based quality evaluation.",
+					Data = new() { ["missing_config"] = "Codacy.ApiToken" }
+				});
 		}
 
 		var parts = context.FullName.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -129,7 +159,12 @@ public class CodacyConfiguredRule : RuleBase
 		{
 			return Fail(
 				$"Repository full name '{context.FullName}' is invalid for Codacy provider lookup.",
-				"Set RepositoryContext.FullName to 'organization/repository'.");
+				new RuleAdvisory
+				{
+					Summary = "Set RepositoryContext.FullName to 'organization/repository'.",
+					Detail = $"The repository full name `{context.FullName}` could not be split into organization/repository. Ensure `RepositoryContext.FullName` is in `owner/repo` format.",
+					Data = new() { ["full_name"] = context.FullName }
+				});
 		}
 
 		var organizationName = parts[0];
@@ -171,7 +206,12 @@ public class CodacyConfiguredRule : RuleBase
 			{
 				return Fail(
 					"Codacy API returned no file quality data for the repository.",
-					"Ensure Codacy analysis has run for the default branch before enforcing Codacy thresholds.");
+					new RuleAdvisory
+					{
+						Summary = "Ensure Codacy analysis has run for the default branch before enforcing Codacy thresholds.",
+						Detail = "The Codacy API returned no file quality data. Run a Codacy analysis on the default branch before enforcing quality thresholds.",
+						Data = new() { ["default_branch"] = context.DefaultBranch }
+					});
 			}
 
 			var actualMinimum = levels.MinBy(GetLevelRank);
@@ -185,13 +225,29 @@ public class CodacyConfiguredRule : RuleBase
 
 			return Fail(
 				$"Codacy checks failed (minimum file grade {actualMinimum}, total issues {issueCount}).",
-				$"Improve repository quality until minimum file grade is {codacy.MinimumLevel} or better and total issues are <= {codacy.MaxIssueCount}.");
+				new RuleAdvisory
+				{
+					Summary = $"Improve repository quality until minimum file grade is {codacy.MinimumLevel} or better and total issues are <= {codacy.MaxIssueCount}.",
+					Detail = $"Codacy quality gate failed. Current minimum file grade is `{actualMinimum}` (required: `{codacy.MinimumLevel}` or better). Total issues: `{issueCount}` (maximum allowed: `{codacy.MaxIssueCount}`).",
+					Data = new()
+					{
+						["actual_min_grade"] = actualMinimum.ToString(),
+						["required_min_grade"] = codacy.MinimumLevel.ToString(),
+						["actual_issues"] = issueCount,
+						["max_issues"] = codacy.MaxIssueCount
+					}
+				});
 		}
 		catch (Exception ex)
 		{
 			return Fail(
 				$"Failed to evaluate Codacy quality gate via Codacy API: {ex.Message}",
-				"Verify Codacy token validity and repository/provider mapping (GitHub provider)." );
+				new RuleAdvisory
+				{
+					Summary = "Verify Codacy token validity and repository/provider mapping (GitHub provider).",
+					Detail = $"An exception occurred when calling the Codacy API: `{ex.Message}`. Verify that the API token is valid and that the repository is correctly mapped to the GitHub provider.",
+					Data = new() { ["exception"] = ex.Message }
+				});
 		}
 	}
 
@@ -243,7 +299,12 @@ public class TabIndentationRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				".editorconfig not found.",
-				"Create an .editorconfig with indent_style = tab for C# and XML files."));
+				new RuleAdvisory
+				{
+					Summary = "Create an .editorconfig with indent_style = tab for C# and XML files.",
+					Detail = "Create a `.editorconfig` file at the repository root with `indent_style = tab` in the `[*]` section to enforce tab indentation for C# and XML files.",
+					Data = new() { ["file"] = ".editorconfig" }
+				}));
 		}
 
 		// Check that the global [*] section uses tabs
@@ -252,7 +313,12 @@ public class TabIndentationRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				".editorconfig does not set indent_style = tab.",
-				"Set indent_style = tab in the [*] section of .editorconfig."));
+				new RuleAdvisory
+				{
+					Summary = "Set indent_style = tab in the [*] section of .editorconfig.",
+					Detail = "The `.editorconfig` file exists but does not set `indent_style = tab`. Add this setting in the `[*]` section.",
+					Data = new() { ["file"] = ".editorconfig" }
+				}));
 		}
 
 		// Check there is no override to spaces for C# or XML sections
@@ -273,7 +339,12 @@ public class TabIndentationRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$".editorconfig overrides indent_style to space in section {currentSection}.",
-					$"Change indent_style = space to indent_style = tab in the {currentSection} section."));
+					new RuleAdvisory
+					{
+						Summary = $"Change indent_style = space to indent_style = tab in the {currentSection} section.",
+						Detail = $"The `.editorconfig` section `{currentSection}` overrides `indent_style` to `space`. Change it to `indent_style = tab`.",
+						Data = new() { ["file"] = ".editorconfig", ["section"] = currentSection }
+					}));
 			}
 		}
 

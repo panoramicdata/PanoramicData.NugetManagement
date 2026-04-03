@@ -38,5 +38,11 @@ public class RuleResult
 	/// <summary>
 	/// Optional details providing remediation guidance.
 	/// </summary>
+	[Obsolete("Use Advisory instead. This property will be removed in a future version.")]
 	public string? Remediation { get; init; }
+
+	/// <summary>
+	/// Structured advisory for AI-driven remediation. Null when the rule passes.
+	/// </summary>
+	public RuleAdvisory? Advisory { get; init; }
 }

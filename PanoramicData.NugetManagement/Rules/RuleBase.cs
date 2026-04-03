@@ -38,11 +38,32 @@ public abstract class RuleBase : IRule
 	};
 
 	/// <summary>
+	/// Creates a failing result for this rule with structured advisory data.
+	/// </summary>
+	/// <param name="message">The failure message.</param>
+	/// <param name="advisory">Structured advisory for AI-driven remediation.</param>
+	/// <returns>A failing RuleResult.</returns>
+	protected RuleResult Fail(string message, RuleAdvisory advisory) => new()
+	{
+		RuleId = RuleId,
+		RuleName = RuleName,
+		Category = Category,
+		Severity = Severity,
+		Passed = false,
+		Message = message,
+#pragma warning disable CS0618 // Type or member is obsolete
+		Remediation = advisory.Summary,
+#pragma warning restore CS0618 // Type or member is obsolete
+		Advisory = advisory
+	};
+
+	/// <summary>
 	/// Creates a failing result for this rule.
 	/// </summary>
 	/// <param name="message">The failure message.</param>
 	/// <param name="remediation">Optional remediation guidance.</param>
 	/// <returns>A failing RuleResult.</returns>
+	[Obsolete("Use Fail(string, RuleAdvisory) instead.")]
 	protected RuleResult Fail(string message, string? remediation = null) => new()
 	{
 		RuleId = RuleId,
@@ -51,7 +72,9 @@ public abstract class RuleBase : IRule
 		Severity = Severity,
 		Passed = false,
 		Message = message,
+#pragma warning disable CS0618 // Type or member is obsolete
 		Remediation = remediation
+#pragma warning restore CS0618 // Type or member is obsolete
 	};
 
 	/// <summary>

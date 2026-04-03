@@ -28,14 +28,24 @@ public class LicenseFileRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				"LICENSE file not found at repository root.",
-				$"Create a LICENSE file containing {expectedText} text."));
+				new RuleAdvisory
+				{
+					Summary = $"Create a LICENSE file containing {expectedText} text.",
+					Detail = $"No `LICENSE` file was found at the repository root. Create one containing the standard {context.Options.ExpectedLicense} license text.",
+					Data = new() { ["expected_path"] = "LICENSE", ["expected_license_type"] = context.Options.ExpectedLicense }
+				}));
 		}
 
 		return Task.FromResult(Contains(content, expectedText)
 			? Pass($"LICENSE file contains expected text \"{expectedText}\".")
 			: Fail(
 				$"LICENSE file does not contain expected text \"{expectedText}\".",
-				$"Replace LICENSE content with the standard {context.Options.ExpectedLicense} License text."));
+				new RuleAdvisory
+				{
+					Summary = $"Replace LICENSE content with the standard {context.Options.ExpectedLicense} License text.",
+					Detail = $"The `LICENSE` file exists but does not contain the expected text `{expectedText}`. Replace its content with the standard {context.Options.ExpectedLicense} license text.",
+					Data = new() { ["file"] = "LICENSE", ["expected_license_type"] = context.Options.ExpectedLicense }
+				}));
 	}
 }
 
@@ -76,7 +86,12 @@ public class PackageLicenseExpressionRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$"{csproj}: PackageLicenseExpression does not match expected \"{expected}\".",
-					$"Add {expectedTag} to the .csproj."));
+					new RuleAdvisory
+					{
+						Summary = $"Add {expectedTag} to the .csproj.",
+						Detail = $"The project `{csproj}` does not have `PackageLicenseExpression` set to `{expected}`. Add `{expectedTag}` to the project file.",
+						Data = new() { ["file"] = csproj, ["expected_license"] = expected }
+					}));
 			}
 		}
 
@@ -110,7 +125,12 @@ public class CopyrightMessageRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				"Directory.Build.props not found.",
-				$"Create Directory.Build.props with <Copyright> containing \"{expected}\"."));
+				new RuleAdvisory
+				{
+					Summary = $"Create Directory.Build.props with <Copyright> containing \"{expected}\".",
+					Detail = $"No `Directory.Build.props` file was found. Create one with `<Copyright>Copyright © $(Year) {expected}</Copyright>`.",
+					Data = new() { ["file"] = "Directory.Build.props", ["expected_holder"] = expected }
+				}));
 		}
 
 		var hasCopyright = Contains(content, "<Copyright>") && Contains(content, expected);
@@ -118,6 +138,11 @@ public class CopyrightMessageRule : RuleBase
 			? Pass($"Copyright message found with \"{expected}\".")
 			: Fail(
 				$"Directory.Build.props does not contain Copyright with expected holder \"{expected}\".",
-				$"Add <Copyright>Copyright © $(Year) {expected}</Copyright> to Directory.Build.props."));
+				new RuleAdvisory
+				{
+					Summary = $"Add <Copyright>Copyright © $(Year) {expected}</Copyright> to Directory.Build.props.",
+					Detail = $"`Directory.Build.props` exists but does not contain a `<Copyright>` element with `{expected}`. Add `<Copyright>Copyright © $(Year) {expected}</Copyright>`.",
+					Data = new() { ["file"] = "Directory.Build.props", ["expected_holder"] = expected }
+				}));
 	}
 }

@@ -27,7 +27,12 @@ public class GitignoreExistsRule : RuleBase
 		{
 			return Task.FromResult(Fail(
 				".gitignore not found.",
-				"Create a comprehensive .gitignore for .NET projects."));
+				new RuleAdvisory
+				{
+					Summary = "Create a comprehensive .gitignore for .NET projects.",
+					Detail = "No `.gitignore` file was found at the repository root. Create one with standard .NET entries including `[Bb]in/`, `[Oo]bj/`, and `.vs/`.",
+					Data = new() { ["expected_path"] = ".gitignore" }
+				}));
 		}
 
 		var hasBin = Contains(content, "[Bb]in") || Contains(content, "bin/");
@@ -38,7 +43,12 @@ public class GitignoreExistsRule : RuleBase
 			? Pass(".gitignore found with essential entries (bin, obj, .vs).")
 			: Fail(
 				".gitignore is missing essential entries (bin/, obj/, .vs/).",
-				"Add [Bb]in/, [Oo]bj/, and .vs/ entries to .gitignore."));
+				new RuleAdvisory
+				{
+					Summary = "Add [Bb]in/, [Oo]bj/, and .vs/ entries to .gitignore.",
+					Detail = "The `.gitignore` file is missing one or more essential entries. Ensure `[Bb]in/`, `[Oo]bj/`, and `.vs/` are all present.",
+					Data = new() { ["file"] = ".gitignore" }
+				}));
 	}
 }
 
@@ -67,7 +77,12 @@ public class NugetKeyGitignoredRule : RuleBase
 			? Pass("nuget-key.txt is in .gitignore.")
 			: Fail(
 				"nuget-key.txt is not in .gitignore — risk of leaking NuGet API key.",
-				"Add 'nuget-key.txt' to .gitignore."));
+				new RuleAdvisory
+				{
+					Summary = "Add 'nuget-key.txt' to .gitignore.",
+					Detail = "The `.gitignore` file does not include `nuget-key.txt`. This risks leaking a NuGet API key. Add `nuget-key.txt` to `.gitignore`.",
+					Data = new() { ["file"] = ".gitignore" }
+				}));
 	}
 }
 
@@ -102,7 +117,12 @@ public class NeutralResourcesLanguageRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not set NeutralResourcesLanguage.",
-					"Add <NeutralResourcesLanguage>en</NeutralResourcesLanguage> to the .csproj."));
+					new RuleAdvisory
+					{
+						Summary = "Add <NeutralResourcesLanguage>en</NeutralResourcesLanguage> to the .csproj.",
+						Detail = $"The project `{csproj}` does not set `NeutralResourcesLanguage`. Add `<NeutralResourcesLanguage>en</NeutralResourcesLanguage>` to a `<PropertyGroup>`.",
+						Data = new() { ["file"] = csproj }
+					}));
 			}
 		}
 

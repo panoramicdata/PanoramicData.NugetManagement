@@ -1,5 +1,7 @@
 using PanoramicData.NugetManagement.Models;
 
+#pragma warning disable CS0618 // Obsolete Fail overload used by some code paths
+
 namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
@@ -25,7 +27,16 @@ public class SecurityMdExistsRule : RuleBase
 			? Pass("SECURITY.md found.")
 			: Fail(
 				"SECURITY.md not found at repository root.",
-				"Create SECURITY.md with the standard security policy content."));
+				new RuleAdvisory
+				{
+					Summary = "Create SECURITY.md with the standard security policy content",
+					Detail = "Create a `SECURITY.md` file at the repository root with the standard security policy.",
+					Data = new()
+					{
+						["expected_path"] = "SECURITY.md",
+						["template_content"] = Standards.SecurityMdContent
+					}
+				}));
 }
 
 /// <summary>
@@ -51,7 +62,16 @@ public class ContributingMdExistsRule : RuleBase
 			? Pass("CONTRIBUTING.md found.")
 			: Fail(
 				"CONTRIBUTING.md not found at repository root.",
-				"Create CONTRIBUTING.md with the standard contributing guide content."));
+				new RuleAdvisory
+				{
+					Summary = "Create CONTRIBUTING.md with the standard contributing guide",
+					Detail = "Create a `CONTRIBUTING.md` file at the repository root with the standard contributing guide.",
+					Data = new()
+					{
+						["expected_path"] = "CONTRIBUTING.md",
+						["template_content"] = Standards.ContributingMdContent
+					}
+				}));
 }
 
 /// <summary>
@@ -83,7 +103,12 @@ public class DependabotConfiguredRule : RuleBase
 			? Pass("Dependency update automation configured (Dependabot or Renovate).")
 			: Fail(
 				"No dependency update automation found (Dependabot or Renovate).",
-				"Create .github/dependabot.yml with NuGet and GitHub Actions ecosystems."));
+				new RuleAdvisory
+				{
+					Summary = "Create `.github/dependabot.yml` with NuGet and GitHub Actions ecosystems",
+					Detail = "Create a `.github/dependabot.yml` file configuring automatic dependency updates for both NuGet packages and GitHub Actions.",
+					Data = new() { ["expected_path"] = ".github/dependabot.yml" }
+				}));
 	}
 }
 
@@ -122,6 +147,11 @@ public class CodeQlWorkflowRule : RuleBase
 
 		return Task.FromResult(Fail(
 			"No CodeQL / SAST workflow found.",
-			"Add a GitHub Actions workflow using github/codeql-action for static analysis."));
+			new RuleAdvisory
+			{
+				Summary = "Add a GitHub Actions workflow using `github/codeql-action` for static analysis",
+				Detail = "Add a GitHub Actions workflow (e.g. `.github/workflows/codeql.yml`) that runs `github/codeql-action` for static analysis on push and pull request.",
+				Data = new() { ["expected_path"] = ".github/workflows/codeql.yml" }
+			}));
 	}
 }

@@ -52,9 +52,9 @@ public class SelfAssessmentTests : TestWithOutput
 			foreach (var f in failures)
 			{
 				Output.WriteLine($"  [{f.Severity}] {f.RuleId} ({f.RuleName}): {f.Message}");
-				if (f.Remediation is not null)
+				if (f.Advisory is not null)
 				{
-					Output.WriteLine($"    Fix: {f.Remediation}");
+					Output.WriteLine($"    Fix: {f.Advisory.Summary}");
 				}
 			}
 		}

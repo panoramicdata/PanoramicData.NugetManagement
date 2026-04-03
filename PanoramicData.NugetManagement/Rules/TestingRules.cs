@@ -30,7 +30,12 @@ public class TestProjectExistsRule : RuleBase
 			? Pass("Test project found.")
 			: Fail(
 				"No test project found (*.Test.csproj or *.Tests.csproj).",
-				"Create a test project using xUnit v3."));
+				new RuleAdvisory
+				{
+					Summary = "Create a test project using xUnit v3.",
+					Detail = "No test project was found matching `*.Test.csproj` or `*.Tests.csproj`. Create a test project using xUnit v3.",
+					Data = new() { ["expected_pattern"] = "*.Test.csproj or *.Tests.csproj" }
+				}));
 	}
 }
 
@@ -77,7 +82,12 @@ public class XunitV3Rule : RuleBase
 
 		return Task.FromResult(Fail(
 			"xUnit v3 is not referenced. Legacy xUnit v2 may be in use.",
-			"Replace xunit/xunit.core/xunit.runner.visualstudio v2 references with xunit.v3 and xunit.runner.visualstudio v3."));
+			new RuleAdvisory
+			{
+				Summary = "Replace xunit/xunit.core/xunit.runner.visualstudio v2 references with xunit.v3 and xunit.runner.visualstudio v3.",
+				Detail = "xUnit v3 is not referenced in `Directory.Packages.props` or any test project. Replace legacy `xunit`/`xunit.core`/`xunit.runner.visualstudio` v2 references with `xunit.v3` and `xunit.runner.visualstudio` v3.",
+				Data = new() { ["expected_package"] = "xunit.v3" }
+			}));
 	}
 }
 
@@ -121,7 +131,12 @@ public class TestSdkPresentRule : RuleBase
 
 		return Task.FromResult(Fail(
 			"Microsoft.NET.Test.Sdk is not referenced.",
-			"Add Microsoft.NET.Test.Sdk to the test project."));
+			new RuleAdvisory
+			{
+				Summary = "Add Microsoft.NET.Test.Sdk to the test project.",
+				Detail = "Microsoft.NET.Test.Sdk is not referenced in `Directory.Packages.props` or any test project. Add a reference to enable test discovery and execution.",
+				Data = new() { ["expected_package"] = "Microsoft.NET.Test.Sdk" }
+			}));
 	}
 }
 
@@ -158,6 +173,11 @@ public class CoverletCollectorRule : RuleBase
 			? Pass("coverlet.collector is referenced.")
 			: Fail(
 				"coverlet.collector is not referenced.",
-				"Add coverlet.collector to the test project for code coverage collection."));
+				new RuleAdvisory
+				{
+					Summary = "Add coverlet.collector to the test project for code coverage collection.",
+					Detail = "coverlet.collector is not referenced in `Directory.Packages.props` or any test project. Add it to enable code coverage collection.",
+					Data = new() { ["expected_package"] = "coverlet.collector" }
+				}));
 	}
 }

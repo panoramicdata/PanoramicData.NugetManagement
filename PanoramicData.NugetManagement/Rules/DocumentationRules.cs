@@ -39,15 +39,26 @@ public class GenerateDocumentationFileRule : RuleBase
 			return Task.FromResult(Pass("No non-test .csproj files found."));
 		}
 
+		var missing = new List<string>();
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
 			if (content is not null && !Contains(content, "<GenerateDocumentationFile>true</GenerateDocumentationFile>"))
 			{
-				return Task.FromResult(Fail(
-					$"{csproj} does not have GenerateDocumentationFile enabled.",
-					"Add <GenerateDocumentationFile>true</GenerateDocumentationFile> to the .csproj or Directory.Build.props."));
+				missing.Add(csproj);
 			}
+		}
+
+		if (missing.Count > 0)
+		{
+			return Task.FromResult(Fail(
+				$"The following projects do not have GenerateDocumentationFile enabled: {string.Join(", ", missing)}",
+				new RuleAdvisory
+				{
+					Summary = "Add `<GenerateDocumentationFile>true</GenerateDocumentationFile>` to Directory.Build.props or each non-test .csproj",
+					Detail = "Add `<GenerateDocumentationFile>true</GenerateDocumentationFile>` to a `<PropertyGroup>` in `Directory.Build.props` (preferred) or each listed project file.",
+					Data = new() { ["projects_missing"] = missing.ToArray() }
+				}));
 		}
 
 		return Task.FromResult(Pass("All non-test projects have GenerateDocumentationFile enabled."));

@@ -43,6 +43,11 @@ public class LatestTargetFrameworkRule : RuleBase
 			? Pass($"All projects target {Standards.LatestTargetFramework}.")
 			: Fail(
 				$"The following projects do not target {Standards.LatestTargetFramework}: {string.Join(", ", outdated)}",
-				$"Update <TargetFramework> to {Standards.LatestTargetFramework} in all .csproj files."));
+				new RuleAdvisory
+				{
+					Summary = $"Update <TargetFramework> to {Standards.LatestTargetFramework} in all .csproj files.",
+					Detail = $"The following projects do not target `{Standards.LatestTargetFramework}`: {string.Join(", ", outdated)}. Update the `<TargetFramework>` element in each `.csproj` file.",
+					Data = new() { ["projects"] = outdated.ToArray(), ["latest_tfm"] = Standards.LatestTargetFramework }
+				}));
 	}
 }

@@ -30,7 +30,12 @@ public class TreatWarningsAsErrorsRule : RuleBase
 
 		return Task.FromResult(Fail(
 			"TreatWarningsAsErrors is not enabled in Directory.Build.props.",
-			"Add <TreatWarningsAsErrors>true</TreatWarningsAsErrors> to Directory.Build.props."));
+			new RuleAdvisory
+			{
+				Summary = "Enable `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in Directory.Build.props",
+				Detail = "Add `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` to a `<PropertyGroup>` in `Directory.Build.props`. This ensures all compiler warnings are treated as errors, preventing warning accumulation.",
+				Data = new() { ["file"] = "Directory.Build.props" }
+			}));
 	}
 }
 
@@ -62,7 +67,12 @@ public class NullableEnabledRule : RuleBase
 
 		return Task.FromResult(Fail(
 			"Nullable reference types are not enabled in Directory.Build.props.",
-			"Add <Nullable>enable</Nullable> to Directory.Build.props."));
+			new RuleAdvisory
+			{
+				Summary = "Enable `<Nullable>enable</Nullable>` in Directory.Build.props",
+				Detail = "Add `<Nullable>enable</Nullable>` to a `<PropertyGroup>` in `Directory.Build.props`. This enables nullable reference type annotations and warnings across all projects.",
+				Data = new() { ["file"] = "Directory.Build.props" }
+			}));
 	}
 }
 
@@ -102,6 +112,11 @@ public class ImplicitUsingsRule : RuleBase
 			? Pass("All projects have ImplicitUsings enabled.")
 			: Fail(
 				$"The following projects do not have ImplicitUsings enabled: {string.Join(", ", missing)}",
-				"Add <ImplicitUsings>enable</ImplicitUsings> to each .csproj."));
+				new RuleAdvisory
+				{
+					Summary = "Enable `<ImplicitUsings>enable</ImplicitUsings>` in each .csproj",
+					Detail = "Add `<ImplicitUsings>enable</ImplicitUsings>` to the `<PropertyGroup>` in each project file listed below.",
+					Data = new() { ["projects"] = missing.ToArray() }
+				}));
 	}
 }

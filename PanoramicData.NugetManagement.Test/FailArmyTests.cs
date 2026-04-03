@@ -57,8 +57,10 @@ public class FailArmyTests : TestWithOutput
 			var result = await rule.EvaluateAsync(_failContext, CancellationToken.None);
 			if (!result.Passed)
 			{
-				result.Remediation.Should().NotBeNullOrWhiteSpace(
-					$"Rule {result.RuleId} failed but provided no remediation guidance");
+				result.Advisory.Should().NotBeNull(
+					$"Rule {result.RuleId} failed but provided no advisory guidance");
+				result.Advisory!.Summary.Should().NotBeNullOrWhiteSpace(
+					$"Rule {result.RuleId} failed but provided no advisory summary");
 			}
 		}
 	}

@@ -44,7 +44,12 @@ public class SnupkgGenerationRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not enable snupkg generation.",
-					"Add <IncludeSymbols>true</IncludeSymbols> and <SymbolPackageFormat>snupkg</SymbolPackageFormat> to the .csproj."));
+					new RuleAdvisory
+					{
+						Summary = "Add <IncludeSymbols>true</IncludeSymbols> and <SymbolPackageFormat>snupkg</SymbolPackageFormat> to the .csproj.",
+						Detail = $"The project `{csproj}` does not enable snupkg symbol package generation. Add both `<IncludeSymbols>true</IncludeSymbols>` and `<SymbolPackageFormat>snupkg</SymbolPackageFormat>` to a `<PropertyGroup>`.",
+						Data = new() { ["file"] = csproj }
+					}));
 			}
 		}
 
@@ -88,7 +93,12 @@ public class GeneratePackageOnBuildRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not enable GeneratePackageOnBuild.",
-					"Add <GeneratePackageOnBuild>true</GeneratePackageOnBuild> to the .csproj."));
+					new RuleAdvisory
+					{
+						Summary = "Add <GeneratePackageOnBuild>true</GeneratePackageOnBuild> to the .csproj.",
+						Detail = $"The project `{csproj}` does not enable `GeneratePackageOnBuild`. Add `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>` to a `<PropertyGroup>`.",
+						Data = new() { ["file"] = csproj }
+					}));
 			}
 		}
 
@@ -132,7 +142,12 @@ public class PackageReadmeFileRule : RuleBase
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not set PackageReadmeFile.",
-					"Add <PackageReadmeFile>README.md</PackageReadmeFile> and pack the README.md via <None Include>."));
+					new RuleAdvisory
+					{
+						Summary = "Add <PackageReadmeFile>README.md</PackageReadmeFile> and pack the README.md via <None Include>.",
+						Detail = $"The project `{csproj}` does not set `PackageReadmeFile`. Add `<PackageReadmeFile>README.md</PackageReadmeFile>` to a `<PropertyGroup>` and include `<None Include=\"..\\README.md\" Pack=\"true\" PackagePath=\"\\\"/>` in an `<ItemGroup>`.",
+						Data = new() { ["file"] = csproj }
+					}));
 			}
 		}
 
@@ -179,6 +194,11 @@ public class NuGetAuditModeRule : RuleBase
 
 		return Task.FromResult(Fail(
 			"NuGetAuditMode is not set to All.",
-			"Add <NuGetAuditMode>All</NuGetAuditMode> to Directory.Build.props."));
+			new RuleAdvisory
+			{
+				Summary = "Add <NuGetAuditMode>All</NuGetAuditMode> to Directory.Build.props.",
+				Detail = "No project or `Directory.Build.props` sets `NuGetAuditMode` to `All`. Add `<NuGetAuditMode>All</NuGetAuditMode>` to `Directory.Build.props` to enable transitive NuGet vulnerability auditing.",
+				Data = new() { ["file"] = "Directory.Build.props" }
+			}));
 	}
 }
