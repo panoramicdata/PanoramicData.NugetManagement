@@ -249,8 +249,16 @@ else
                 _progressMessage = $"Assessing {_row.PackageId}...";
                 StateHasChanged();
 
-                var github = CreateGitHubClient();
-                await Dashboard.AssessRepositoryAsync(_row, github);
+                if (_row.IsClonedLocally && _row.LocalPath is not null)
+                {
+                    await Dashboard.AssessLocalRepositoryAsync(_row);
+                }
+                else
+                {
+                    var github = CreateGitHubClient();
+                    await Dashboard.AssessRepositoryAsync(_row, github);
+                }
+
                 Cache.NotifyRowUpdated();
             }
         }
@@ -287,13 +295,22 @@ else
 
         _isAssessing = true;
         _progressMessage = $"Re-assessing {_row.PackageId}...";
-        AppendConsole($"▶ Re-assessing all rules for {_row.PackageId}...");
         StateHasChanged();
 
         try
         {
-            var github = CreateGitHubClient();
-            await Dashboard.AssessRepositoryAsync(_row, github);
+            if (_row.IsClonedLocally && _row.LocalPath is not null)
+            {
+                AppendConsole($"▶ Re-assessing all rules for {_row.PackageId} from local files...");
+                await Dashboard.AssessLocalRepositoryAsync(_row);
+            }
+            else
+            {
+                AppendConsole($"▶ Re-assessing all rules for {_row.PackageId} from GitHub...");
+                var github = CreateGitHubClient();
+                await Dashboard.AssessRepositoryAsync(_row, github);
+            }
+
             Cache.NotifyRowUpdated();
 
             AppendConsole($"✅ Assessment complete — {_row.TotalFailures} issue(s), {_row.Assessment?.PassedCount ?? 0} passed");
@@ -326,8 +343,16 @@ else
 
         try
         {
-            var github = CreateGitHubClient();
-            await Dashboard.AssessRepositoryAsync(_row, github);
+            if (_row.IsClonedLocally && _row.LocalPath is not null)
+            {
+                await Dashboard.AssessLocalRepositoryAsync(_row);
+            }
+            else
+            {
+                var github = CreateGitHubClient();
+                await Dashboard.AssessRepositoryAsync(_row, github);
+            }
+
             Cache.NotifyRowUpdated();
 
             var catResults = _row.Assessment?.RuleResults.Where(r => r.Category == category).ToList() ?? [];
@@ -369,9 +394,15 @@ else
 
             if (applied.Count > 0)
             {
-                // Refresh git status since we wrote files
                 await Dashboard.RefreshGitStatusAsync(_row);
                 AppendConsole($"ℹ️ {applied.Count} file(s) written — working tree is now dirty.");
+
+                // Re-assess from local filesystem to reflect changes
+                AppendConsole("▶ Re-assessing from local files...");
+                StateHasChanged();
+                await Dashboard.AssessLocalRepositoryAsync(_row);
+                Cache.NotifyRowUpdated();
+                AppendConsole($"✅ Assessment complete — {_row.TotalFailures} issue(s) remaining.");
             }
         }
         catch (Exception ex)
@@ -407,6 +438,13 @@ else
             if (applied.Count > 0)
             {
                 await Dashboard.RefreshGitStatusAsync(_row);
+
+                // Re-assess from local filesystem to reflect changes
+                AppendConsole("▶ Re-assessing from local files...");
+                StateHasChanged();
+                await Dashboard.AssessLocalRepositoryAsync(_row);
+                Cache.NotifyRowUpdated();
+                AppendConsole($"✅ Assessment complete — {_row.TotalFailures} issue(s) remaining.");
             }
         }
         catch (Exception ex)
@@ -448,6 +486,13 @@ else
             if (applied.Count > 0)
             {
                 await Dashboard.RefreshGitStatusAsync(_row);
+
+                // Re-assess from local filesystem to reflect changes
+                AppendConsole("▶ Re-assessing from local files...");
+                StateHasChanged();
+                await Dashboard.AssessLocalRepositoryAsync(_row);
+                Cache.NotifyRowUpdated();
+                AppendConsole($"✅ Assessment complete — {_row.TotalFailures} issue(s) remaining.");
             }
         }
         catch (Exception ex)

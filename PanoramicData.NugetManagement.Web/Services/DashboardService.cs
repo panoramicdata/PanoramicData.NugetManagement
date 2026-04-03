@@ -198,6 +198,79 @@ public class DashboardService
 	}
 
 	/// <summary>
+	/// Assesses a single repository against all governance rules using the local filesystem.
+	/// This reads files directly from disk so that changes made by remediations are
+	/// immediately visible without pushing to GitHub first.
+	/// </summary>
+	public async Task AssessLocalRepositoryAsync(
+		PackageDashboardRow row,
+		CancellationToken cancellationToken = default)
+	{
+		if (row.RepositoryFullName is null || row.LocalPath is null)
+		{
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = "No repository or local path identified.";
+			return;
+		}
+
+		row.Status = PackageStatus.Assessing;
+		row.StatusMessage = "Assessing (local)...";
+
+		try
+		{
+			var repoOptions = new RepoOptions
+			{
+				ExpectedLicense = _settings.ExpectedLicense,
+				ExpectedCopyrightHolder = _settings.CopyrightHolder,
+			};
+
+			if (!string.IsNullOrEmpty(_settings.CodacyApiToken))
+			{
+				repoOptions.Codacy = new CodacyOptions
+				{
+					ApiToken = _settings.CodacyApiToken
+				};
+			}
+
+			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+			var localBuilder = new LocalRepositoryContextBuilder(loggerFactory.CreateLogger<LocalRepositoryContextBuilder>());
+			var context = localBuilder.Build(row.LocalPath, row.RepositoryFullName, repoOptions);
+
+			var rules = RuleRegistry.Rules;
+			var results = new List<RuleResult>();
+
+			foreach (var rule in rules)
+			{
+				if (repoOptions.SuppressedRules.Contains(rule.RuleId))
+				{
+					continue;
+				}
+
+				var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
+				results.Add(result);
+			}
+
+			row.Assessment = new RepoAssessment
+			{
+				RepositoryFullName = row.RepositoryFullName,
+				DefaultBranch = context.DefaultBranch,
+				AssessedAtUtc = DateTimeOffset.UtcNow,
+				RuleResults = results
+			};
+
+			row.CategorySummaries = BuildCategorySummaries(results);
+			row.Status = PackageStatus.Assessed;
+			row.StatusMessage = $"{row.TotalFailures} issue(s) found (local).";
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Failed to locally assess {Repo}", row.RepositoryFullName);
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = $"Local assessment failed: {ex.Message}";
+		}
+	}
+
+	/// <summary>
 	/// Generates an AI remediation prompt from failed rules.
 	/// </summary>
 	public static string GenerateRemediationPrompt(PackageDashboardRow row)
