@@ -81,7 +81,12 @@ public class NugetKeyGitignoredRule : RuleBase
 				{
 					Summary = "Add 'nuget-key.txt' to .gitignore.",
 					Detail = "The `.gitignore` file does not include `nuget-key.txt`. This risks leaking a NuGet API key. Add `nuget-key.txt` to `.gitignore`.",
-					Data = new() { ["file"] = ".gitignore" }
+					Data = new()
+					{
+						["file"] = ".gitignore",
+						["remediation_type"] = "append_line",
+						["line_content"] = "nuget-key.txt"
+					}
 				}));
 	}
 }
@@ -121,7 +126,13 @@ public class NeutralResourcesLanguageRule : RuleBase
 					{
 						Summary = "Add <NeutralResourcesLanguage>en</NeutralResourcesLanguage> to the .csproj.",
 						Detail = $"The project `{csproj}` does not set `NeutralResourcesLanguage`. Add `<NeutralResourcesLanguage>en</NeutralResourcesLanguage>` to a `<PropertyGroup>`.",
-						Data = new() { ["file"] = csproj }
+						Data = new()
+						{
+							["file"] = csproj,
+							["remediation_type"] = "ensure_csproj_property",
+							["property_name"] = "NeutralResourcesLanguage",
+							["property_value"] = "en"
+						}
 					}));
 			}
 		}

@@ -4,6 +4,7 @@ using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
+using System.Xml.Linq;
 
 namespace PanoramicData.NugetManagement.Web.Services;
 
@@ -264,8 +265,8 @@ public class DashboardService
     }
 
     /// <summary>
-    /// Applies automatic file-based remediations for failed rules that have
-    /// <c>expected_path</c> and <c>template_content</c> in their advisory data.
+    /// Applies automatic file-based remediations for all failed rules that have
+    /// a recognized <c>remediation_type</c> or <c>expected_path</c> + <c>template_content</c>.
     /// Returns the list of files created/modified.
     /// </summary>
     public Task<List<string>> ApplyRemediationsAsync(
@@ -286,48 +287,12 @@ public class DashboardService
         foreach (var failure in failures)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            var advisory = failure.Advisory!;
-            if (!advisory.Data.TryGetValue("expected_path", out var pathObj) || pathObj is not string expectedPath)
-            {
-                continue;
-            }
-
-            if (!advisory.Data.TryGetValue("template_content", out var contentObj) || contentObj is not string templateContent)
-            {
-                continue;
-            }
-
-            var fullPath = Path.Combine(row.LocalPath, expectedPath.Replace('/', Path.DirectorySeparatorChar));
-
-            if (File.Exists(fullPath))
-            {
-                onOutput?.Invoke($"⏭️ [{failure.RuleId}] {expectedPath} already exists — skipping.");
-                continue;
-            }
-
-            try
-            {
-                var dir = Path.GetDirectoryName(fullPath);
-                if (dir is not null && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                File.WriteAllText(fullPath, templateContent);
-                applied.Add(expectedPath);
-                onOutput?.Invoke($"✅ [{failure.RuleId}] Created {expectedPath}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to create {Path} for rule {RuleId}", expectedPath, failure.RuleId);
-                onOutput?.Invoke($"❌ [{failure.RuleId}] Failed to create {expectedPath}: {ex.Message}");
-            }
+            ApplySingleRemediation(row.LocalPath, failure, applied, onOutput);
         }
 
         if (applied.Count == 0)
         {
-            onOutput?.Invoke("ℹ️ No auto-remediable issues found (rules need expected_path + template_content).");
+            onOutput?.Invoke("ℹ️ No auto-remediable issues found.");
         }
         else
         {
@@ -361,43 +326,7 @@ public class DashboardService
         foreach (var failure in failures)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            var advisory = failure.Advisory!;
-            if (!advisory.Data.TryGetValue("expected_path", out var pathObj) || pathObj is not string expectedPath)
-            {
-                continue;
-            }
-
-            if (!advisory.Data.TryGetValue("template_content", out var contentObj) || contentObj is not string templateContent)
-            {
-                continue;
-            }
-
-            var fullPath = Path.Combine(row.LocalPath, expectedPath.Replace('/', Path.DirectorySeparatorChar));
-
-            if (File.Exists(fullPath))
-            {
-                onOutput?.Invoke($"⏭️ [{failure.RuleId}] {expectedPath} already exists — skipping.");
-                continue;
-            }
-
-            try
-            {
-                var dir = Path.GetDirectoryName(fullPath);
-                if (dir is not null && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                File.WriteAllText(fullPath, templateContent);
-                applied.Add(expectedPath);
-                onOutput?.Invoke($"✅ [{failure.RuleId}] Created {expectedPath}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to create {Path} for rule {RuleId}", expectedPath, failure.RuleId);
-                onOutput?.Invoke($"❌ [{failure.RuleId}] Failed to create {expectedPath}: {ex.Message}");
-            }
+            ApplySingleRemediation(row.LocalPath, failure, applied, onOutput);
         }
 
         if (applied.Count == 0)
@@ -412,10 +341,398 @@ public class DashboardService
     /// Checks if a specific failed rule can be auto-remediated.
     /// </summary>
     public static bool IsAutoRemediable(RuleResult result)
-        => !result.Passed
-            && result.Advisory is not null
-            && result.Advisory.Data.ContainsKey("expected_path")
-            && result.Advisory.Data.ContainsKey("template_content");
+    {
+        if (result.Passed || result.Advisory is null)
+        {
+            return false;
+        }
+
+        var data = result.Advisory.Data;
+
+        // create_file: expected_path + template_content
+        if (data.ContainsKey("expected_path") && data.ContainsKey("template_content"))
+        {
+            return true;
+        }
+
+        // All other types identified by remediation_type key
+        if (data.TryGetValue("remediation_type", out var rtObj) && rtObj is string rt)
+        {
+            return rt is "ensure_xml_property"
+                or "ensure_csproj_property"
+                or "append_line"
+                or "prepend_line"
+                or "add_slnx_file_entries";
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Public entry point for applying a single remediation from outside the service.
+    /// </summary>
+    public void ApplySingleRemediationPublic(
+        string localPath,
+        RuleResult failure,
+        List<string> applied,
+        Action<string>? onOutput)
+        => ApplySingleRemediation(localPath, failure, applied, onOutput);
+
+    /// <summary>
+    /// Applies a single remediation based on the advisory data.
+    /// </summary>
+    private void ApplySingleRemediation(
+        string localPath,
+        RuleResult failure,
+        List<string> applied,
+        Action<string>? onOutput)
+    {
+        var advisory = failure.Advisory!;
+        var data = advisory.Data;
+
+        // Determine remediation type
+        var remediationType = data.TryGetValue("remediation_type", out var rtObj) && rtObj is string rt ? rt : null;
+
+        // Fallback: create_file from expected_path + template_content
+        if (remediationType is null && data.ContainsKey("expected_path") && data.ContainsKey("template_content"))
+        {
+            remediationType = "create_file";
+        }
+
+        if (remediationType is null)
+        {
+            return;
+        }
+
+        try
+        {
+            switch (remediationType)
+            {
+                case "create_file":
+                    ApplyCreateFile(localPath, failure, data, applied, onOutput);
+                    break;
+                case "ensure_xml_property":
+                    ApplyEnsureXmlProperty(localPath, failure, data, applied, onOutput);
+                    break;
+                case "ensure_csproj_property":
+                    ApplyEnsureCsprojProperty(localPath, failure, data, applied, onOutput);
+                    break;
+                case "append_line":
+                    ApplyAppendLine(localPath, failure, data, applied, onOutput);
+                    break;
+                case "prepend_line":
+                    ApplyPrependLine(localPath, failure, data, applied, onOutput);
+                    break;
+                case "add_slnx_file_entries":
+                    ApplyAddSlnxFileEntries(localPath, failure, data, applied, onOutput);
+                    break;
+                default:
+                    _logger.LogDebug("Unknown remediation_type '{Type}' for rule {RuleId}", remediationType, failure.RuleId);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed remediation for rule {RuleId}", failure.RuleId);
+            onOutput?.Invoke($"❌ [{failure.RuleId}] Failed: {ex.Message}");
+        }
+    }
+
+    private static void ApplyCreateFile(
+        string localPath,
+        RuleResult failure,
+        Dictionary<string, object> data,
+        List<string> applied,
+        Action<string>? onOutput)
+    {
+        if (data["expected_path"] is not string expectedPath || data["template_content"] is not string templateContent)
+        {
+            return;
+        }
+
+        var fullPath = Path.Combine(localPath, expectedPath.Replace('/', Path.DirectorySeparatorChar));
+        if (File.Exists(fullPath))
+        {
+            onOutput?.Invoke($"⏭️ [{failure.RuleId}] {expectedPath} already exists — skipping.");
+            return;
+        }
+
+        var dir = Path.GetDirectoryName(fullPath);
+        if (dir is not null && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        File.WriteAllText(fullPath, templateContent);
+        applied.Add(expectedPath);
+        onOutput?.Invoke($"✅ [{failure.RuleId}] Created {expectedPath}");
+    }
+
+    private static void ApplyEnsureXmlProperty(
+        string localPath,
+        RuleResult failure,
+        Dictionary<string, object> data,
+        List<string> applied,
+        Action<string>? onOutput)
+    {
+        if (data["property_name"] is not string propName || data["property_value"] is not string propValue)
+        {
+            return;
+        }
+
+        var file = data.TryGetValue("file", out var fObj) && fObj is string f ? f : "Directory.Build.props";
+        var fullPath = Path.Combine(localPath, file.Replace('/', Path.DirectorySeparatorChar));
+
+        EnsureXmlPropertyInFile(fullPath, file, propName, propValue, failure, applied, onOutput);
+    }
+
+    private static void ApplyEnsureCsprojProperty(
+        string localPath,
+        RuleResult failure,
+        Dictionary<string, object> data,
+        List<string> applied,
+        Action<string>? onOutput)
+    {
+        if (data["property_name"] is not string propName || data["property_value"] is not string propValue)
+        {
+            return;
+        }
+
+        // Single csproj file
+        if (data.TryGetValue("file", out var fObj) && fObj is string file)
+        {
+            var fullPath = Path.Combine(localPath, file.Replace('/', Path.DirectorySeparatorChar));
+            EnsureXmlPropertyInFile(fullPath, file, propName, propValue, failure, applied, onOutput);
+            return;
+        }
+
+        // Multiple projects (from "projects" array)
+        if (data.TryGetValue("projects", out var projObj) && projObj is string[] projects)
+        {
+            foreach (var proj in projects)
+            {
+                var fullPath = Path.Combine(localPath, proj.Replace('/', Path.DirectorySeparatorChar));
+                EnsureXmlPropertyInFile(fullPath, proj, propName, propValue, failure, applied, onOutput);
+            }
+        }
+    }
+
+    private static void EnsureXmlPropertyInFile(
+        string fullPath,
+        string relativePath,
+        string propName,
+        string propValue,
+        RuleResult failure,
+        List<string> applied,
+        Action<string>? onOutput)
+    {
+        if (!File.Exists(fullPath))
+        {
+            // Create a minimal Directory.Build.props or .csproj with the property
+            var isProps = relativePath.EndsWith(".props", StringComparison.OrdinalIgnoreCase);
+            var rootElement = isProps ? "Project" : "Project";
+            var content = $"""
+                <{rootElement}>
+                  <PropertyGroup>
+                    <{propName}>{propValue}</{propName}>
+                  </PropertyGroup>
+                </{rootElement}>
+                """;
+            var dir = Path.GetDirectoryName(fullPath);
+            if (dir is not null && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            File.WriteAllText(fullPath, content);
+            applied.Add(relativePath);
+            onOutput?.Invoke($"✅ [{failure.RuleId}] Created {relativePath} with <{propName}>{propValue}</{propName}>");
+            return;
+        }
+
+        // Parse existing XML and add property if missing
+        var xml = File.ReadAllText(fullPath);
+        if (xml.Contains($"<{propName}>", StringComparison.OrdinalIgnoreCase))
+        {
+            onOutput?.Invoke($"⏭️ [{failure.RuleId}] {relativePath} already has <{propName}> — skipping.");
+            return;
+        }
+
+        try
+        {
+            var doc = XDocument.Parse(xml);
+            var propertyGroup = doc.Root?.Elements("PropertyGroup").FirstOrDefault();
+            if (propertyGroup is null)
+            {
+                propertyGroup = new XElement("PropertyGroup");
+                doc.Root?.AddFirst(propertyGroup);
+            }
+
+            propertyGroup.Add(new XElement(propName, propValue));
+            doc.Save(fullPath);
+            applied.Add(relativePath);
+            onOutput?.Invoke($"✅ [{failure.RuleId}] Added <{propName}>{propValue}</{propName}> to {relativePath}");
+        }
+        catch (Exception ex)
+        {
+            onOutput?.Invoke($"❌ [{failure.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+        }
+    }
+
+    private static void ApplyAppendLine(
+        string localPath,
+        RuleResult failure,
+        Dictionary<string, object> data,
+        List<string> applied,
+        Action<string>? onOutput)
+    {
+        if (data["line_content"] is not string lineContent)
+        {
+            return;
+        }
+
+        var file = data.TryGetValue("file", out var fObj) && fObj is string f ? f : null;
+        if (file is null)
+        {
+            return;
+        }
+
+        var fullPath = Path.Combine(localPath, file.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(fullPath))
+        {
+            onOutput?.Invoke($"⏭️ [{failure.RuleId}] {file} does not exist — cannot append.");
+            return;
+        }
+
+        var content = File.ReadAllText(fullPath);
+        if (content.Contains(lineContent, StringComparison.OrdinalIgnoreCase))
+        {
+            onOutput?.Invoke($"⏭️ [{failure.RuleId}] {file} already contains '{lineContent}' — skipping.");
+            return;
+        }
+
+        if (!content.EndsWith('\n'))
+        {
+            content += Environment.NewLine;
+        }
+
+        content += lineContent + Environment.NewLine;
+        File.WriteAllText(fullPath, content);
+        applied.Add(file);
+        onOutput?.Invoke($"✅ [{failure.RuleId}] Appended '{lineContent}' to {file}");
+    }
+
+    private static void ApplyPrependLine(
+        string localPath,
+        RuleResult failure,
+        Dictionary<string, object> data,
+        List<string> applied,
+        Action<string>? onOutput)
+    {
+        if (data["line_content"] is not string lineContent)
+        {
+            return;
+        }
+
+        var file = data.TryGetValue("file", out var fObj) && fObj is string f ? f : null;
+        if (file is null)
+        {
+            return;
+        }
+
+        var fullPath = Path.Combine(localPath, file.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(fullPath))
+        {
+            onOutput?.Invoke($"⏭️ [{failure.RuleId}] {file} does not exist — cannot prepend.");
+            return;
+        }
+
+        var content = File.ReadAllText(fullPath);
+        if (content.Contains(lineContent, StringComparison.OrdinalIgnoreCase))
+        {
+            onOutput?.Invoke($"⏭️ [{failure.RuleId}] {file} already contains '{lineContent}' — skipping.");
+            return;
+        }
+
+        content = lineContent + Environment.NewLine + Environment.NewLine + content;
+        File.WriteAllText(fullPath, content);
+        applied.Add(file);
+        onOutput?.Invoke($"✅ [{failure.RuleId}] Prepended '{lineContent}' to {file}");
+    }
+
+    private static void ApplyAddSlnxFileEntries(
+        string localPath,
+        RuleResult failure,
+        Dictionary<string, object> data,
+        List<string> applied,
+        Action<string>? onOutput)
+    {
+        var file = data.TryGetValue("file", out var fObj) && fObj is string f ? f : null;
+        if (file is null)
+        {
+            return;
+        }
+
+        if (data["missing_files"] is not string[] missingFiles || missingFiles.Length == 0)
+        {
+            return;
+        }
+
+        var fullPath = Path.Combine(localPath, file.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(fullPath))
+        {
+            onOutput?.Invoke($"⏭️ [{failure.RuleId}] {file} does not exist — cannot add entries.");
+            return;
+        }
+
+        try
+        {
+            var doc = XDocument.Load(fullPath);
+            var solutionItemsFolder = doc.Root?
+                .Elements("Folder")
+                .FirstOrDefault(f =>
+                {
+                    var name = f.Attribute("Name")?.Value;
+                    return name is not null &&
+                        name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase);
+                });
+
+            if (solutionItemsFolder is null)
+            {
+                solutionItemsFolder = new XElement("Folder", new XAttribute("Name", "/Solution Items/"));
+                doc.Root?.Add(solutionItemsFolder);
+            }
+
+            var addedCount = 0;
+            foreach (var missingFile in missingFiles)
+            {
+                var alreadyExists = solutionItemsFolder.Elements("File")
+                    .Any(el => string.Equals(el.Attribute("Path")?.Value, missingFile, StringComparison.OrdinalIgnoreCase));
+                if (alreadyExists)
+                {
+                    continue;
+                }
+
+                solutionItemsFolder.Add(new XElement("File", new XAttribute("Path", missingFile)));
+                addedCount++;
+            }
+
+            if (addedCount > 0)
+            {
+                doc.Save(fullPath);
+                applied.Add(file);
+                onOutput?.Invoke($"✅ [{failure.RuleId}] Added {addedCount} file entries to Solution Items in {file}");
+            }
+            else
+            {
+                onOutput?.Invoke($"⏭️ [{failure.RuleId}] All files already in Solution Items — skipping.");
+            }
+        }
+        catch (Exception ex)
+        {
+            onOutput?.Invoke($"❌ [{failure.RuleId}] Failed to modify {file}: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// Builds a local repository.

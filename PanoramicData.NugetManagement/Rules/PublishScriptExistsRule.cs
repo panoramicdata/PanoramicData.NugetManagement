@@ -35,7 +35,11 @@ public class PublishScriptExistsRule : RuleBase
 				{
 					Summary = "Add standard Publish.ps1 script for tag-based publishing",
 					Detail = "Add a `Publish.ps1` script that checks for a clean working tree, uses `nbgv get-version` to determine the version, creates a git tag, and pushes the tag to trigger trusted publishing in CI.",
-					Data = new() { ["expected_path"] = "Publish.ps1" }
-				}));
+						Data = new()
+						{
+							["expected_path"] = "Publish.ps1",
+							["template_content"] = Standards.PublishPs1Content
+						}
+					}));
 	}
 }

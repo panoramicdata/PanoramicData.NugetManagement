@@ -90,14 +90,21 @@ public class PackageLicenseExpressionRule : RuleBase
 					{
 						Summary = $"Add {expectedTag} to the .csproj.",
 						Detail = $"The project `{csproj}` does not have `PackageLicenseExpression` set to `{expected}`. Add `{expectedTag}` to the project file.",
-						Data = new() { ["file"] = csproj, ["expected_license"] = expected }
-					}));
-			}
-		}
+											Data = new()
+											{
+												["file"] = csproj,
+												["expected_license"] = expected,
+												["remediation_type"] = "ensure_csproj_property",
+												["property_name"] = "PackageLicenseExpression",
+												["property_value"] = expected
+											}
+										}));
+									}
+								}
 
-		return Task.FromResult(Pass($"All packable projects have PackageLicenseExpression = \"{expected}\"."));
-	}
-}
+								return Task.FromResult(Pass($"All packable projects have PackageLicenseExpression = \"{expected}\"."));
+							}
+						}
 
 /// <summary>
 /// Checks that Copyright is set in Directory.Build.props with the expected holder.
@@ -129,7 +136,14 @@ public class CopyrightMessageRule : RuleBase
 				{
 					Summary = $"Create Directory.Build.props with <Copyright> containing \"{expected}\".",
 					Detail = $"No `Directory.Build.props` file was found. Create one with `<Copyright>Copyright © $(Year) {expected}</Copyright>`.",
-					Data = new() { ["file"] = "Directory.Build.props", ["expected_holder"] = expected }
+					Data = new()
+					{
+						["file"] = "Directory.Build.props",
+						["expected_holder"] = expected,
+						["remediation_type"] = "ensure_xml_property",
+						["property_name"] = "Copyright",
+						["property_value"] = $"Copyright © {expected}"
+					}
 				}));
 		}
 
@@ -142,7 +156,14 @@ public class CopyrightMessageRule : RuleBase
 				{
 					Summary = $"Add <Copyright>Copyright © $(Year) {expected}</Copyright> to Directory.Build.props.",
 					Detail = $"`Directory.Build.props` exists but does not contain a `<Copyright>` element with `{expected}`. Add `<Copyright>Copyright © $(Year) {expected}</Copyright>`.",
-					Data = new() { ["file"] = "Directory.Build.props", ["expected_holder"] = expected }
+					Data = new()
+					{
+						["file"] = "Directory.Build.props",
+						["expected_holder"] = expected,
+						["remediation_type"] = "ensure_xml_property",
+						["property_name"] = "Copyright",
+						["property_value"] = $"Copyright © {expected}"
+					}
 				}));
 	}
 }

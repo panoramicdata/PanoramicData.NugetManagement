@@ -168,7 +168,12 @@ public class SolutionItemsRule : RuleBase
 				{
 					Summary = "Add <File Path=\"...\"/> entries for the missing files in the Solution Items folder.",
 					Detail = $"The Solution Items folder in `{slnxFile}` is missing references to: {string.Join(", ", missing)}. Add `<File Path=\"...\"/>` entries for each missing file.",
-					Data = new() { ["file"] = slnxFile, ["missing_files"] = missing.ToArray() }
+					Data = new()
+						{
+							["file"] = slnxFile,
+							["missing_files"] = missing.ToArray(),
+							["remediation_type"] = "add_slnx_file_entries"
+						}
 				}));
 		}
 

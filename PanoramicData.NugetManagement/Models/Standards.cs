@@ -136,4 +136,141 @@ public static class Standards
 		      interval: "weekly"
 		    open-pull-requests-limit: 5
 		""";
+
+	/// <summary>
+	/// The standard global.json content pinning the SDK version.
+	/// </summary>
+	public static string GlobalJsonContent => $$"""
+		{
+		  "sdk": {
+			"version": "{{LatestDotNetSdkVersion}}",
+			"rollForward": "latestFeature"
+		  }
+		}
+		""";
+
+	/// <summary>
+	/// The standard version.json content for Nerdbank.GitVersioning.
+	/// </summary>
+	public const string VersionJsonContent = """
+		{
+		  "$schema": "https://raw.githubusercontent.com/dotnet/Nerdbank.GitVersioning/main/src/NerdBank.GitVersioning/version.schema.json",
+		  "version": "1.0",
+		  "publicReleaseRefSpec": [
+			"^refs/heads/main$"
+		  ]
+		}
+		""";
+
+	/// <summary>
+	/// The standard CodeQL workflow content for GitHub Actions.
+	/// </summary>
+	public const string CodeQlWorkflowContent = """
+		name: "CodeQL"
+
+		on:
+		  push:
+			branches: [ "main" ]
+		  pull_request:
+			branches: [ "main" ]
+		  schedule:
+			- cron: '0 6 * * 1'
+
+		jobs:
+		  analyze:
+			name: Analyze
+			runs-on: ubuntu-latest
+			permissions:
+			  actions: read
+			  contents: read
+			  security-events: write
+
+			strategy:
+			  fail-fast: false
+			  matrix:
+				language: [ 'csharp' ]
+
+			steps:
+			- name: Checkout repository
+			  uses: actions/checkout@v4
+
+			- name: Initialize CodeQL
+			  uses: github/codeql-action/init@v3
+			  with:
+				languages: ${{ matrix.language }}
+
+			- name: Autobuild
+			  uses: github/codeql-action/autobuild@v3
+
+			- name: Perform CodeQL Analysis
+			  uses: github/codeql-action/analyze@v3
+			  with:
+				category: "/language:${{ matrix.language }}"
+		""";
+
+	/// <summary>
+	/// The standard .editorconfig content for .NET repositories.
+	/// </summary>
+	public const string EditorConfigContent = """
+		root = true
+
+		[*]
+		indent_style = tab
+		indent_size = 4
+		end_of_line = crlf
+		charset = utf-8
+		trim_trailing_whitespace = true
+		insert_final_newline = true
+
+		[*.cs]
+		csharp_style_namespace_declarations = file_scoped:error
+		csharp_using_directive_placement = outside_namespace:error
+
+		[*.{xml,csproj,props,targets}]
+		indent_style = tab
+		""";
+
+	/// <summary>
+	/// The standard Publish.ps1 script content for tag-based publishing.
+	/// </summary>
+	public const string PublishPs1Content = """
+		# Ensure we are on the main branch
+		$branch = git rev-parse --abbrev-ref HEAD
+		if ($branch -ne 'main') {
+			Write-Error "Not on main branch. Current branch: $branch"
+			exit 1
+		}
+
+		# Ensure working tree is clean
+		$status = git status --porcelain
+		if ($status) {
+			Write-Error "Working tree is not clean."
+			exit 1
+		}
+
+		# Ensure we are up to date with origin
+		git fetch origin main --quiet
+		$behind = git rev-list --count HEAD..origin/main
+		if ($behind -gt 0) {
+			Write-Error "Local branch is behind origin/main by $behind commit(s)."
+			exit 1
+		}
+
+		# Get version from Nerdbank.GitVersioning
+		$versionJson = nbgv get-version -f json | ConvertFrom-Json
+		$version = $versionJson.NuGetPackageVersion
+		Write-Host "Version: $version"
+
+		# Check if tag already exists
+		$existingTag = git tag -l $version
+		if ($existingTag) {
+			Write-Error "Tag $version already exists."
+			exit 1
+		}
+
+		# Create and push tag
+		git tag $version
+		git push origin $version
+		Write-Host "Tag $version pushed. CI will publish the package."
+		""";
 }

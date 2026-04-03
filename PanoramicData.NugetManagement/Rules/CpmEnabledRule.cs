@@ -31,7 +31,13 @@ public class CpmEnabledRule : RuleBase
 				{
 					Summary = "Create Directory.Packages.props with `<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>`",
 					Detail = "Create a `Directory.Packages.props` file at the repository root with Central Package Management enabled.",
-					Data = new() { ["expected_file"] = "Directory.Packages.props" }
+					Data = new()
+					{
+						["remediation_type"] = "ensure_xml_property",
+						["file"] = "Directory.Packages.props",
+						["property_name"] = "ManagePackageVersionsCentrally",
+						["property_value"] = "true"
+					}
 				}));
 		}
 
@@ -43,7 +49,13 @@ public class CpmEnabledRule : RuleBase
 				{
 					Summary = "Enable `<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>` in Directory.Packages.props",
 					Detail = "Add `<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>` to `Directory.Packages.props`.",
-					Data = new() { ["expected_file"] = "Directory.Packages.props" }
+					Data = new()
+					{
+						["remediation_type"] = "ensure_xml_property",
+						["file"] = "Directory.Packages.props",
+						["property_name"] = "ManagePackageVersionsCentrally",
+						["property_value"] = "true"
+					}
 				}));
 	}
 }

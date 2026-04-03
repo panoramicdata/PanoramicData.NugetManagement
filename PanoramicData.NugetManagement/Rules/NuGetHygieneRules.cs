@@ -48,7 +48,13 @@ public class SnupkgGenerationRule : RuleBase
 					{
 						Summary = "Add <IncludeSymbols>true</IncludeSymbols> and <SymbolPackageFormat>snupkg</SymbolPackageFormat> to the .csproj.",
 						Detail = $"The project `{csproj}` does not enable snupkg symbol package generation. Add both `<IncludeSymbols>true</IncludeSymbols>` and `<SymbolPackageFormat>snupkg</SymbolPackageFormat>` to a `<PropertyGroup>`.",
-						Data = new() { ["file"] = csproj }
+						Data = new()
+						{
+							["file"] = csproj,
+							["remediation_type"] = "ensure_csproj_property",
+							["property_name"] = "IncludeSymbols",
+							["property_value"] = "true"
+						}
 					}));
 			}
 		}
@@ -97,7 +103,13 @@ public class GeneratePackageOnBuildRule : RuleBase
 					{
 						Summary = "Add <GeneratePackageOnBuild>true</GeneratePackageOnBuild> to the .csproj.",
 						Detail = $"The project `{csproj}` does not enable `GeneratePackageOnBuild`. Add `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>` to a `<PropertyGroup>`.",
-						Data = new() { ["file"] = csproj }
+						Data = new()
+						{
+							["file"] = csproj,
+							["remediation_type"] = "ensure_csproj_property",
+							["property_name"] = "GeneratePackageOnBuild",
+							["property_value"] = "true"
+						}
 					}));
 			}
 		}
@@ -146,7 +158,13 @@ public class PackageReadmeFileRule : RuleBase
 					{
 						Summary = "Add <PackageReadmeFile>README.md</PackageReadmeFile> and pack the README.md via <None Include>.",
 						Detail = $"The project `{csproj}` does not set `PackageReadmeFile`. Add `<PackageReadmeFile>README.md</PackageReadmeFile>` to a `<PropertyGroup>` and include `<None Include=\"..\\README.md\" Pack=\"true\" PackagePath=\"\\\"/>` in an `<ItemGroup>`.",
-						Data = new() { ["file"] = csproj }
+						Data = new()
+						{
+							["file"] = csproj,
+							["remediation_type"] = "ensure_csproj_property",
+							["property_name"] = "PackageReadmeFile",
+							["property_value"] = "README.md"
+						}
 					}));
 			}
 		}
@@ -198,7 +216,13 @@ public class NuGetAuditModeRule : RuleBase
 			{
 				Summary = "Add <NuGetAuditMode>All</NuGetAuditMode> to Directory.Build.props.",
 				Detail = "No project or `Directory.Build.props` sets `NuGetAuditMode` to `All`. Add `<NuGetAuditMode>All</NuGetAuditMode>` to `Directory.Build.props` to enable transitive NuGet vulnerability auditing.",
-				Data = new() { ["file"] = "Directory.Build.props" }
+				Data = new()
+			{
+				["file"] = "Directory.Build.props",
+				["remediation_type"] = "ensure_xml_property",
+				["property_name"] = "NuGetAuditMode",
+				["property_value"] = "All"
+			}
 			}));
 	}
 }

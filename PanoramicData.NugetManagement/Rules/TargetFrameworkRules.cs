@@ -47,7 +47,14 @@ public class LatestTargetFrameworkRule : RuleBase
 				{
 					Summary = $"Update <TargetFramework> to {Standards.LatestTargetFramework} in all .csproj files.",
 					Detail = $"The following projects do not target `{Standards.LatestTargetFramework}`: {string.Join(", ", outdated)}. Update the `<TargetFramework>` element in each `.csproj` file.",
-					Data = new() { ["projects"] = outdated.ToArray(), ["latest_tfm"] = Standards.LatestTargetFramework }
+					Data = new()
+					{
+						["projects"] = outdated.ToArray(),
+						["latest_tfm"] = Standards.LatestTargetFramework,
+						["remediation_type"] = "ensure_csproj_property",
+						["property_name"] = "TargetFramework",
+						["property_value"] = Standards.LatestTargetFramework
+					}
 				}));
 	}
 }

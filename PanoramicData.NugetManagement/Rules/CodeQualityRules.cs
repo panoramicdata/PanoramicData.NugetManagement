@@ -33,7 +33,11 @@ public class EditorConfigExistsRule : RuleBase
 				{
 					Summary = "Create an .editorconfig file with root = true and standard C# formatting rules.",
 					Detail = "Create a `.editorconfig` file at the repository root with `root = true` at the top, followed by standard C# formatting rules.",
-					Data = new() { ["expected_path"] = ".editorconfig" }
+					Data = new()
+					{
+						["expected_path"] = ".editorconfig",
+						["template_content"] = Standards.EditorConfigContent
+					}
 				}));
 		}
 
@@ -45,7 +49,12 @@ public class EditorConfigExistsRule : RuleBase
 				{
 					Summary = "Add 'root = true' at the top of .editorconfig.",
 					Detail = "The `.editorconfig` file exists but is missing `root = true`. Add this as the first non-comment line to prevent editors from searching parent directories.",
-					Data = new() { ["file"] = ".editorconfig" }
+					Data = new()
+					{
+						["file"] = ".editorconfig",
+						["remediation_type"] = "prepend_line",
+						["line_content"] = "root = true"
+					}
 				}));
 	}
 }
@@ -79,7 +88,12 @@ public class FileScopedNamespacesRule : RuleBase
 				{
 					Summary = "Create an .editorconfig file and set csharp_style_namespace_declarations = file_scoped:error.",
 					Detail = "Create a `.editorconfig` file at the repository root and add `csharp_style_namespace_declarations = file_scoped:error` in the `[*.cs]` section.",
-					Data = new() { ["file"] = ".editorconfig" }
+					Data = new()
+					{
+						["file"] = ".editorconfig",
+						["remediation_type"] = "append_line",
+						["line_content"] = "csharp_style_namespace_declarations = file_scoped:error"
+					}
 				}));
 		}
 
@@ -91,7 +105,12 @@ public class FileScopedNamespacesRule : RuleBase
 				{
 					Summary = "Add 'csharp_style_namespace_declarations = file_scoped:error' to .editorconfig.",
 					Detail = "The `.editorconfig` file does not enforce file-scoped namespaces. Add `csharp_style_namespace_declarations = file_scoped:error` to the `[*.cs]` section.",
-					Data = new() { ["file"] = ".editorconfig" }
+					Data = new()
+					{
+						["file"] = ".editorconfig",
+						["remediation_type"] = "append_line",
+						["line_content"] = "csharp_style_namespace_declarations = file_scoped:error"
+					}
 				}));
 	}
 }

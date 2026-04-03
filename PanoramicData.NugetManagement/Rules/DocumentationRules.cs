@@ -57,7 +57,14 @@ public class GenerateDocumentationFileRule : RuleBase
 				{
 					Summary = "Add `<GenerateDocumentationFile>true</GenerateDocumentationFile>` to Directory.Build.props or each non-test .csproj",
 					Detail = "Add `<GenerateDocumentationFile>true</GenerateDocumentationFile>` to a `<PropertyGroup>` in `Directory.Build.props` (preferred) or each listed project file.",
-					Data = new() { ["projects_missing"] = missing.ToArray() }
+					Data = new()
+					{
+						["projects_missing"] = missing.ToArray(),
+						["remediation_type"] = "ensure_xml_property",
+						["file"] = "Directory.Build.props",
+						["property_name"] = "GenerateDocumentationFile",
+						["property_value"] = "true"
+					}
 				}));
 		}
 

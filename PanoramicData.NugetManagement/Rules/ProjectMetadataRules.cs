@@ -41,14 +41,20 @@ public class PackageIdSetRule : RuleBase
 					{
 						Summary = "Add <PackageId>YourPackageId</PackageId> to the .csproj.",
 						Detail = $"The project `{csproj}` does not have `<PackageId>` set. Add `<PackageId>YourPackageId</PackageId>` to a `<PropertyGroup>`.",
-						Data = new() { ["file"] = csproj }
-					}));
-			}
-		}
+											Data = new()
+											{
+												["file"] = csproj,
+												["remediation_type"] = "ensure_csproj_property",
+												["property_name"] = "PackageId",
+												["property_value"] = Path.GetFileNameWithoutExtension(csproj)
+											}
+										}));
+									}
+								}
 
-		return Task.FromResult(Pass("All packable projects have PackageId set."));
-	}
-}
+								return Task.FromResult(Pass("All packable projects have PackageId set."));
+							}
+						}
 
 /// <summary>
 /// Checks that RepositoryUrl is set in packable projects.
@@ -89,14 +95,20 @@ public class RepositoryUrlSetRule : RuleBase
 					{
 						Summary = "Add <RepositoryUrl>https://github.com/org/repo</RepositoryUrl> to the .csproj.",
 						Detail = $"The project `{csproj}` does not have `<RepositoryUrl>` set. Add `<RepositoryUrl>https://github.com/org/repo</RepositoryUrl>` to a `<PropertyGroup>`.",
-						Data = new() { ["file"] = csproj }
-					}));
-			}
-		}
+											Data = new()
+											{
+												["file"] = csproj,
+												["remediation_type"] = "ensure_csproj_property",
+												["property_name"] = "RepositoryUrl",
+												["property_value"] = $"https://github.com/{context.FullName}"
+											}
+										}));
+									}
+								}
 
-		return Task.FromResult(Pass("All packable projects have RepositoryUrl set."));
-	}
-}
+								return Task.FromResult(Pass("All packable projects have RepositoryUrl set."));
+							}
+						}
 
 /// <summary>
 /// Checks that Authors and Company are set in Directory.Build.props.
@@ -128,7 +140,14 @@ public class AuthorsAndCompanyRule : RuleBase
 				{
 					Summary = "Create Directory.Build.props with <Authors> and <Company>.",
 					Detail = $"No `Directory.Build.props` file was found. Create one with `<Authors>{expected}</Authors>` and `<Company>{expected}</Company>`.",
-					Data = new() { ["file"] = "Directory.Build.props", ["expected_holder"] = expected }
+					Data = new()
+					{
+						["file"] = "Directory.Build.props",
+						["expected_holder"] = expected,
+						["remediation_type"] = "ensure_xml_property",
+						["property_name"] = "Authors",
+						["property_value"] = expected
+					}
 				}));
 		}
 
@@ -143,7 +162,14 @@ public class AuthorsAndCompanyRule : RuleBase
 				{
 					Summary = $"Add <Authors>{expected}</Authors> and <Company>{expected}</Company>.",
 					Detail = $"`Directory.Build.props` is missing `<Authors>` and/or `<Company>`. Add `<Authors>{expected}</Authors>` and `<Company>{expected}</Company>` to a `<PropertyGroup>`.",
-					Data = new() { ["file"] = "Directory.Build.props", ["expected_holder"] = expected }
+					Data = new()
+					{
+						["file"] = "Directory.Build.props",
+						["expected_holder"] = expected,
+						["remediation_type"] = "ensure_xml_property",
+						["property_name"] = "Authors",
+						["property_value"] = expected
+					}
 				}));
 	}
 }

@@ -155,7 +155,11 @@ public class CodeQlWorkflowRule : RuleBase
 			{
 				Summary = "Add a GitHub Actions workflow using `github/codeql-action` for static analysis",
 				Detail = "Add a GitHub Actions workflow (e.g. `.github/workflows/codeql.yml`) that runs `github/codeql-action` for static analysis on push and pull request.",
-				Data = new() { ["expected_path"] = ".github/workflows/codeql.yml" }
+				Data = new()
+				{
+					["expected_path"] = ".github/workflows/codeql.yml",
+					["template_content"] = Standards.CodeQlWorkflowContent
+				}
 			}));
 	}
 }

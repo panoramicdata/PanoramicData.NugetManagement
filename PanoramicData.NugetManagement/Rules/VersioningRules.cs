@@ -32,8 +32,12 @@ public class NerdbankVersionJsonRule : RuleBase
 				{
 					Summary = "Create version.json with a version and publicReleaseRefSpec for Nerdbank.GitVersioning.",
 					Detail = "No `version.json` file was found at the repository root. Create one with a `version` property and `publicReleaseRefSpec` array for Nerdbank.GitVersioning.",
-					Data = new() { ["expected_path"] = "version.json" }
-				}));
+						Data = new()
+						{
+							["expected_path"] = "version.json",
+							["template_content"] = Standards.VersionJsonContent
+						}
+					}));
 		}
 
 		try
@@ -173,8 +177,13 @@ public class GlobalJsonRule : RuleBase
 				{
 					Summary = $"Create global.json pinning SDK version to {Standards.LatestDotNetSdkVersion} with rollForward: latestFeature.",
 					Detail = $"No `global.json` file was found at the repository root. Create one pinning the SDK version to `{Standards.LatestDotNetSdkVersion}` with `rollForward: latestFeature`.",
-					Data = new() { ["expected_path"] = "global.json", ["latest_sdk"] = Standards.LatestDotNetSdkVersion }
-				}));
+						Data = new()
+						{
+							["expected_path"] = "global.json",
+							["latest_sdk"] = Standards.LatestDotNetSdkVersion,
+							["template_content"] = Standards.GlobalJsonContent
+						}
+					}));
 		}
 
 		return Task.FromResult(Contains(content, Standards.LatestDotNetSdkVersion)

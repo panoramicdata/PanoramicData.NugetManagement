@@ -36,8 +36,12 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 				{
 					Summary = "Add standard Publish.ps1 matching the Meraki.Api tagging-and-trigger pattern",
 					Detail = "Copy the standard Publish.ps1 from Meraki.Api. It should check for a clean tree, verify the main branch, use `nbgv get-version`, create a tag, and push the tag.",
-					Data = new() { ["expected_path"] = "Publish.ps1" }
-				}));
+						Data = new()
+						{
+							["expected_path"] = "Publish.ps1",
+							["template_content"] = Standards.PublishPs1Content
+						}
+					}));
 		}
 
 		var requiredSnippets = new[]

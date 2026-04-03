@@ -427,12 +427,7 @@ else
             return;
         }
 
-        if (!result.Advisory.Data.TryGetValue("expected_path", out var pathObj) || pathObj is not string expectedPath)
-        {
-            return;
-        }
-
-        if (!result.Advisory.Data.TryGetValue("template_content", out var contentObj) || contentObj is not string templateContent)
+        if (!DashboardService.IsAutoRemediable(result))
         {
             return;
         }
@@ -443,22 +438,15 @@ else
 
         try
         {
-            var fullPath = Path.Combine(_row.LocalPath, expectedPath.Replace('/', Path.DirectorySeparatorChar));
+            var applied = new List<string>();
+            Dashboard.ApplySingleRemediationPublic(
+                _row.LocalPath,
+                result,
+                applied,
+                line => AppendConsole(line));
 
-            if (File.Exists(fullPath))
+            if (applied.Count > 0)
             {
-                AppendConsole($"⏭️ [{result.RuleId}] {expectedPath} already exists — skipping.");
-            }
-            else
-            {
-                var dir = Path.GetDirectoryName(fullPath);
-                if (dir is not null && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                await File.WriteAllTextAsync(fullPath, templateContent);
-                AppendConsole($"✅ [{result.RuleId}] Created {expectedPath}");
                 await Dashboard.RefreshGitStatusAsync(_row);
             }
         }

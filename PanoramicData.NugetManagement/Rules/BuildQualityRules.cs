@@ -34,7 +34,13 @@ public class TreatWarningsAsErrorsRule : RuleBase
 			{
 				Summary = "Enable `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in Directory.Build.props",
 				Detail = "Add `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` to a `<PropertyGroup>` in `Directory.Build.props`. This ensures all compiler warnings are treated as errors, preventing warning accumulation.",
-				Data = new() { ["file"] = "Directory.Build.props" }
+				Data = new()
+				{
+					["file"] = "Directory.Build.props",
+					["remediation_type"] = "ensure_xml_property",
+					["property_name"] = "TreatWarningsAsErrors",
+					["property_value"] = "true"
+				}
 			}));
 	}
 }
@@ -71,7 +77,13 @@ public class NullableEnabledRule : RuleBase
 			{
 				Summary = "Enable `<Nullable>enable</Nullable>` in Directory.Build.props",
 				Detail = "Add `<Nullable>enable</Nullable>` to a `<PropertyGroup>` in `Directory.Build.props`. This enables nullable reference type annotations and warnings across all projects.",
-				Data = new() { ["file"] = "Directory.Build.props" }
+				Data = new()
+				{
+					["file"] = "Directory.Build.props",
+					["remediation_type"] = "ensure_xml_property",
+					["property_name"] = "Nullable",
+					["property_value"] = "enable"
+				}
 			}));
 	}
 }
@@ -116,7 +128,13 @@ public class ImplicitUsingsRule : RuleBase
 				{
 					Summary = "Enable `<ImplicitUsings>enable</ImplicitUsings>` in each .csproj",
 					Detail = "Add `<ImplicitUsings>enable</ImplicitUsings>` to the `<PropertyGroup>` in each project file listed below.",
-					Data = new() { ["projects"] = missing.ToArray() }
+					Data = new()
+					{
+						["remediation_type"] = "ensure_csproj_property",
+						["property_name"] = "ImplicitUsings",
+						["property_value"] = "enable",
+						["projects"] = missing.ToArray()
+					}
 				}));
 	}
 }
