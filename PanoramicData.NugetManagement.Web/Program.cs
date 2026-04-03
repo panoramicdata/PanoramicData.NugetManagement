@@ -13,6 +13,7 @@ builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSet
 // Register services
 builder.Services.AddSingleton<NuGetDiscoveryService>();
 builder.Services.AddSingleton<LocalRepoService>();
+builder.Services.AddSingleton<DashboardCacheService>();
 builder.Services.AddScoped<DashboardService>();
 
 // GitHub OAuth authentication

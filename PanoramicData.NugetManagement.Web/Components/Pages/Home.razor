@@ -3,8 +3,10 @@
 @using Octokit
 @rendermode InteractiveServer
 @inject DashboardService Dashboard
+@inject DashboardCacheService Cache
 @inject IHttpContextAccessor HttpContextAccessor
 @inject ILogger<Home> Logger
+@implements IDisposable
 
 <PageTitle>NuGet Package Governance</PageTitle>
 
@@ -30,6 +32,10 @@ else
             @if (_isLoading)
             {
                 <span class="progress-indicator"><span class="spinner"></span> @_progressMessage</span>
+            }
+            else if (_lastRefreshUtc > DateTimeOffset.MinValue)
+            {
+                <span class="progress-indicator" style="opacity:0.5">Last refreshed: @_lastRefreshUtc.ToLocalTime().ToString("HH:mm")</span>
             }
             <button class="btn btn-primary" @onclick="RefreshAsync" disabled="@_isLoading">🔄 Refresh</button>
             <a href="/settings" class="btn">⚙️ Settings</a>
@@ -240,6 +246,8 @@ else
     private ModalView _modalView = ModalView.Issues;
     private string _aiPrompt = string.Empty;
     private string _consoleOutput = string.Empty;
+    private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
+    private System.Threading.Timer? _autoRefreshTimer;
 
     private enum ModalView { Issues, AiPrompt, Console }
 
@@ -252,7 +260,33 @@ else
             _userName = httpContext.User.Identity.Name ?? "User";
             _accessToken = await httpContext.GetTokenAsync("access_token");
             _categories = Enum.GetValues<AssessmentCategory>();
+
+            // Load from cache immediately
+            var cached = Cache.GetCachedRows();
+            if (cached is not null)
+            {
+                _rows = cached;
+                _lastRefreshUtc = Cache.LastRefreshUtc;
+            }
+
+            // Start hourly auto-refresh timer
+            _autoRefreshTimer = new System.Threading.Timer(
+                OnAutoRefreshTimer,
+                null,
+                Cache.IsStale ? TimeSpan.Zero : DashboardCacheService.CacheDuration,
+                DashboardCacheService.CacheDuration);
         }
+    }
+
+    private void OnAutoRefreshTimer(object? state)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (!_isLoading)
+            {
+                await RefreshAsync().ConfigureAwait(false);
+            }
+        });
     }
 
     private IGitHubClient CreateGitHubClient()
@@ -278,7 +312,7 @@ else
             StateHasChanged();
 
             var github = CreateGitHubClient();
-            var assessable = _rows.Where(r => r.IsClonedLocally && r.RepositoryFullName is not null).ToList();
+            var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
 
             for (var i = 0; i < assessable.Count; i++)
             {
@@ -289,6 +323,10 @@ else
                 await Dashboard.AssessRepositoryAsync(row, github);
                 StateHasChanged();
             }
+
+            // Update cache with fresh results
+            Cache.Update(_rows);
+            _lastRefreshUtc = Cache.LastRefreshUtc;
 
             _progressMessage = string.Empty;
         }
@@ -393,4 +431,9 @@ else
         AssessmentCategory.CommunityHealth => "COM",
         _ => cat.ToString()[..3].ToUpperInvariant()
     };
+
+    public void Dispose()
+    {
+        _autoRefreshTimer?.Dispose();
+    }
 }
