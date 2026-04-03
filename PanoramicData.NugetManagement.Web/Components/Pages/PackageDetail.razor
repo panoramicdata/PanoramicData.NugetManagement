@@ -7,6 +7,7 @@
 @inject NavigationManager Navigation
 @inject IHttpContextAccessor HttpContextAccessor
 @inject ILogger<PackageDetail> Logger
+@inject IJSRuntime JS
 
 <PageTitle>@PackageId — NuGet Governance</PageTitle>
 
@@ -152,6 +153,12 @@ else
         <div class="detail-console-panel">
             <div class="console-panel-header">
                 <span>Console</span>
+                @if (!string.IsNullOrEmpty(_lastPromptText))
+                {
+                    <button class="btn btn-sm btn-copy @(_copyFeedback ? "btn-copied" : "")" @onclick="CopyPromptToClipboardAsync" title="Copy AI prompt to clipboard">
+                        @(_copyFeedback ? "✅ Copied!" : "📋 Copy Prompt")
+                    </button>
+                }
                 @if (_consoleLines.Count > 0)
                 {
                     <button class="btn btn-sm btn-icon" @onclick="ClearConsole" title="Clear console">🗑️</button>
@@ -207,6 +214,8 @@ else
     private string _progressMessage = string.Empty;
     private List<string> _consoleLines = [];
     private ElementReference _consoleElement;
+    private string? _lastPromptText;
+    private bool _copyFeedback;
 
     protected override async Task OnInitializedAsync()
     {
@@ -662,9 +671,11 @@ else
             return;
         }
 
+        _lastPromptText = prompt;
+        _copyFeedback = false;
         AppendConsole("── AI Remediation Prompt (All) ──");
         AppendConsole(prompt);
-        AppendConsole("── End Prompt ──");
+        AppendConsole("── End Prompt ── (use 📋 Copy Prompt button to copy)");
         StateHasChanged();
     }
 
@@ -682,9 +693,11 @@ else
             return;
         }
 
+        _lastPromptText = prompt;
+        _copyFeedback = false;
         AppendConsole($"── AI Remediation Prompt ({category}) ──");
         AppendConsole(prompt);
-        AppendConsole("── End Prompt ──");
+        AppendConsole("── End Prompt ── (use 📋 Copy Prompt button to copy)");
         StateHasChanged();
     }
 
@@ -696,6 +709,32 @@ else
     private void ClearConsole()
     {
         _consoleLines.Clear();
+        _lastPromptText = null;
+        _copyFeedback = false;
+    }
+
+    private async Task CopyPromptToClipboardAsync()
+    {
+        if (string.IsNullOrEmpty(_lastPromptText))
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _lastPromptText);
+            _copyFeedback = true;
+            StateHasChanged();
+
+            // Reset feedback after 2 seconds
+            await Task.Delay(2000);
+            _copyFeedback = false;
+            StateHasChanged();
+        }
+        catch
+        {
+            AppendConsole("⚠️ Failed to copy to clipboard. Your browser may not support this feature.");
+        }
     }
 
     private void NavigateToDashboard()

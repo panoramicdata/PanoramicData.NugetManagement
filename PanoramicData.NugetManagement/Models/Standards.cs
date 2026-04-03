@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace PanoramicData.NugetManagement.Models;
 
 /// <summary>
@@ -7,14 +9,61 @@ namespace PanoramicData.NugetManagement.Models;
 public static class Standards
 {
 	/// <summary>
+	/// The fallback SDK version used when detection fails.
+	/// </summary>
+	private const string FallbackDotNetSdkVersion = "10.0.201";
+
+	private static string? _detectedSdkVersion;
+
+	/// <summary>
 	/// The latest .NET target framework moniker.
 	/// </summary>
 	public const string LatestTargetFramework = "net10.0";
 
 	/// <summary>
-	/// The latest .NET SDK version for global.json.
+	/// The latest installed .NET SDK version for global.json, detected via <c>dotnet --list-sdks</c>.
+	/// Falls back to <see cref="FallbackDotNetSdkVersion"/> if detection fails.
 	/// </summary>
-	public const string LatestDotNetSdkVersion = "10.0.100";
+	public static string LatestDotNetSdkVersion => _detectedSdkVersion ??= DetectLatestSdkVersion();
+
+	/// <summary>
+	/// Detects the latest installed .NET SDK version by running <c>dotnet --list-sdks</c>
+	/// and selecting the highest version that matches the current major version (10).
+	/// </summary>
+	private static string DetectLatestSdkVersion()
+	{
+		try
+		{
+			using var process = new Process();
+			process.StartInfo = new ProcessStartInfo
+			{
+				FileName = "dotnet",
+				Arguments = "--list-sdks",
+				RedirectStandardOutput = true,
+				UseShellExecute = false,
+				CreateNoWindow = true
+			};
+			process.Start();
+			var output = process.StandardOutput.ReadToEnd();
+			process.WaitForExit(5000);
+
+			// Parse lines like "10.0.201 [C:\Program Files\dotnet\sdk]"
+			// and pick the highest version matching the current major version prefix.
+			var majorPrefix = LatestTargetFramework.Replace("net", "").Split('.')[0] + ".";
+			var best = output
+				.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.Select(line => line.Split(' ', 2)[0])
+				.Where(v => v.StartsWith(majorPrefix, StringComparison.Ordinal))
+				.OrderByDescending(v => v, StringComparer.Ordinal)
+				.FirstOrDefault();
+
+			return best ?? FallbackDotNetSdkVersion;
+		}
+		catch
+		{
+			return FallbackDotNetSdkVersion;
+		}
+	}
 
 	/// <summary>
 	/// The latest .NET version specifier for CI workflows.
