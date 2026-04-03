@@ -38,7 +38,7 @@ html, body {
 .app-layout {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    min-height: 100vh;
 }
 
 .app-header {
@@ -67,10 +67,15 @@ html, body {
     color: var(--accent);
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
 .app-main {
     flex: 1;
     overflow: auto;
-    padding: 1.5rem;
 }
 
 /* === Login Page === */
@@ -78,26 +83,47 @@ html, body {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 80vh;
+    min-height: 100vh;
 }
 
 .login-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 3rem;
+    padding: 3rem 4rem;
     text-align: center;
-    max-width: 400px;
+    max-width: 440px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.login-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
 }
 
 .login-card h1 {
     color: var(--accent);
-    margin-bottom: 0.5rem;
+    margin: 0 0 0.5rem 0;
+    font-size: 1.6rem;
 }
 
 .login-card p {
     color: var(--text-secondary);
     margin-bottom: 2rem;
+    line-height: 1.5;
+}
+
+.btn-login {
+    display: inline-block;
+    padding: 0.6rem 2rem;
+    font-size: 1rem;
+}
+
+/* === Dashboard Content === */
+.dashboard-content {
+    padding: 1.5rem;
+    flex: 1;
+    overflow: auto;
 }
 
 /* === Summary Cards === */
