@@ -1,5 +1,5 @@
-using PanoramicData.NugetManagement.Models;
 using System.Text.Json;
+using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Rules;
 

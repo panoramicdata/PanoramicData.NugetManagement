@@ -15,7 +15,6 @@ public class DashboardService
 {
 	private readonly NuGetDiscoveryService _nuget;
 	private readonly LocalRepoService _localRepo;
-	private readonly RemediationRegistry _remediationRegistry;
 	private readonly AppSettings _settings;
 	private readonly ILogger<DashboardService> _logger;
 
@@ -31,7 +30,7 @@ public class DashboardService
 	{
 		_nuget = nuget;
 		_localRepo = localRepo;
-		_remediationRegistry = remediationRegistry;
+		RemediationRegistry = remediationRegistry;
 		_settings = settings.Value;
 		_logger = logger;
 	}
@@ -343,7 +342,7 @@ public class DashboardService
 	/// <summary>
 	/// Gets the remediation registry for checking fix availability.
 	/// </summary>
-	public RemediationRegistry RemediationRegistry => _remediationRegistry;
+	public RemediationRegistry RemediationRegistry { get; }
 
 	/// <summary>
 	/// Applies automatic file-based remediations for all failed rules that have
@@ -422,7 +421,7 @@ public class DashboardService
 	/// Checks if a specific failed rule can be auto-remediated via the registry.
 	/// </summary>
 	public bool IsAutoRemediable(RuleResult result)
-		=> _remediationRegistry.CanRemediate(result);
+		=> RemediationRegistry.CanRemediate(result);
 
 	/// <summary>
 	/// Public entry point for applying a single remediation from outside the service.
@@ -443,7 +442,7 @@ public class DashboardService
 		List<string> applied,
 		Action<string>? onOutput)
 	{
-		var remediation = _remediationRegistry.Get(failure.RuleId);
+		var remediation = RemediationRegistry.Get(failure.RuleId);
 		if (remediation is null || !remediation.CanRemediate(failure))
 		{
 			return;
@@ -511,6 +510,7 @@ public class DashboardService
 			// Refresh git status after sync
 			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
 			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
+			row.IsSyncedWithOrigin = true; // Just synced, so by definition in sync
 		}
 
 		row.Status = success ? PackageStatus.GitSynced : PackageStatus.Error;
@@ -518,7 +518,7 @@ public class DashboardService
 	}
 
 	/// <summary>
-	/// Refreshes the git status for a row (branch and working tree clean state).
+	/// Refreshes the git status for a row (branch, working tree clean state, and sync status with origin).
 	/// </summary>
 	public async Task RefreshGitStatusAsync(PackageDashboardRow row, CancellationToken cancellationToken = default)
 	{
@@ -530,6 +530,7 @@ public class DashboardService
 
 		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
 		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
+		row.IsSyncedWithOrigin = await _localRepo.IsSyncedWithOriginAsync(repoName, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>

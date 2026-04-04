@@ -3,6 +3,6 @@ namespace PanoramicData.NugetManagement.Web.Remediations.CentralPackageManagemen
 /// <summary>Enables Central Package Management in Directory.Build.props.</summary>
 public sealed class CpmEnabledRemediation : DataDrivenRemediation
 {
-    /// <inheritdoc />
-    public override string RuleId => "CPM-01";
+	/// <inheritdoc />
+	public override string RuleId => "CPM-01";
 }

@@ -116,6 +116,56 @@ public class LocalRepoService
 	}
 
 	/// <summary>
+	/// Checks whether the local branch is in sync with its origin counterpart.
+	/// Performs a git fetch first, then compares HEAD against origin/{branch}.
+	/// Returns true if HEAD matches origin/{branch} (not behind and not ahead).
+	/// </summary>
+	public async Task<bool?> IsSyncedWithOriginAsync(string repoName, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
+		// Fetch latest from origin
+		var (fetchExit, _) = await RunCommandAsync(path, "git", "fetch --prune", cancellationToken).ConfigureAwait(false);
+		if (fetchExit != 0)
+		{
+			return null;
+		}
+
+		// Get current branch
+		var (branchExit, branchOutput) = await RunCommandAsync(path, "git", "rev-parse --abbrev-ref HEAD", cancellationToken).ConfigureAwait(false);
+		if (branchExit != 0)
+		{
+			return null;
+		}
+
+		var branch = branchOutput.Trim();
+
+		// Check if behind origin
+		var (behindExit, behindOutput) = await RunCommandAsync(path, "git", $"rev-list --count HEAD..origin/{branch}", cancellationToken).ConfigureAwait(false);
+		if (behindExit != 0)
+		{
+			// Remote tracking branch may not exist
+			return null;
+		}
+
+		// Check if ahead of origin
+		var (aheadExit, aheadOutput) = await RunCommandAsync(path, "git", $"rev-list --count origin/{branch}..HEAD", cancellationToken).ConfigureAwait(false);
+		if (aheadExit != 0)
+		{
+			return null;
+		}
+
+		var behind = int.TryParse(behindOutput.Trim(), out var b) ? b : -1;
+		var ahead = int.TryParse(aheadOutput.Trim(), out var a) ? a : -1;
+
+		return behind == 0 && ahead == 0;
+	}
+
+	/// <summary>
 	/// Clones a repository from GitHub.
 	/// </summary>
 	public async Task<(bool Success, string Output)> CloneAsync(

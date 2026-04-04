@@ -23,8 +23,10 @@ internal static class GitHubIntegrationSettings
 
 	public static GitHubClient CreateClient()
 	{
-		var client = new GitHubClient(new ProductHeaderValue("PanoramicData.NugetManagement.Tests"));
-		client.Credentials = new Credentials(Token);
+		var client = new GitHubClient(new ProductHeaderValue("PanoramicData.NugetManagement.Tests"))
+		{
+			Credentials = new Credentials(Token)
+		};
 		return client;
 	}
 }

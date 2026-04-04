@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using PanoramicData.Blazor.Extensions;
 using PanoramicData.NugetManagement.Web.Components;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Remediations;
@@ -11,14 +12,19 @@ var builder = WebApplication.CreateBuilder(args);
 // Bind configuration
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
 
+// Register PanoramicData.Blazor required services
+builder.Services.AddPanoramicDataBlazor();
+
 // Register services
 builder.Services.AddSingleton<NuGetDiscoveryService>();
 builder.Services.AddSingleton<LocalRepoService>();
 builder.Services.AddSingleton<DashboardCacheService>();
 builder.Services.AddSingleton<RemediationRegistry>();
 builder.Services.AddSingleton<RuntimeSettingsService>();
+builder.Services.AddSingleton<IdeDetectionService>();
 builder.Services.AddSingleton<LocalFileSystemDataProvider>();
 builder.Services.AddSingleton<PackageDashboardDataProvider>();
+builder.Services.AddSingleton<NavTreeDataProvider>();
 builder.Services.AddScoped<DashboardService>();
 
 // GitHub OAuth authentication

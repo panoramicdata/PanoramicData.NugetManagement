@@ -289,15 +289,15 @@ public class DashboardCacheService
 				}
 
 				if (reader.TokenType == JsonTokenType.String)
-					{
-						list.Add(reader.GetString()!);
-					}
-					else
-					{
-						// For non-string array elements, convert to string representation
-						using var doc = JsonDocument.ParseValue(ref reader);
-						list.Add(doc.RootElement.ToString());
-					}
+				{
+					list.Add(reader.GetString()!);
+				}
+				else
+				{
+					// For non-string array elements, convert to string representation
+					using var doc = JsonDocument.ParseValue(ref reader);
+					list.Add(doc.RootElement.ToString());
+				}
 			}
 
 			return [.. list];

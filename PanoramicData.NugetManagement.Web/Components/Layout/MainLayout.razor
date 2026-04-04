@@ -1,13 +1,14 @@
 @inherits LayoutComponentBase
 
-<div class="app-layout">
-    <main class="app-main">
-        @Body
-    </main>
+<PDBlockOverlay />
+<PDGlobalListener />
+
+<div class="app-shell">
+	@Body
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+	An unhandled error has occurred.
+	<a href="." class="reload">Reload</a>
+	<span class="dismiss">🗙</span>
 </div>

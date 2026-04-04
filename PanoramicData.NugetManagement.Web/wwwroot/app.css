@@ -41,36 +41,28 @@ html, body {
     min-height: 100vh;
 }
 
-.app-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 1.5rem;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border);
+.main-toolbar {
+    background: var(--bg-secondary) !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding: 0.25rem 0.5rem !important;
     flex-shrink: 0;
+    gap: 0.25rem;
 }
 
-.header-brand {
+.main-toolbar .pdtoolbarplaceholder {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
 .brand-icon {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
 }
 
 .brand-text {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 600;
     color: var(--accent);
-}
-
-.header-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
 }
 
 .app-main {
@@ -687,13 +679,6 @@ html, body {
     margin: 0.25rem 0;
 }
 
-.console-panel-footer {
-    display: flex;
-    gap: 0.35rem;
-    padding: 0.5rem 0.75rem;
-    border-top: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.03);
-}
 
 /* === Local/Clone Indicators === */
 .local-badge {
@@ -882,6 +867,51 @@ html, body {
     border-color: var(--border) !important;
 }
 
+/* PDTable filter dropdown dark theme */
+.pd-filter .dropdown-menu,
+.pd-dropdown .dropdown-menu {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.5) !important;
+    color: var(--text-primary) !important;
+}
+
+.pd-filter .filter-body {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+}
+
+.pd-filter .filter-values {
+    background: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.pd-filter .filter-toolbar {
+    background: var(--bg-secondary) !important;
+}
+
+.pd-filter .filter-toolbar .btn {
+    font-size: 0.75rem;
+}
+
+.pd-filter select,
+.pd-filter input {
+    background: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border) !important;
+}
+
+.pd-filter select option {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.pd-filter .values-listitem:hover {
+    background: var(--bg-hover) !important;
+}
+
 /* PDFileModal dark theme overrides */
 .pd-file-explorer {
     background: var(--bg-primary);
@@ -924,4 +954,414 @@ h1:focus {
 
 .darker-border-checkbox.form-check-input {
     border-color: #929292;
+}
+
+/* === SPA Shell Layout === */
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.spa-body {
+    flex: 1;
+    overflow: hidden;
+    height: 100vh;
+}
+
+.spa-panel {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* === Centre Column Layout === */
+.centre-column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.centre-content-area {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* === Breadcrumb Bar === */
+.breadcrumb-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.35rem 0.75rem;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    min-height: 32px;
+    gap: 0.5rem;
+}
+
+.breadcrumb-trail {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+    overflow: hidden;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.breadcrumb-link {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.breadcrumb-link:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb-sep {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.breadcrumb-current {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.breadcrumb-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.btn-breadcrumb {
+    padding: 0.1rem 0.35rem;
+    font-size: 0.72rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.btn-breadcrumb:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-breadcrumb:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-breadcrumb-publish:hover:not(:disabled) {
+    color: var(--success);
+    border-color: var(--success);
+}
+
+/* === Console Toggle Button === */
+.btn-console-active {
+    color: var(--accent) !important;
+    border-color: var(--accent) !important;
+}
+
+/* === Navigation Panel === */
+.spa-nav-panel {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+}
+
+.nav-tree-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.nav-brand-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.nav-tree-filter {
+    padding: 0.5rem 0.5rem 0.25rem;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.nav-tree-filter .input-group-text {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text-muted);
+    padding: 0.2rem 0.5rem;
+}
+
+.nav-tree-filter .form-control {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text);
+    font-size: 0.8rem;
+}
+
+.nav-tree-filter .form-control::placeholder {
+    color: var(--text-muted);
+}
+
+.nav-tree-filter .btn-outline-secondary {
+    border-color: var(--border);
+    color: var(--text-muted);
+    padding: 0.2rem 0.4rem;
+}
+
+.filter-error {
+    color: var(--error);
+    font-size: 0.75rem;
+    padding: 0.15rem 0.25rem 0;
+}
+
+.nav-tree-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.25rem 0;
+}
+
+/* === RAG health colours for tree icons === */
+.text-success {
+    color: var(--success) !important;
+}
+
+.text-warning {
+    color: var(--warning) !important;
+}
+
+.text-danger {
+    color: var(--error) !important;
+}
+
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+/* === Content Panel === */
+.spa-content-panel {
+    min-width: 0;
+}
+
+.spa-main-content {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.spa-console-panel {
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+}
+
+/* === Chat Panel (Merlin) === */
+.spa-chat-panel {
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border);
+}
+
+.merlin-chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.merlin-chat-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.merlin-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem;
+}
+
+.merlin-welcome {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.merlin-avatar {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.merlin-welcome .text-muted {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.merlin-msg {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    align-items: flex-start;
+}
+
+.merlin-msg-user {
+    flex-direction: row-reverse;
+}
+
+.merlin-msg-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+}
+
+.merlin-msg-content {
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    max-width: 85%;
+    word-wrap: break-word;
+}
+
+.merlin-msg-ai .merlin-msg-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.merlin-msg-user .merlin-msg-content {
+    background: var(--accent);
+    color: #000;
+    border: 1px solid var(--accent);
+}
+
+.merlin-chat-input {
+    display: flex;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    flex-shrink: 0;
+}
+
+.merlin-chat-input input {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+}
+
+.merlin-chat-input input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* === SPA Placeholder === */
+.spa-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* === Console Panel Actions === */
+.console-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* === PDTree Dark Theme Overrides === */
+.pd-tree {
+    background: transparent;
+    color: var(--text-primary);
+}
+
+.pd-tree .pd-tree-node {
+    color: var(--text-primary);
+}
+
+.pd-tree .pd-tree-node:hover {
+    background: var(--bg-hover);
+}
+
+.pd-tree .pd-tree-node.selected {
+    background: var(--bg-surface);
+    border-left: 2px solid var(--accent);
+}
+
+.pd-tree .pd-tree-node-text {
+    font-size: 0.82rem;
+}
+
+.pd-tree .pd-tree-node-icon {
+    color: var(--text-muted);
+}
+
+/* === PDSplitter Gutter Dark Theme === */
+.gutter {
+    background-color: var(--border);
+    transition: background-color 0.15s ease;
+}
+
+.gutter:hover {
+    background-color: var(--accent);
+}
+
+.gutter.gutter-horizontal {
+    cursor: col-resize;
+}
+
+.gutter.gutter-vertical {
+    cursor: row-resize;
+}
+
+/* === Settings View (inline) === */
+.settings-view h2 {
+    margin-bottom: 0.5rem;
+}
+
+/* === Workflow Step Done Indicator === */
+.toolbar-step-done {
+    border-color: var(--success) !important;
+    box-shadow: 0 0 0 1px var(--success);
+    color: var(--success) !important;
+}
+
+.toolbar-step-done:hover {
+    background: rgba(40, 167, 69, 0.1);
 }

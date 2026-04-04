@@ -53,6 +53,12 @@ public class PackageDashboardRow
 	public string? CurrentBranch { get; set; }
 
 	/// <summary>
+	/// Whether the local branch is in sync with its origin counterpart
+	/// (i.e. not behind and not ahead after a fetch).
+	/// </summary>
+	public bool? IsSyncedWithOrigin { get; set; }
+
+	/// <summary>
 	/// The assessment result from the governance rules. Null if not yet assessed.
 	/// </summary>
 	public RepoAssessment? Assessment { get; set; }

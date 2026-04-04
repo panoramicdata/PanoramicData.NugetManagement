@@ -3,6 +3,6 @@ namespace PanoramicData.NugetManagement.Web.Remediations.CentralPackageManagemen
 /// <summary>Removes Version attributes from PackageReference elements in .csproj files.</summary>
 public sealed class CpmNoVersionInCsprojRemediation : DataDrivenRemediation
 {
-    /// <inheritdoc />
-    public override string RuleId => "CPM-02";
+	/// <inheritdoc />
+	public override string RuleId => "CPM-02";
 }

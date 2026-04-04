@@ -16,11 +16,10 @@ public static class RuleRegistry
 	public static IReadOnlyList<IRule> Rules => _rules.Value;
 
 	private static IReadOnlyList<IRule> DiscoverRules()
-		=> Assembly
+		=> [.. Assembly
 			.GetExecutingAssembly()
 			.GetTypes()
 			.Where(t => t is { IsAbstract: false, IsInterface: false } && t.IsAssignableTo(typeof(IRule)))
 			.Select(t => (IRule)Activator.CreateInstance(t)!)
-			.OrderBy(r => r.RuleId, StringComparer.OrdinalIgnoreCase)
-			.ToList();
+			.OrderBy(r => r.RuleId, StringComparer.OrdinalIgnoreCase)];
 }
