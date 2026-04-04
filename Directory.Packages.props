@@ -11,7 +11,7 @@
     <PackageVersion Include="PanoramicData.Blazor" Version="10.0.78" />
     <PackageVersion Include="Refit" Version="10.1.6" />
     <!-- Test project dependencies -->
-    <PackageVersion Include="AwesomeAssertions" Version="9.0.0" />
+    <PackageVersion Include="AwesomeAssertions" Version="9.4.0" />
     <PackageVersion Include="AwesomeAssertions.Analyzers" Version="9.0.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Codacy.Api" Version="3.0.22" />
