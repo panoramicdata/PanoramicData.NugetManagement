@@ -32,7 +32,12 @@ public class LicenseFileRule : RuleBase
 				{
 					Summary = $"Create a LICENSE file containing {expectedText} text.",
 					Detail = $"No `LICENSE` file was found at the repository root. Create one containing the standard {context.Options.ExpectedLicense} license text.",
-					Data = new() { ["expected_path"] = "LICENSE", ["expected_license_type"] = context.Options.ExpectedLicense }
+					Data = new()
+					{
+						["expected_path"] = "LICENSE",
+						["template_content"] = Standards.MitLicenseContent,
+						["expected_license_type"] = context.Options.ExpectedLicense
+					}
 				}));
 		}
 
@@ -44,7 +49,13 @@ public class LicenseFileRule : RuleBase
 				{
 					Summary = $"Replace LICENSE content with the standard {context.Options.ExpectedLicense} License text.",
 					Detail = $"The `LICENSE` file exists but does not contain the expected text `{expectedText}`. Replace its content with the standard {context.Options.ExpectedLicense} license text.",
-					Data = new() { ["file"] = "LICENSE", ["expected_license_type"] = context.Options.ExpectedLicense }
+					Data = new()
+					{
+						["file"] = "LICENSE",
+						["remediation_type"] = "replace_file_content",
+						["new_content"] = Standards.MitLicenseContent,
+						["expected_license_type"] = context.Options.ExpectedLicense
+					}
 				}));
 	}
 }

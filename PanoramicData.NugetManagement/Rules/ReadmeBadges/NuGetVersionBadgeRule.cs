@@ -36,7 +36,12 @@ public class NuGetVersionBadgeRule : RuleBase
 				{
 					Summary = "Add a NuGet version badge linking to nuget.org/packages/<PackageId>.",
 					Detail = "The `README.md` does not contain a NuGet version badge. Add a badge linking to `nuget.org/packages/<PackageId>`.",
-					Data = new() { ["file"] = "README.md" }
+					Data = new()
+					{
+						["file"] = "README.md",
+						["remediation_type"] = "prepend_line",
+						["line_content"] = $"[![NuGet version](https://img.shields.io/nuget/v/{context.Name}.svg)](https://www.nuget.org/packages/{context.Name}/)"
+					}
 				}));
 	}
 }

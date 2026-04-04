@@ -49,7 +49,12 @@ public class XunitV3Rule : RuleBase
 			{
 				Summary = "Replace xunit/xunit.core/xunit.runner.visualstudio v2 references with xunit.v3 and xunit.runner.visualstudio v3.",
 				Detail = "xUnit v3 is not referenced in `Directory.Packages.props` or any test project. Replace legacy `xunit`/`xunit.core`/`xunit.runner.visualstudio` v2 references with `xunit.v3` and `xunit.runner.visualstudio` v3.",
-				Data = new() { ["expected_package"] = "xunit.v3" }
+				Data = new()
+				{
+					["remediation_type"] = "add_package_version",
+					["package_name"] = "xunit.v3",
+					["file"] = "Directory.Packages.props"
+				}
 			}));
 	}
 }

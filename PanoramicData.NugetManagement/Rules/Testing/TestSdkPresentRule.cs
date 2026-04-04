@@ -46,7 +46,12 @@ public class TestSdkPresentRule : RuleBase
 			{
 				Summary = "Add Microsoft.NET.Test.Sdk to the test project.",
 				Detail = "Microsoft.NET.Test.Sdk is not referenced in `Directory.Packages.props` or any test project. Add a reference to enable test discovery and execution.",
-				Data = new() { ["expected_package"] = "Microsoft.NET.Test.Sdk" }
+				Data = new()
+				{
+					["remediation_type"] = "add_package_version",
+					["package_name"] = "Microsoft.NET.Test.Sdk",
+					["file"] = "Directory.Packages.props"
+				}
 			}));
 	}
 }

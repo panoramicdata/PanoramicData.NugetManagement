@@ -23,11 +23,35 @@ public class LocalRepoService
 
 	/// <summary>
 	/// Gets the root directory where repos are expected to be cloned as siblings.
+	/// Walks up from the current directory to find the .git folder (this solution's
+	/// own repository), then returns its parent — which is the org-level directory
+	/// containing all sibling repos.
 	/// </summary>
 	public string GetReposRoot()
-		=> _settings.LocalReposRoot
-			?? Path.GetDirectoryName(Directory.GetCurrentDirectory())
+	{
+		if (_settings.LocalReposRoot is not null)
+		{
+			return _settings.LocalReposRoot;
+		}
+
+		// Walk up from the current working directory to find a .git folder.
+		// The directory containing .git is the solution's repo root;
+		// its parent is where sibling repos live.
+		var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+		while (dir is not null)
+		{
+			if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
+			{
+				return dir.Parent?.FullName ?? dir.FullName;
+			}
+
+			dir = dir.Parent;
+		}
+
+		// Fallback: parent of the current directory
+		return Path.GetDirectoryName(Directory.GetCurrentDirectory())
 			?? Directory.GetCurrentDirectory();
+	}
 
 	/// <summary>
 	/// Gets the local path for a repository by name.

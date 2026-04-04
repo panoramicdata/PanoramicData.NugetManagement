@@ -29,6 +29,7 @@
     <ItemGroup>
         <PackageReference Include="AspNet.Security.OAuth.GitHub" />
         <PackageReference Include="Octokit" />
+        <PackageReference Include="PanoramicData.Blazor" />
     </ItemGroup>
 
 </Project>

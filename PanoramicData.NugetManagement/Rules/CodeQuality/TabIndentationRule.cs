@@ -31,7 +31,7 @@ public class TabIndentationRule : RuleBase
 				{
 					Summary = "Create an .editorconfig with indent_style = tab for C# and XML files.",
 					Detail = "Create a `.editorconfig` file at the repository root with `indent_style = tab` in the `[*]` section to enforce tab indentation for C# and XML files.",
-					Data = new() { ["file"] = ".editorconfig" }
+					Data = new() { ["expected_path"] = ".editorconfig", ["template_content"] = Standards.EditorConfigContent }
 				}));
 		}
 
@@ -45,7 +45,12 @@ public class TabIndentationRule : RuleBase
 				{
 					Summary = "Set indent_style = tab in the [*] section of .editorconfig.",
 					Detail = "The `.editorconfig` file exists but does not set `indent_style = tab`. Add this setting in the `[*]` section.",
-					Data = new() { ["file"] = ".editorconfig" }
+					Data = new()
+					{
+						["file"] = ".editorconfig",
+						["remediation_type"] = "append_line",
+						["line_content"] = "indent_style = tab"
+					}
 				}));
 		}
 
@@ -71,7 +76,14 @@ public class TabIndentationRule : RuleBase
 					{
 						Summary = $"Change indent_style = space to indent_style = tab in the {currentSection} section.",
 						Detail = $"The `.editorconfig` section `{currentSection}` overrides `indent_style` to `space`. Change it to `indent_style = tab`.",
-						Data = new() { ["file"] = ".editorconfig", ["section"] = currentSection }
+						Data = new()
+						{
+							["file"] = ".editorconfig",
+							["remediation_type"] = "replace_in_file",
+							["section"] = currentSection,
+							["old_text"] = "indent_style = space",
+							["new_text"] = "indent_style = tab"
+						}
 					}));
 			}
 		}

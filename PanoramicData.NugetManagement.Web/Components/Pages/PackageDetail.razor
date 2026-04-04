@@ -47,6 +47,9 @@ else
             else
             {
                 <span class="local-badge local-no">☁️ Not cloned</span>
+                <button class="btn btn-sm" @onclick="CloneAsync" disabled="@(_isCloning)" title="Clone repository locally">
+                    @if (_isCloning) { <span class="spinner"></span> } 📥 Clone
+                </button>
             }
             @if (_row.SlnxPath is not null)
             {
@@ -62,11 +65,11 @@ else
             }
             <button class="btn" @onclick="FixAllAsync"
                 disabled="@(_isAssessing || _isRunning || !_row.IsClonedLocally || _row.Assessment is null || _row.TotalFailures == 0)"
-                title="Auto-fix remediable issues by writing files to disk">🔧 Fix All</button>
+                title="@GetFixAllTooltip()">🔧 Fix</button>
             <button class="btn" @onclick="ResolveAllAsync"
                 disabled="@(_isAssessing || _isRunning || _row.Assessment is null || _row.TotalFailures == 0)"
-                title="Generate AI remediation prompt for all failing rules">🤖 Resolve All</button>
-            <button class="btn btn-primary" @onclick="ReassessAllAsync" disabled="@_isAssessing">🔄 Re-assess All</button>
+                title="Generate AI remediation prompt and copy to clipboard">✨ Generate AI Prompt</button>
+            <button class="btn btn-primary" @onclick="ReassessAllAsync" disabled="@_isAssessing">🔄 Re-assess</button>
             <button class="btn" @onclick="NavigateToDashboard">← Dashboard</button>
         </div>
     </header>
@@ -102,10 +105,10 @@ else
                                 @if (HasAutoRemediableFailures(group.Category))
                                 {
                                     <button class="btn btn-sm btn-fix" @onclick="() => FixCategoryAsync(group.Category)"
-                                        disabled="@(_isAssessing || _isRunning || !_row.IsClonedLocally)" title="Auto-fix remediable issues in @group.Category">🔧 Fix</button>
+                                        disabled="@(_isAssessing || _isRunning || !_row.IsClonedLocally)" title="@GetFixCategoryTooltip(group.Category)">🔧 Fix</button>
                                 }
                                 <button class="btn btn-sm" @onclick="() => ResolveCategoryAsync(group.Category)"
-                                    disabled="@(_isAssessing || _isRunning)" title="Generate AI prompt for @group.Category">🤖 Resolve</button>
+                                    disabled="@(_isAssessing || _isRunning)" title="Generate AI prompt for @group.Category">✨ Prompt</button>
                                 <button class="btn btn-sm" @onclick="() => ReassessCategoryAsync(group.Category)"
                                     disabled="@_isAssessing" title="Re-assess this category">🔄</button>
                             </div>
@@ -116,10 +119,21 @@ else
                                 <div class="issue-item-header">
                                     <span class="badge @GetSeverityBadgeClass(result)">@result.RuleId</span>
                                     <span class="issue-rule-name">@result.RuleName</span>
-                                    @if (DashboardService.IsAutoRemediable(result) && _row.IsClonedLocally)
+                                    @if (Dashboard.IsAutoRemediable(result))
                                     {
-                                        <button class="btn btn-xs btn-fix" @onclick="() => FixSingleRuleAsync(result)"
-                                            disabled="@(_isAssessing || _isRunning)" title="Auto-fix this issue">🔧</button>
+                                        @if (_row.IsClonedLocally)
+                                        {
+                                            <button class="btn btn-xs btn-fix" @onclick="() => FixSingleRuleAsync(result)"
+                                                disabled="@(_isAssessing || _isRunning)" title="@GetFixSingleTooltip()">🔧</button>
+                                        }
+                                        else
+                                        {
+                                            <span class="fix-hint" title="Clone the repo to enable auto-fix">🔧</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="no-fix-badge" title="No automatic fix available — use AI prompt instead">✨ AI only</span>
                                     }
                                 </div>
                                 <div class="issue-message">@result.Message</div>
@@ -211,6 +225,7 @@ else
     private bool _notFound;
     private bool _isAssessing;
     private bool _isRunning;
+    private bool _isCloning;
     private string _progressMessage = string.Empty;
     private List<string> _consoleLines = [];
     private ElementReference _consoleElement;
@@ -425,6 +440,56 @@ else
         }
     }
 
+    private async Task CloneAsync()
+    {
+        if (_row is null || _row.RepositoryUrl is null)
+        {
+            return;
+        }
+
+        _isCloning = true;
+        AppendConsole($"▶ Cloning {_row.RepositoryFullName ?? _row.PackageId}...");
+        StateHasChanged();
+
+        try
+        {
+            await Dashboard.CloneRepositoryAsync(_row, line =>
+            {
+                AppendConsole(line);
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (_row.IsClonedLocally)
+            {
+                AppendConsole($"✅ Cloned to {_row.LocalPath}");
+
+                // Auto-assess after cloning
+                _isAssessing = true;
+                _progressMessage = $"Assessing {_row.PackageId}...";
+                StateHasChanged();
+
+                await Dashboard.AssessLocalRepositoryAsync(_row);
+                Cache.NotifyRowUpdated();
+                AppendConsole($"✅ Assessment complete — {_row.TotalFailures} issue(s).");
+            }
+            else
+            {
+                AppendConsole($"❌ Clone failed: {_row.StatusMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendConsole($"❌ Error cloning: {ex.Message}");
+        }
+        finally
+        {
+            _isCloning = false;
+            _isAssessing = false;
+            _progressMessage = string.Empty;
+            StateHasChanged();
+        }
+    }
+
     private async Task FixCategoryAsync(AssessmentCategory category)
     {
         if (_row is null || !_row.IsClonedLocally)
@@ -474,7 +539,7 @@ else
             return;
         }
 
-        if (!DashboardService.IsAutoRemediable(result))
+        if (!Dashboard.IsAutoRemediable(result))
         {
             return;
         }
@@ -657,7 +722,7 @@ else
         }
     }
 
-    private void ResolveAllAsync()
+    private async Task ResolveAllAsync()
     {
         if (_row is null)
         {
@@ -675,11 +740,14 @@ else
         _copyFeedback = false;
         AppendConsole("── AI Remediation Prompt (All) ──");
         AppendConsole(prompt);
-        AppendConsole("── End Prompt ── (use 📋 Copy Prompt button to copy)");
+        AppendConsole("── End Prompt ──");
         StateHasChanged();
+
+        // Auto-copy to clipboard
+        await CopyPromptToClipboardAsync();
     }
 
-    private void ResolveCategoryAsync(AssessmentCategory category)
+    private async Task ResolveCategoryAsync(AssessmentCategory category)
     {
         if (_row is null)
         {
@@ -697,8 +765,11 @@ else
         _copyFeedback = false;
         AppendConsole($"── AI Remediation Prompt ({category}) ──");
         AppendConsole(prompt);
-        AppendConsole("── End Prompt ── (use 📋 Copy Prompt button to copy)");
+        AppendConsole("── End Prompt ──");
         StateHasChanged();
+
+        // Auto-copy to clipboard
+        await CopyPromptToClipboardAsync();
     }
 
     private void AppendConsole(string line)
@@ -742,6 +813,71 @@ else
         Navigation.NavigateTo("/");
     }
 
+    private string GetFixAllTooltip()
+    {
+        if (_isAssessing)
+        {
+            return "Assessment in progress — please wait";
+        }
+
+        if (_isRunning)
+        {
+            return "Another operation is running — please wait";
+        }
+
+        if (!_row!.IsClonedLocally)
+        {
+            return "Clone the repository first to enable auto-fix";
+        }
+
+        if (_row.Assessment is null)
+        {
+            return "Run an assessment first to identify issues";
+        }
+
+        if (_row.TotalFailures == 0)
+        {
+            return "No issues to fix — all rules pass";
+        }
+
+        return "Auto-fix remediable issues by writing files to disk";
+    }
+
+    private string GetFixCategoryTooltip(AssessmentCategory category)
+    {
+        if (_isAssessing)
+        {
+            return "Assessment in progress — please wait";
+        }
+
+        if (_isRunning)
+        {
+            return "Another operation is running — please wait";
+        }
+
+        if (!_row!.IsClonedLocally)
+        {
+            return "Clone the repository first to enable auto-fix";
+        }
+
+        return $"Auto-fix remediable issues in {category}";
+    }
+
+    private string GetFixSingleTooltip()
+    {
+        if (_isAssessing)
+        {
+            return "Assessment in progress — please wait";
+        }
+
+        if (_isRunning)
+        {
+            return "Another operation is running — please wait";
+        }
+
+        return "Auto-fix this issue";
+    }
+
     private bool HasAutoRemediableFailures(AssessmentCategory category)
     {
         if (_row?.Assessment is null)
@@ -750,7 +886,7 @@ else
         }
 
         return _row.Assessment.RuleResults
-            .Any(r => !r.Passed && r.Category == category && DashboardService.IsAutoRemediable(r));
+            .Any(r => !r.Passed && r.Category == category && Dashboard.IsAutoRemediable(r));
     }
 
     private List<CategoryGroup> GetGroupedFailures()

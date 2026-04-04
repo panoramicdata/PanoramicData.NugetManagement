@@ -38,7 +38,12 @@ public class NerdbankPackageReferencedRule : RuleBase
 				{
 					Summary = "Add a PackageVersion for Nerdbank.GitVersioning to Directory.Packages.props.",
 					Detail = "Nerdbank.GitVersioning is not referenced in `Directory.Packages.props` or any `.csproj`. Add a `<PackageVersion>` entry for `Nerdbank.GitVersioning`.",
-					Data = new() { ["expected_package"] = "Nerdbank.GitVersioning" }
+					Data = new()
+					{
+						["remediation_type"] = "add_package_version",
+						["package_name"] = "Nerdbank.GitVersioning",
+						["file"] = "Directory.Packages.props"
+					}
 				}));
 	}
 }

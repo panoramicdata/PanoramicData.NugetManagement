@@ -4,6 +4,7 @@
 @rendermode InteractiveServer
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
+@inject PackageDashboardDataProvider DataProvider
 @inject NavigationManager Navigation
 @inject IHttpContextAccessor HttpContextAccessor
 @inject ILogger<Home> Logger
@@ -65,196 +66,135 @@ else
         </div>
     </div>
 
-    <!-- Main governance table -->
-    <div class="table-toolbar">
-        @if (_highlightedRow is not null)
-        {
-            <button class="btn btn-primary btn-sm" @onclick="NavigateToDetail">📋 View @_highlightedRow.PackageId</button>
-        }
-        else
-        {
-            <span class="toolbar-hint">Click a row to select, double-click to view details</span>
-        }
-    </div>
-    <div style="overflow-x: auto;">
-        <table class="governance-table">
-            <thead>
-                <tr>
-                    <th>Package</th>
-                    <th>Version</th>
-                    @foreach (var cat in _categories)
-                    {
-                        <th class="category-col" title="@cat.ToString()">@GetCategoryAbbrev(cat)</th>
-                    }
-                    <th class="total-col">Total</th>
-                    <th class="action-col">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var row in _rows)
-                {
-                    <tr class="@(row == _highlightedRow ? "row-selected" : "")"
-                        @onclick="() => SelectRow(row)"
-                        @ondblclick="() => NavigateToPackage(row)">
-                        <td>
-                            @if (row.RepositoryUrl is not null)
-                            {
-                                <a href="@row.RepositoryUrl" target="_blank" class="pkg-name">@row.PackageId</a>
-                            }
-                            else
-                            {
-                                <span class="pkg-name">@row.PackageId</span>
-                            }
-                            @if (row.IsClonedLocally)
-                            {
-                                @if (row.IsWorkingTreeClean == false)
-                                {
-                                    <span class="git-dirty" title="Working tree has uncommitted changes">●</span>
-                                }
-                                else if (row.IsWorkingTreeClean == true)
-                                {
-                                    <span class="git-clean" title="Working tree is clean">●</span>
-                                }
-                            }
-                        </td>
-                        <td><span class="pkg-version">@row.LatestVersion</span></td>
-                        @foreach (var cat in _categories)
-                        {
-                            <td>
-                                @if (row.Assessment is null)
-                                {
-                                    @if (row.Status == PackageStatus.Assessing)
-                                    {
-                                        <span class="spinner"></span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge-none">—</span>
-                                    }
-                                }
-                                else if (row.CategorySummaries.TryGetValue(cat, out var summary))
-                                {
-                                    @if (summary.TotalFailures == 0)
-                                    {
-                                        <span class="badge badge-pass">✓</span>
-                                    }
-                                    else if (summary.Errors > 0)
-                                    {
-                                        <span class="badge badge-fail">@summary.TotalFailures</span>
-                                    }
-                                    else if (summary.Warnings > 0)
-                                    {
-                                        <span class="badge badge-warn">@summary.TotalFailures</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge badge-info">@summary.TotalFailures</span>
-                                    }
-                                }
-                                else
-                                {
-                                    <span class="badge-none">—</span>
-                                }
-                            </td>
-                        }
-                        <td>
-                            @if (row.Assessment is not null)
-                            {
-                                @if (row.TotalFailures == 0)
-                                {
-                                    <span class="badge badge-pass">0</span>
-                                }
-                                else if (row.TotalErrors > 0)
-                                {
-                                    <span class="badge badge-fail">@row.TotalFailures</span>
-                                }
-                                else
-                                {
-                                    <span class="badge badge-warn">@row.TotalFailures</span>
-                                }
-                            }
-                        </td>
-                        <td>
-                            @if (row.Status == PackageStatus.NotCloned)
-                            {
-                                <button class="btn btn-sm" @onclick="() => CloneAsync(row)" title="Clone repository">📥</button>
-                            }
-                            else if (row.Assessment is not null && row.TotalFailures > 0)
-                            {
-                                <button class="btn btn-sm" @onclick="() => ShowDetails(row)" title="View issues & remediate">🔧</button>
-                            }
-                            else if (row.Status == PackageStatus.Cloning || row.Status == PackageStatus.Assessing)
-                            {
-                                <span class="spinner"></span>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+    <!-- Main governance table using PDTable -->
+    <PDTable @ref="_table"
+             TItem="PackageDashboardRow"
+             DataProvider="DataProvider"
+             KeyField="x => x.PackageId"
+             SearchText="@_searchText"
+             Click="OnRowClick"
+             DoubleClick="OnRowDoubleClick"
+             TableClass="governance-table">
 
-    <!-- Detail/Remediation Modal -->
-    @if (_selectedRow is not null)
-    {
-        <div class="modal-backdrop" @onclick="CloseModal">
-            <div class="modal-panel" @onclick:stopPropagation="true">
-                <div class="modal-header">
-                    <h2>@_selectedRow.PackageId — @_selectedRow.TotalFailures Issue(s)</h2>
-                    <button class="btn btn-icon" @onclick="CloseModal">✕</button>
-                </div>
-                <div class="modal-body">
-                    @if (_modalView == ModalView.Issues)
+        <PDToolbar>
+            <PDToolbarTextbox Placeholder="Search packages..."
+                              Value="@_searchText"
+                              ValueChanged="OnSearchChanged"
+                              Width="250px" />
+        </PDToolbar>
+
+        <PDColumn TItem="PackageDashboardRow"
+                  Field="x => x.PackageId"
+                  Title="Package"
+                  Sortable="true"
+                  Filterable="true"
+                  TdClass="text-start">
+            <Template>
+                @if (context.RepositoryUrl is not null)
+                {
+                    <a href="@context.RepositoryUrl" target="_blank" class="pkg-name">@context.PackageId</a>
+                }
+                else
+                {
+                    <span class="pkg-name">@context.PackageId</span>
+                }
+                @if (context.IsClonedLocally)
+                {
+                    @if (context.IsWorkingTreeClean == false)
                     {
-                        <ul class="rule-list">
-                            @foreach (var result in _selectedRow.Assessment!.RuleResults.Where(r => !r.Passed))
-                            {
-                                <li class="rule-item">
-                                    <span class="rule-id">
-                                        <span class="badge @(result.Severity == AssessmentSeverity.Error ? "badge-fail" : result.Severity == AssessmentSeverity.Warning ? "badge-warn" : "badge-info")">@result.RuleId</span>
-                                    </span>
-                                    <div>
-                                        <div class="rule-message">@result.Message</div>
-                                        @if (result.Advisory is not null)
-                                        {
-                                            <div class="rule-advisory">💡 @result.Advisory.Summary</div>
-                                        }
-                                    </div>
-                                </li>
-                            }
-                        </ul>
+                        <span class="git-dirty" title="Working tree has uncommitted changes">●</span>
                     }
-                    else if (_modalView == ModalView.AiPrompt)
+                    else if (context.IsWorkingTreeClean == true)
                     {
-                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Copy this prompt to an AI assistant for automated remediation:</p>
-                        <div class="ai-prompt">@_aiPrompt</div>
+                        <span class="git-clean" title="Working tree is clean">●</span>
                     }
-                    else if (_modalView == ModalView.Console)
+                }
+            </Template>
+        </PDColumn>
+
+        <PDColumn TItem="PackageDashboardRow"
+                  Field="x => x.LatestVersion"
+                  Title="Version"
+                  Sortable="true"
+                  Filterable="true">
+            <Template>
+                <span class="pkg-version">@context.LatestVersion</span>
+            </Template>
+        </PDColumn>
+
+        @foreach (var cat in _categories)
+        {
+            var category = cat;
+            <PDColumn TItem="PackageDashboardRow"
+                      Field="x => x.TotalFailures"
+                      Id="@($"cat-{category}")"
+                      Title="@GetCategoryAbbrev(category)"
+                      Sortable="false">
+                <Template>
+                    @if (context.Assessment is null)
                     {
-                        <div class="console-output">@_consoleOutput</div>
+                        @if (context.Status == PackageStatus.Assessing)
+                        {
+                            <span class="spinner"></span>
+                        }
+                        else
+                        {
+                            <span class="badge-none">—</span>
+                        }
                     }
-                </div>
-                <div class="modal-footer">
-                    @if (_modalView == ModalView.Issues)
+                    else if (context.CategorySummaries.TryGetValue(category, out var summary))
                     {
-                        <button class="btn" @onclick="ShowAiPrompt">🤖 AI Prompt</button>
-                        <button class="btn btn-primary" @onclick="() => RunTestsAsync(_selectedRow)" disabled="@(_selectedRow.Status == PackageStatus.Testing)">
-                            @if (_selectedRow.Status == PackageStatus.Testing) { <span class="spinner"></span> } 🧪 Run Tests
-                        </button>
-                        <button class="btn btn-success" @onclick="() => RunPublishAsync(_selectedRow)"
-                            disabled="@(_selectedRow.Status != PackageStatus.TestsPassed)">
-                            🚀 Publish
-                        </button>
+                        @if (summary.TotalFailures == 0)
+                        {
+                            <span class="badge badge-pass">✓</span>
+                        }
+                        else if (summary.Errors > 0)
+                        {
+                            <span class="badge badge-fail">@summary.TotalFailures</span>
+                        }
+                        else if (summary.Warnings > 0)
+                        {
+                            <span class="badge badge-warn">@summary.TotalFailures</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-info">@summary.TotalFailures</span>
+                        }
                     }
                     else
                     {
-                        <button class="btn" @onclick="() => _modalView = ModalView.Issues">← Back to Issues</button>
+                        <span class="badge-none">—</span>
                     }
-                    <button class="btn" @onclick="CloseModal">Close</button>
-                </div>
-            </div>
-        </div>
-    }
+                </Template>
+            </PDColumn>
+        }
+
+        <PDColumn TItem="PackageDashboardRow"
+                  Field="x => x.TotalFailures"
+                  Id="total"
+                  Title="Total"
+                  Sortable="true">
+            <Template>
+                @if (context.Assessment is not null)
+                {
+                    @if (context.TotalFailures == 0)
+                    {
+                        <span class="badge badge-pass">0</span>
+                    }
+                    else if (context.TotalErrors > 0)
+                    {
+                        <span class="badge badge-fail">@context.TotalFailures</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-warn">@context.TotalFailures</span>
+                    }
+                }
+            </Template>
+        </PDColumn>
+
+    </PDTable>
+
     </div>
 }
 
@@ -266,15 +206,10 @@ else
     private string _progressMessage = string.Empty;
     private List<PackageDashboardRow> _rows = [];
     private AssessmentCategory[] _categories = [];
-    private PackageDashboardRow? _selectedRow;
-    private PackageDashboardRow? _highlightedRow;
-    private ModalView _modalView = ModalView.Issues;
-    private string _aiPrompt = string.Empty;
-    private string _consoleOutput = string.Empty;
     private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
     private System.Threading.Timer? _autoRefreshTimer;
-
-    private enum ModalView { Issues, AiPrompt, Console }
+    private PDTable<PackageDashboardRow>? _table;
+    private string _searchText = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -354,7 +289,7 @@ else
 
             // Cache the merged rows (with preserved assessments) immediately
             Cache.SetRows(_rows);
-            StateHasChanged();
+            await RefreshTableAsync();
 
             var github = CreateGitHubClient();
             var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
@@ -366,7 +301,7 @@ else
                 StateHasChanged();
 
                 await Dashboard.AssessRepositoryAsync(row, github);
-                StateHasChanged();
+                await RefreshTableAsync();
             }
 
             // Mark the full refresh as complete
@@ -387,89 +322,32 @@ else
         }
     }
 
-    private async Task CloneAsync(PackageDashboardRow row)
+    private async Task RefreshTableAsync()
     {
-        row.Status = PackageStatus.Cloning;
-        StateHasChanged();
-
-        await Dashboard.CloneRepositoryAsync(row, _ => InvokeAsync(StateHasChanged));
-        StateHasChanged();
-
-        // Auto-assess after cloning
-        if (row.IsClonedLocally)
+        if (_table is not null)
         {
-            var github = CreateGitHubClient();
-            await Dashboard.AssessRepositoryAsync(row, github);
-            StateHasChanged();
+            await _table.RefreshAsync().ConfigureAwait(true);
         }
-    }
-
-    private void ShowDetails(PackageDashboardRow row)
-    {
-        _selectedRow = row;
-        _modalView = ModalView.Issues;
-        _consoleOutput = string.Empty;
-    }
-
-    private void ShowAiPrompt()
-    {
-        if (_selectedRow is not null)
-        {
-            _aiPrompt = DashboardService.GenerateRemediationPrompt(_selectedRow);
-            _modalView = ModalView.AiPrompt;
-        }
-    }
-
-    private async Task RunTestsAsync(PackageDashboardRow row)
-    {
-        _modalView = ModalView.Console;
-        _consoleOutput = "Running tests...\n";
-        StateHasChanged();
-
-        await Dashboard.RunTestsAsync(row, line =>
-        {
-            _consoleOutput += line + "\n";
-            InvokeAsync(StateHasChanged);
-        });
 
         StateHasChanged();
     }
 
-    private async Task RunPublishAsync(PackageDashboardRow row)
+    private void OnRowClick(PackageDashboardRow row)
     {
-        _modalView = ModalView.Console;
-        _consoleOutput = "Running Publish.ps1...\n";
-        StateHasChanged();
-
-        await Dashboard.RunPublishAsync(row, line =>
-        {
-            _consoleOutput += line + "\n";
-            InvokeAsync(StateHasChanged);
-        });
-
-        StateHasChanged();
+        // Single click — no-op (PDTable handles selection)
     }
 
-    private void CloseModal()
-    {
-        _selectedRow = null;
-    }
-
-    private void SelectRow(PackageDashboardRow row)
-    {
-        _highlightedRow = row;
-    }
-
-    private void NavigateToPackage(PackageDashboardRow row)
+    private void OnRowDoubleClick(PackageDashboardRow row)
     {
         Navigation.NavigateTo($"/{Uri.EscapeDataString(row.PackageId)}");
     }
 
-    private void NavigateToDetail()
+    private async Task OnSearchChanged(string value)
     {
-        if (_highlightedRow is not null)
+        _searchText = value;
+        if (_table is not null)
         {
-            NavigateToPackage(_highlightedRow);
+            await _table.RefreshAsync(_searchText).ConfigureAwait(true);
         }
     }
 

@@ -51,7 +51,11 @@ public partial class CpmNoVersionInCsprojRule : RuleBase
 				{
 					Summary = "Remove `Version` attributes from PackageReference elements; move versions to Directory.Packages.props",
 					Detail = "Remove all `Version` attributes from `<PackageReference>` elements in the listed .csproj files. Versions should be managed centrally in `Directory.Packages.props`.",
-					Data = new() { ["projects_with_versions"] = violations.ToArray() }
+					Data = new()
+					{
+						["remediation_type"] = "remove_packagereference_versions",
+						["projects"] = violations.ToArray()
+					}
 				}));
 	}
 }

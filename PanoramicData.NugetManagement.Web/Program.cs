@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using PanoramicData.NugetManagement.Web.Components;
 using PanoramicData.NugetManagement.Web.Models;
+using PanoramicData.NugetManagement.Web.Remediations;
 using PanoramicData.NugetManagement.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,10 @@ builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSet
 builder.Services.AddSingleton<NuGetDiscoveryService>();
 builder.Services.AddSingleton<LocalRepoService>();
 builder.Services.AddSingleton<DashboardCacheService>();
+builder.Services.AddSingleton<RemediationRegistry>();
+builder.Services.AddSingleton<RuntimeSettingsService>();
+builder.Services.AddSingleton<LocalFileSystemDataProvider>();
+builder.Services.AddSingleton<PackageDashboardDataProvider>();
 builder.Services.AddScoped<DashboardService>();
 
 // GitHub OAuth authentication

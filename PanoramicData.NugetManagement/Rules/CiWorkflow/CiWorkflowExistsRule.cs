@@ -32,7 +32,7 @@ public class CiWorkflowExistsRule : RuleBase
 				{
 					Summary = $"Create `{ciWorkflowPath}` with build, test, and pack steps",
 					Detail = $"Create a GitHub Actions workflow at `{ciWorkflowPath}` that restores, builds in Release configuration, runs tests, and packs NuGet packages.",
-					Data = new() { ["expected_path"] = ciWorkflowPath }
+					Data = new() { ["expected_path"] = ciWorkflowPath, ["template_content"] = Standards.CiWorkflowContent }
 				}));
 	}
 }

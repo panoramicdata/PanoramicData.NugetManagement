@@ -39,7 +39,12 @@ public class CoverletCollectorRule : RuleBase
 				{
 					Summary = "Add coverlet.collector to the test project for code coverage collection.",
 					Detail = "coverlet.collector is not referenced in `Directory.Packages.props` or any test project. Add it to enable code coverage collection.",
-					Data = new() { ["expected_package"] = "coverlet.collector" }
+					Data = new()
+					{
+						["remediation_type"] = "add_package_version",
+						["package_name"] = "coverlet.collector",
+						["file"] = "Directory.Packages.props"
+					}
 				}));
 	}
 }

@@ -31,13 +31,29 @@ public class GitignoreExistsRule : RuleBase
 				{
 					Summary = "Create a comprehensive .gitignore for .NET projects.",
 					Detail = "No `.gitignore` file was found at the repository root. Create one with standard .NET entries including `[Bb]in/`, `[Oo]bj/`, and `.vs/`.",
-					Data = new() { ["expected_path"] = ".gitignore" }
+					Data = new() { ["expected_path"] = ".gitignore", ["template_content"] = Standards.GitignoreContent }
 				}));
 		}
 
 		var hasBin = Contains(content, "[Bb]in") || Contains(content, "bin/");
 		var hasObj = Contains(content, "[Oo]bj") || Contains(content, "obj/");
 		var hasVs = Contains(content, ".vs/");
+
+		var missingEntries = new List<string>();
+		if (!hasBin)
+		{
+			missingEntries.Add("[Bb]in/");
+		}
+
+		if (!hasObj)
+		{
+			missingEntries.Add("[Oo]bj/");
+		}
+
+		if (!hasVs)
+		{
+			missingEntries.Add(".vs/");
+		}
 
 		return Task.FromResult(hasBin && hasObj && hasVs
 			? Pass(".gitignore found with essential entries (bin, obj, .vs).")
@@ -47,7 +63,12 @@ public class GitignoreExistsRule : RuleBase
 				{
 					Summary = "Add [Bb]in/, [Oo]bj/, and .vs/ entries to .gitignore.",
 					Detail = "The `.gitignore` file is missing one or more essential entries. Ensure `[Bb]in/`, `[Oo]bj/`, and `.vs/` are all present.",
-					Data = new() { ["file"] = ".gitignore" }
+					Data = new()
+					{
+						["file"] = ".gitignore",
+						["remediation_type"] = "append_lines",
+						["lines"] = missingEntries.ToArray()
+					}
 				}));
 	}
 }
