@@ -392,6 +392,7 @@ else
 
 	// === Workflow step completion state ===
 	private readonly HashSet<WorkflowStep> _completedSteps = [];
+	private readonly HashSet<WorkflowStep> _failedSteps = [];
 
 	// === Settings state ===
 	private PDFileModal? _fileModal;
@@ -1451,6 +1452,24 @@ else
 			await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
 			Cache.NotifyRowUpdated();
 			await RefreshTableAsync();
+
+			// Report remaining issues that have no auto-fix
+			var remaining = _selectedRow.Assessment?.RuleResults
+				.Where(r => !r.Passed && !Dashboard.IsAutoRemediable(r))
+				.ToList() ?? [];
+			if (remaining.Count > 0)
+			{
+				foreach (var r in remaining)
+				{
+					AppendConsole($"⚠️ [{r.RuleId}] {r.RuleName} — no auto-fix available");
+				}
+
+				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Press \"Fix with AI\" to generate a prompt.");
+			}
+			else if (_selectedRow.TotalFailures == 0)
+			{
+				AppendConsole("🎉 No remaining issues — all rules pass.");
+			}
 		}
 		catch (Exception ex)
 		{
@@ -1598,7 +1617,18 @@ else
 				InvokeAsync(StateHasChanged);
 			});
 
-			AppendConsole(_selectedRow.Status == PackageStatus.BuildSucceeded ? "✅ Build succeeded" : "❌ Build failed");
+			if (_selectedRow.Status == PackageStatus.BuildSucceeded)
+			{
+				_failedSteps.Remove(WorkflowStep.Build);
+				_completedSteps.Add(WorkflowStep.Build);
+				AppendConsole("✅ Build succeeded");
+			}
+			else
+			{
+				_completedSteps.Remove(WorkflowStep.Build);
+				_failedSteps.Add(WorkflowStep.Build);
+				AppendConsole("❌ Build failed");
+			}
 		}
 		catch (Exception ex)
 		{
@@ -1632,7 +1662,18 @@ else
 				InvokeAsync(StateHasChanged);
 			});
 
-			AppendConsole(_selectedRow.Status == PackageStatus.TestsPassed ? "✅ Tests passed" : "❌ Tests failed");
+			if (_selectedRow.Status == PackageStatus.TestsPassed)
+			{
+				_failedSteps.Remove(WorkflowStep.Test);
+				_completedSteps.Add(WorkflowStep.Test);
+				AppendConsole("✅ Tests passed");
+			}
+			else
+			{
+				_completedSteps.Remove(WorkflowStep.Test);
+				_failedSteps.Add(WorkflowStep.Test);
+				AppendConsole("❌ Tests failed");
+			}
 		}
 		catch (Exception ex)
 		{
@@ -2407,7 +2448,14 @@ else
 	private bool IsPublishDone() => _selectedRow?.Status == PackageStatus.Published;
 
 	private string GetStepCssClass(WorkflowStep step)
-		=> IsStepDone(step) ? "toolbar-step-done" : "";
+	{
+		if (_failedSteps.Contains(step))
+		{
+			return "toolbar-step-failed";
+		}
+
+		return IsStepDone(step) ? "toolbar-step-done" : "";
+	}
 
 	// === Inner types ===
 

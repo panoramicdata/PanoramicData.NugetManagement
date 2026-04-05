@@ -1407,3 +1407,13 @@ h1:focus {
 .toolbar-step-done:hover {
     background: rgba(40, 167, 69, 0.1);
 }
+
+.toolbar-step-failed {
+    border-color: var(--error) !important;
+    box-shadow: 0 0 0 1px var(--error);
+    color: var(--error) !important;
+}
+
+.toolbar-step-failed:hover {
+    background: rgba(244, 67, 54, 0.1);
+}
