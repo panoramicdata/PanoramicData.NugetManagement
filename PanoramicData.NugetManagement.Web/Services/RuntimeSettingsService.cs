@@ -130,14 +130,14 @@ public class RuntimeSettingsService
 			}
 
 			RuntimeSettings snapshot;
-				lock (_lock)
+			lock (_lock)
+			{
+				snapshot = new RuntimeSettings
 				{
-					snapshot = new RuntimeSettings
-					{
-						LocalReposRoot = _runtimeSettings.LocalReposRoot,
-						PreferredIdeId = _runtimeSettings.PreferredIdeId
-					};
-				}
+					LocalReposRoot = _runtimeSettings.LocalReposRoot,
+					PreferredIdeId = _runtimeSettings.PreferredIdeId
+				};
+			}
 
 			var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
 			File.WriteAllText(_settingsPath, json);

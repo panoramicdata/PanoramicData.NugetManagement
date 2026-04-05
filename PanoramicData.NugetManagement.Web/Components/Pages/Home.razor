@@ -162,7 +162,7 @@ else
 						</div>
 					</div>
 
-					<!-- Toolbar — logical workflow order: Git Sync → Re-assess → Fix → Build → Test → Publish → final Git Sync -->
+					<!-- Toolbar — workflow order: Git Sync → Re-assess → Fix → Fix with AI → Build → Test → Commit & Push → Publish → Publish (skip) -->
 						<PDToolbar CssClass="main-toolbar">
 							<PDToolbarButton Key="refresh"
 											 Text="Refresh"
@@ -191,14 +191,6 @@ else
 											 ToolTip="Re-assess this package"
 											 Click="OnToolbarClick" />
 
-							<PDToolbarButton Key="open-ide"
-											 Text="Open in IDE"
-											 IconCssClass="@GetPreferredIdeIcon()"
-											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
-											 IsEnabled="@IsOpenInIdeEnabled()"
-											 ToolTip="@GetOpenInIdeTooltip()"
-											 Click="OnToolbarClick" />
-
 							<PDToolbarButton Key="fix"
 											 Text="Fix"
 											 IconCssClass="fas fa-wrench"
@@ -208,12 +200,13 @@ else
 											 ToolTip="@GetFixAllTooltip()"
 											 Click="OnToolbarClick" />
 
-							<PDToolbarButton Key="ai-prompt"
-											 Text="AI Prompt"
+							<PDToolbarButton Key="fix-with-ai"
+											 Text="Fix with AI"
 											 IconCssClass="fas fa-magic"
+											 CssClass="@GetStepCssClass(WorkflowStep.FixWithAi)"
 											 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
-											 IsEnabled="@(!_isAssessing && !_isRunning && _selectedRow?.Assessment is not null && _selectedRow.TotalFailures > 0)"
-											 ToolTip="Generate AI remediation prompt and copy to clipboard"
+											 IsEnabled="@IsFixWithAiEnabled()"
+											 ToolTip="@GetFixWithAiTooltip()"
 											 Click="OnToolbarClick" />
 
 							<PDToolbarSeparator IsVisible="@(_selectedRow?.IsClonedLocally == true)" />
@@ -238,6 +231,15 @@ else
 
 							<PDToolbarSeparator IsVisible="@(_selectedRow?.IsClonedLocally == true)" />
 
+							<PDToolbarButton Key="commit-and-push"
+											 Text="Commit & Push"
+											 IconCssClass="fas fa-cloud-upload-alt"
+											 CssClass="@GetStepCssClass(WorkflowStep.CommitAndPush)"
+											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
+											 IsEnabled="@(!_isRunning)"
+											 ToolTip="Commit changes, fetch, rebase and push to origin"
+											 Click="OnToolbarClick" />
+
 							<PDToolbarButton Key="publish"
 										 Text="Publish"
 										 IconCssClass="fas fa-rocket"
@@ -255,15 +257,6 @@ else
 										 IsEnabled="@IsPublishSkipIntegrationEnabled()"
 										 ToolTip="@GetPublishSkipIntegrationTooltip()"
 										 Click="OnToolbarClick" />
-
-							<PDToolbarButton Key="git-sync-final"
-											 Text="Git Sync"
-											 IconCssClass="fas fa-sync"
-											 CssClass="@GetStepCssClass(WorkflowStep.GitSyncFinal)"
-											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
-											 IsEnabled="@(!_isRunning)"
-											 ToolTip="Final sync — fetch, pull --rebase, push"
-											 Click="OnToolbarClick" />
 
 							<PDToolbarPlaceholder ShiftRight="true">
 								<button class="btn btn-xs @(_currentView == NavView.Settings ? "btn-console-active" : "")"
@@ -383,6 +376,7 @@ else
 
 	// === Console state ===
 	private bool _consoleVisible = true;
+	private bool _consoleScrollPending;
 	private List<ConsoleLine> _consoleLines = [];
 	private ElementReference _consoleElement;
 	private string? _lastPromptText;
@@ -395,6 +389,9 @@ else
 
 	// === IDE state ===
 	private string? _preferredIdeId;
+
+	// === Workflow step completion state ===
+	private readonly HashSet<WorkflowStep> _completedSteps = [];
 
 	// === Settings state ===
 	private PDFileModal? _fileModal;
@@ -464,6 +461,19 @@ else
 				// localStorage may not be available
 			}
 		}
+
+		if (_consoleScrollPending && _consoleVisible)
+		{
+			_consoleScrollPending = false;
+			try
+			{
+				await JS.InvokeVoidAsync("eval", "document.querySelector('.detail-console-output')?.scrollTo(0, document.querySelector('.detail-console-output').scrollHeight)");
+			}
+			catch
+			{
+				// Element may not exist yet
+			}
+		}
 	}
 
 	// === Navigation ===
@@ -483,12 +493,19 @@ else
 
 		if (item.PackageId is not null)
 		{
-			_selectedRow = _rows.FirstOrDefault(r =>
+			var newRow = _rows.FirstOrDefault(r =>
 				string.Equals(r.PackageId, item.PackageId, StringComparison.OrdinalIgnoreCase));
+			if (newRow != _selectedRow)
+			{
+				_completedSteps.Clear();
+			}
+
+			_selectedRow = newRow;
 		}
 		else
 		{
 			_selectedRow = null;
+			_completedSteps.Clear();
 		}
 
 		StateHasChanged();
@@ -501,6 +518,7 @@ else
 		_selectedPackageId = null;
 		_selectedCategory = null;
 		_selectedRuleId = null;
+		_completedSteps.Clear();
 		StateHasChanged();
 	}
 
@@ -511,6 +529,7 @@ else
 		_selectedPackageId = null;
 		_selectedCategory = null;
 		_selectedRuleId = null;
+		_completedSteps.Clear();
 		StateHasChanged();
 	}
 
@@ -601,14 +620,11 @@ else
 			case "fix":
 				await FixAllAsync();
 				break;
-			case "ai-prompt":
-				await ResolveAllAsync();
+			case "fix-with-ai":
+				await FixWithAiAsync();
 				break;
 			case "reassess":
 					await ReassessAllAsync();
-					break;
-				case "open-ide":
-					OpenInIde();
 					break;
 				case "build":
 				await BuildAsync();
@@ -617,9 +633,11 @@ else
 				await RunTestsAsync();
 				break;
 			case "git-sync":
-				case "git-sync-final":
 					await GitSyncAsync();
 					break;
+			case "commit-and-push":
+				await CommitAndPushAsync();
+				break;
 			case "publish":
 				await RunPublishAsync();
 				break;
@@ -1608,6 +1626,7 @@ else
 
 		_lastPromptText = prompt;
 		_copyFeedback = false;
+		_completedSteps.Add(WorkflowStep.FixWithAi);
 		AppendConsole("── AI Remediation Prompt (All) ──");
 		AppendConsole(prompt);
 		AppendConsole("── End Prompt ──");
@@ -1808,7 +1827,7 @@ else
 
 	// === Console helpers ===
 
-	private void AppendConsole(string line) => _consoleLines.Add(new ConsoleLine(line, GetConsoleLineClass(line)));
+	private void AppendConsole(string line) { _consoleLines.Add(new ConsoleLine(line, GetConsoleLineClass(line))); _consoleScrollPending = true; }
 	private void ClearConsole() { _consoleLines.Clear(); _lastPromptText = null; _copyFeedback = false; _consoleCopyFeedback = false; }
 
 	private async Task CopyConsoleToClipboardAsync()
@@ -2020,33 +2039,15 @@ else
 			}
 		}
 
-		return ides[0];
+		// Use auto-default priority when user hasn't chosen
+		var defaultId = IdeDetection.GetDefaultIdeId();
+		return defaultId is not null
+			? ides.FirstOrDefault(i => i.Id == defaultId) ?? ides[0]
+			: ides[0];
 	}
 
 	private string GetPreferredIdeIcon()
 		=> GetPreferredIde()?.IconCss ?? "fas fa-external-link-alt";
-
-	private bool IsOpenInIdeEnabled()
-		=> _selectedRow?.IsClonedLocally == true
-			&& _selectedRow.LocalPath is not null
-			&& !_isRunning
-			&& IdeDetection.DetectedIdes.Count > 0;
-
-	private string GetOpenInIdeTooltip()
-	{
-		if (IdeDetection.DetectedIdes.Count == 0)
-		{
-			return "No supported IDEs detected";
-		}
-
-		var ide = GetPreferredIde();
-		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
-		{
-			return "Clone the repository first";
-		}
-
-		return $"Open in {ide?.DisplayName ?? "IDE"}";
-	}
 
 	private void OpenInIde()
 	{
@@ -2074,6 +2075,116 @@ else
 		}
 
 		StateHasChanged();
+	}
+
+	private async Task FixWithAiAsync()
+	{
+		if (_selectedRow is null)
+		{
+			return;
+		}
+
+		// Open the IDE
+		OpenInIde();
+
+		// Generate and copy the AI prompt
+		await ResolveAllAsync();
+
+		_completedSteps.Add(WorkflowStep.FixWithAi);
+		StateHasChanged();
+	}
+
+	private bool IsFixWithAiEnabled()
+	{
+		if (_selectedRow is null || _isRunning)
+		{
+			return false;
+		}
+
+		if (_selectedRow.Assessment is null)
+		{
+			return false;
+		}
+
+		if (!_selectedRow.IsClonedLocally || _selectedRow.LocalPath is null)
+		{
+			return false;
+		}
+
+		// Enabled only when there are failures that cannot be auto-remediated
+		return _selectedRow.Assessment.RuleResults
+			.Any(r => !r.Passed && !Dashboard.IsAutoRemediable(r));
+	}
+
+	private string GetFixWithAiTooltip()
+	{
+		if (_selectedRow?.Assessment is null)
+		{
+			return "Assess the package first";
+		}
+
+		if (!_selectedRow.IsClonedLocally)
+		{
+			return "Clone the repository first";
+		}
+
+		var manualCount = _selectedRow.Assessment.RuleResults
+			.Count(r => !r.Passed && !Dashboard.IsAutoRemediable(r));
+
+		if (manualCount == 0)
+		{
+			return "No issues requiring manual intervention";
+		}
+
+		return $"Open in IDE and copy AI prompt for {manualCount} issue{(manualCount == 1 ? "" : "s")} requiring manual fix";
+	}
+
+	private async Task CommitAndPushAsync()
+	{
+		if (_selectedRow is null)
+		{
+			return;
+		}
+
+		EnsureSelectedRowIsCurrent();
+
+		_isRunning = true;
+		AppendConsole("▶ Committing and pushing...");
+		StateHasChanged();
+
+		try
+		{
+			var commitMessage = $"NuGet governance remediation for {_selectedRow.PackageId}";
+			var success = await Dashboard.CommitAndPushAsync(_selectedRow, commitMessage, line =>
+			{
+				AppendConsole(line);
+				InvokeAsync(StateHasChanged);
+			});
+
+			if (success)
+			{
+				_completedSteps.Add(WorkflowStep.CommitAndPush);
+				AppendConsole("✅ Changes committed and pushed");
+
+				if (_selectedRow.CurrentBranch is not null)
+				{
+					AppendConsole($"ℹ️ Branch: {_selectedRow.CurrentBranch} | Clean: {_selectedRow.IsWorkingTreeClean} | Synced: {_selectedRow.IsSyncedWithOrigin}");
+				}
+			}
+			else
+			{
+				AppendConsole("❌ Commit and push failed");
+			}
+		}
+		catch (Exception ex)
+		{
+			AppendConsole($"❌ Error: {ex.Message}");
+		}
+		finally
+		{
+			_isRunning = false;
+			StateHasChanged();
+		}
 	}
 
 	// === Merlin chat (placeholder) ===
@@ -2112,22 +2223,33 @@ else
 		GitSync,
 		Reassess,
 		Fix,
+		FixWithAi,
 		Build,
 		Test,
-		Publish,
-		GitSyncFinal
+		CommitAndPush,
+		Publish
 	}
 
-	private bool IsStepDone(WorkflowStep step) => _selectedRow?.Status switch
+	private bool IsStepDone(WorkflowStep step)
 	{
-		PackageStatus.GitSynced => step == WorkflowStep.GitSync,
-		PackageStatus.Assessed => step is WorkflowStep.GitSync or WorkflowStep.Reassess,
-		PackageStatus.Remediated => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix,
-		PackageStatus.BuildSucceeded => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build,
-		PackageStatus.TestsPassed => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build or WorkflowStep.Test,
-		PackageStatus.Published => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build or WorkflowStep.Test or WorkflowStep.Publish,
-		_ => false
-	};
+		// Explicit tracking for steps that don't map to PackageStatus
+		if (_completedSteps.Contains(step))
+		{
+			return true;
+		}
+
+		// PackageStatus-based tracking for workflow steps
+		return _selectedRow?.Status switch
+		{
+			PackageStatus.GitSynced => step == WorkflowStep.GitSync,
+			PackageStatus.Assessed => step is WorkflowStep.GitSync or WorkflowStep.Reassess,
+			PackageStatus.Remediated => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix,
+			PackageStatus.BuildSucceeded => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build,
+			PackageStatus.TestsPassed => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build or WorkflowStep.Test,
+			PackageStatus.Published => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build or WorkflowStep.Test or WorkflowStep.Publish,
+			_ => false
+		};
+	}
 
 	private bool IsPublishDone() => _selectedRow?.Status == PackageStatus.Published;
 

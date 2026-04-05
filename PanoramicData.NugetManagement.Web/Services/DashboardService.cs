@@ -518,6 +518,36 @@ public class DashboardService
 	}
 
 	/// <summary>
+	/// Commits all local changes, fetches, rebases on remote, and pushes.
+	/// Does not change the row status (preserves current workflow state).
+	/// </summary>
+	public async Task<bool> CommitAndPushAsync(
+		PackageDashboardRow row,
+		string commitMessage,
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var repoName = ExtractRepoName(row.RepositoryUrl);
+		if (repoName is null)
+		{
+			onOutput?.Invoke("❌ Cannot determine repo name.");
+			return false;
+		}
+
+		var (success, _) = await _localRepo.CommitAndPushAsync(repoName, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
+
+		if (success)
+		{
+			// Refresh git status after push
+			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
+			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
+			row.IsSyncedWithOrigin = true;
+		}
+
+		return success;
+	}
+
+	/// <summary>
 	/// Refreshes the git status for a row (branch, working tree clean state, and sync status with origin).
 	/// </summary>
 	public async Task RefreshGitStatusAsync(PackageDashboardRow row, CancellationToken cancellationToken = default)

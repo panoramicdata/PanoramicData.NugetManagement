@@ -1,241 +1,237 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using PanoramicData.NugetManagement.Web.Models;
 
 namespace PanoramicData.NugetManagement.Web.Services;
 
 /// <summary>
-/// Detects installed IDEs on the local machine and provides methods to open projects in them.
+/// Detects installed IDEs on the local machine and provides default selection logic.
 /// </summary>
 public class IdeDetectionService
 {
-    private readonly ILogger<IdeDetectionService> _logger;
-    private List<InstalledIde>? _detectedIdes;
+	private List<InstalledIde>? _detectedIdes;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="IdeDetectionService"/> class.
-    /// </summary>
-    public IdeDetectionService(ILogger<IdeDetectionService> logger)
-    {
-        _logger = logger;
-    }
+	/// <summary>
+	/// Gets the list of detected IDE installations on the local machine.
+	/// </summary>
+	public IReadOnlyList<InstalledIde> DetectedIdes => _detectedIdes ??= Detect();
 
-    /// <summary>
-    /// Gets the list of IDEs detected on this machine. Results are cached after first call.
-    /// </summary>
-    public IReadOnlyList<InstalledIde> DetectedIdes => _detectedIdes ??= DetectIdes();
+	/// <summary>
+	/// Returns the IDE id that should be used as the default when the user has not yet chosen.
+	/// Priority order: VS Code Insiders, VS 2026 Insiders, VS Code, VS 2026 (any edition), Rider.
+	/// Returns null if no IDE is detected.
+	/// </summary>
+	public string? GetDefaultIdeId()
+	{
+		var ides = DetectedIdes;
+		if (ides.Count == 0)
+		{
+			return null;
+		}
 
-    /// <summary>
-    /// Opens a repository folder in the specified IDE.
-    /// For solution-based IDEs (Visual Studio), it searches for a .sln or .slnx file.
-    /// For folder-based IDEs (VS Code), it opens the folder directly.
-    /// </summary>
-    public void OpenInIde(InstalledIde ide, string localPath)
-    {
-        try
-        {
-            string argument;
+		string[] priorityOrder =
+		[
+			"vscode-insiders",
+			"vs2026-insiders",
+			"vscode",
+			"vs2026-enterprise",
+			"vs2026-professional",
+			"vs2026-community",
+			"rider"
+		];
 
-            if (ide.OpensSolutionFiles)
-            {
-                // Look for .slnx first, then .sln
-                var solutionFile = Directory.EnumerateFiles(localPath, "*.slnx").FirstOrDefault()
-                    ?? Directory.EnumerateFiles(localPath, "*.sln").FirstOrDefault();
+		foreach (var id in priorityOrder)
+		{
+			if (ides.Any(i => i.Id == id))
+			{
+				return id;
+			}
+		}
 
-                argument = solutionFile ?? localPath;
-            }
-            else
-            {
-                argument = localPath;
-            }
+		// Fallback to first detected
+		return ides[0].Id;
+	}
 
-            _logger.LogInformation("Opening {Path} in {Ide} ({Exe})", argument, ide.DisplayName, ide.ExecutablePath);
+	/// <summary>
+	/// Clears the cached IDE list so the next access to <see cref="DetectedIdes"/> re-detects.
+	/// </summary>
+	public void Refresh() => _detectedIdes = null;
 
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = ide.ExecutablePath,
-                Arguments = $"\"{argument}\"",
-                UseShellExecute = true
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to open {Path} in {Ide}", localPath, ide.DisplayName);
-            throw;
-        }
-    }
+	/// <summary>
+	/// Opens the specified local path in the given IDE.
+	/// </summary>
+	/// <param name="ide">The IDE to open.</param>
+	/// <param name="localPath">The local repository path to open.</param>
+	public void OpenInIde(InstalledIde ide, string localPath)
+	{
+		// Find a .slnx or .sln file in the local path
+		string? targetPath = null;
 
-    /// <summary>
-    /// Forces re-detection of installed IDEs.
-    /// </summary>
-    public void Refresh() => _detectedIdes = null;
+		if (ide.OpensSolutionFiles)
+		{
+			targetPath = Directory.EnumerateFiles(localPath, "*.slnx").FirstOrDefault()
+				?? Directory.EnumerateFiles(localPath, "*.sln").FirstOrDefault();
+		}
 
-    private List<InstalledIde> DetectIdes()
-    {
-        var ides = new List<InstalledIde>();
+		targetPath ??= localPath;
 
-        // Visual Studio installations (check common paths)
-        DetectVisualStudio(ides);
+		var psi = new ProcessStartInfo
+		{
+			FileName = ide.ExecutablePath,
+			Arguments = $"\"{targetPath}\"",
+			UseShellExecute = true
+		};
 
-        // VS Code installations
-        DetectVsCode(ides);
+		Process.Start(psi);
+	}
 
-        // JetBrains Rider
-        DetectRider(ides);
+	private static List<InstalledIde> Detect()
+	{
+		var ides = new List<InstalledIde>();
 
-        _logger.LogInformation("Detected {Count} IDE(s): {Ides}",
-            ides.Count, string.Join(", ", ides.Select(i => i.DisplayName)));
+		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			return ides;
+		}
 
-        return ides;
-    }
+		DetectVsCodeInsiders(ides);
+		DetectVsCode(ides);
+		DetectVisualStudio2026(ides);
+		DetectRider(ides);
 
-    private static void DetectVisualStudio(List<InstalledIde> ides)
-    {
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+		return ides;
+	}
 
-        // Visual Studio editions and year combinations, newest first
-        var vsEditions = new (string Year, string Edition, string Id, string DisplaySuffix, bool IsPreview)[]
-        {
-            ("2026", "Preview", "vs2026-preview", " 2026 Preview", true),
-            ("2026", "Enterprise", "vs2026-enterprise", " 2026 Enterprise", false),
-            ("2026", "Professional", "vs2026-professional", " 2026 Professional", false),
-            ("2026", "Community", "vs2026-community", " 2026 Community", false),
-            ("2022", "Preview", "vs2022-preview", " 2022 Preview", true),
-            ("2022", "Enterprise", "vs2022-enterprise", " 2022 Enterprise", false),
-            ("2022", "Professional", "vs2022-professional", " 2022 Professional", false),
-            ("2022", "Community", "vs2022-community", " 2022 Community", false),
-        };
+	private static void DetectVisualStudio2026(List<InstalledIde> ides)
+	{
+		var basePath = @"C:\Program Files\Microsoft Visual Studio\18";
 
-        foreach (var (year, edition, id, displaySuffix, isPreview) in vsEditions)
-        {
-            var devenvPath = Path.Combine(programFiles, "Microsoft Visual Studio", year, edition, "Common7", "IDE", "devenv.exe");
-            if (File.Exists(devenvPath))
-            {
-                ides.Add(new InstalledIde
-                {
-                    Id = id,
-                    DisplayName = $"Visual Studio{displaySuffix}",
-                    ExecutablePath = devenvPath,
-                    IconCss = isPreview ? "fas fa-laptop-code text-warning" : "fas fa-laptop-code text-info",
-                    OpensSolutionFiles = true
-                });
-            }
-        }
-    }
+		(string folder, string id, string displayName)[] editions =
+		[
+			("Enterprise", "vs2026-enterprise", "Visual Studio 2026 Enterprise"),
+			("Professional", "vs2026-professional", "Visual Studio 2026 Professional"),
+			("Community", "vs2026-community", "Visual Studio 2026 Community"),
+			("Insiders", "vs2026-insiders", "Visual Studio 2026 Insiders"),
+		];
 
-    private static void DetectVsCode(List<InstalledIde> ides)
-    {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+		foreach (var (folder, id, displayName) in editions)
+		{
+			var exePath = Path.Combine(basePath, folder, "Common7", "IDE", "devenv.exe");
+			if (File.Exists(exePath))
+			{
+				ides.Add(new InstalledIde
+				{
+					Id = id,
+					DisplayName = displayName,
+					ExecutablePath = exePath,
+					IconCss = "fa-brands fa-microsoft",
+					OpensSolutionFiles = true
+				});
+			}
+		}
+	}
 
-        // VS Code — user install (most common)
-        var vsCodeUserPath = Path.Combine(localAppData, "Programs", "Microsoft VS Code", "Code.exe");
-        // VS Code — system install
-        var vsCodeSystemPath = Path.Combine(programFiles, "Microsoft VS Code", "Code.exe");
+	private static void DetectVsCode(List<InstalledIde> ides)
+	{
+		var candidates = new List<string>();
 
-        var vsCodePath = File.Exists(vsCodeUserPath) ? vsCodeUserPath
-            : File.Exists(vsCodeSystemPath) ? vsCodeSystemPath
-            : null;
+		// User install
+		var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+		candidates.Add(Path.Combine(localAppData, "Programs", "Microsoft VS Code", "Code.exe"));
 
-        if (vsCodePath is not null)
-        {
-            ides.Add(new InstalledIde
-            {
-                Id = "vscode",
-                DisplayName = "Visual Studio Code",
-                ExecutablePath = vsCodePath,
-                IconCss = "fas fa-code text-info",
-                OpensSolutionFiles = false
-            });
-        }
+		// System install
+		candidates.Add(@"C:\Program Files\Microsoft VS Code\Code.exe");
 
-        // VS Code Insiders — user install
-        var vsCodeInsidersUserPath = Path.Combine(localAppData, "Programs", "Microsoft VS Code Insiders", "Code - Insiders.exe");
-        // VS Code Insiders — system install
-        var vsCodeInsidersSystemPath = Path.Combine(programFiles, "Microsoft VS Code Insiders", "Code - Insiders.exe");
+		foreach (var path in candidates)
+		{
+			if (File.Exists(path))
+			{
+				ides.Add(new InstalledIde
+				{
+					Id = "vscode",
+					DisplayName = "Visual Studio Code",
+					ExecutablePath = path,
+					IconCss = "fa-solid fa-code",
+					OpensSolutionFiles = false
+				});
+				return; // Only add once
+			}
+		}
+	}
 
-        var vsCodeInsidersPath = File.Exists(vsCodeInsidersUserPath) ? vsCodeInsidersUserPath
-            : File.Exists(vsCodeInsidersSystemPath) ? vsCodeInsidersSystemPath
-            : null;
+	private static void DetectVsCodeInsiders(List<InstalledIde> ides)
+	{
+		var candidates = new List<string>();
 
-        if (vsCodeInsidersPath is not null)
-        {
-            ides.Add(new InstalledIde
-            {
-                Id = "vscode-insiders",
-                DisplayName = "VS Code Insiders",
-                ExecutablePath = vsCodeInsidersPath,
-                IconCss = "fas fa-code text-success",
-                OpensSolutionFiles = false
-            });
-        }
-    }
+		// User install
+		var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+		candidates.Add(Path.Combine(localAppData, "Programs", "Microsoft VS Code Insiders", "Code - Insiders.exe"));
 
-    private static void DetectRider(List<InstalledIde> ides)
-    {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var jetBrainsToolbox = Path.Combine(localAppData, "JetBrains", "Toolbox", "apps");
+		// System install
+		candidates.Add(@"C:\Program Files\Microsoft VS Code Insiders\Code - Insiders.exe");
 
-        // Rider installed via JetBrains Toolbox
-        if (Directory.Exists(jetBrainsToolbox))
-        {
-            try
-            {
-                // Toolbox stores Rider under apps/rider/ch-0/<version>/bin/rider64.exe
-                var riderAppsDir = Path.Combine(jetBrainsToolbox, "rider");
-                if (Directory.Exists(riderAppsDir))
-                {
-                    var riderExe = Directory.EnumerateFiles(riderAppsDir, "rider64.exe", SearchOption.AllDirectories)
-                        .OrderByDescending(p => p) // newest version first
-                        .FirstOrDefault();
+		foreach (var path in candidates)
+		{
+			if (File.Exists(path))
+			{
+				ides.Add(new InstalledIde
+				{
+					Id = "vscode-insiders",
+					DisplayName = "VS Code Insiders",
+					ExecutablePath = path,
+					IconCss = "fa-solid fa-code",
+					OpensSolutionFiles = false
+				});
+				return; // Only add once
+			}
+		}
+	}
 
-                    if (riderExe is not null)
-                    {
-                        ides.Add(new InstalledIde
-                        {
-                            Id = "rider",
-                            DisplayName = "JetBrains Rider",
-                            ExecutablePath = riderExe,
-                            IconCss = "fas fa-horse text-danger",
-                            OpensSolutionFiles = true
-                        });
-                        return;
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore errors scanning Toolbox directory
-            }
-        }
+	private static void DetectRider(List<InstalledIde> ides)
+	{
+		// JetBrains Toolbox install
+		var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+		var toolboxApps = Path.Combine(localAppData, "JetBrains", "Toolbox", "apps", "rider");
+		if (Directory.Exists(toolboxApps))
+		{
+			var riderExe = Directory.EnumerateFiles(toolboxApps, "rider64.exe", SearchOption.AllDirectories)
+				.FirstOrDefault();
+			if (riderExe is not null)
+			{
+				ides.Add(new InstalledIde
+				{
+					Id = "rider",
+					DisplayName = "JetBrains Rider",
+					ExecutablePath = riderExe,
+					IconCss = "fa-solid fa-horse",
+					OpensSolutionFiles = true
+				});
+				return;
+			}
+		}
 
-        // Rider installed standalone — check Program Files
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var jetBrainsDir = Path.Combine(programFiles, "JetBrains");
-        if (Directory.Exists(jetBrainsDir))
-        {
-            try
-            {
-                var riderExe = Directory.EnumerateDirectories(jetBrainsDir, "JetBrains Rider*")
-                    .OrderByDescending(d => d) // newest version first
-                    .Select(d => Path.Combine(d, "bin", "rider64.exe"))
-                    .FirstOrDefault(File.Exists);
-
-                if (riderExe is not null)
-                {
-                    ides.Add(new InstalledIde
-                    {
-                        Id = "rider",
-                        DisplayName = "JetBrains Rider",
-                        ExecutablePath = riderExe,
-                        IconCss = "fas fa-horse text-danger",
-                        OpensSolutionFiles = true
-                    });
-                }
-            }
-            catch
-            {
-                // Ignore errors scanning JetBrains directory
-            }
-        }
-    }
+		// Standalone install
+		var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+		var jetBrainsDir = Path.Combine(programFiles, "JetBrains");
+		if (Directory.Exists(jetBrainsDir))
+		{
+			var riderDirs = Directory.EnumerateDirectories(jetBrainsDir, "JetBrains Rider*");
+			foreach (var dir in riderDirs)
+			{
+				var exePath = Path.Combine(dir, "bin", "rider64.exe");
+				if (File.Exists(exePath))
+				{
+					ides.Add(new InstalledIde
+					{
+						Id = "rider",
+						DisplayName = "JetBrains Rider",
+						ExecutablePath = exePath,
+						IconCss = "fa-solid fa-horse",
+						OpensSolutionFiles = true
+					});
+					return;
+				}
+			}
+		}
+	}
 }

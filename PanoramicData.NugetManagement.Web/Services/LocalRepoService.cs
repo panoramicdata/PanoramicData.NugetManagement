@@ -297,6 +297,55 @@ public class LocalRepoService
 	}
 
 	/// <summary>
+	/// Commits all local changes, fetches from origin, rebases, and pushes.
+	/// </summary>
+	public async Task<(bool Success, string Output)> CommitAndPushAsync(
+		string repoName,
+		string commitMessage,
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		_logger.LogInformation("Commit and push in {Path}", path);
+
+		// Stage all changes
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", "add -A", onOutput, cancellationToken).ConfigureAwait(false);
+		if (!ok)
+		{
+			return (false, output);
+		}
+
+		// Commit (allow empty commit to succeed gracefully)
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", $"commit -m \"{commitMessage}\"", onOutput, cancellationToken).ConfigureAwait(false);
+		if (!ok)
+		{
+			// Check if "nothing to commit" — that's fine, continue with fetch/rebase/push
+			if (!output.Contains("nothing to commit", StringComparison.OrdinalIgnoreCase))
+			{
+				return (false, output);
+			}
+		}
+
+		// Fetch
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "fetch --prune", onOutput, cancellationToken).ConfigureAwait(false);
+		if (!ok)
+		{
+			return (false, output);
+		}
+
+		// Rebase on top of remote
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "pull --rebase", onOutput, cancellationToken).ConfigureAwait(false);
+		if (!ok)
+		{
+			return (false, output);
+		}
+
+		// Push
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "push", onOutput, cancellationToken).ConfigureAwait(false);
+		return (ok, output);
+	}
+
+	/// <summary>
 	/// Runs dotnet test on the repository.
 	/// </summary>
 	public async Task<(bool Success, string Output)> RunTestsAsync(
