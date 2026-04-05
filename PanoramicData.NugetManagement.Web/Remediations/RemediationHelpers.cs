@@ -67,7 +67,31 @@ internal static class RemediationHelpers
 		var xml = File.ReadAllText(fullPath);
 		if (xml.Contains($"<{propertyName}>", StringComparison.OrdinalIgnoreCase))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already has <{propertyName}> — skipping.");
+			// Property tag exists — check if it already has the correct value
+			if (xml.Contains($"<{propertyName}>{propertyValue}</{propertyName}>", StringComparison.OrdinalIgnoreCase))
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already has <{propertyName}>{propertyValue}</{propertyName}> — skipping.");
+				return;
+			}
+
+			// Property exists but with a different value — update it
+			try
+			{
+				var doc = XDocument.Parse(xml);
+				var existing = doc.Descendants(propertyName).FirstOrDefault();
+				if (existing is not null)
+				{
+					existing.Value = propertyValue;
+					doc.Save(fullPath);
+					applied.Add(relativePath);
+					onOutput?.Invoke($"✅ [{result.RuleId}] Updated <{propertyName}> to {propertyValue} in {relativePath}");
+				}
+			}
+			catch (Exception ex)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to update {relativePath}: {ex.Message}");
+			}
+
 			return;
 		}
 

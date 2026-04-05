@@ -2309,9 +2309,19 @@ else
 			return false;
 		}
 
-		// Enabled only when there are failures that cannot be auto-remediated
-		return _selectedRow.Assessment.RuleResults
+		var hasFailures = _selectedRow.Assessment.RuleResults.Any(r => !r.Passed);
+		if (!hasFailures)
+		{
+			return false;
+		}
+
+		// Enabled when there are non-auto-remediable failures,
+		// OR when Fix has already been run but failures still remain
+		// (indicating auto-fix couldn't resolve them)
+		var hasManualOnly = _selectedRow.Assessment.RuleResults
 			.Any(r => !r.Passed && !Dashboard.IsAutoRemediable(r));
+
+		return hasManualOnly || IsStepDone(WorkflowStep.Fix);
 	}
 
 	private string GetFixWithAiTooltip()
@@ -2326,15 +2336,23 @@ else
 			return "Clone the repository first";
 		}
 
+		var remainingCount = _selectedRow.Assessment.RuleResults
+			.Count(r => !r.Passed);
+
+		if (remainingCount == 0)
+		{
+			return "No issues remaining";
+		}
+
 		var manualCount = _selectedRow.Assessment.RuleResults
 			.Count(r => !r.Passed && !Dashboard.IsAutoRemediable(r));
 
-		if (manualCount == 0)
+		if (manualCount == 0 && !IsStepDone(WorkflowStep.Fix))
 		{
-			return "No issues requiring manual intervention";
+			return "Run Fix first — all remaining issues may be auto-fixable";
 		}
 
-		return $"Open in IDE and copy AI prompt for {manualCount} issue{(manualCount == 1 ? "" : "s")} requiring manual fix";
+		return $"Copy AI prompt for {remainingCount} remaining issue{(remainingCount == 1 ? "" : "s")}";
 	}
 
 	private async Task CommitAndPushAsync()

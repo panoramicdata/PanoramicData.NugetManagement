@@ -381,7 +381,12 @@ public class DashboardService
 
 		var failures = row.Assessment.RuleResults.Where(r => !r.Passed && r.Advisory is not null).ToList();
 
-		foreach (var failure in failures)
+		// Ensure REPO-05 (Solution Items) runs last so it can pick up files created by other remediations
+		var ordered = failures
+			.OrderBy(f => f.RuleId == "REPO-05" ? 1 : 0)
+			.ToList();
+
+		foreach (var failure in ordered)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 			ApplySingleRemediation(row.LocalPath, failure, applied, onOutput);
