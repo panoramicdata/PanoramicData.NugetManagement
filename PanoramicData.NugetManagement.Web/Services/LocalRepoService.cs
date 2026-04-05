@@ -347,6 +347,9 @@ public class LocalRepoService
 
 	/// <summary>
 	/// Runs dotnet test on the repository.
+	/// Uses --no-build because the Build step has already compiled the solution.
+	/// This avoids the confusing "Build FAILED." MSBuild output that appears
+	/// when tests fail (MSBuild's VSTest target reports its failure as a build failure).
 	/// </summary>
 	public async Task<(bool Success, string Output)> RunTestsAsync(
 		string repoName,
@@ -355,7 +358,7 @@ public class LocalRepoService
 	{
 		var path = GetLocalPath(repoName);
 		_logger.LogInformation("Running tests in {Path}", path);
-		return await RunCommandWithStreamingAsync(path, "dotnet", "test --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "dotnet", "test --no-build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>

@@ -499,17 +499,19 @@ else
 			var newRow = _rows.FirstOrDefault(r =>
 				string.Equals(r.PackageId, item.PackageId, StringComparison.OrdinalIgnoreCase));
 			if (newRow != _selectedRow)
-			{
-				_completedSteps.Clear();
-			}
+				{
+					_completedSteps.Clear();
+					_failedSteps.Clear();
+				}
 
-			_selectedRow = newRow;
-		}
-		else
-		{
-			_selectedRow = null;
-			_completedSteps.Clear();
-		}
+				_selectedRow = newRow;
+			}
+			else
+			{
+				_selectedRow = null;
+				_completedSteps.Clear();
+				_failedSteps.Clear();
+			}
 
 		StateHasChanged();
 	}
@@ -522,6 +524,7 @@ else
 		_selectedCategory = null;
 		_selectedRuleId = null;
 		_completedSteps.Clear();
+		_failedSteps.Clear();
 		StateHasChanged();
 	}
 
@@ -533,6 +536,7 @@ else
 		_selectedCategory = null;
 		_selectedRuleId = null;
 		_completedSteps.Clear();
+		_failedSteps.Clear();
 		StateHasChanged();
 	}
 
@@ -2438,7 +2442,9 @@ else
 			PackageStatus.GitSynced => step == WorkflowStep.GitSync,
 			PackageStatus.Assessed => step is WorkflowStep.GitSync or WorkflowStep.Reassess,
 			PackageStatus.Remediated => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix,
+			PackageStatus.BuildFailed => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix,
 			PackageStatus.BuildSucceeded => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build,
+			PackageStatus.TestsFailed => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build,
 			PackageStatus.TestsPassed => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build or WorkflowStep.Test,
 			PackageStatus.Published => step is WorkflowStep.GitSync or WorkflowStep.Reassess or WorkflowStep.Fix or WorkflowStep.Build or WorkflowStep.Test or WorkflowStep.Publish,
 			_ => false
@@ -2447,9 +2453,24 @@ else
 
 	private bool IsPublishDone() => _selectedRow?.Status == PackageStatus.Published;
 
-	private string GetStepCssClass(WorkflowStep step)
+	private bool IsStepFailed(WorkflowStep step)
 	{
 		if (_failedSteps.Contains(step))
+		{
+			return true;
+		}
+
+		return _selectedRow?.Status switch
+		{
+			PackageStatus.BuildFailed => step == WorkflowStep.Build,
+			PackageStatus.TestsFailed => step == WorkflowStep.Test,
+			_ => false
+		};
+	}
+
+	private string GetStepCssClass(WorkflowStep step)
+	{
+		if (IsStepFailed(step))
 		{
 			return "toolbar-step-failed";
 		}
