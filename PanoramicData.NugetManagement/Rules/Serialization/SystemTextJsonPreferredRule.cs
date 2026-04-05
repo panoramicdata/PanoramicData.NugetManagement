@@ -17,7 +17,7 @@ public class SystemTextJsonPreferredRule : RuleBase
 	public override AssessmentCategory Category => AssessmentCategory.Serialization;
 
 	/// <inheritdoc />
-	public override AssessmentSeverity Severity => AssessmentSeverity.Warning;
+	public override AssessmentSeverity Severity => AssessmentSeverity.Info;
 
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)

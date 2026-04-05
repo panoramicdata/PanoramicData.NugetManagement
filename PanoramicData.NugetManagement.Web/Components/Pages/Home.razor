@@ -74,7 +74,7 @@ else
 									IconCssClass="(item, _) => item.IconCss"
 									ToolTip="GetNavItemTooltip"
 									AllowSelection="true"
-									ShowRoot="false"
+									ShowRoot="true"
 									SelectionChange="OnNavSelectionChanged" />
 						</div>
 					</div>
@@ -186,9 +186,9 @@ else
 											 Text="Re-assess"
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClass(WorkflowStep.Reassess)"
-											 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
+											 IsVisible="@(_currentView is NavView.Dashboard or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
 											 IsEnabled="@(!_isAssessing)"
-											 ToolTip="Re-assess this package"
+											 ToolTip="@(_currentView == NavView.Dashboard ? "Re-assess all repos" : "Re-assess this package")"
 											 Click="OnToolbarClick" />
 
 							<PDToolbarButton Key="fix"
@@ -397,6 +397,7 @@ else
 	private PDFileModal? _fileModal;
 	private string? _localReposRoot;
 	private bool _folderSaved;
+	private bool _includeInfoInAiPrompt;
 
 	// === Lifecycle ===
 
@@ -414,6 +415,7 @@ else
 		_categories = Enum.GetValues<AssessmentCategory>();
 		_localReposRoot = RuntimeSettings.LocalReposRoot;
 		_preferredIdeId = RuntimeSettings.PreferredIdeId;
+		_includeInfoInAiPrompt = RuntimeSettings.IncludeInfoInAiPrompt;
 
 		// Load from cache immediately
 		var cached = Cache.GetCachedRows();
@@ -624,8 +626,16 @@ else
 				await FixWithAiAsync();
 				break;
 			case "reassess":
-					await ReassessAllAsync();
-					break;
+						if (_currentView == NavView.Dashboard)
+						{
+							await ReassessAllReposAsync();
+						}
+						else
+						{
+							await ReassessAllAsync();
+						}
+
+						break;
 				case "build":
 				await BuildAsync();
 				break;
@@ -1059,11 +1069,26 @@ else
 						</select>
 					}
 				</div>
+				<div class="form-group">
+					<label>Include info items in AI prompt</label>
+					<div style="display: flex; align-items: center; gap: 0.5rem;">
+						<input type="checkbox" checked="@_includeInfoInAiPrompt" @onchange="OnIncludeInfoInAiPromptChanged" />
+						<span style="color: var(--text-secondary); font-size: 0.85rem;">
+							When unchecked, informational (blue) items are excluded from the generated AI prompt.
+						</span>
+					</div>
+				</div>
 			</div>
 		</div>
 	};
 
 	// === Dashboard methods ===
+
+	private void OnIncludeInfoInAiPromptChanged(ChangeEventArgs e)
+	{
+		_includeInfoInAiPrompt = e.Value is true;
+		RuntimeSettings.SetIncludeInfoInAiPrompt(_includeInfoInAiPrompt);
+	}
 
 	private void OnAutoRefreshTimer(object? state)
 	{
@@ -1230,11 +1255,28 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		_isAssessing = true;
-		_progressMessage = $"Assessing {_selectedRow.PackageId}...";
+		_progressMessage = $"Checking NuGet listing for {_selectedRow.PackageId}...";
 		StateHasChanged();
 
 		try
 		{
+			// Check whether the package is still listed on NuGet
+			var isListed = await Dashboard.IsPackageListedAsync(_selectedRow.PackageId);
+			if (!isListed)
+			{
+				AppendConsole($"⚠️ {_selectedRow.PackageId} is no longer listed on NuGet — removing from cache.");
+				_rows.RemoveAll(r => string.Equals(r.PackageId, _selectedRow.PackageId, StringComparison.OrdinalIgnoreCase));
+				Cache.RemoveRow(_selectedRow.PackageId);
+				_selectedRow = null;
+				_selectedPackageId = null;
+				_currentView = NavView.Dashboard;
+				await RefreshTableAsync();
+				return;
+			}
+
+			_progressMessage = $"Assessing {_selectedRow.PackageId}...";
+			StateHasChanged();
+
 			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
 			{
 				await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
@@ -1255,6 +1297,72 @@ else
 		}
 		finally
 		{
+			_isAssessing = false;
+			_progressMessage = string.Empty;
+			StateHasChanged();
+		}
+	}
+
+	private async Task ReassessAllReposAsync()
+	{
+		_isAssessing = true;
+		var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
+		AppendConsole($"▶ Re-assessing {assessable.Count} repos...");
+
+		// Mark all pending rows so the tree shows spinners
+		foreach (var r in assessable)
+		{
+			r.IsReassessing = true;
+		}
+
+		await RefreshTableAsync();
+
+		try
+		{
+			var github = CreateGitHubClient();
+
+			for (var i = 0; i < assessable.Count; i++)
+			{
+				var row = assessable[i];
+				_progressMessage = $"Assessing ({i + 1}/{assessable.Count}): {row.PackageId}...";
+				StateHasChanged();
+
+				try
+				{
+					if (row.IsClonedLocally && row.LocalPath is not null)
+					{
+						await Dashboard.AssessLocalRepositoryAsync(row);
+					}
+					else
+					{
+						await Dashboard.AssessRepositoryAsync(row, github);
+					}
+				}
+				catch (Exception ex)
+				{
+					AppendConsole($"❌ {row.PackageId}: {ex.Message}");
+				}
+
+				row.IsReassessing = false;
+				await RefreshTableAsync();
+			}
+
+			Cache.Update(_rows);
+			_lastRefreshUtc = Cache.LastRefreshUtc;
+			AppendConsole($"✅ Re-assessed {assessable.Count} repos.");
+		}
+		catch (Exception ex)
+		{
+			AppendConsole($"❌ Re-assess all failed: {ex.Message}");
+		}
+		finally
+		{
+			// Ensure all rows are cleared in case of early exit
+			foreach (var r in assessable)
+			{
+				r.IsReassessing = false;
+			}
+
 			_isAssessing = false;
 			_progressMessage = string.Empty;
 			StateHasChanged();
@@ -1617,7 +1725,7 @@ else
 			return;
 		}
 
-		var prompt = DashboardService.GenerateRemediationPrompt(_selectedRow);
+		var prompt = DashboardService.GenerateRemediationPrompt(_selectedRow, _includeInfoInAiPrompt);
 		if (string.IsNullOrEmpty(prompt))
 		{
 			AppendConsole("ℹ️ No failing rules to resolve.");
@@ -1641,7 +1749,7 @@ else
 			return;
 		}
 
-		var prompt = DashboardService.GenerateCategoryRemediationPrompt(_selectedRow, category);
+		var prompt = DashboardService.GenerateCategoryRemediationPrompt(_selectedRow, category, _includeInfoInAiPrompt);
 		if (string.IsNullOrEmpty(prompt))
 		{
 			AppendConsole($"ℹ️ No failing rules in {category}.");
@@ -1672,9 +1780,8 @@ else
 			return false;
 		}
 
-		return _selectedRow.IsWorkingTreeClean == true
-			&& _selectedRow.CurrentBranch == "main"
-			&& _selectedRow.IsSyncedWithOrigin == true;
+		return _selectedRow.CurrentBranch == "main"
+			&& _selectedRow.IsSyncedWithOrigin != false;
 	}
 
 	private string? GetFixBlockReason()
@@ -1682,16 +1789,6 @@ else
 		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
 		{
 			return "Repository is not cloned locally";
-		}
-
-		if (_selectedRow.IsWorkingTreeClean == false)
-		{
-			return "Working tree has uncommitted changes — commit or stash first";
-		}
-
-		if (_selectedRow.IsWorkingTreeClean is null)
-		{
-			return "Working tree status is unknown — re-assess or sync first";
 		}
 
 		if (_selectedRow.CurrentBranch != "main")
@@ -1702,11 +1799,6 @@ else
 		if (_selectedRow.IsSyncedWithOrigin == false)
 		{
 			return "Local branch is not in sync with origin — run Git Sync first";
-		}
-
-		if (_selectedRow.IsSyncedWithOrigin is null)
-		{
-			return "Sync status with origin is unknown — run Git Sync first";
 		}
 
 		return null;
@@ -1918,9 +2010,14 @@ else
 					return $"{row.PackageId} — all rules pass ✓ (green = compliant)";
 				}
 
-				return row.TotalErrors > 0
-					? $"{row.PackageId} — {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found)"
-					: $"{row.PackageId} — {row.TotalWarnings} warning(s) (amber = warnings only)";
+				if (row.TotalErrors > 0)
+				{
+					return $"{row.PackageId} — {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found)";
+				}
+
+				return row.TotalWarnings > 0
+					? $"{row.PackageId} — {row.TotalWarnings} warning(s) (amber = warnings only)"
+					: $"{row.PackageId} — informational only (blue = info)";
 
 			case NavView.CategoryDetail:
 				if (item.IssueCount == 0)
@@ -1928,14 +2025,24 @@ else
 					return $"{item.Text} — all rules pass";
 				}
 
-				return item.HasErrors
-					? $"{item.Text} — {item.IssueCount} issue(s) including errors"
-					: $"{item.Text} — {item.IssueCount} warning(s)";
+				if (item.HasErrors)
+				{
+					return $"{item.Text} — {item.IssueCount} issue(s) including errors";
+				}
+
+				return item.HasWarnings
+					? $"{item.Text} — {item.IssueCount} warning(s)"
+					: $"{item.Text} — {item.IssueCount} informational";
 
 			case NavView.RuleDetail:
-				return item.HasErrors
-					? $"{item.Text} — error"
-					: $"{item.Text} — warning";
+				if (item.HasErrors)
+				{
+					return $"{item.Text} — error";
+				}
+
+				return item.HasWarnings
+					? $"{item.Text} — warning"
+					: $"{item.Text} — informational";
 
 			default:
 				return item.Text;
@@ -1954,9 +2061,14 @@ else
 			return "fas fa-cube text-success";
 		}
 
-		return row.TotalErrors > 0
-			? "fas fa-cube text-danger"
-			: "fas fa-cube text-warning";
+		if (row.TotalErrors > 0)
+		{
+			return "fas fa-cube text-danger";
+		}
+
+		return row.TotalWarnings > 0
+			? "fas fa-cube text-warning"
+			: "fas fa-cube text-info";
 	}
 
 	private bool HasAutoRemediableFailures(AssessmentCategory category)

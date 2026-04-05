@@ -79,6 +79,33 @@ public class NuGetDiscoveryService
 		return [.. results.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase)];
 	}
 
+	/// <summary>
+	/// Checks whether a package is still listed (not deprecated/de-listed) on NuGet.
+	/// </summary>
+	public async Task<bool> IsPackageListedAsync(string packageId, CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var repository = NuGet.Protocol.Core.Types.Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
+			var metadataResource = await repository.GetResourceAsync<PackageMetadataResource>(cancellationToken).ConfigureAwait(false);
+			var metadata = await metadataResource.GetMetadataAsync(
+				packageId,
+				includePrerelease: false,
+				includeUnlisted: false,
+				new SourceCacheContext(),
+				NullLogger.Instance,
+				cancellationToken).ConfigureAwait(false);
+
+			return metadata.Any();
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to check NuGet listing status for {PackageId}", packageId);
+			// If we can't verify, assume it's still listed to avoid accidental removal
+			return true;
+		}
+	}
+
 	private static string? ExtractRepositoryUrl(IPackageSearchMetadata metadata)
 	{
 		var projectUrl = metadata.ProjectUrl?.ToString();

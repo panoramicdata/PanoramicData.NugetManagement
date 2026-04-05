@@ -64,6 +64,12 @@ public class PackageDashboardRow
 	public RepoAssessment? Assessment { get; set; }
 
 	/// <summary>
+	/// Whether this row is currently being reassessed.
+	/// Used to show a spinner in the tree while awaiting reassessment.
+	/// </summary>
+	public bool IsReassessing { get; set; }
+
+	/// <summary>
 	/// Issue counts grouped by category.
 	/// </summary>
 	public Dictionary<AssessmentCategory, CategorySummary> CategorySummaries { get; set; } = [];

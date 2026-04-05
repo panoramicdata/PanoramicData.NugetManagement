@@ -33,7 +33,13 @@ public class LicenseBadgeRule : RuleBase
 				{
 					Summary = $"Add a license badge (e.g. shields.io {license} badge) at the top of README.md.",
 					Detail = $"The `README.md` does not contain a license badge for `{license}`. Add a shields.io badge such as `[![License: {license}](https://img.shields.io/badge/License-{license}-yellow.svg)](https://opensource.org/licenses/{license})`.",
-					Data = new() { ["file"] = "README.md", ["expected_license"] = license }
+					Data = new()
+					{
+						["file"] = "README.md",
+						["expected_license"] = license,
+						["remediation_type"] = "prepend_line",
+						["line_content"] = $"[![License: {license}](https://img.shields.io/badge/License-{license}-yellow.svg)](https://opensource.org/licenses/{license})"
+					}
 				}));
 	}
 }

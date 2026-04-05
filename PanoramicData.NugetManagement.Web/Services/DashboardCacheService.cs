@@ -134,6 +134,38 @@ public class DashboardCacheService
 		SaveToDisk();
 	}
 
+	/// <summary>
+	/// Removes a row by package ID from the cache and persists to disk.
+	/// Returns true if the row was found and removed.
+	/// </summary>
+	public bool RemoveRow(string packageId)
+	{
+		bool removed;
+		lock (_lock)
+		{
+			if (_cachedRows is null)
+			{
+				return false;
+			}
+
+			removed = _cachedRows.RemoveAll(r =>
+				string.Equals(r.PackageId, packageId, StringComparison.OrdinalIgnoreCase)) > 0;
+
+			if (removed)
+			{
+				_lastRefreshUtc = DateTimeOffset.UtcNow;
+			}
+		}
+
+		if (removed)
+		{
+			_logger.LogInformation("Removed de-listed package '{PackageId}' from cache", packageId);
+			SaveToDisk();
+		}
+
+		return removed;
+	}
+
 	private void SaveToDisk()
 	{
 		try

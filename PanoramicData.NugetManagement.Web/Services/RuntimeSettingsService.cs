@@ -76,6 +76,33 @@ public class RuntimeSettingsService
 	}
 
 	/// <summary>
+	/// Gets whether informational items should be included in the AI prompt.
+	/// </summary>
+	public bool IncludeInfoInAiPrompt
+	{
+		get
+		{
+			lock (_lock)
+			{
+				return _runtimeSettings.IncludeInfoInAiPrompt;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Sets whether informational items should be included in the AI prompt and persists to disk.
+	/// </summary>
+	public void SetIncludeInfoInAiPrompt(bool value)
+	{
+		lock (_lock)
+		{
+			_runtimeSettings.IncludeInfoInAiPrompt = value;
+		}
+
+		SaveToDisk();
+	}
+
+	/// <summary>
 	/// Sets the preferred IDE identifier at runtime and persists to disk.
 	/// </summary>
 	public void SetPreferredIdeId(string? value)
@@ -135,7 +162,8 @@ public class RuntimeSettingsService
 				snapshot = new RuntimeSettings
 				{
 					LocalReposRoot = _runtimeSettings.LocalReposRoot,
-					PreferredIdeId = _runtimeSettings.PreferredIdeId
+					PreferredIdeId = _runtimeSettings.PreferredIdeId,
+					IncludeInfoInAiPrompt = _runtimeSettings.IncludeInfoInAiPrompt
 				};
 			}
 
@@ -164,4 +192,10 @@ public class RuntimeSettings
 	/// The ID of the user's preferred IDE (e.g. "vs2022-professional", "vscode").
 	/// </summary>
 	public string? PreferredIdeId { get; set; }
+
+	/// <summary>
+	/// Whether to include informational (Info-severity) items in the AI prompt.
+	/// Defaults to false.
+	/// </summary>
+	public bool IncludeInfoInAiPrompt { get; set; }
 }

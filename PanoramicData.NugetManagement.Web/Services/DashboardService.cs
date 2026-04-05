@@ -275,28 +275,32 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt from failed rules.
 	/// </summary>
-	public static string GenerateRemediationPrompt(PackageDashboardRow row)
+	public static string GenerateRemediationPrompt(PackageDashboardRow row, bool includeInfo = true)
 	{
 		if (row.Assessment is null)
 		{
 			return string.Empty;
 		}
 
-		var failures = row.Assessment.RuleResults.Where(r => !r.Passed).ToList();
+		var failures = row.Assessment.RuleResults
+			.Where(r => !r.Passed && (includeInfo || r.Severity != AssessmentSeverity.Info))
+			.ToList();
 		return GeneratePromptFromFailures(row, failures);
 	}
 
 	/// <summary>
 	/// Generates an AI remediation prompt for a specific category's failed rules.
 	/// </summary>
-	public static string GenerateCategoryRemediationPrompt(PackageDashboardRow row, AssessmentCategory category)
+	public static string GenerateCategoryRemediationPrompt(PackageDashboardRow row, AssessmentCategory category, bool includeInfo = true)
 	{
 		if (row.Assessment is null)
 		{
 			return string.Empty;
 		}
 
-		var failures = row.Assessment.RuleResults.Where(r => !r.Passed && r.Category == category).ToList();
+		var failures = row.Assessment.RuleResults
+			.Where(r => !r.Passed && r.Category == category && (includeInfo || r.Severity != AssessmentSeverity.Info))
+			.ToList();
 		return GeneratePromptFromFailures(row, failures);
 	}
 
@@ -612,6 +616,12 @@ public class DashboardService
 		row.Status = success ? PackageStatus.Published : PackageStatus.Error;
 		row.StatusMessage = success ? "Published successfully." : "Publish failed.";
 	}
+
+	/// <summary>
+	/// Checks whether a NuGet package is still listed (not deprecated/de-listed).
+	/// </summary>
+	public Task<bool> IsPackageListedAsync(string packageId, CancellationToken cancellationToken = default)
+		=> _nuget.IsPackageListedAsync(packageId, cancellationToken);
 
 	internal static Dictionary<AssessmentCategory, CategorySummary> BuildCategorySummaries(List<RuleResult> results)
 	{

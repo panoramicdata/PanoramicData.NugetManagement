@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
 using PanoramicData.Blazor;
 using PanoramicData.Blazor.Models;
 using PanoramicData.NugetManagement.Models;
@@ -13,13 +14,15 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public class NavTreeDataProvider : DataProviderBase<NavItem>
 {
 	private readonly DashboardCacheService _cache;
+	private readonly string _organizationName;
 
 	/// <summary>
 	/// Initialises a new instance of the <see cref="NavTreeDataProvider"/> class.
 	/// </summary>
-	public NavTreeDataProvider(DashboardCacheService cache)
+	public NavTreeDataProvider(DashboardCacheService cache, IOptions<AppSettings> settings)
 	{
 		_cache = cache;
+		_organizationName = settings.Value.NuGetOrganization;
 	}
 
 	/// <summary>
@@ -54,18 +57,20 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		// Calculate overall health for root node based on visible packages
 		var totalIssues = visibleRows?.Sum(r => r.TotalFailures) ?? 0;
 		var hasAnyErrors = visibleRows?.Any(r => r.TotalErrors > 0) == true;
+		var hasAnyWarnings = visibleRows?.Any(r => r.TotalWarnings > 0) == true;
 
 		var items = new List<NavItem>
 		{
-			// Root: Dashboard
+			// Root: Organisation
 			new() {
 				Key = "root",
-				Text = "Dashboard",
+				Text = _organizationName,
 				IconCss = "fas fa-tachometer-alt",
 				View = NavView.Dashboard,
 				IsLeaf = false,
 				IssueCount = totalIssues,
-				HasErrors = hasAnyErrors
+				HasErrors = hasAnyErrors,
+				HasWarnings = hasAnyWarnings
 			}
 		};
 
@@ -82,9 +87,10 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				var pkgKey = $"pkg:{row.PackageId}";
 				var pkgIssues = row.TotalFailures;
 				var pkgHasErrors = row.TotalErrors > 0;
+				var pkgHasWarnings = row.TotalWarnings > 0;
 
 				// Determine RAG icon for the package
-				var pkgIcon = GetHealthIcon(row.Assessment is not null, pkgIssues, pkgHasErrors);
+				var pkgIcon = GetHealthIcon(row.Assessment is not null && !row.IsReassessing, pkgIssues, pkgHasErrors, pkgHasWarnings);
 
 				items.Add(new NavItem
 				{
@@ -96,7 +102,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					PackageId = row.PackageId,
 					IsLeaf = row.Assessment is null,
 					IssueCount = pkgIssues,
-					HasErrors = pkgHasErrors
+					HasErrors = pkgHasErrors,
+					HasWarnings = pkgHasWarnings
 				});
 
 				// Category sub-nodes (only if assessed)
@@ -109,19 +116,21 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 							.Where(r => !r.Passed && r.Category == category)
 							.ToList();
 						var catHasErrors = catFailures.Any(r => r.Severity == AssessmentSeverity.Error);
+						var catHasWarnings = catFailures.Any(r => r.Severity == AssessmentSeverity.Warning);
 
 						items.Add(new NavItem
 						{
 							Key = catKey,
 							Text = category.ToString(),
 							ParentKey = pkgKey,
-							IconCss = GetHealthIcon(true, catFailures.Count, catHasErrors),
+							IconCss = GetHealthIcon(true, catFailures.Count, catHasErrors, catHasWarnings),
 							View = NavView.CategoryDetail,
 							PackageId = row.PackageId,
 							Category = category,
 							IsLeaf = catFailures.Count == 0,
 							IssueCount = catFailures.Count,
-							HasErrors = catHasErrors
+							HasErrors = catHasErrors,
+							HasWarnings = catHasWarnings
 						});
 
 						// Individual failing rule nodes under each category
@@ -139,7 +148,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 								RuleId = rule.RuleId,
 								IsLeaf = true,
 								IssueCount = 1,
-								HasErrors = rule.Severity == AssessmentSeverity.Error
+								HasErrors = rule.Severity == AssessmentSeverity.Error,
+								HasWarnings = rule.Severity == AssessmentSeverity.Warning
 							});
 						}
 					}
@@ -162,8 +172,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 	/// <summary>
 	/// Returns a Font Awesome icon class with a RAG health indicator colour class.
+	/// Error → red, Warning → orange, Info-only → blue, Clean → green.
 	/// </summary>
-	private static string GetHealthIcon(bool isAssessed, int issueCount, bool hasErrors)
+	private static string GetHealthIcon(bool isAssessed, int issueCount, bool hasErrors, bool hasWarnings)
 	{
 		if (!isAssessed)
 		{
@@ -175,8 +186,13 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			return "fas fa-cube text-success";
 		}
 
-		return hasErrors
-			? "fas fa-cube text-danger"
-			: "fas fa-cube text-warning";
+		if (hasErrors)
+		{
+			return "fas fa-cube text-danger";
+		}
+
+		return hasWarnings
+			? "fas fa-cube text-warning"
+			: "fas fa-cube text-info";
 	}
 }

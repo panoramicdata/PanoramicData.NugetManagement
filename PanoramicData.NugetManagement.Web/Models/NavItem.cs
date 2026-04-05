@@ -62,6 +62,11 @@ public class NavItem
 	/// Whether this subtree has any errors (not just warnings).
 	/// </summary>
 	public bool HasErrors { get; init; }
+
+	/// <summary>
+	/// Whether this subtree has any warnings (not just info).
+	/// </summary>
+	public bool HasWarnings { get; init; }
 }
 
 /// <summary>
