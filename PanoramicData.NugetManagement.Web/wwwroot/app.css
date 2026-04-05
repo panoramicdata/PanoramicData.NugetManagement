@@ -808,7 +808,8 @@ html, body {
 }
 
 /* === Fix Availability Indicators === */
-.no-fix-badge {
+.no-fix-badge,
+.btn-prompt {
     font-size: 0.6rem;
     padding: 0.1rem 0.4rem;
     border-radius: 3px;
@@ -816,8 +817,21 @@ html, body {
     color: var(--info);
     background: rgba(33, 150, 243, 0.1);
     border: 1px solid rgba(33, 150, 243, 0.2);
+}
+
+.no-fix-badge {
     opacity: 0.7;
     cursor: default;
+}
+
+.btn-prompt {
+    cursor: pointer;
+    opacity: 0.85;
+}
+
+.btn-prompt:hover:not(:disabled) {
+    background: rgba(33, 150, 243, 0.25);
+    opacity: 1;
 }
 
 .fix-hint {

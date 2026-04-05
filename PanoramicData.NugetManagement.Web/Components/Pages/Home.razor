@@ -880,7 +880,8 @@ else
 													}
 													else
 													{
-														<span class="no-fix-badge" title="No automatic fix — use AI prompt"><i class="fas fa-magic"></i> AI only</span>
+														<button class="btn btn-xs btn-prompt" @onclick="() => ResolveRuleAsync(result)"
+																	disabled="@(_isAssessing || _isRunning)" title="Copy AI prompt for this rule"><i class="fas fa-magic"></i> AI only</button>
 													}
 												</div>
 												<div class="issue-message">@result.Message</div>
@@ -1005,7 +1006,8 @@ else
 						}
 						else
 						{
-							<span class="no-fix-badge" title="No automatic fix — use AI prompt"><i class="fas fa-magic"></i> AI only</span>
+							<button class="btn btn-sm btn-prompt" @onclick="() => ResolveRuleAsync(result)"
+										disabled="@(_isAssessing || _isRunning)" title="Copy AI prompt for this rule"><i class="fas fa-magic"></i> AI only</button>
 						}
 					}
 				</div>
@@ -1759,6 +1761,29 @@ else
 		_lastPromptText = prompt;
 		_copyFeedback = false;
 		AppendConsole($"── AI Remediation Prompt ({category}) ──");
+		AppendConsole(prompt);
+		AppendConsole("── End Prompt ──");
+		StateHasChanged();
+		await CopyPromptToClipboardAsync();
+	}
+
+	private async Task ResolveRuleAsync(RuleResult result)
+	{
+		if (_selectedRow is null)
+		{
+			return;
+		}
+
+		var prompt = DashboardService.GenerateRuleRemediationPrompt(_selectedRow, result);
+		if (string.IsNullOrEmpty(prompt))
+		{
+			AppendConsole($"ℹ️ No prompt for {result.RuleId}.");
+			return;
+		}
+
+		_lastPromptText = prompt;
+		_copyFeedback = false;
+		AppendConsole($"── AI Remediation Prompt ({result.RuleId}) ──");
 		AppendConsole(prompt);
 		AppendConsole("── End Prompt ──");
 		StateHasChanged();

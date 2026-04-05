@@ -304,6 +304,19 @@ public class DashboardService
 		return GeneratePromptFromFailures(row, failures);
 	}
 
+	/// <summary>
+	/// Generates an AI remediation prompt for a single failed rule.
+	/// </summary>
+	public static string GenerateRuleRemediationPrompt(PackageDashboardRow row, RuleResult result)
+	{
+		if (row.Assessment is null || result.Passed)
+		{
+			return string.Empty;
+		}
+
+		return GeneratePromptFromFailures(row, [result]);
+	}
+
 	private static string GeneratePromptFromFailures(PackageDashboardRow row, List<RuleResult> failures)
 	{
 		if (failures.Count == 0)
