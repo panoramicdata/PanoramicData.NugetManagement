@@ -69,7 +69,9 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 					Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: clean tree check, branch check, nbgv version, tag creation, and tag push.",
 					Data = new()
 					{
+						["remediation_type"] = "replace_file_content",
 						["file"] = "Publish.ps1",
+						["new_content"] = Standards.PublishPs1Content,
 						["missing_snippets"] = missing.ToArray()
 					}
 				}));

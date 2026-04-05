@@ -61,7 +61,9 @@ public class CiWorkflowMatchesMerakiRule : RuleBase
 					Detail = $"Ensure `{ciWorkflowPath}` includes all standard sections for trusted publishing including tag triggers, artifact upload, NuGet login, and push.",
 					Data = new()
 					{
-						["workflow_file"] = ciWorkflowPath,
+						["remediation_type"] = "replace_file_content",
+						["file"] = ciWorkflowPath,
+						["new_content"] = Standards.TrustedPublishingCiWorkflowContent,
 						["missing_snippets"] = missing.ToArray()
 					}
 				}));

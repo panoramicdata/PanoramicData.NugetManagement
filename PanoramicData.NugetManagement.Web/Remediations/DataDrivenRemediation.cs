@@ -32,15 +32,16 @@ public abstract class DataDrivenRemediation : IRemediation
 		if (data.TryGetValue("remediation_type", out var rtObj) && rtObj is string rt)
 		{
 			return rt is "ensure_xml_property"
-				or "ensure_csproj_property"
-				or "append_line"
-				or "prepend_line"
-				or "add_slnx_file_entries"
-				or "replace_file_content"
-				or "replace_in_file"
-				or "append_lines"
-				or "add_package_version"
-				or "remove_packagereference_versions";
+					or "ensure_csproj_property"
+					or "append_line"
+					or "prepend_line"
+					or "add_slnx_file_entries"
+					or "replace_file_content"
+					or "replace_in_file"
+					or "append_lines"
+					or "add_package_version"
+					or "remove_packagereference_versions"
+					or "add_json_array_items";
 		}
 
 		return false;
@@ -198,6 +199,29 @@ public abstract class DataDrivenRemediation : IRemediation
 				{
 					var projects = objProjects.OfType<string>().ToArray();
 					RemediationHelpers.RemovePackageReferenceVersions(localPath, projects, result, applied, onOutput);
+				}
+
+				break;
+
+			case "add_json_array_items":
+				if (data.TryGetValue("file", out var jFile) && jFile is string jsonFile &&
+					data["array_property"] is string arrayProp)
+				{
+					string[] items;
+					if (data["items"] is string[] strItems)
+					{
+						items = strItems;
+					}
+					else if (data["items"] is object[] objItems)
+					{
+						items = [.. objItems.OfType<string>()];
+					}
+					else
+					{
+						break;
+					}
+
+					RemediationHelpers.AddJsonArrayItems(localPath, jsonFile, arrayProp, items, result, applied, onOutput);
 				}
 
 				break;

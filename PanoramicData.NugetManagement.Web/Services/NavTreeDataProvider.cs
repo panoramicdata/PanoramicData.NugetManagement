@@ -132,9 +132,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 								Key = $"rule:{row.PackageId}:{rule.RuleId}",
 								Text = $"{rule.RuleId} {rule.RuleName}",
 								ParentKey = catKey,
-								IconCss = rule.Severity == AssessmentSeverity.Error
-									? "fas fa-times-circle text-danger"
-									: "fas fa-exclamation-triangle text-warning",
+								IconCss = GetRuleIcon(rule.Severity),
 								View = NavView.RuleDetail,
 								PackageId = row.PackageId,
 								Category = category,
@@ -151,6 +149,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		return items;
 	}
+
+	/// <summary>
+	/// Returns a Font Awesome icon class for a rule based on its severity.
+	/// </summary>
+	private static string GetRuleIcon(AssessmentSeverity severity) => severity switch
+	{
+		AssessmentSeverity.Error => "fas fa-times-circle text-danger",
+		AssessmentSeverity.Warning => "fas fa-exclamation-triangle text-warning",
+		_ => "fas fa-info-circle text-info"
+	};
 
 	/// <summary>
 	/// Returns a Font Awesome icon class with a RAG health indicator colour class.

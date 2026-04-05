@@ -1666,6 +1666,12 @@ else
 			return false;
 		}
 
+		if (_selectedRow.Assessment is null ||
+			!_selectedRow.Assessment.RuleResults.Any(r => !r.Passed && Dashboard.IsAutoRemediable(r)))
+		{
+			return false;
+		}
+
 		return _selectedRow.IsWorkingTreeClean == true
 			&& _selectedRow.CurrentBranch == "main"
 			&& _selectedRow.IsSyncedWithOrigin == true;
@@ -1721,6 +1727,16 @@ else
 		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
 		{
 			return "Clone the repository first";
+		}
+
+		if (_selectedRow.Assessment is null)
+		{
+			return "Assess the package first";
+		}
+
+		if (!_selectedRow.Assessment.RuleResults.Any(r => !r.Passed && Dashboard.IsAutoRemediable(r)))
+		{
+			return "No auto-remediable issues found";
 		}
 
 		return GetFixBlockReason() ?? "Auto-fix remediable issues";

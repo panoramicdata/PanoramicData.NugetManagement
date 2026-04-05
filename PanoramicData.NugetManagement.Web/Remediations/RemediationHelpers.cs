@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using PanoramicData.NugetManagement.Models;
 
@@ -506,6 +508,80 @@ internal static class RemediationHelpers
 		if (dir is not null && !Directory.Exists(dir))
 		{
 			Directory.CreateDirectory(dir);
+		}
+	}
+
+	/// <summary>
+	/// Adds missing items to a JSON array property in a file.
+	/// </summary>
+	public static void AddJsonArrayItems(
+		string localPath,
+		string relativePath,
+		string arrayProperty,
+		string[] items,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add items.");
+			return;
+		}
+
+		try
+		{
+			var json = File.ReadAllText(fullPath);
+			var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip });
+			if (node is not JsonObject root)
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
+				return;
+			}
+
+			JsonArray array;
+			if (root.TryGetPropertyValue(arrayProperty, out var existing) && existing is JsonArray existingArray)
+			{
+				array = existingArray;
+			}
+			else
+			{
+				array = [];
+				root[arrayProperty] = array;
+			}
+
+			var currentValues = array
+				.Select(n => n?.GetValue<string>())
+				.Where(v => v is not null)
+				.ToHashSet(StringComparer.Ordinal);
+
+			var added = 0;
+			foreach (var item in items)
+			{
+				if (!currentValues.Contains(item))
+				{
+					array.Add(JsonValue.Create(item));
+					added++;
+				}
+			}
+
+			if (added > 0)
+			{
+				var options = new JsonSerializerOptions { WriteIndented = true };
+				var updated = root.ToJsonString(options);
+				File.WriteAllText(fullPath, updated);
+				applied.Add(relativePath);
+				onOutput?.Invoke($"✅ [{result.RuleId}] Added {added} item(s) to {arrayProperty} in {relativePath}");
+			}
+			else
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] All items already present in {arrayProperty} — skipping.");
+			}
+		}
+		catch (JsonException ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
 		}
 	}
 }

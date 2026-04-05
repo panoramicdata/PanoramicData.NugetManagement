@@ -90,7 +90,13 @@ public class NerdbankVersionJsonRule : RuleBase
 					{
 						Summary = $"Add missing patterns: {string.Join(", ", missing)}",
 						Detail = $"The `version.json` file is missing expected `publicReleaseRefSpec` patterns: {string.Join(", ", missing)}.",
-						Data = new() { ["file"] = "version.json", ["missing_patterns"] = missing.ToArray() }
+						Data = new()
+						{
+							["remediation_type"] = "add_json_array_items",
+							["file"] = "version.json",
+							["array_property"] = "publicReleaseRefSpec",
+							["items"] = missing.ToArray()
+						}
 					}));
 		}
 		catch (JsonException)
