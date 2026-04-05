@@ -215,6 +215,7 @@ internal static class RemediationHelpers
 	public static void AddPackageVersion(
 		string localPath,
 		string packageName,
+		string packageVersion,
 		RuleResult result,
 		List<string> applied,
 		Action<string>? onOutput)
@@ -248,11 +249,11 @@ internal static class RemediationHelpers
 
 			itemGroup.Add(new XElement("PackageVersion",
 				new XAttribute("Include", packageName),
-				new XAttribute("Version", "*")));
+				new XAttribute("Version", packageVersion)));
 
 			doc.Save(fullPath);
 			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Added <PackageVersion Include=\"{packageName}\" Version=\"*\" /> to {relativePath}");
+			onOutput?.Invoke($"✅ [{result.RuleId}] Added <PackageVersion Include=\"{packageName}\" Version=\"{packageVersion}\" /> to {relativePath}");
 		}
 		catch (Exception ex)
 		{

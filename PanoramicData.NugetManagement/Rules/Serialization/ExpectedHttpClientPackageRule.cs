@@ -42,9 +42,7 @@ public class ExpectedHttpClientPackageRule : RuleBase
 					Detail = $"The expected HTTP client package `{expected}` is not referenced in any non-test project. Add a `{expected}` package reference and use it for HTTP client interfaces.",
 					Data = new()
 					{
-						["expected_package"] = expected,
-						["remediation_type"] = "add_package_version",
-						["package_name"] = expected
+						["expected_package"] = expected
 					}
 				}));
 	}

@@ -183,9 +183,10 @@ public abstract class DataDrivenRemediation : IRemediation
 				break;
 
 			case "add_package_version":
-				if (data["package_name"] is string pkgName)
+				if (data["package_name"] is string pkgName &&
+					data.TryGetValue("package_version", out var pvObj) && pvObj is string pkgVersion)
 				{
-					RemediationHelpers.AddPackageVersion(localPath, pkgName, result, applied, onOutput);
+					RemediationHelpers.AddPackageVersion(localPath, pkgName, pkgVersion, result, applied, onOutput);
 				}
 
 				break;

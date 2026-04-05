@@ -50,6 +50,7 @@ public class TestSdkPresentRule : RuleBase
 				{
 					["remediation_type"] = "add_package_version",
 					["package_name"] = "Microsoft.NET.Test.Sdk",
+					["package_version"] = "18.3.0",
 					["file"] = "Directory.Packages.props"
 				}
 			}));

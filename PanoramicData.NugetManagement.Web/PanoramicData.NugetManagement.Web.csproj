@@ -32,4 +32,8 @@
         <PackageReference Include="PanoramicData.Blazor" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Remediations\HttpClient\" />
+    </ItemGroup>
+
 </Project>

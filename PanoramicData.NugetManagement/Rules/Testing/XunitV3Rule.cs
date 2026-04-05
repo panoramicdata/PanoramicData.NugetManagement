@@ -53,6 +53,7 @@ public class XunitV3Rule : RuleBase
 				{
 					["remediation_type"] = "add_package_version",
 					["package_name"] = "xunit.v3",
+					["package_version"] = "3.2.2",
 					["file"] = "Directory.Packages.props"
 				}
 			}));

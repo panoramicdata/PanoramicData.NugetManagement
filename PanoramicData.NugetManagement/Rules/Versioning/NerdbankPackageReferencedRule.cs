@@ -42,6 +42,7 @@ public class NerdbankPackageReferencedRule : RuleBase
 					{
 						["remediation_type"] = "add_package_version",
 						["package_name"] = "Nerdbank.GitVersioning",
+						["package_version"] = "3.9.50",
 						["file"] = "Directory.Packages.props"
 					}
 				}));

@@ -43,6 +43,7 @@ public class CoverletCollectorRule : RuleBase
 					{
 						["remediation_type"] = "add_package_version",
 						["package_name"] = "coverlet.collector",
+						["package_version"] = "8.0.1",
 						["file"] = "Directory.Packages.props"
 					}
 				}));
