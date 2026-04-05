@@ -559,22 +559,25 @@ public class RuleEvaluationTests : TestWithOutput
 	[Fact]
 	public async Task CI08_ShouldPass_WhenAllRequiredSnippetsPresent()
 	{
-		var ci = """
-			on:
-			  push:
-				tags: ['[0-9]*.[0-9]*.[0-9]*']
-			jobs:
-			  build:
-				steps:
-				- uses: actions/upload-artifact@v4
-			  publish:
-				if: startsWith(github.ref, 'refs/tags/')
-				permissions:
-				  id-token: write
-				steps:
-				- uses: NuGet/login@v1
-				- run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
-			""";
+		var ci = string.Join("\n",
+		[
+			"on:",
+			"  push:",
+			"    tags: ['[0-9]*.[0-9]*.[0-9]*']",
+			"jobs:",
+			"  build:",
+			"    steps:",
+			"    - uses: actions/upload-artifact@v4",
+			"  publish:",
+			"    if: startsWith(github.ref, 'refs/tags/')",
+			"    permissions:",
+			"      id-token: write",
+			"    steps:",
+			"    - uses: NuGet/login@v1",
+			"      with:",
+			"        user: david_n_m_bond",
+			"    - run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }}"
+		]);
 
 		var context = CreateContext(new Dictionary<string, string>
 		{
@@ -591,6 +594,38 @@ public class RuleEvaluationTests : TestWithOutput
 		var context = CreateContext(new Dictionary<string, string>
 		{
 			[".github/workflows/ci.yml"] = "name: CI\non:\n  push:\n"
+		});
+
+		var result = await GetRule("CI-08").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task CI08_ShouldFail_WhenNuGetLoginUsesServerUrlInsteadOfNamedUser()
+	{
+		var ci = string.Join("\n",
+		[
+			"on:",
+			"  push:",
+			"    tags: ['[0-9]*.[0-9]*.[0-9]*']",
+			"jobs:",
+			"  build:",
+			"    steps:",
+			"    - uses: actions/upload-artifact@v4",
+			"  publish:",
+			"    if: startsWith(github.ref, 'refs/tags/')",
+			"    permissions:",
+			"      id-token: write",
+			"    steps:",
+			"    - uses: NuGet/login@v1",
+			"      with:",
+			"        nuget-server-url: https://api.nuget.org/v3/index.json",
+			"    - run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }}"
+		]);
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/ci.yml"] = ci
 		});
 
 		var result = await GetRule("CI-08").EvaluateAsync(context, CancellationToken.None);
@@ -630,6 +665,29 @@ public class RuleEvaluationTests : TestWithOutput
 		});
 
 		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
+	// ── CI-10 ───────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task CI10_ShouldPass_WhenNugetKeyNotCommitted()
+	{
+		var context = CreateEmptyContext();
+
+		var result = await GetRule("CI-10").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task CI10_ShouldFail_WhenNugetKeyCommitted()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["nuget-key.txt"] = "oy2abc123..."
+		});
+
+		var result = await GetRule("CI-10").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
 	}
 

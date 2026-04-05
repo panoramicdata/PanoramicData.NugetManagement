@@ -32,16 +32,17 @@ public abstract class DataDrivenRemediation : IRemediation
 		if (data.TryGetValue("remediation_type", out var rtObj) && rtObj is string rt)
 		{
 			return rt is "ensure_xml_property"
-					or "ensure_csproj_property"
-					or "append_line"
-					or "prepend_line"
-					or "add_slnx_file_entries"
-					or "replace_file_content"
-					or "replace_in_file"
-					or "append_lines"
-					or "add_package_version"
-					or "remove_packagereference_versions"
-					or "add_json_array_items";
+						or "ensure_csproj_property"
+						or "append_line"
+						or "prepend_line"
+						or "add_slnx_file_entries"
+						or "replace_file_content"
+						or "replace_in_file"
+						or "append_lines"
+						or "add_package_version"
+						or "remove_packagereference_versions"
+						or "add_json_array_items"
+						or "delete_file";
 		}
 
 		return false;
@@ -223,6 +224,14 @@ public abstract class DataDrivenRemediation : IRemediation
 					}
 
 					RemediationHelpers.AddJsonArrayItems(localPath, jsonFile, arrayProp, items, result, applied, onOutput);
+				}
+
+				break;
+
+			case "delete_file":
+				if (data.TryGetValue("file", out var dfFile) && dfFile is string deleteFile)
+				{
+					RemediationHelpers.DeleteFile(localPath, deleteFile, result, applied, onOutput);
 				}
 
 				break;

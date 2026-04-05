@@ -1,3 +1,5 @@
+using PanoramicData.NugetManagement.Models;
+
 namespace PanoramicData.NugetManagement.Web.Models;
 
 /// <summary>
@@ -24,6 +26,11 @@ public class AppSettings
 	/// GitHub OAuth App Client Secret.
 	/// </summary>
 	public string GitHubClientSecret { get; set; } = string.Empty;
+
+	/// <summary>
+	/// The NuGet user for Trusted Publishing login.
+	/// </summary>
+	public string NuGetUser { get; set; } = Standards.NuGetUser;
 
 	/// <summary>
 	/// The expected SPDX license expression (e.g. "MIT").

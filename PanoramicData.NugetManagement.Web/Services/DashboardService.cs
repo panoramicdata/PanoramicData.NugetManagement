@@ -150,6 +150,7 @@ public class DashboardService
 			{
 				ExpectedLicense = _settings.ExpectedLicense,
 				ExpectedCopyrightHolder = _settings.CopyrightHolder,
+				NuGetUser = _settings.NuGetUser,
 			};
 
 			if (!string.IsNullOrEmpty(_settings.CodacyApiToken))
@@ -224,6 +225,7 @@ public class DashboardService
 			{
 				ExpectedLicense = _settings.ExpectedLicense,
 				ExpectedCopyrightHolder = _settings.CopyrightHolder,
+				NuGetUser = _settings.NuGetUser,
 			};
 
 			if (!string.IsNullOrEmpty(_settings.CodacyApiToken))

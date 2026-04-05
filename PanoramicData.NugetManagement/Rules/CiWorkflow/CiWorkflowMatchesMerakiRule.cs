@@ -24,6 +24,7 @@ public class CiWorkflowMatchesMerakiRule : RuleBase
 	{
 		var ciWorkflowPath = CiWorkflowPathResolver.Resolve(context);
 		var content = context.GetFileContent(ciWorkflowPath);
+		var expectedNuGetUser = context.Options.NuGetUser;
 		if (content is null)
 		{
 			return Task.FromResult(Fail(
@@ -44,6 +45,7 @@ public class CiWorkflowMatchesMerakiRule : RuleBase
 			"if: startsWith(github.ref, 'refs/tags/')",
 			"id-token: write",
 			"uses: NuGet/login@v1",
+		 $"user: {expectedNuGetUser}",
 			"dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }}"
 		};
 
@@ -63,7 +65,7 @@ public class CiWorkflowMatchesMerakiRule : RuleBase
 					{
 						["remediation_type"] = "replace_file_content",
 						["file"] = ciWorkflowPath,
-						["new_content"] = Standards.TrustedPublishingCiWorkflowContent,
+						["new_content"] = Standards.GetTrustedPublishingCiWorkflowContent(expectedNuGetUser),
 						["missing_snippets"] = missing.ToArray()
 					}
 				}));

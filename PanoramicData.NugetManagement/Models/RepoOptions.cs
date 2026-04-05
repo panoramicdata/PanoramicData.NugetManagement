@@ -59,6 +59,12 @@ public class RepoOptions
 	public string ExpectedHttpClientPackage { get; set; } = Standards.ExpectedHttpClientPackage;
 
 	/// <summary>
+	/// The expected NuGet user for Trusted Publishing login.
+	/// Defaults to <see cref="Standards.NuGetUser"/>.
+	/// </summary>
+	public string NuGetUser { get; set; } = Standards.NuGetUser;
+
+	/// <summary>
 	/// Optional Codacy quality gate settings. When provided, Codacy.Api checks are executed.
 	/// </summary>
 	public CodacyOptions? Codacy { get; set; }

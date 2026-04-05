@@ -35,6 +35,28 @@ internal static class RemediationHelpers
 	}
 
 	/// <summary>
+	/// Deletes a file from the repository.
+	/// </summary>
+	public static void DeleteFile(
+		string localPath,
+		string relativePath,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — skipping.");
+			return;
+		}
+
+		File.Delete(fullPath);
+		applied.Add(relativePath);
+		onOutput?.Invoke($"✅ [{result.RuleId}] Deleted {relativePath}");
+	}
+
+	/// <summary>
 	/// Ensures an XML property exists in a .props or .csproj file.
 	/// Creates the file if it doesn't exist.
 	/// </summary>

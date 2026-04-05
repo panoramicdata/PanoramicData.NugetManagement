@@ -94,6 +94,11 @@ public static class Standards
 	public const string ExpectedHttpClientPackage = "Refit";
 
 	/// <summary>
+	/// The standard NuGet user for Trusted Publishing login.
+	/// </summary>
+	public const string NuGetUser = "david_n_m_bond";
+
+	/// <summary>
 	/// The standard SECURITY.md content for all repositories.
 	/// </summary>
 	public const string SecurityMdContent = """
@@ -328,75 +333,77 @@ public static class Standards
 	/// The standard CI workflow content for GitHub Actions with Trusted Publishing.
 	/// Used by CI-08 when the existing workflow is missing required snippets.
 	/// </summary>
-	public const string TrustedPublishingCiWorkflowContent = """
-		name: CI
-
-		on:
-		  push:
-			branches: [main]
-			tags: ['[0-9]*.[0-9]*.[0-9]*']
-		  pull_request:
-			branches: [main]
-
-		jobs:
-		  build:
-			runs-on: ubuntu-latest
-			steps:
-			- name: Checkout
-			  uses: actions/checkout@v4
-			  with:
-				fetch-depth: 0
-
-			- name: Setup .NET
-			  uses: actions/setup-dotnet@v4
-			  with:
-				dotnet-version: 10.0.x
-
-			- name: Restore
-			  run: dotnet restore
-
-			- name: Build
-			  run: dotnet build --configuration Release --no-restore
-
-			- name: Test
-			  run: dotnet test --configuration Release --no-build --verbosity normal
-
-			- name: Pack
-			  run: dotnet pack --configuration Release --no-build --output ./artifacts
-
-			- name: Upload artifacts
-			  uses: actions/upload-artifact@v4
-			  with:
-				name: packages
-				path: ./artifacts/*.nupkg
-
-		  publish:
-			needs: build
-			runs-on: ubuntu-latest
-			if: startsWith(github.ref, 'refs/tags/')
-			permissions:
-			  id-token: write
-			steps:
-			- name: Download artifacts
-			  uses: actions/download-artifact@v4
-			  with:
-				name: packages
-				path: ./artifacts
-
-			- name: Setup .NET
-			  uses: actions/setup-dotnet@v4
-			  with:
-				dotnet-version: 10.0.x
-
-			- name: Login to NuGet
-			  id: login
-			  uses: NuGet/login@v1
-			  with:
-				nuget-server-url: https://api.nuget.org/v3/index.json
-
-			- name: Push to NuGet
-			  run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-		""";
+	public static string GetTrustedPublishingCiWorkflowContent(string nuGetUser)
+		=> string.Join("\n",
+		[
+				"name: CI",
+				string.Empty,
+				"on:",
+				"  push:",
+				"    branches: [main]",
+				"    tags: ['[0-9]*.[0-9]*.[0-9]*']",
+				"  pull_request:",
+				"    branches: [main]",
+				string.Empty,
+				"jobs:",
+				"  build:",
+				"    runs-on: ubuntu-latest",
+				"    steps:",
+				"    - name: Checkout",
+				"      uses: actions/checkout@v4",
+				"      with:",
+				"        fetch-depth: 0",
+				string.Empty,
+				"    - name: Setup .NET",
+				"      uses: actions/setup-dotnet@v4",
+				"      with:",
+				"        dotnet-version: 10.0.x",
+				string.Empty,
+				"    - name: Restore",
+				"      run: dotnet restore",
+				string.Empty,
+				"    - name: Build",
+				"      run: dotnet build --configuration Release --no-restore",
+				string.Empty,
+				"    - name: Test",
+				"      run: dotnet test --configuration Release --no-build --verbosity normal",
+				string.Empty,
+				"    - name: Pack",
+				"      run: dotnet pack --configuration Release --no-build --output ./artifacts",
+				string.Empty,
+				"    - name: Upload artifacts",
+				"      uses: actions/upload-artifact@v4",
+				"      with:",
+				"        name: packages",
+				"        path: ./artifacts/*.nupkg",
+				string.Empty,
+				"  publish:",
+				"    needs: build",
+				"    runs-on: ubuntu-latest",
+				"    if: startsWith(github.ref, 'refs/tags/')",
+				"    permissions:",
+				"      id-token: write",
+				"    steps:",
+				"    - name: Download artifacts",
+				"      uses: actions/download-artifact@v4",
+				"      with:",
+				"        name: packages",
+				"        path: ./artifacts",
+				string.Empty,
+				"    - name: Setup .NET",
+				"      uses: actions/setup-dotnet@v4",
+				"      with:",
+				"        dotnet-version: 10.0.x",
+				string.Empty,
+				"    - name: Login to NuGet",
+				"      id: login",
+				"      uses: NuGet/login@v1",
+				"      with:",
+				$"        user: {nuGetUser}",
+				string.Empty,
+				"    - name: Push to NuGet",
+			 "      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate"
+		]);
 
 	/// <summary>
 	/// The standard .gitignore content for .NET repositories.
