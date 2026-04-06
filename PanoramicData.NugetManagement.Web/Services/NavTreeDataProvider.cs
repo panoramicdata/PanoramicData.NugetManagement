@@ -56,7 +56,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		// Calculate overall health for root node based on visible packages
 		var totalIssues = visibleRows?.Sum(r => r.TotalFailures) ?? 0;
-		var hasAnyErrors = visibleRows?.Any(r => r.TotalErrors > 0) == true;
+		var hasAnyErrors = visibleRows?.Any(r => r.TotalCriticals > 0 || r.TotalErrors > 0) == true;
 		var hasAnyWarnings = visibleRows?.Any(r => r.TotalWarnings > 0) == true;
 
 		var items = new List<NavItem>
@@ -86,7 +86,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				}
 				var pkgKey = $"pkg:{row.PackageId}";
 				var pkgIssues = row.TotalFailures;
-				var pkgHasErrors = row.TotalErrors > 0;
+				var pkgHasErrors = row.TotalCriticals > 0 || row.TotalErrors > 0;
 				var pkgHasWarnings = row.TotalWarnings > 0;
 
 				// Determine RAG icon for the package
@@ -115,7 +115,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 						var catFailures = row.Assessment.RuleResults
 							.Where(r => !r.Passed && r.Category == category)
 							.ToList();
-						var catHasErrors = catFailures.Any(r => r.Severity == AssessmentSeverity.Error);
+						var catHasErrors = catFailures.Any(r => r.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error);
 						var catHasWarnings = catFailures.Any(r => r.Severity == AssessmentSeverity.Warning);
 
 						items.Add(new NavItem
@@ -148,7 +148,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 								RuleId = rule.RuleId,
 								IsLeaf = true,
 								IssueCount = 1,
-								HasErrors = rule.Severity == AssessmentSeverity.Error,
+								HasErrors = rule.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error,
 								HasWarnings = rule.Severity == AssessmentSeverity.Warning
 							});
 						}
@@ -165,6 +165,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// </summary>
 	private static string GetRuleIcon(AssessmentSeverity severity) => severity switch
 	{
+		AssessmentSeverity.Critical => "fas fa-skull-crossbones text-danger",
 		AssessmentSeverity.Error => "fas fa-times-circle text-danger",
 		AssessmentSeverity.Warning => "fas fa-exclamation-triangle text-warning",
 		_ => "fas fa-info-circle text-info"

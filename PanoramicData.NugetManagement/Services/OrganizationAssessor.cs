@@ -151,10 +151,11 @@ public class OrganizationAssessor : IDisposable
 		}
 
 		_logger.LogInformation(
-			"Assessment of {FullName}: {Passed}/{Total} passed ({Errors} errors, {Warnings} warnings)",
+		 "Assessment of {FullName}: {Passed}/{Total} passed ({Criticals} critical, {Errors} errors, {Warnings} warnings)",
 			repository.FullName,
 			ruleResults.Count(r => r.Passed),
 			ruleResults.Count,
+			ruleResults.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Critical),
 			ruleResults.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Error),
 			ruleResults.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Warning));
 

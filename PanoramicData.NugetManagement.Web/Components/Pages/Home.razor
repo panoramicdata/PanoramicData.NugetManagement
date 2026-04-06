@@ -146,6 +146,24 @@ else
 									<span class="breadcrumb-current" title="@_selectedRuleId">@_selectedRuleId</span>
 								}
 							}
+
+	private async Task PersistSelectedRowUpdateAsync()
+	{
+		if (_selectedRow is null)
+		{
+			return;
+		}
+
+		var index = _rows.FindIndex(r => string.Equals(r.PackageId, _selectedRow.PackageId, StringComparison.OrdinalIgnoreCase));
+		if (index >= 0)
+		{
+			_rows[index] = _selectedRow;
+		}
+
+		Cache.UpsertRow(_selectedRow);
+		_lastRefreshUtc = Cache.LastRefreshUtc;
+		await RefreshTableAsync();
+	}
 						</div>
 						<div class="breadcrumb-right">
 							@if (_isLoading || _isAssessing)
@@ -1252,6 +1270,24 @@ else
 		}
 	}
 
+	private async Task PersistSelectedRowUpdateAsync()
+	{
+		if (_selectedRow is null)
+		{
+			return;
+		}
+
+		var rowIndex = _rows.FindIndex(r => string.Equals(r.PackageId, _selectedRow.PackageId, StringComparison.OrdinalIgnoreCase));
+		if (rowIndex >= 0)
+		{
+			_rows[rowIndex] = _selectedRow;
+		}
+
+		Cache.UpsertRow(_selectedRow);
+		_lastRefreshUtc = Cache.LastRefreshUtc;
+		await RefreshTableAsync();
+	}
+
 	private async Task ReassessAllAsync()
 	{
 		if (_selectedRow is null)
@@ -1294,8 +1330,7 @@ else
 				await Dashboard.AssessRepositoryAsync(_selectedRow, github);
 			}
 
-			Cache.NotifyRowUpdated();
-			await RefreshTableAsync();
+           await PersistSelectedRowUpdateAsync();
 			AppendConsole($"✅ Assessment complete for {_selectedRow.PackageId}");
 		}
 		catch (Exception ex)
@@ -1401,8 +1436,7 @@ else
 				await Dashboard.AssessRepositoryAsync(_selectedRow, github);
 			}
 
-			Cache.NotifyRowUpdated();
-			await RefreshTableAsync();
+           await PersistSelectedRowUpdateAsync();
 			AppendConsole($"✅ Re-assessed {category} for {_selectedRow.PackageId}");
 		}
 		catch (Exception ex)
@@ -1454,8 +1488,7 @@ else
 			_progressMessage = "Re-assessing...";
 			StateHasChanged();
 			await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
-			Cache.NotifyRowUpdated();
-			await RefreshTableAsync();
+           await PersistSelectedRowUpdateAsync();
 
 			// Report remaining issues that have no auto-fix
 			var remaining = _selectedRow.Assessment?.RuleResults
@@ -1524,8 +1557,7 @@ else
 			_progressMessage = "Re-assessing...";
 			StateHasChanged();
 			await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
-			Cache.NotifyRowUpdated();
-			await RefreshTableAsync();
+           await PersistSelectedRowUpdateAsync();
 		}
 		catch (Exception ex)
 		{
@@ -1582,8 +1614,7 @@ else
 			_progressMessage = "Re-assessing...";
 			StateHasChanged();
 			await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
-			Cache.NotifyRowUpdated();
-			await RefreshTableAsync();
+           await PersistSelectedRowUpdateAsync();
 		}
 		catch (Exception ex)
 		{

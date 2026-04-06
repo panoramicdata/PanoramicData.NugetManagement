@@ -40,6 +40,7 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "replace_in_file"
 						or "append_lines"
 						or "add_package_version"
+					   or "update_package_versions"
 						or "remove_packagereference_versions"
 						or "add_json_array_items"
 						or "delete_file";
@@ -188,6 +189,18 @@ public abstract class DataDrivenRemediation : IRemediation
 					data.TryGetValue("package_version", out var pvObj) && pvObj is string pkgVersion)
 				{
 					RemediationHelpers.AddPackageVersion(localPath, pkgName, pkgVersion, result, applied, onOutput);
+				}
+
+				break;
+
+			case "update_package_versions":
+				if (data.TryGetValue("updates", out var updatesObj) && updatesObj is string[] updates)
+				{
+					RemediationHelpers.UpdatePackageVersions(localPath, updates, result, applied, onOutput);
+				}
+				else if (data.TryGetValue("updates", out var updatesObj2) && updatesObj2 is object[] objUpdates)
+				{
+					RemediationHelpers.UpdatePackageVersions(localPath, [.. objUpdates.OfType<string>()], result, applied, onOutput);
 				}
 
 				break;

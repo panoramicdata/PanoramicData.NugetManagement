@@ -1106,6 +1106,62 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	// ── PKG-05 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task PKG05_ShouldFail_WhenBuildLevelUpdatesAvailable()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Example.Package\" Version=\"1.2.3\" /></ItemGroup></Project>"
+		});
+
+		var rule = new NuGetBuildLevelUpdatesRule((packageId, currentVersion, _) =>
+			Task.FromResult<PackageVersionStatus?>(new(packageId, currentVersion, "1.2.4", PackageUpdateLevel.Build)));
+
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Severity.Should().Be(AssessmentSeverity.Warning);
+		result.Advisory.Should().NotBeNull();
+		result.Advisory!.Data["remediation_type"].Should().Be("update_package_versions");
+	}
+
+	// ── PKG-06 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task PKG06_ShouldFail_WhenMinorLevelUpdatesAvailable()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Example.Package\" Version=\"1.2.3\" /></ItemGroup></Project>"
+		});
+
+		var rule = new NuGetMinorLevelUpdatesRule((packageId, currentVersion, _) =>
+			Task.FromResult<PackageVersionStatus?>(new(packageId, currentVersion, "1.3.0", PackageUpdateLevel.Minor)));
+
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Severity.Should().Be(AssessmentSeverity.Error);
+	}
+
+	// ── PKG-07 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task PKG07_ShouldFail_WhenMajorLevelUpdatesAvailable()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Example.Package\" Version=\"1.2.3\" /></ItemGroup></Project>"
+		});
+
+		var rule = new NuGetMajorLevelUpdatesRule((packageId, currentVersion, _) =>
+			Task.FromResult<PackageVersionStatus?>(new(packageId, currentVersion, "2.0.0", PackageUpdateLevel.Major)));
+
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Severity.Should().Be(AssessmentSeverity.Critical);
+	}
+
 	// ── META-01 ─────────────────────────────────────────────────────────
 
 	[Fact]
@@ -1496,11 +1552,37 @@ public class RuleEvaluationTests : TestWithOutput
 	// ── TST-04 ──────────────────────────────────────────────────────────
 
 	[Fact]
-	public async Task TST04_ShouldPass_WhenCoverletCollectorReferenced()
+	public async Task TST04_ShouldFail_WhenCoverletCollectorOnlyPinnedInDirectoryPackagesPropsWithCpm()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"coverlet.collector\" Version=\"6.0.0\" /></ItemGroup></Project>"
+			["Directory.Packages.props"] = "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"coverlet.collector\" Version=\"6.0.0\" /></ItemGroup></Project>",
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task TST04_ShouldPass_WhenCoverletCollectorPinnedAndReferencedWithCpm()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"coverlet.collector\" Version=\"6.0.0\" /></ItemGroup></Project>",
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"coverlet.collector\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task TST04_ShouldPass_WhenCoverletCollectorReferencedInTestProjectWithoutCpm()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"coverlet.collector\" Version=\"6.0.0\" /></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
@@ -1567,6 +1649,20 @@ public class RuleEvaluationTests : TestWithOutput
 
 		var result = await GetRule("VER-03").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task VER03_ShouldProvideAutoFix_WhenGlobalJsonHasWrongSdk()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["global.json"] = "{\"sdk\":{\"version\":\"10.0.100\",\"rollForward\":\"latestFeature\"}}"
+		});
+
+		var result = await GetRule("VER-03").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory.Should().NotBeNull();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
 	}
 
 	private static IRule GetRule(string ruleId)

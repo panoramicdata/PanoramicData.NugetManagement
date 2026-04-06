@@ -36,6 +36,11 @@ public class RepoAssessment
 	public int FailedCount => RuleResults.Count(r => !r.Passed);
 
 	/// <summary>
+	/// The number of critical failures (failed rules with Critical severity).
+	/// </summary>
+	public int CriticalCount => RuleResults.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Critical);
+
+	/// <summary>
 	/// The number of errors (failed rules with Error severity).
 	/// </summary>
 	public int ErrorCount => RuleResults.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Error);
@@ -51,7 +56,7 @@ public class RepoAssessment
 	public int InfoCount => RuleResults.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Info);
 
 	/// <summary>
-	/// Whether the repository passes all Error-severity rules.
+	/// Whether the repository passes all Critical- and Error-severity rules.
 	/// </summary>
-	public bool IsCompliant => ErrorCount == 0;
+	public bool IsCompliant => CriticalCount == 0 && ErrorCount == 0;
 }

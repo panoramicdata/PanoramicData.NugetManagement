@@ -122,6 +122,33 @@ public class DashboardCacheService
 	}
 
 	/// <summary>
+ /// Inserts or replaces a single cached row by package ID and persists to disk.
+	/// </summary>
+	public void UpsertRow(PackageDashboardRow row)
+	{
+		lock (_lock)
+		{
+			_cachedRows ??= [];
+
+			var index = _cachedRows.FindIndex(existing =>
+				string.Equals(existing.PackageId, row.PackageId, StringComparison.OrdinalIgnoreCase));
+
+			if (index >= 0)
+			{
+				_cachedRows[index] = row;
+			}
+			else
+			{
+				_cachedRows.Add(row);
+			}
+
+			_lastRefreshUtc = DateTimeOffset.UtcNow;
+		}
+
+		SaveToDisk();
+	}
+
+	/// <summary>
 	/// Notifies that a single row's assessment was updated — persists to disk.
 	/// </summary>
 	public void NotifyRowUpdated()

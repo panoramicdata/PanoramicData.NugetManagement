@@ -308,6 +308,62 @@ internal static class RemediationHelpers
 	}
 
 	/// <summary>
+	/// Updates explicit package version declarations in repository files.
+	/// </summary>
+	public static void UpdatePackageVersions(
+		string localPath,
+		string[] updates,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var groupedUpdates = updates
+			.Select(ParsePackageVersionUpdate)
+			.Where(update => update is not null)
+			.Select(update => update!)
+			.GroupBy(update => update.RelativePath, StringComparer.OrdinalIgnoreCase);
+
+		foreach (var fileUpdates in groupedUpdates)
+		{
+			var fullPath = ResolvePath(localPath, fileUpdates.Key);
+			if (!File.Exists(fullPath))
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {fileUpdates.Key} does not exist — cannot update package versions.");
+				continue;
+			}
+
+			try
+			{
+				var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+				var changed = false;
+
+				foreach (var update in fileUpdates)
+				{
+					changed |= UpdatePackageVersion(doc, update);
+				}
+
+				if (!changed)
+				{
+					onOutput?.Invoke($"⏭️ [{result.RuleId}] No matching package version entries found in {fileUpdates.Key} — skipping.");
+					continue;
+				}
+
+				doc.Save(fullPath);
+				if (!applied.Contains(fileUpdates.Key, StringComparer.OrdinalIgnoreCase))
+				{
+					applied.Add(fileUpdates.Key);
+				}
+
+				onOutput?.Invoke($"✅ [{result.RuleId}] Updated package versions in {fileUpdates.Key}");
+			}
+			catch (Exception ex)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {fileUpdates.Key}: {ex.Message}");
+			}
+		}
+	}
+
+	/// <summary>
 	/// Removes Version attributes from PackageReference elements in .csproj files,
 	/// first migrating the versions to Directory.Packages.props as PackageVersion entries.
 	/// </summary>
@@ -546,6 +602,79 @@ internal static class RemediationHelpers
 	public static string ResolvePath(string localPath, string relativePath)
 		=> Path.Combine(localPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
+	private static bool UpdatePackageVersion(XDocument doc, PackageVersionUpdate update)
+	{
+		var elementName = update.VersionKind.StartsWith("PackageVersion", StringComparison.Ordinal)
+			? "PackageVersion"
+			: "PackageReference";
+
+		var elements = doc.Descendants(elementName)
+			.Where(element => string.Equals(
+				element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value,
+				update.PackageId,
+				StringComparison.OrdinalIgnoreCase))
+			.ToList();
+
+		if (elements.Count == 0)
+		{
+			return false;
+		}
+
+		var changed = false;
+		foreach (var element in elements)
+		{
+			if (update.VersionKind.EndsWith("Attribute", StringComparison.Ordinal))
+			{
+				var versionAttribute = element.Attribute("Version");
+				if (versionAttribute is null)
+				{
+					element.SetAttributeValue("Version", update.LatestVersion);
+					changed = true;
+					continue;
+				}
+
+				if (!string.Equals(versionAttribute.Value, update.LatestVersion, StringComparison.OrdinalIgnoreCase))
+				{
+					versionAttribute.Value = update.LatestVersion;
+					changed = true;
+				}
+			}
+			else
+			{
+				var versionElement = element.Element("Version");
+				if (versionElement is null)
+				{
+					element.Add(new XElement("Version", update.LatestVersion));
+					changed = true;
+					continue;
+				}
+
+				if (!string.Equals(versionElement.Value, update.LatestVersion, StringComparison.OrdinalIgnoreCase))
+				{
+					versionElement.Value = update.LatestVersion;
+					changed = true;
+				}
+			}
+		}
+
+		return changed;
+	}
+
+	private static PackageVersionUpdate? ParsePackageVersionUpdate(string value)
+	{
+		var parts = value.Split('|', 5, StringSplitOptions.None);
+		return parts.Length == 5
+			? new PackageVersionUpdate(parts[0], parts[1], parts[2], parts[3], parts[4])
+			: null;
+	}
+
+	private sealed record PackageVersionUpdate(
+		string RelativePath,
+		string PackageId,
+		string VersionKind,
+		string CurrentVersion,
+		string LatestVersion);
+
 	/// <summary>
 	/// Ensures the directory for a file path exists.
 	/// </summary>
@@ -631,4 +760,6 @@ internal static class RemediationHelpers
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
 		}
 	}
+
 }
+

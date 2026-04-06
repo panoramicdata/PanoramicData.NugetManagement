@@ -48,7 +48,13 @@ public class GlobalJsonRule : RuleBase
 				{
 					Summary = $"Update the sdk.version in global.json to {Standards.LatestDotNetSdkVersion}.",
 					Detail = $"The `global.json` file does not reference SDK version `{Standards.LatestDotNetSdkVersion}`. Update the `sdk.version` property.",
-					Data = new() { ["file"] = "global.json", ["latest_sdk"] = Standards.LatestDotNetSdkVersion }
+                    Data = new()
+					{
+						["file"] = "global.json",
+						["latest_sdk"] = Standards.LatestDotNetSdkVersion,
+						["remediation_type"] = "replace_file_content",
+						["new_content"] = Standards.GlobalJsonContent
+					}
 				}));
 	}
 }

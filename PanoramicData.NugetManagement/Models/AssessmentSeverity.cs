@@ -18,5 +18,11 @@ public enum AssessmentSeverity
 	/// <summary>
 	/// Error — must be fixed for compliance.
 	/// </summary>
-	Error
+	Error,
+
+	/// <summary>
+	/// Critical finding — highest severity and an immediate blocker.
+	/// </summary>
+	Critical
+
 }

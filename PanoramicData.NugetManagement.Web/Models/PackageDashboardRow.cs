@@ -90,6 +90,11 @@ public class PackageDashboardRow
 	public int TotalFailures => Assessment?.FailedCount ?? 0;
 
 	/// <summary>
+	/// Total number of critical findings.
+	/// </summary>
+	public int TotalCriticals => Assessment?.CriticalCount ?? 0;
+
+	/// <summary>
 	/// Total number of errors.
 	/// </summary>
 	public int TotalErrors => Assessment?.ErrorCount ?? 0;
@@ -105,6 +110,11 @@ public class PackageDashboardRow
 /// </summary>
 public class CategorySummary
 {
+	/// <summary>
+	/// Number of critical-severity failures.
+	/// </summary>
+	public int Criticals { get; set; }
+
 	/// <summary>
 	/// Number of rules that passed.
 	/// </summary>
@@ -128,7 +138,7 @@ public class CategorySummary
 	/// <summary>
 	/// Total failures across all severities.
 	/// </summary>
-	public int TotalFailures => Errors + Warnings + Infos;
+	public int TotalFailures => Criticals + Errors + Warnings + Infos;
 }
 
 /// <summary>

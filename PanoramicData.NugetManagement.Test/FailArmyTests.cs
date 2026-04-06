@@ -84,7 +84,7 @@ public class FailArmyTests : TestWithOutput
 
 		Output.WriteLine($"Passed: {assessment.PassedCount}/{ruleResults.Count}");
 		Output.WriteLine($"Failed: {assessment.FailedCount}");
-		Output.WriteLine($"Errors: {assessment.ErrorCount}, Warnings: {assessment.WarningCount}");
+		Output.WriteLine($"Critical: {assessment.CriticalCount}, Errors: {assessment.ErrorCount}, Warnings: {assessment.WarningCount}");
 
 		assessment.IsCompliant.Should().BeFalse();
 		assessment.FailedCount.Should().Be(ruleResults.Count, "every rule should fail");

@@ -652,6 +652,7 @@ public class DashboardService
 			summaries[group.Key] = new CategorySummary
 			{
 				Passed = group.Count(r => r.Passed),
+				Criticals = group.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Critical),
 				Errors = group.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Error),
 				Warnings = group.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Warning),
 				Infos = group.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Info),

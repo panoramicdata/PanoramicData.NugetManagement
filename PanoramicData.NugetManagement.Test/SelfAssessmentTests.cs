@@ -66,7 +66,7 @@ public class SelfAssessmentTests : TestWithOutput
 	public async Task SelfAssessment_ErrorRulesShouldAllPass()
 	{
 		var errorRules = RuleRegistry.Rules
-			.Where(r => r.Severity == AssessmentSeverity.Error)
+		 .Where(r => r.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error)
 			.ToList();
 
 		var failures = new List<RuleResult>();
@@ -79,7 +79,7 @@ public class SelfAssessmentTests : TestWithOutput
 			}
 		}
 
-		failures.Should().BeEmpty("all Error-severity rules must pass on this repository");
+		failures.Should().BeEmpty("all Critical- and Error-severity rules must pass on this repository");
 	}
 
 	[Fact]
@@ -118,8 +118,8 @@ public class SelfAssessmentTests : TestWithOutput
 		};
 
 		Output.WriteLine($"Passed: {assessment.PassedCount}/{ruleResults.Count}");
-		Output.WriteLine($"Errors: {assessment.ErrorCount}, Warnings: {assessment.WarningCount}, Info: {assessment.InfoCount}");
-		assessment.IsCompliant.Should().BeTrue("the repository should have zero Error-severity failures");
+		Output.WriteLine($"Critical: {assessment.CriticalCount}, Errors: {assessment.ErrorCount}, Warnings: {assessment.WarningCount}, Info: {assessment.InfoCount}");
+		assessment.IsCompliant.Should().BeTrue("the repository should have zero Critical- or Error-severity failures");
 	}
 
 	private static string? FindRepoRoot(string startDir)

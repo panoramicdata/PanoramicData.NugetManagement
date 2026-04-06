@@ -71,8 +71,8 @@ public class GitHubIntegrationTests : TestWithOutput
 		}
 
 		results.Should().Contain(r => !r.Passed, "the live FailArmy repository should violate multiple rules");
-		results.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Error)
-			.Should().BeGreaterThan(0, "the live FailArmy repository should have at least one error-level failure");
+		results.Count(r => !r.Passed && r.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error)
+			   .Should().BeGreaterThan(0, "the live FailArmy repository should have at least one critical- or error-level failure");
 	}
 
 	private static RepositoryContext ExcludingFixturePaths(RepositoryContext context)
