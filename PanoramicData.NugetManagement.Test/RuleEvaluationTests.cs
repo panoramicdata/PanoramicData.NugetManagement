@@ -1562,6 +1562,8 @@ public class RuleEvaluationTests : TestWithOutput
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
+		result.Advisory.Should().NotBeNull();
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_coverlet_collector_setup");
 	}
 
 	[Fact]
@@ -1599,6 +1601,8 @@ public class RuleEvaluationTests : TestWithOutput
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
+		result.Advisory.Should().NotBeNull();
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_coverlet_collector_setup");
 	}
 
 	// ── VER-02 ──────────────────────────────────────────────────────────

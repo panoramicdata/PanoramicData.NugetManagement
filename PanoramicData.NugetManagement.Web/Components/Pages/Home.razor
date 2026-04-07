@@ -145,25 +145,7 @@ else
 									<span class="breadcrumb-sep">›</span>
 									<span class="breadcrumb-current" title="@_selectedRuleId">@_selectedRuleId</span>
 								}
-							}
-
-	private async Task PersistSelectedRowUpdateAsync()
-	{
-		if (_selectedRow is null)
-		{
-			return;
-		}
-
-		var index = _rows.FindIndex(r => string.Equals(r.PackageId, _selectedRow.PackageId, StringComparison.OrdinalIgnoreCase));
-		if (index >= 0)
-		{
-			_rows[index] = _selectedRow;
-		}
-
-		Cache.UpsertRow(_selectedRow);
-		_lastRefreshUtc = Cache.LastRefreshUtc;
-		await RefreshTableAsync();
-	}
+                           }
 						</div>
 						<div class="breadcrumb-right">
 							@if (_isLoading || _isAssessing)
@@ -400,6 +382,11 @@ else
 	private string? _lastPromptText;
 	private bool _copyFeedback;
 	private bool _consoleCopyFeedback;
+	private WorkflowStep? _lastFailedWorkflowStep;
+	private WorkflowStep? _activeWorkflowStep;
+	private CancellationTokenSource? _operationCts;
+	private PackageStatus? _statusBeforeOperation;
+	private string? _statusMessageBeforeOperation;
 
 	// === Merlin chat state ===
 	private string _chatInput = string.Empty;
@@ -517,19 +504,21 @@ else
 			var newRow = _rows.FirstOrDefault(r =>
 				string.Equals(r.PackageId, item.PackageId, StringComparison.OrdinalIgnoreCase));
 			if (newRow != _selectedRow)
-				{
-					_completedSteps.Clear();
-					_failedSteps.Clear();
-				}
-
-				_selectedRow = newRow;
-			}
-			else
-			{
-				_selectedRow = null;
+           {
 				_completedSteps.Clear();
 				_failedSteps.Clear();
+				_lastFailedWorkflowStep = null;
 			}
+
+			_selectedRow = newRow;
+		}
+		else
+		{
+			_selectedRow = null;
+			_completedSteps.Clear();
+			_failedSteps.Clear();
+			_lastFailedWorkflowStep = null;
+		}
 
 		StateHasChanged();
 	}
@@ -543,6 +532,7 @@ else
 		_selectedRuleId = null;
 		_completedSteps.Clear();
 		_failedSteps.Clear();
+      _lastFailedWorkflowStep = null;
 		StateHasChanged();
 	}
 
@@ -555,6 +545,7 @@ else
 		_selectedRuleId = null;
 		_completedSteps.Clear();
 		_failedSteps.Clear();
+      _lastFailedWorkflowStep = null;
 		StateHasChanged();
 	}
 
@@ -1288,6 +1279,107 @@ else
 		await RefreshTableAsync();
 	}
 
+	private CancellationToken BeginCancelableOperation(WorkflowStep step)
+	{
+		_operationCts?.Dispose();
+		_operationCts = new CancellationTokenSource();
+		_activeWorkflowStep = step;
+
+		if (_selectedRow is not null)
+		{
+			_statusBeforeOperation = _selectedRow.Status;
+			_statusMessageBeforeOperation = _selectedRow.StatusMessage;
+		}
+
+		return _operationCts.Token;
+	}
+
+	private async Task CancelCurrentOperationAsync()
+	{
+		if (_operationCts is null || _activeWorkflowStep is null)
+		{
+			return;
+		}
+
+		AppendConsole($"⏹️ Cancelling {GetWorkflowStepDisplayName(_activeWorkflowStep.Value).ToLowerInvariant()}...");
+		_operationCts.Cancel();
+		await InvokeAsync(StateHasChanged);
+	}
+
+	private void RestoreStatusAfterCancellation()
+	{
+		if (_selectedRow is null)
+		{
+			return;
+		}
+
+		if (_statusBeforeOperation.HasValue)
+		{
+			_selectedRow.Status = _statusBeforeOperation.Value;
+		}
+
+		if (_statusMessageBeforeOperation is not null)
+		{
+			_selectedRow.StatusMessage = _statusMessageBeforeOperation;
+		}
+	}
+
+	private void EndCancelableOperation()
+	{
+		_operationCts?.Dispose();
+		_operationCts = null;
+		_activeWorkflowStep = null;
+		_statusBeforeOperation = null;
+		_statusMessageBeforeOperation = null;
+	}
+
+   private bool IsStepRunning(WorkflowStep step)
+		=> _activeWorkflowStep == step && (_isRunning || _isAssessing || _isLoading);
+
+	private static string GetWorkflowStepDisplayName(WorkflowStep step) => step switch
+	{
+		WorkflowStep.GitSync => "Git Sync",
+		WorkflowStep.Reassess => "Re-assess",
+		WorkflowStep.Fix => "Fix",
+		WorkflowStep.FixWithAi => "Fix with AI",
+		WorkflowStep.Build => "Build",
+		WorkflowStep.Test => "Test",
+		WorkflowStep.CommitAndPush => "Commit & Push",
+		WorkflowStep.Publish => "Publish",
+		_ => step.ToString()
+	};
+
+	private string GetToolbarStepText(WorkflowStep step)
+		=> IsStepRunning(step) ? $"{GetWorkflowStepDisplayName(step)}..." : GetWorkflowStepDisplayName(step);
+
+	private static string GetToolbarStepIconCss(WorkflowStep step, bool isRunning) => isRunning
+		? "fas fa-spinner fa-spin"
+		: step switch
+		{
+			WorkflowStep.GitSync => "fas fa-sync",
+			WorkflowStep.Reassess => "fas fa-sync-alt",
+			WorkflowStep.Fix => "fas fa-wrench",
+			WorkflowStep.FixWithAi => "fas fa-magic",
+			WorkflowStep.Build => "fas fa-hammer",
+			WorkflowStep.Test => "fas fa-flask",
+			WorkflowStep.CommitAndPush => "fas fa-cloud-upload-alt",
+			WorkflowStep.Publish => "fas fa-rocket",
+			_ => "fas fa-play"
+		};
+
+	private string GetToolbarStepCssClass(WorkflowStep step)
+	{
+		var baseClass = GetStepCssClass(step);
+		return IsStepRunning(step)
+			? string.IsNullOrEmpty(baseClass) ? "toolbar-step-running" : $"{baseClass} toolbar-step-running"
+			: baseClass;
+	}
+
+	private string GetToolbarStepTooltip(WorkflowStep step, string defaultToolTip)
+		=> IsStepRunning(step)
+			? $"{GetWorkflowStepDisplayName(step)} is running — click Cancel to stop"
+			: defaultToolTip;
+
 	private async Task ReassessAllAsync()
 	{
 		if (_selectedRow is null)
@@ -1654,15 +1746,18 @@ else
 
 			if (_selectedRow.Status == PackageStatus.BuildSucceeded)
 			{
+                _lastFailedWorkflowStep = null;
 				_failedSteps.Remove(WorkflowStep.Build);
 				_completedSteps.Add(WorkflowStep.Build);
 				AppendConsole("✅ Build succeeded");
 			}
 			else
 			{
+             _lastFailedWorkflowStep = WorkflowStep.Build;
 				_completedSteps.Remove(WorkflowStep.Build);
 				_failedSteps.Add(WorkflowStep.Build);
-				AppendConsole("❌ Build failed");
+                AppendConsole("❌ Build failed");
+				AppendConsole("ℹ️ Use 'Fix with AI' to generate a build-failure prompt from the recent console output.");
 			}
 		}
 		catch (Exception ex)
@@ -1699,15 +1794,18 @@ else
 
 			if (_selectedRow.Status == PackageStatus.TestsPassed)
 			{
+             _lastFailedWorkflowStep = null;
 				_failedSteps.Remove(WorkflowStep.Test);
 				_completedSteps.Add(WorkflowStep.Test);
 				AppendConsole("✅ Tests passed");
 			}
 			else
 			{
+              _lastFailedWorkflowStep = WorkflowStep.Test;
 				_completedSteps.Remove(WorkflowStep.Test);
 				_failedSteps.Add(WorkflowStep.Test);
 				AppendConsole("❌ Tests failed");
+               AppendConsole("ℹ️ Use 'Fix with AI' to generate a test-failure prompt from the recent console output.");
 			}
 		}
 		catch (Exception ex)
@@ -1803,6 +1901,8 @@ else
 			return;
 		}
 
+      _lastPromptText = null;
+		_copyFeedback = false;
 		var prompt = DashboardService.GenerateRemediationPrompt(_selectedRow, _includeInfoInAiPrompt);
 		if (string.IsNullOrEmpty(prompt))
 		{
@@ -1810,10 +1910,39 @@ else
 			return;
 		}
 
-		_lastPromptText = prompt;
-		_copyFeedback = false;
+       _lastPromptText = prompt;
 		_completedSteps.Add(WorkflowStep.FixWithAi);
 		AppendConsole("── AI Remediation Prompt (All) ──");
+		AppendConsole(prompt);
+		AppendConsole("── End Prompt ──");
+		StateHasChanged();
+		await CopyPromptToClipboardAsync();
+	}
+
+	private async Task ResolveWorkflowFailureAsync(WorkflowStep failedStep)
+	{
+		if (_selectedRow is null)
+		{
+			return;
+		}
+
+      _lastPromptText = null;
+		_copyFeedback = false;
+		var workflowArea = failedStep == WorkflowStep.Test ? "test" : "build";
+		var prompt = DashboardService.GenerateWorkflowFailurePrompt(
+			_selectedRow,
+			workflowArea,
+			_consoleLines.Select(line => line.Text));
+
+		if (string.IsNullOrWhiteSpace(prompt))
+		{
+			AppendConsole($"ℹ️ No {workflowArea} failure details available for AI prompt generation.");
+			return;
+		}
+
+       _lastPromptText = prompt;
+		_completedSteps.Add(WorkflowStep.FixWithAi);
+		AppendConsole($"── AI {char.ToUpperInvariant(workflowArea[0]) + workflowArea[1..]} Failure Prompt ──");
 		AppendConsole(prompt);
 		AppendConsole("── End Prompt ──");
 		StateHasChanged();
@@ -1827,15 +1956,16 @@ else
 			return;
 		}
 
-		var prompt = DashboardService.GenerateCategoryRemediationPrompt(_selectedRow, category, _includeInfoInAiPrompt);
+        _lastPromptText = null;
+		_copyFeedback = false;
+		var prompt = DashboardService.GenerateCategoryRemediationPrompt(_selectedRow, category, includeInfo: true);
 		if (string.IsNullOrEmpty(prompt))
 		{
 			AppendConsole($"ℹ️ No failing rules in {category}.");
 			return;
 		}
 
-		_lastPromptText = prompt;
-		_copyFeedback = false;
+       _lastPromptText = prompt;
 		AppendConsole($"── AI Remediation Prompt ({category}) ──");
 		AppendConsole(prompt);
 		AppendConsole("── End Prompt ──");
@@ -1850,6 +1980,8 @@ else
 			return;
 		}
 
+      _lastPromptText = null;
+		_copyFeedback = false;
 		var prompt = DashboardService.GenerateRuleRemediationPrompt(_selectedRow, result);
 		if (string.IsNullOrEmpty(prompt))
 		{
@@ -1857,8 +1989,7 @@ else
 			return;
 		}
 
-		_lastPromptText = prompt;
-		_copyFeedback = false;
+       _lastPromptText = prompt;
 		AppendConsole($"── AI Remediation Prompt ({result.RuleId}) ──");
 		AppendConsole(prompt);
 		AppendConsole("── End Prompt ──");
@@ -2004,7 +2135,7 @@ else
 		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
 		{
 			return "Clone the repository first";
-		}
+			}
 
 		if (_selectedRow.Status != PackageStatus.TestsPassed)
 		{
@@ -2313,14 +2444,31 @@ else
 			return;
 		}
 
+		_isRunning = true;
+		_activeWorkflowStep = WorkflowStep.FixWithAi;
+
 		// Open the IDE
 		OpenInIde();
 
-		// Generate and copy the AI prompt
-		await ResolveAllAsync();
+		try
+		{
+			if (_lastFailedWorkflowStep is WorkflowStep.Build or WorkflowStep.Test)
+			{
+				await ResolveWorkflowFailureAsync(_lastFailedWorkflowStep.Value);
+			}
+			else
+			{
+				await ResolveAllAsync();
+			}
 
-		_completedSteps.Add(WorkflowStep.FixWithAi);
-		StateHasChanged();
+			_completedSteps.Add(WorkflowStep.FixWithAi);
+		}
+		finally
+		{
+			_activeWorkflowStep = null;
+			_isRunning = false;
+			StateHasChanged();
+		}
 	}
 
 	private bool IsFixWithAiEnabled()
@@ -2330,7 +2478,7 @@ else
 			return false;
 		}
 
-		if (_selectedRow.Assessment is null)
+		if (_selectedRow.Assessment is null && _lastFailedWorkflowStep is not WorkflowStep.Build and not WorkflowStep.Test)
 		{
 			return false;
 		}
@@ -2340,7 +2488,15 @@ else
 			return false;
 		}
 
-		var hasFailures = _selectedRow.Assessment.RuleResults.Any(r => !r.Passed);
+		var hasWorkflowFailure = _lastFailedWorkflowStep is WorkflowStep.Build or WorkflowStep.Test;
+     var ruleResults = _selectedRow.Assessment?.RuleResults;
+		var hasFailures = ruleResults?.Any(r => !r.Passed) == true;
+
+		if (hasWorkflowFailure)
+		{
+			return true;
+		}
+
 		if (!hasFailures)
 		{
 			return false;
@@ -2349,15 +2505,29 @@ else
 		// Enabled when there are non-auto-remediable failures,
 		// OR when Fix has already been run but failures still remain
 		// (indicating auto-fix couldn't resolve them)
-		var hasManualOnly = _selectedRow.Assessment.RuleResults
-			.Any(r => !r.Passed && !Dashboard.IsAutoRemediable(r));
+     var hasManualOnly = ruleResults?.Any(r => !r.Passed && !Dashboard.IsAutoRemediable(r)) == true;
 
 		return hasManualOnly || IsStepDone(WorkflowStep.Fix);
 	}
 
 	private string GetFixWithAiTooltip()
 	{
-		if (_selectedRow?.Assessment is null)
+		if (_selectedRow is null)
+		{
+			return "Select a package first";
+		}
+
+		if (_lastFailedWorkflowStep == WorkflowStep.Build)
+		{
+			return "Copy AI prompt for the latest build failure";
+		}
+
+		if (_lastFailedWorkflowStep == WorkflowStep.Test)
+		{
+			return "Copy AI prompt for the latest test failure";
+		}
+
+		if (_selectedRow.Assessment is null)
 		{
 			return "Assess the package first";
 		}

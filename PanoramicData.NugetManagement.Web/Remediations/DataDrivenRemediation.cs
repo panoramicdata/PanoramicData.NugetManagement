@@ -33,6 +33,7 @@ public abstract class DataDrivenRemediation : IRemediation
 		{
 			return rt is "ensure_xml_property"
 						or "ensure_csproj_property"
+						or "ensure_coverlet_collector_setup"
 						or "append_line"
 						or "prepend_line"
 						or "add_slnx_file_entries"
@@ -40,7 +41,7 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "replace_in_file"
 						or "append_lines"
 						or "add_package_version"
-					   or "update_package_versions"
+						or "update_package_versions"
 						or "remove_packagereference_versions"
 						or "add_json_array_items"
 						or "delete_file";

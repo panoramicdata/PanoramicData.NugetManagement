@@ -404,11 +404,23 @@ public class LocalRepoService
 		};
 
 		process.Start();
-		var output = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-		var error = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-		await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+		try
+		{
+			var output = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+			var error = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+			await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 
-		return (process.ExitCode, string.IsNullOrEmpty(error) ? output : $"{output}\n{error}");
+			return (process.ExitCode, string.IsNullOrEmpty(error) ? output : $"{output}\n{error}");
+		}
+		catch (OperationCanceledException)
+		{
+			if (!process.HasExited)
+			{
+				process.Kill(entireProcessTree: true);
+			}
+
+			throw;
+		}
 	}
 
 	/// <summary>
@@ -459,7 +471,19 @@ public class LocalRepoService
 		process.BeginOutputReadLine();
 		process.BeginErrorReadLine();
 
-		await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+		try
+		{
+			await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+		}
+		catch (OperationCanceledException)
+		{
+			if (!process.HasExited)
+			{
+				process.Kill(entireProcessTree: true);
+			}
+
+			throw;
+		}
 
 		var fullOutput = string.Join('\n', outputLines);
 		return (process.ExitCode == 0, fullOutput);

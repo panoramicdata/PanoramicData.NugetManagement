@@ -139,6 +139,72 @@ internal static class RemediationHelpers
 	}
 
 	/// <summary>
+	/// Ensures a PackageReference exists in the specified project.
+	/// </summary>
+	public static void EnsurePackageReference(
+		string localPath,
+		string relativePath,
+		string packageName,
+		string? packageVersion,
+		string? privateAssets,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add PackageReference.");
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+			var existing = doc.Descendants("PackageReference")
+				.FirstOrDefault(element => string.Equals(
+					element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value,
+					packageName,
+					StringComparison.OrdinalIgnoreCase));
+
+			if (existing is not null)
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already references {packageName} — skipping.");
+				return;
+			}
+
+			var itemGroup = doc.Root?.Elements("ItemGroup")
+				.FirstOrDefault(group => group.Elements("PackageReference").Any());
+
+			if (itemGroup is null)
+			{
+				itemGroup = new XElement("ItemGroup");
+				doc.Root?.Add(itemGroup);
+			}
+
+			var packageReference = new XElement("PackageReference", new XAttribute("Include", packageName));
+			if (!string.IsNullOrWhiteSpace(packageVersion))
+			{
+				packageReference.SetAttributeValue("Version", packageVersion);
+			}
+
+			if (!string.IsNullOrWhiteSpace(privateAssets))
+			{
+				packageReference.SetAttributeValue("PrivateAssets", privateAssets);
+			}
+
+			itemGroup.Add(packageReference);
+			doc.Save(fullPath);
+			applied.Add(relativePath);
+			onOutput?.Invoke($"✅ [{result.RuleId}] Added <PackageReference Include=\"{packageName}\" /> to {relativePath}");
+		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+		}
+	}
+
+	/// <summary>
 	/// Appends a line to a file if it doesn't already contain it.
 	/// </summary>
 	public static void AppendLine(

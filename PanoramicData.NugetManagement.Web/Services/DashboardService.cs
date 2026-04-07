@@ -319,6 +319,52 @@ public class DashboardService
 		return GeneratePromptFromFailures(row, [result]);
 	}
 
+	/// <summary>
+	/// Generates an AI remediation prompt for a build or test workflow failure using recent console output.
+	/// </summary>
+	public static string GenerateWorkflowFailurePrompt(PackageDashboardRow row, string workflowArea, IEnumerable<string> consoleLines)
+	{
+		var excerpt = consoleLines
+			.Where(line => !string.IsNullOrWhiteSpace(line))
+			.TakeLast(120)
+			.ToList();
+
+		var title = workflowArea.Equals("test", StringComparison.OrdinalIgnoreCase)
+			? "Test Failure"
+			: "Build Failure";
+
+		var targetOutcome = workflowArea.Equals("test", StringComparison.OrdinalIgnoreCase)
+			? "make the tests pass"
+			: "make the project build successfully";
+
+		var lines = new List<string>
+		{
+			$"# {title} Fix Instructions for {row.PackageId}",
+			$"Repository: {row.RepositoryFullName}",
+			$"Local path: {row.LocalPath}",
+			$"Current status: {row.Status}",
+			$"Requested outcome: {targetOutcome}.",
+			"",
+			"Please inspect the recent console output below, identify the root cause, apply the minimum code changes needed, and then rerun the failing step.",
+			""
+		};
+
+		if (excerpt.Count > 0)
+		{
+			lines.Add("## Recent Console Output");
+			lines.Add("```text");
+			lines.AddRange(excerpt);
+			lines.Add("```");
+		}
+		else if (!string.IsNullOrWhiteSpace(row.StatusMessage))
+		{
+			lines.Add("## Failure Summary");
+			lines.Add(row.StatusMessage);
+		}
+
+		return string.Join('\n', lines);
+	}
+
 	private static string GeneratePromptFromFailures(PackageDashboardRow row, List<RuleResult> failures)
 	{
 		if (failures.Count == 0)
