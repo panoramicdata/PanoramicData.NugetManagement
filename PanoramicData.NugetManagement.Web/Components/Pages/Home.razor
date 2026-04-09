@@ -135,6 +135,13 @@ else
 										<i class="fas fa-rocket"></i>
 									</button>
 								}
+								else
+								{
+									<span class="breadcrumb-sep">|</span>
+									<button class="btn btn-xs btn-breadcrumb" @onclick="GitSyncAsync" disabled="@_isRunning" title="Clone and sync repository">
+										<i class="fas fa-sync"></i>
+									</button>
+								}
 								@if (_selectedCategory is not null)
 								{
 									<span class="breadcrumb-sep">›</span>
@@ -177,9 +184,9 @@ else
 											 Text="Git Sync"
 											 IconCssClass="fas fa-sync"
 											 CssClass="@GetStepCssClass(WorkflowStep.GitSync)"
-											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
+										 IsVisible="@(_selectedRow is not null)"
 											 IsEnabled="@(!_isRunning)"
-											 ToolTip="Fetch, pull --rebase, push"
+										 ToolTip="Clone if needed, then fetch, pull --rebase, push"
 											 Click="OnToolbarClick" />
 
 							<PDToolbarButton Key="reassess"
@@ -200,14 +207,23 @@ else
 											 ToolTip="@GetFixAllTooltip()"
 											 Click="OnToolbarClick" />
 
-							<PDToolbarButton Key="fix-with-ai"
-											 Text="Fix with AI"
-											 IconCssClass="fas fa-magic"
-											 CssClass="@GetStepCssClass(WorkflowStep.FixWithAi)"
-											 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
-											 IsEnabled="@IsFixWithAiEnabled()"
-											 ToolTip="@GetFixWithAiTooltip()"
-											 Click="OnToolbarClick" />
+							<PDToolbarButton Key="open-ide"
+										 Text="Open IDE"
+										 IconCssClass="fas fa-code"
+										 CssClass="@GetStepCssClass(WorkflowStep.FixWithAi)"
+										 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
+										 IsEnabled="@IsFixWithAiEnabled()"
+										 ToolTip="Open selected repository in IDE"
+										 Click="OnToolbarClick" />
+
+							<PDToolbarButton Key="copy-ai-prompt"
+										 Text="Copy AI Prompt"
+										 IconCssClass="fas fa-copy"
+										 CssClass="@GetStepCssClass(WorkflowStep.FixWithAi)"
+										 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
+										 IsEnabled="@IsFixWithAiEnabled()"
+										 ToolTip="@GetFixWithAiTooltip()"
+										 Click="OnToolbarClick" />
 
 							<PDToolbarSeparator IsVisible="@(_selectedRow?.IsClonedLocally == true)" />
 
@@ -638,6 +654,12 @@ else
 				break;
 			case "fix-with-ai":
 				await FixWithAiAsync();
+				break;
+			case "open-ide":
+				OpenInIde();
+				break;
+			case "copy-ai-prompt":
+				await CopyPromptToClipboardAsync();
 				break;
 			case "reassess":
 						if (_currentView == NavView.Dashboard)
@@ -2090,39 +2112,12 @@ else
 
 	private bool IsPublishEnabled()
 	{
-		if (_selectedRow is null || _isRunning || !_selectedRow.IsClonedLocally)
-		{
-			return false;
-		}
-
-		// Require tests to have passed in this session
-		if (_selectedRow.Status != PackageStatus.TestsPassed)
-		{
-			return false;
-		}
-
-		// Same git safety as fix: clean, on main, synced
-		return _selectedRow.IsWorkingTreeClean == true
-			&& _selectedRow.CurrentBranch == "main"
-			&& _selectedRow.IsSyncedWithOrigin == true;
+		return _selectedRow is not null && !_isRunning && _selectedRow.IsClonedLocally;
 	}
 
 	private bool IsPublishSkipIntegrationEnabled()
 	{
-		if (_selectedRow is null || _isRunning || !_selectedRow.IsClonedLocally)
-		{
-			return false;
-		}
-
-		// Require at least a unit test pass (same TestsPassed status)
-		if (_selectedRow.Status != PackageStatus.TestsPassed)
-		{
-			return false;
-		}
-
-		return _selectedRow.IsWorkingTreeClean == true
-			&& _selectedRow.CurrentBranch == "main"
-			&& _selectedRow.IsSyncedWithOrigin == true;
+		return _selectedRow is not null && !_isRunning && _selectedRow.IsClonedLocally;
 	}
 
 	private string GetPublishTooltip()

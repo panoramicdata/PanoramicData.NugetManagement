@@ -570,6 +570,25 @@ public class DashboardService
 			return;
 		}
 
+		var isClonedLocally = _localRepo.IsClonedLocally(repoName);
+		if (!isClonedLocally)
+		{
+			onOutput?.Invoke($"Cloning {repoName}...");
+			var cloneUrl = $"https://github.com/{_settings.GitHubOrganization}/{repoName}.git";
+			var (cloneSuccess, cloneOutput) = await _localRepo.CloneAsync(cloneUrl, repoName, onOutput, cancellationToken).ConfigureAwait(false);
+			if (!cloneSuccess)
+			{
+				row.Status = PackageStatus.Error;
+				row.StatusMessage = "Git sync failed.";
+				onOutput?.Invoke(cloneOutput);
+				return;
+			}
+
+			row.IsClonedLocally = true;
+			row.LocalPath = _localRepo.GetLocalPath(repoName);
+			onOutput?.Invoke($"Cloned to {row.LocalPath}");
+		}
+
 		row.Status = PackageStatus.GitSyncing;
 		row.StatusMessage = "Syncing with remote...";
 

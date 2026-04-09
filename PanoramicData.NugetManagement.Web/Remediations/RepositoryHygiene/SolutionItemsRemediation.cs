@@ -30,6 +30,69 @@ public sealed class SolutionItemsRemediation : DataDrivenRemediation
 	public override string RuleId => "REPO-05";
 
 	/// <inheritdoc />
+	public override bool CanRemediate(RuleResult result)
+	{
+		if (result.Passed || result.Advisory is null)
+		{
+			return false;
+		}
+
+		var data = result.Advisory.Data;
+		if (data.TryGetValue("remediation_type", out var rtObj) &&
+			rtObj is string rt &&
+			string.Equals(rt, "add_slnx_file_entries", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		if (data.TryGetValue("expected_extension", out var extObj) &&
+			extObj is string ext &&
+			string.Equals(ext, ".slnx", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		return data.TryGetValue("file", out var fileObj) &&
+			fileObj is string file &&
+			file.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
+	}
+
+	/// <inheritdoc />
+	public override void Apply(string localPath, RuleResult result, List<string> applied, Action<string>? onOutput)
+	{
+		if (result.Passed || result.Advisory is null)
+		{
+			return;
+		}
+
+		if (!RemediationHelpers.EnsureSlnxFromLegacySolution(localPath, result, applied, onOutput))
+		{
+			return;
+		}
+
+		var data = result.Advisory.Data;
+		string? slnxRelativePath = null;
+
+		if (data.TryGetValue("file", out var fObj) && fObj is string candidate &&
+			candidate.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
+		{
+			slnxRelativePath = candidate;
+		}
+
+		slnxRelativePath ??= Directory.GetFiles(localPath, "*.slnx", SearchOption.TopDirectoryOnly)
+			.Select(Path.GetFileName)
+			.FirstOrDefault();
+
+		if (string.IsNullOrWhiteSpace(slnxRelativePath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] No .slnx file found — cannot add entries.");
+			return;
+		}
+
+		ApplyCore(localPath, result, data, "add_slnx_file_entries", applied, onOutput);
+	}
+
+	/// <inheritdoc />
 	protected override void ApplyCore(
 		string localPath,
 		RuleResult result,
@@ -38,8 +101,20 @@ public sealed class SolutionItemsRemediation : DataDrivenRemediation
 		List<string> applied,
 		Action<string>? onOutput)
 	{
-		if (!data.TryGetValue("file", out var fObj) || fObj is not string slnxRelativePath)
+		string? slnxRelativePath = null;
+		if (data.TryGetValue("file", out var fObj) && fObj is string f &&
+			f.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
 		{
+			slnxRelativePath = f;
+		}
+
+		slnxRelativePath ??= Directory.GetFiles(localPath, "*.slnx", SearchOption.TopDirectoryOnly)
+			.Select(Path.GetFileName)
+			.FirstOrDefault();
+
+		if (string.IsNullOrWhiteSpace(slnxRelativePath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] No .slnx file found — cannot add entries.");
 			return;
 		}
 

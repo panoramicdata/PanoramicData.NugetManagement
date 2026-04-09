@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
@@ -667,6 +668,102 @@ internal static class RemediationHelpers
 	/// </summary>
 	public static string ResolvePath(string localPath, string relativePath)
 		=> Path.Combine(localPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+	/// <summary>
+	/// Ensures a root .slnx exists by migrating a root .sln when needed.
+	/// On success, deletes the migrated .sln file.
+	/// </summary>
+	public static bool EnsureSlnxFromLegacySolution(
+		string localPath,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var existingSlnx = Directory.GetFiles(localPath, "*.slnx", SearchOption.TopDirectoryOnly)
+			.FirstOrDefault();
+		if (existingSlnx is not null)
+		{
+			return true;
+		}
+
+		var slnPath = Directory.GetFiles(localPath, "*.sln", SearchOption.TopDirectoryOnly)
+			.FirstOrDefault();
+		if (slnPath is null)
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] No root .sln file found to migrate.");
+			return false;
+		}
+
+		var slnFileName = Path.GetFileName(slnPath);
+		onOutput?.Invoke($"▶ [{result.RuleId}] Running: dotnet sln {slnFileName} migrate");
+
+		try
+		{
+			using var process = new Process
+			{
+				StartInfo = new ProcessStartInfo
+				{
+					FileName = "dotnet",
+					Arguments = $"sln \"{slnFileName}\" migrate",
+					WorkingDirectory = localPath,
+					UseShellExecute = false,
+					RedirectStandardOutput = true,
+					RedirectStandardError = true,
+					CreateNoWindow = true
+				}
+			};
+
+			process.Start();
+			var output = process.StandardOutput.ReadToEnd();
+			var error = process.StandardError.ReadToEnd();
+			process.WaitForExit();
+
+			if (!string.IsNullOrWhiteSpace(output))
+			{
+				onOutput?.Invoke(output.Trim());
+			}
+
+			if (process.ExitCode != 0)
+			{
+				if (!string.IsNullOrWhiteSpace(error))
+				{
+					onOutput?.Invoke(error.Trim());
+				}
+
+				onOutput?.Invoke($"❌ [{result.RuleId}] Migration command failed with exit code {process.ExitCode}.");
+				return false;
+			}
+
+			var slnxPath = Path.ChangeExtension(slnPath, ".slnx");
+			if (!File.Exists(slnxPath))
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Migration completed but {Path.GetFileName(slnxPath)} was not found.");
+				return false;
+			}
+
+			File.Delete(slnPath);
+
+			var slnxRelative = Path.GetFileName(slnxPath);
+			if (!applied.Any(path => string.Equals(path, slnxRelative, StringComparison.OrdinalIgnoreCase)))
+			{
+				applied.Add(slnxRelative);
+			}
+
+			var slnRelative = Path.GetFileName(slnPath);
+			if (!applied.Any(path => string.Equals(path, slnRelative, StringComparison.OrdinalIgnoreCase)))
+			{
+				applied.Add(slnRelative);
+			}
+
+			onOutput?.Invoke($"✅ [{result.RuleId}] Migrated {slnFileName} to {slnxRelative} and deleted {slnFileName}.");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to migrate {slnFileName}: {ex.Message}");
+			return false;
+		}
+	}
 
 	private static bool UpdatePackageVersion(XDocument doc, PackageVersionUpdate update)
 	{
