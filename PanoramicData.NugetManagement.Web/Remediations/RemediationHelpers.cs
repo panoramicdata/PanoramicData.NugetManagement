@@ -686,12 +686,24 @@ internal static class RemediationHelpers
 			return true;
 		}
 
-		var slnPath = Directory.GetFiles(localPath, "*.sln", SearchOption.TopDirectoryOnly)
-			.FirstOrDefault();
+		var slnCandidates = Directory.GetFiles(localPath, "*.sln", SearchOption.TopDirectoryOnly)
+			.ToArray();
+		var repoName = Path.GetFileName(localPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+		var slnPath = slnCandidates
+			.FirstOrDefault(path => string.Equals(
+				Path.GetFileNameWithoutExtension(path),
+				repoName,
+				StringComparison.OrdinalIgnoreCase))
+			?? slnCandidates.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
 		if (slnPath is null)
 		{
 			onOutput?.Invoke($"⏭️ [{result.RuleId}] No root .sln file found to migrate.");
 			return false;
+		}
+
+		if (slnCandidates.Length > 1)
+		{
+			onOutput?.Invoke($"ℹ️ [{result.RuleId}] Multiple .sln files found; selected {Path.GetFileName(slnPath)} for migration.");
 		}
 
 		var slnFileName = Path.GetFileName(slnPath);

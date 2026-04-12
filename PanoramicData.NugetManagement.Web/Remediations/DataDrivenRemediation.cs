@@ -51,7 +51,7 @@ public abstract class DataDrivenRemediation : IRemediation
 	}
 
 	/// <inheritdoc />
-	public void Apply(string localPath, RuleResult result, List<string> applied, Action<string>? onOutput)
+	public virtual void Apply(string localPath, RuleResult result, List<string> applied, Action<string>? onOutput)
 	{
 		var data = result.Advisory!.Data;
 

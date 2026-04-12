@@ -212,8 +212,8 @@ else
 										 IconCssClass="fas fa-code"
 										 CssClass="@GetStepCssClass(WorkflowStep.FixWithAi)"
 										 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
-										 IsEnabled="@IsFixWithAiEnabled()"
-										 ToolTip="Open selected repository in IDE"
+										 IsEnabled="@IsOpenIdeEnabled()"
+										 ToolTip="@GetOpenIdeTooltip()"
 										 Click="OnToolbarClick" />
 
 							<PDToolbarButton Key="copy-ai-prompt"
@@ -1615,7 +1615,7 @@ else
 					AppendConsole($"⚠️ [{r.RuleId}] {r.RuleName} — no auto-fix available");
 				}
 
-				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Press \"Fix with AI\" to generate a prompt.");
+				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Use \"Open IDE\" and \"Copy AI Prompt\" to fix with AI assistance.");
 			}
 			else if (_selectedRow.TotalFailures == 0)
 			{
@@ -2406,8 +2406,24 @@ else
 
 	private void OpenInIde()
 	{
-		if (_selectedRow?.LocalPath is null)
+		if (_selectedRow is null)
 		{
+			AppendConsole("❌ No package selected.");
+			StateHasChanged();
+			return;
+		}
+
+		if (_selectedRow.LocalPath is null)
+		{
+			AppendConsole("❌ Repository path not set. Run Git Sync/Clone first.");
+			StateHasChanged();
+			return;
+		}
+
+		if (!Directory.Exists(_selectedRow.LocalPath))
+		{
+			AppendConsole($"❌ Repository folder not found: {_selectedRow.LocalPath}");
+			StateHasChanged();
 			return;
 		}
 
@@ -2421,8 +2437,9 @@ else
 
 		try
 		{
-			IdeDetection.OpenInIde(ide, _selectedRow.LocalPath);
-			AppendConsole($"✅ Opened {_selectedRow.PackageId} in {ide.DisplayName}");
+			var process = IdeDetection.OpenInIde(ide, _selectedRow.LocalPath);
+			var pidInfo = process is not null ? $" (PID {process.Id})" : "";
+			AppendConsole($"✅ Opened {_selectedRow.PackageId} in {ide.DisplayName}{pidInfo}");
 		}
 		catch (Exception ex)
 		{
@@ -2503,6 +2520,46 @@ else
      var hasManualOnly = ruleResults?.Any(r => !r.Passed && !Dashboard.IsAutoRemediable(r)) == true;
 
 		return hasManualOnly || IsStepDone(WorkflowStep.Fix);
+	}
+
+	private bool IsOpenIdeEnabled()
+	{
+		if (_selectedRow is null || _isRunning)
+		{
+			return false;
+		}
+
+		if (_selectedRow.LocalPath is null)
+		{
+			return false;
+		}
+
+		return Directory.Exists(_selectedRow.LocalPath);
+	}
+
+	private string GetOpenIdeTooltip()
+	{
+		if (_selectedRow is null)
+		{
+			return "Select a package first";
+		}
+
+		if (_isRunning)
+		{
+			return "Another operation is running";
+		}
+
+		if (_selectedRow.LocalPath is null)
+		{
+			return "Run Git Sync to clone the repository first";
+		}
+
+		if (!Directory.Exists(_selectedRow.LocalPath))
+		{
+			return "Repository folder is missing locally";
+		}
+
+		return "Open selected repository in IDE";
 	}
 
 	private string GetFixWithAiTooltip()

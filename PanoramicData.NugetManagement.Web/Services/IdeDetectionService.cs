@@ -62,7 +62,7 @@ public class IdeDetectionService
 	/// </summary>
 	/// <param name="ide">The IDE to open.</param>
 	/// <param name="localPath">The local repository path to open.</param>
-	public void OpenInIde(InstalledIde ide, string localPath)
+	public Process? OpenInIde(InstalledIde ide, string localPath)
 	{
 		// Find a .slnx or .sln file in the local path
 		string? targetPath = null;
@@ -79,10 +79,11 @@ public class IdeDetectionService
 		{
 			FileName = ide.ExecutablePath,
 			Arguments = $"\"{targetPath}\"",
-			UseShellExecute = true
+			UseShellExecute = true,
+			WindowStyle = ProcessWindowStyle.Maximized
 		};
 
-		Process.Start(psi);
+		return Process.Start(psi);
 	}
 
 	private static List<InstalledIde> Detect()
