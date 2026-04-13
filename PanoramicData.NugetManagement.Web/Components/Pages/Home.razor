@@ -157,7 +157,7 @@ else
 						<div class="breadcrumb-right">
 							@if (_isLoading || _isAssessing)
 							{
-								<span class="progress-indicator"><span class="spinner"></span> @_progressMessage</span>
+								<span class="progress-indicator"><span class="spinner"></span> @GetProgressIndicatorText()</span>
 							}
 							else if (_lastRefreshUtc > DateTimeOffset.MinValue)
 							{
@@ -1132,11 +1132,31 @@ else
 	{
 		_ = InvokeAsync(async () =>
 		{
-			if (!_isLoading)
+			if (!_isLoading && !_isAssessing && !_isRunning)
 			{
 				await RefreshAsync().ConfigureAwait(false);
 			}
 		});
+	}
+
+	private string GetProgressIndicatorText()
+	{
+		if (!string.IsNullOrWhiteSpace(_progressMessage))
+		{
+			return _progressMessage;
+		}
+
+		if (_isAssessing)
+		{
+			return "Assessing...";
+		}
+
+		if (_isLoading)
+		{
+			return "Refreshing packages...";
+		}
+
+		return "Working...";
 	}
 
 	private IGitHubClient CreateGitHubClient()
@@ -1197,6 +1217,7 @@ else
 		catch (Exception ex)
 		{
 			Logger.LogError(ex, "Failed to refresh dashboard");
+			AppendConsole($"❌ Refresh failed: {ex.Message}");
 			_progressMessage = $"Error: {ex.Message}";
 		}
 		finally
@@ -1615,7 +1636,7 @@ else
 					AppendConsole($"⚠️ [{r.RuleId}] {r.RuleName} — no auto-fix available");
 				}
 
-				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Use \"Open IDE\" and \"Copy AI Prompt\" to fix with AI assistance.");
+				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Press \"Fix with AI\" to generate a prompt.");
 			}
 			else if (_selectedRow.TotalFailures == 0)
 			{
@@ -2437,9 +2458,8 @@ else
 
 		try
 		{
-			var process = IdeDetection.OpenInIde(ide, _selectedRow.LocalPath);
-			var pidInfo = process is not null ? $" (PID {process.Id})" : "";
-			AppendConsole($"✅ Opened {_selectedRow.PackageId} in {ide.DisplayName}{pidInfo}");
+			IdeDetection.OpenInIde(ide, _selectedRow.LocalPath);
+			AppendConsole($"✅ Opened {_selectedRow.PackageId} in {ide.DisplayName}");
 		}
 		catch (Exception ex)
 		{
