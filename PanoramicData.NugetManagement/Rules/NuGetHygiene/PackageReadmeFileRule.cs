@@ -34,7 +34,12 @@ public class PackageReadmeFileRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is not null && !Contains(content, "<PackageReadmeFile>"))
+			if (content is null || IsExplicitlyNonPackable(content))
+			{
+				continue;
+			}
+
+			if (!Contains(content, "<PackageReadmeFile>"))
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not set PackageReadmeFile.",
@@ -51,7 +56,7 @@ public class PackageReadmeFileRule : RuleBase
 						}
 					}));
 			}
-		}
+			}
 
 		return Task.FromResult(Pass("All packable projects have PackageReadmeFile set."));
 	}

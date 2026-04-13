@@ -85,4 +85,12 @@ public abstract class RuleBase : IRule
 	/// <returns>True if found.</returns>
 	protected static bool Contains(string? content, string search)
 		=> content?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
+
+	/// <summary>
+	/// Checks whether a project file is explicitly marked as non-packable.
+	/// </summary>
+	/// <param name="content">The .csproj file content.</param>
+	/// <returns>True if the project contains &lt;IsPackable&gt;false&lt;/IsPackable&gt;.</returns>
+	protected static bool IsExplicitlyNonPackable(string? content)
+		=> Contains(content, "<IsPackable>false</IsPackable>");
 }

@@ -35,7 +35,12 @@ public class PackageLicenseExpressionRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is not null && !Contains(content, expectedTag))
+			if (content is null || IsExplicitlyNonPackable(content))
+			{
+				continue;
+			}
+
+			if (!Contains(content, expectedTag))
 			{
 				return Task.FromResult(Fail(
 					$"{csproj}: PackageLicenseExpression does not match expected \"{expected}\".",
@@ -53,7 +58,7 @@ public class PackageLicenseExpressionRule : RuleBase
 						}
 					}));
 			}
-		}
+			}
 
 		return Task.FromResult(Pass($"All packable projects have PackageLicenseExpression = \"{expected}\"."));
 	}

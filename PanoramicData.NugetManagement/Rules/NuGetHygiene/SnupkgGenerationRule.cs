@@ -34,7 +34,7 @@ public class SnupkgGenerationRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is null)
+			if (content is null || IsExplicitlyNonPackable(content))
 			{
 				continue;
 			}

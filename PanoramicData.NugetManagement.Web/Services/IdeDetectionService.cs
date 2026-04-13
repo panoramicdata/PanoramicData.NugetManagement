@@ -9,6 +9,15 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// </summary>
 public class IdeDetectionService
 {
+	private const int SW_SHOWMAXIMIZED = 3;
+
+	[DllImport("user32.dll")]
+	[return: MarshalAs(UnmanagedType.Bool)]
+	private static extern bool SetForegroundWindow(nint hWnd);
+
+	[DllImport("user32.dll")]
+	[return: MarshalAs(UnmanagedType.Bool)]
+	private static extern bool ShowWindow(nint hWnd, int nCmdShow);
 	private List<InstalledIde>? _detectedIdes;
 
 	/// <summary>
@@ -79,11 +88,37 @@ public class IdeDetectionService
 		{
 			FileName = ide.ExecutablePath,
 			Arguments = $"\"{targetPath}\"",
-			UseShellExecute = true,
-			WindowStyle = ProcessWindowStyle.Maximized
+			UseShellExecute = true
 		};
 
-		return Process.Start(psi);
+		var process = Process.Start(psi);
+
+		if (process is not null && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			// Wait for the main window to become available, then bring it to the foreground maximized.
+			Task.Run(() =>
+			{
+				try
+				{
+					if (process.WaitForInputIdle(10_000))
+					{
+						process.Refresh();
+						var hWnd = process.MainWindowHandle;
+						if (hWnd != nint.Zero)
+						{
+							ShowWindow(hWnd, SW_SHOWMAXIMIZED);
+							SetForegroundWindow(hWnd);
+						}
+					}
+				}
+				catch
+				{
+					// Best-effort; ignore if the process exited or handle is unavailable.
+				}
+			});
+		}
+
+		return process;
 	}
 
 	private static List<InstalledIde> Detect()

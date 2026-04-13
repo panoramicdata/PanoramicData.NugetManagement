@@ -1266,6 +1266,32 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	[Fact]
+	public async Task META04_ShouldPass_WhenNonPackableProjectMissingMetadata()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject/MyProject.csproj"] = "<Project><PropertyGroup><PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl><PackageIcon>Logo.png</PackageIcon></PropertyGroup></Project>",
+			["ExampleApp/ExampleApp.csproj"] = "<Project><PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("META-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task META01_ShouldPass_WhenNonPackableProjectMissingPackageId()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject/MyProject.csproj"] = "<Project><PropertyGroup><PackageId>MyProject</PackageId></PropertyGroup></Project>",
+			["ExampleApp/ExampleApp.csproj"] = "<Project><PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("META-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
 	// ── README-01 ───────────────────────────────────────────────────────
 
 	[Fact]

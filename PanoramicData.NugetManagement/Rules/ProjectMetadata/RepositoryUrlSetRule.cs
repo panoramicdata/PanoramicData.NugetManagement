@@ -33,7 +33,12 @@ public class RepositoryUrlSetRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is not null && !Contains(content, "<RepositoryUrl>"))
+			if (content is null || IsExplicitlyNonPackable(content))
+			{
+				continue;
+			}
+
+			if (!Contains(content, "<RepositoryUrl>"))
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not have RepositoryUrl set.",
@@ -50,7 +55,7 @@ public class RepositoryUrlSetRule : RuleBase
 						}
 					}));
 			}
-		}
+			}
 
 		return Task.FromResult(Pass("All packable projects have RepositoryUrl set."));
 	}

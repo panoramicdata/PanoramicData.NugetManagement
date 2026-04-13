@@ -34,7 +34,12 @@ public class GeneratePackageOnBuildRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is not null && !Contains(content, "<GeneratePackageOnBuild>true</GeneratePackageOnBuild>"))
+			if (content is null || IsExplicitlyNonPackable(content))
+			{
+				continue;
+			}
+
+			if (!Contains(content, "<GeneratePackageOnBuild>true</GeneratePackageOnBuild>"))
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not enable GeneratePackageOnBuild.",
@@ -51,7 +56,7 @@ public class GeneratePackageOnBuildRule : RuleBase
 						}
 					}));
 			}
-		}
+			}
 
 		return Task.FromResult(Pass("All packable projects have GeneratePackageOnBuild enabled."));
 	}

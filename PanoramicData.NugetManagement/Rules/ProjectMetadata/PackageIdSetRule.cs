@@ -33,7 +33,12 @@ public class PackageIdSetRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is not null && !Contains(content, "<PackageId>"))
+			if (content is null || IsExplicitlyNonPackable(content))
+			{
+				continue;
+			}
+
+			if (!Contains(content, "<PackageId>"))
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not have PackageId set.",
@@ -50,7 +55,7 @@ public class PackageIdSetRule : RuleBase
 						}
 					}));
 			}
-		}
+			}
 
 		return Task.FromResult(Pass("All packable projects have PackageId set."));
 	}
