@@ -22,9 +22,7 @@ public class TestProjectExistsRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var hasTestProject = context.FindFiles(".csproj")
-			.Any(f => f.Contains(".Test", StringComparison.OrdinalIgnoreCase) ||
-					  f.Contains(".Tests", StringComparison.OrdinalIgnoreCase));
+		var hasTestProject = context.FindTestProjectFiles().Any();
 
 		return Task.FromResult(hasTestProject
 			? Pass("Test project found.")

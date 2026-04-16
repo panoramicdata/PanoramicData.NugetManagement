@@ -27,8 +27,7 @@ public class RepositoryUrlSetRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable — skipping."));
 		}
 
-		var csprojFiles = context.FindFiles(".csproj")
-			.Where(f => !f.Contains(".Test", StringComparison.OrdinalIgnoreCase));
+		var csprojFiles = context.FindNonTestProjectFiles();
 
 		foreach (var csproj in csprojFiles)
 		{

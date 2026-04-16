@@ -30,9 +30,7 @@ public class GenerateDocumentationFileRule : RuleBase
 		}
 
 		// Check individual .csproj files
-		var csprojFiles = context.FindFiles(".csproj")
-			.Where(f => !f.Contains(".Test", StringComparison.OrdinalIgnoreCase))
-			.ToList();
+		var csprojFiles = context.FindNonTestProjectFiles().ToList();
 
 		if (csprojFiles.Count == 0)
 		{

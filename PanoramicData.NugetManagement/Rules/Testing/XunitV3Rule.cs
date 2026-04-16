@@ -31,8 +31,7 @@ public class XunitV3Rule : RuleBase
 		}
 
 		// Check individual test .csproj files
-		var testProjects = context.FindFiles(".csproj")
-			.Where(f => f.Contains(".Test", StringComparison.OrdinalIgnoreCase));
+		var testProjects = context.FindTestProjectFiles();
 
 		foreach (var tp in testProjects)
 		{

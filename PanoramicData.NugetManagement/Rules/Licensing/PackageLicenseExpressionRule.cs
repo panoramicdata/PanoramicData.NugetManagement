@@ -29,8 +29,7 @@ public class PackageLicenseExpressionRule : RuleBase
 
 		var expected = context.Options.ExpectedLicense;
 		var expectedTag = $"<PackageLicenseExpression>{expected}</PackageLicenseExpression>";
-		var csprojFiles = context.FindFiles(".csproj")
-			.Where(f => !f.Contains(".Test", StringComparison.OrdinalIgnoreCase));
+		var csprojFiles = context.FindNonTestProjectFiles();
 
 		foreach (var csproj in csprojFiles)
 		{

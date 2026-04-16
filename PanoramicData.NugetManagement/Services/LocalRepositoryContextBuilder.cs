@@ -26,6 +26,7 @@ public class LocalRepositoryContextBuilder
 	/// </summary>
 	private static readonly string[] _alwaysFetchFiles =
 	[
+		NugetManagementRepositoryConfig.FileName,
 		".editorconfig",
 		".gitignore",
 		".codacy.yml",
@@ -79,6 +80,8 @@ public class LocalRepositoryContextBuilder
 
 		var filePaths = EnumerateRepositoryFiles(localPath);
 		var fileContents = FetchFileContents(localPath, filePaths);
+		fileContents.TryGetValue(NugetManagementRepositoryConfig.FileName, out var repoConfigRaw);
+		var repositoryConfig = NugetManagementRepositoryConfigParser.Parse(repoConfigRaw);
 
 		return new RepositoryContext
 		{
@@ -88,7 +91,8 @@ public class LocalRepositoryContextBuilder
 			CurrentBranch = currentBranch,
 			Options = options,
 			FilePaths = filePaths,
-			FileContents = fileContents
+			FileContents = fileContents,
+			RepositoryConfig = repositoryConfig
 		};
 	}
 

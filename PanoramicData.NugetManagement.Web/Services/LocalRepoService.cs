@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Options;
+using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
 
 namespace PanoramicData.NugetManagement.Web.Services;
@@ -409,8 +411,159 @@ public class LocalRepoService
 	{
 		var path = GetLocalPath(repoName);
 		_logger.LogInformation("Running tests in {Path}", path);
-		return await RunCommandWithStreamingAsync(path, "dotnet", "test --no-build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+
+		var testProjects = GetConfiguredTestProjects(path);
+		if (testProjects.Count == 0)
+		{
+			return await RunCommandWithStreamingAsync(path, "dotnet", "test --no-build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+		}
+
+		var combinedOutput = new List<string>();
+		var allPassed = true;
+
+		foreach (var (projectPath, projectConfig) in testProjects)
+		{
+			if (projectConfig?.DefaultTestingLevel == ProjectTestingLevel.None)
+			{
+				onOutput?.Invoke($"⏭️ Skipping tests for {projectPath} (DefaultTestingLevel=None).");
+				continue;
+			}
+
+			var filter = BuildTestFilter(projectConfig);
+			var args = $"test \"{projectPath}\" --no-build --no-restore --verbosity normal";
+			if (!string.IsNullOrWhiteSpace(filter))
+			{
+				args += $" --filter \"{filter}\"";
+			}
+
+			onOutput?.Invoke($"▶ dotnet {args}");
+			var (success, output) = await RunCommandWithStreamingAsync(path, "dotnet", args, onOutput, cancellationToken).ConfigureAwait(false);
+			combinedOutput.Add(output);
+			allPassed &= success;
+		}
+
+		return (allPassed, string.Join('\n', combinedOutput));
 	}
+
+	private static List<(string ProjectPath, NugetManagementProjectConfig? Config)> GetConfiguredTestProjects(string localPath)
+	{
+		var configPath = Path.Combine(localPath, NugetManagementRepositoryConfig.FileName);
+		var rawConfig = File.Exists(configPath) ? File.ReadAllText(configPath) : null;
+		var repositoryConfig = NugetManagementRepositoryConfigParser.Parse(rawConfig);
+
+		var projects = Directory
+			.EnumerateFiles(localPath, "*.csproj", SearchOption.AllDirectories)
+			.Select(fullPath => Path.GetRelativePath(localPath, fullPath).Replace('\\', '/'))
+			.Where(relativePath => !relativePath.Contains("/bin/", StringComparison.OrdinalIgnoreCase))
+			.Where(relativePath => !relativePath.Contains("/obj/", StringComparison.OrdinalIgnoreCase))
+			.ToList();
+
+		var selected = new List<(string ProjectPath, NugetManagementProjectConfig? Config)>();
+		foreach (var project in projects)
+		{
+			var projectConfig = repositoryConfig?.GetProjectConfig(project);
+			if (projectConfig?.TestingTreatment == ProjectTreatment.Exclude)
+			{
+				continue;
+			}
+
+			if (projectConfig?.TestingTreatment == ProjectTreatment.Include)
+			{
+				selected.Add((project, projectConfig));
+				continue;
+			}
+
+			if (projectConfig?.Treatment == ProjectTreatment.Exclude)
+			{
+				continue;
+			}
+
+			if (IsLikelyTestProject(project) && IsAutoIncludedProject(project))
+			{
+				selected.Add((project, projectConfig));
+			}
+		}
+
+		return selected;
+	}
+
+	private static string BuildTestFilter(NugetManagementProjectConfig? config)
+	{
+		if (config is null)
+		{
+			return string.Empty;
+		}
+
+		var clauses = new List<string>();
+
+		if (config.DefaultTestingLevel == ProjectTestingLevel.Smoke)
+		{
+			clauses.Add("TestCategory!=Integration");
+			clauses.Add("TestCategory!=Slow");
+			clauses.Add("Category!=Integration");
+			clauses.Add("Category!=Slow");
+		}
+
+		if (config.IncludeCollections.Length > 0)
+		{
+			var includeCollections = config.IncludeCollections
+				.Where(value => !string.IsNullOrWhiteSpace(value))
+				.Select(value => $"(TestCategory={value.Trim()}|Category={value.Trim()})")
+				.ToArray();
+
+			if (includeCollections.Length > 0)
+			{
+				clauses.Add("(" + string.Join("|", includeCollections) + ")");
+			}
+		}
+
+		if (config.ExcludeCollections.Length > 0)
+		{
+			foreach (var value in config.ExcludeCollections.Where(value => !string.IsNullOrWhiteSpace(value)))
+			{
+				var trimmed = value.Trim();
+				clauses.Add($"TestCategory!={trimmed}");
+				clauses.Add($"Category!={trimmed}");
+			}
+		}
+
+		if (config.IncludeTests.Length > 0)
+		{
+			var includeTests = config.IncludeTests
+				.Where(value => !string.IsNullOrWhiteSpace(value))
+				.Select(value => $"FullyQualifiedName~{value.Trim()}")
+				.ToArray();
+
+			if (includeTests.Length > 0)
+			{
+				clauses.Add("(" + string.Join("|", includeTests) + ")");
+			}
+		}
+
+		if (config.ExcludeTests.Length > 0)
+		{
+			foreach (var value in config.ExcludeTests.Where(value => !string.IsNullOrWhiteSpace(value)))
+			{
+				clauses.Add($"FullyQualifiedName!~{value.Trim()}");
+			}
+		}
+
+		return string.Join('&', clauses);
+	}
+
+	private static bool IsLikelyTestProject(string projectPath)
+	{
+		var fileName = Path.GetFileName(projectPath);
+		return fileName.Contains(".Test", StringComparison.OrdinalIgnoreCase)
+			|| fileName.Contains(".Tests", StringComparison.OrdinalIgnoreCase)
+			|| fileName.EndsWith("Tests.csproj", StringComparison.OrdinalIgnoreCase)
+			|| fileName.EndsWith("Test.csproj", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsAutoIncludedProject(string projectPath)
+		=> !projectPath.Contains("/Fixtures/", StringComparison.OrdinalIgnoreCase)
+			&& !projectPath.Contains("/TestData/", StringComparison.OrdinalIgnoreCase)
+			&& !projectPath.Contains("/Samples/", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// Runs the Publish.ps1 script.

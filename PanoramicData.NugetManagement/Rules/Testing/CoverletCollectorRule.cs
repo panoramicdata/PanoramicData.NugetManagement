@@ -27,9 +27,7 @@ public class CoverletCollectorRule : RuleBase
 		var usesCpm = UsesCentralPackageManagement(dirPackages);
 		var pinnedInProps = HasPackageVersion(dirPackages, "coverlet.collector");
 
-		var testProjects = context.FindFiles(".csproj")
-			.Where(f => f.Contains(".Test", StringComparison.OrdinalIgnoreCase))
-			.ToList();
+		var testProjects = context.FindTestProjectFiles().ToList();
 
 		var referencedInTestProject = testProjects.Any(tp => HasPackageReference(context.GetFileContent(tp), "coverlet.collector"));
 

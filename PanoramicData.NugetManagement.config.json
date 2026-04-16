@@ -1,0 +1,11 @@
+{
+	"$schema": "./PanoramicData.NugetManagement.config.schema.json",
+	"version": 1,
+	"projects": {
+		"PanoramicData.NugetManagement.Test/Fixtures/PanoramicData.NugetFailArmy/PanoramicData.NugetFailArmy/PanoramicData.NugetFailArmy.csproj": {
+			"treatment": "Exclude",
+			"testingTreatment": "Include",
+			"defaultTestingLevel": "Full"
+		}
+	}
+}

@@ -68,6 +68,52 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
+	public async Task BLD03_ShouldIgnoreExcludedProjectFromRepositoryConfig()
+	{
+		var repoConfig = new NugetManagementRepositoryConfig
+		{
+			Projects = new Dictionary<string, NugetManagementProjectConfig>
+			{
+				["Fixtures/FailArmy/FailArmy.csproj"] = new() { Treatment = ProjectTreatment.Exclude }
+			}
+		};
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Fixtures/FailArmy/FailArmy.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+		}, config: repoConfig);
+
+		var rule = GetRule("BLD-03");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task TST01_ShouldTreatTestingIncludeProjectAsTestProject()
+	{
+		var repoConfig = new NugetManagementRepositoryConfig
+		{
+			Projects = new Dictionary<string, NugetManagementProjectConfig>
+			{
+				["Fixtures/FailArmy/FailArmy.csproj"] = new()
+				{
+					Treatment = ProjectTreatment.Exclude,
+					TestingTreatment = ProjectTreatment.Include
+				}
+			}
+		};
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Fixtures/FailArmy/FailArmy.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+		}, config: repoConfig);
+
+		var rule = GetRule("TST-01");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
 	public async Task LIC01_ShouldPass_WhenMitLicenseExists()
 	{
 		var context = CreateContext(new Dictionary<string, string>
@@ -1728,14 +1774,16 @@ public class RuleEvaluationTests : TestWithOutput
 		CurrentBranch = currentBranch,
 		Options = new RepoOptions(),
 		FilePaths = [],
-		FileContents = new Dictionary<string, string>()
+		FileContents = new Dictionary<string, string>(),
+		RepositoryConfig = null
 	};
 
 	private static RepositoryContext CreateContext(
 		Dictionary<string, string> files,
 		RepoOptions? options = null,
 		string defaultBranch = "main",
-		string? currentBranch = "main") => new()
+		string? currentBranch = "main",
+		NugetManagementRepositoryConfig? config = null) => new()
 	{
 		FullName = "test-org/test-repo",
 		Name = "test-repo",
@@ -1743,6 +1791,7 @@ public class RuleEvaluationTests : TestWithOutput
 		CurrentBranch = currentBranch,
 		Options = options ?? new RepoOptions(),
 		FilePaths = [.. files.Keys],
-		FileContents = files
+		FileContents = files,
+		RepositoryConfig = config
 	};
 }

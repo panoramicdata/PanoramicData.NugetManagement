@@ -22,9 +22,7 @@ public class NeutralResourcesLanguageRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var csprojFiles = context.FindFiles(".csproj")
-			.Where(f => !f.Contains(".Test", StringComparison.OrdinalIgnoreCase))
-			.ToList();
+		var csprojFiles = context.FindNonTestProjectFiles().ToList();
 
 		foreach (var csproj in csprojFiles)
 		{

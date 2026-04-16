@@ -1,0 +1,88 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://panoramicdata.github.io/schemas/PanoramicData.NugetManagement.config.schema.json",
+	"title": "PanoramicData.NugetManagement Repository Config",
+	"description": "Per-repository overrides for project treatment and test selection.",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"$schema": {
+			"type": "string"
+		},
+		"version": {
+			"type": "integer",
+			"minimum": 1,
+			"default": 1
+		},
+		"projects": {
+			"type": "object",
+			"description": "Map of project relative paths (or project file names) to settings.",
+			"additionalProperties": {
+				"$ref": "#/$defs/projectConfig"
+			}
+		}
+	},
+	"$defs": {
+		"projectTreatment": {
+			"type": "string",
+			"enum": ["Auto", "Include", "Exclude"],
+			"default": "Auto"
+		},
+		"projectTestingLevel": {
+			"type": "string",
+			"enum": ["Auto", "Smoke", "Full", "None"],
+			"default": "Auto"
+		},
+		"projectConfig": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"treatment": {
+					"$ref": "#/$defs/projectTreatment"
+				},
+				"testingTreatment": {
+					"$ref": "#/$defs/projectTreatment"
+				},
+				"defaultTestingLevel": {
+					"$ref": "#/$defs/projectTestingLevel"
+				},
+				"collectionTreatments": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/collectionTreatment" },
+					"default": []
+				},
+				"testTreatments": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/testTreatment" },
+					"default": []
+				}
+			}
+		},
+		"collectionTreatment": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["name"],
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"treatment": {
+					"$ref": "#/$defs/projectTreatment"
+				}
+			}
+		},
+		"testTreatment": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["id"],
+			"properties": {
+				"id": {
+					"type": "string"
+				},
+				"treatment": {
+					"$ref": "#/$defs/projectTreatment"
+				}
+			}
+		}
+	}
+}

@@ -29,8 +29,7 @@ public class ExpectedHttpClientPackageRule : RuleBase
 			return Task.FromResult(Pass($"Expected HTTP client package \"{expected}\" is referenced."));
 		}
 
-		var csprojFiles = context.FindFiles(".csproj")
-			.Where(f => !f.Contains(".Test", StringComparison.OrdinalIgnoreCase));
+		var csprojFiles = context.FindNonTestProjectFiles();
 
 		return Task.FromResult(csprojFiles.Any(csproj => Contains(context.GetFileContent(csproj), expected))
 			? Pass($"Expected HTTP client package \"{expected}\" is referenced.")

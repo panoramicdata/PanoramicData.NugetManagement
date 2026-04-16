@@ -28,8 +28,7 @@ public class TestSdkPresentRule : RuleBase
 			return Task.FromResult(Pass("Microsoft.NET.Test.Sdk is referenced."));
 		}
 
-		var testProjects = context.FindFiles(".csproj")
-			.Where(f => f.Contains(".Test", StringComparison.OrdinalIgnoreCase));
+		var testProjects = context.FindTestProjectFiles();
 
 		foreach (var tp in testProjects)
 		{

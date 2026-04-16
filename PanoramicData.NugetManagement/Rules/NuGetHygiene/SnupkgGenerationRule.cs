@@ -27,9 +27,7 @@ public class SnupkgGenerationRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable — skipping."));
 		}
 
-		var csprojFiles = context.FindFiles(".csproj")
-			.Where(f => !f.Contains(".Test", StringComparison.OrdinalIgnoreCase))
-			.ToList();
+		var csprojFiles = context.FindNonTestProjectFiles().ToList();
 
 		foreach (var csproj in csprojFiles)
 		{

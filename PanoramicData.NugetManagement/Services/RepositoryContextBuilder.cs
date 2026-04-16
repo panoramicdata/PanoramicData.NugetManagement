@@ -22,6 +22,7 @@ public class RepositoryContextBuilder : IDisposable
 	/// </summary>
 	private static readonly string[] _alwaysFetchFiles =
 	[
+		NugetManagementRepositoryConfig.FileName,
 		".editorconfig",
 		".gitignore",
 		".codacy.yml",
@@ -113,6 +114,8 @@ public class RepositoryContextBuilder : IDisposable
 
 		// Fetch file contents via raw CDN (does NOT consume API rate limit)
 		var fileContents = await FetchFileContentsAsync(owner, repoName, defaultBranch, filesToFetch, cancellationToken).ConfigureAwait(false);
+		fileContents.TryGetValue(NugetManagementRepositoryConfig.FileName, out var repoConfigRaw);
+		var repositoryConfig = NugetManagementRepositoryConfigParser.Parse(repoConfigRaw);
 
 		return new RepositoryContext
 		{
@@ -122,7 +125,8 @@ public class RepositoryContextBuilder : IDisposable
 			CurrentBranch = defaultBranch,
 			Options = options,
 			FilePaths = filePaths,
-			FileContents = fileContents
+			FileContents = fileContents,
+			RepositoryConfig = repositoryConfig
 		};
 	}
 
