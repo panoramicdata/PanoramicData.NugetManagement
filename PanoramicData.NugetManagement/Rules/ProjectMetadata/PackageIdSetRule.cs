@@ -27,35 +27,29 @@ public class PackageIdSetRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable — skipping."));
 		}
 
-		var csprojFiles = context.FindNonTestProjectFiles();
-
-		foreach (var csproj in csprojFiles)
+		var csproj = context.FindPrimaryProjectFile();
+		if (csproj is null)
 		{
-			var content = context.GetFileContent(csproj);
-			if (content is null || IsExplicitlyNonPackable(content))
-			{
-				continue;
-			}
+			return Task.FromResult(Pass("No primary project found — skipping PackageId check."));
+		}
 
-			if (!Contains(content, "<PackageId>"))
-			{
-				return Task.FromResult(Fail(
-					$"{csproj} does not have PackageId set.",
-					new RuleAdvisory
+		var content = context.GetFileContent(csproj);
+		if (!Contains(content, "<PackageId>"))
+		{
+			return Task.FromResult(Fail(
+				$"{csproj} does not have PackageId set.",
+				new RuleAdvisory
+				{
+					Summary = "Add <PackageId>YourPackageId</PackageId> to the .csproj.",
+					Detail = $"The project `{csproj}` does not have `<PackageId>` set. Add `<PackageId>YourPackageId</PackageId>` to a `<PropertyGroup>`.",
+					Data = new()
 					{
-						Summary = "Add <PackageId>YourPackageId</PackageId> to the .csproj.",
-						Detail = $"The project `{csproj}` does not have `<PackageId>` set. Add `<PackageId>YourPackageId</PackageId>` to a `<PropertyGroup>`.",
-						Data = new()
-						{
-							["file"] = csproj,
-							["remediation_type"] = "ensure_csproj_property",
-							["property_name"] = "PackageId",
-							["property_value"] = Path.GetFileNameWithoutExtension(csproj)
-						}
-					}));
-			}
-			}
+						["file"] = csproj,
+						["remediation_type"] = "ensure_csproj_property",
+						["property_name"] = "PackageId",
+						["property_value"] = Path.GetFileNameWithoutExtension(csproj)
+					}
+				}));
+		}
 
-		return Task.FromResult(Pass("All packable projects have PackageId set."));
-	}
-}
+		return Task.FromResult(Pass("Primary project has

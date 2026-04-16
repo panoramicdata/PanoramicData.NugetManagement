@@ -29,36 +29,31 @@ public class PackageLicenseExpressionRule : RuleBase
 
 		var expected = context.Options.ExpectedLicense;
 		var expectedTag = $"<PackageLicenseExpression>{expected}</PackageLicenseExpression>";
-		var csprojFiles = context.FindNonTestProjectFiles();
 
-		foreach (var csproj in csprojFiles)
+		var csproj = context.FindPrimaryProjectFile();
+		if (csproj is null)
 		{
-			var content = context.GetFileContent(csproj);
-			if (content is null || IsExplicitlyNonPackable(content))
-			{
-				continue;
-			}
+			return Task.FromResult(Pass("No primary project found — skipping PackageLicenseExpression check."));
+		}
 
-			if (!Contains(content, expectedTag))
-			{
-				return Task.FromResult(Fail(
-					$"{csproj}: PackageLicenseExpression does not match expected \"{expected}\".",
-					new RuleAdvisory
+		var content = context.GetFileContent(csproj);
+		if (!Contains(content, expectedTag))
+		{
+			return Task.FromResult(Fail(
+				$"{csproj}: PackageLicenseExpression does not match expected \"{expected}\".",
+				new RuleAdvisory
+				{
+					Summary = $"Add {expectedTag} to the .csproj.",
+					Detail = $"The project `{csproj}` does not have `PackageLicenseExpression` set to `{expected}`. Add `{expectedTag}` to the project file.",
+					Data = new()
 					{
-						Summary = $"Add {expectedTag} to the .csproj.",
-						Detail = $"The project `{csproj}` does not have `PackageLicenseExpression` set to `{expected}`. Add `{expectedTag}` to the project file.",
-						Data = new()
-						{
-							["file"] = csproj,
-							["expected_license"] = expected,
-							["remediation_type"] = "ensure_csproj_property",
-							["property_name"] = "PackageLicenseExpression",
-							["property_value"] = expected
-						}
-					}));
-			}
-			}
+						["file"] = csproj,
+						["expected_license"] = expected,
+						["remediation_type"] = "ensure_csproj_property",
+						["property_name"] = "PackageLicenseExpression",
+						["property_value"] = expected
+					}
+				}));
+		}
 
-		return Task.FromResult(Pass($"All packable projects have PackageLicenseExpression = \"{expected}\"."));
-	}
-}
+		return Task.FromResult(Pass($"Primary project has

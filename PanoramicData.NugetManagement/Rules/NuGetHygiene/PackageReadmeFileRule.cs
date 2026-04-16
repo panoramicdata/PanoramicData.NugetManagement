@@ -27,35 +27,31 @@ public class PackageReadmeFileRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable — skipping."));
 		}
 
-		var csprojFiles = context.FindNonTestProjectFiles().ToList();
-
-		foreach (var csproj in csprojFiles)
+		var csproj = context.FindPrimaryProjectFile();
+		if (csproj is null)
 		{
-			var content = context.GetFileContent(csproj);
-			if (content is null || IsExplicitlyNonPackable(content))
-			{
-				continue;
-			}
+			return Task.FromResult(Pass("No primary project found — skipping PackageReadmeFile check."));
+		}
 
-			if (!Contains(content, "<PackageReadmeFile>"))
-			{
-				return Task.FromResult(Fail(
-					$"{csproj} does not set PackageReadmeFile.",
-					new RuleAdvisory
+		var content = context.GetFileContent(csproj);
+		if (!Contains(content, "<PackageReadmeFile>"))
+		{
+			return Task.FromResult(Fail(
+				$"{csproj} does not set PackageReadmeFile.",
+				new RuleAdvisory
+				{
+					Summary = "Add <PackageReadmeFile>README.md</PackageReadmeFile> and pack the README.md via <None Include>.",
+					Detail = $"The project `{csproj}` does not set `PackageReadmeFile`. Add `<PackageReadmeFile>README.md</PackageReadmeFile>` to a `<PropertyGroup>` and include `<None Include=\"..\\README.md\" Pack=\"true\" PackagePath=\"\\\"/>` in an `<ItemGroup>`.",
+					Data = new()
 					{
-						Summary = "Add <PackageReadmeFile>README.md</PackageReadmeFile> and pack the README.md via <None Include>.",
-						Detail = $"The project `{csproj}` does not set `PackageReadmeFile`. Add `<PackageReadmeFile>README.md</PackageReadmeFile>` to a `<PropertyGroup>` and include `<None Include=\"..\\README.md\" Pack=\"true\" PackagePath=\"\\\"/>` in an `<ItemGroup>`.",
-						Data = new()
-						{
-							["file"] = csproj,
-							["remediation_type"] = "ensure_csproj_property",
-							["property_name"] = "PackageReadmeFile",
-							["property_value"] = "README.md"
-						}
-					}));
-			}
-			}
+						["file"] = csproj,
+						["remediation_type"] = "ensure_csproj_property",
+						["property_name"] = "PackageReadmeFile",
+						["property_value"] = "README.md"
+					}
+				}));
+		}
 
-		return Task.FromResult(Pass("All packable projects have PackageReadmeFile set."));
+		return Task.FromResult(Pass("Primary project has PackageReadmeFile set."));
 	}
 }

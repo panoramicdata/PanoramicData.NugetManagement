@@ -206,6 +206,27 @@ public class LocalRepoService
 	}
 
 	/// <summary>
+	/// Returns the latest git tag reachable from HEAD (e.g. "1.0.55").
+	/// Returns null if the repo has no tags or the command fails.
+	/// </summary>
+	public async Task<string?> GetLatestTagAsync(string repoName, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
+		var (exitCode, output) = await RunCommandAsync(path, "git", "describe --tags --abbrev=0", cancellationToken).ConfigureAwait(false);
+		if (exitCode != 0 || string.IsNullOrWhiteSpace(output))
+		{
+			return null;
+		}
+
+		return output.Trim();
+	}
+
+	/// <summary>
 	/// Checks whether the local branch is in sync with its origin counterpart.
 	/// Performs a git fetch first, then compares HEAD against origin/{branch}.
 	/// Returns true if HEAD matches origin/{branch} (not behind and not ahead).

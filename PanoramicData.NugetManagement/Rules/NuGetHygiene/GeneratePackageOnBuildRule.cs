@@ -27,35 +27,29 @@ public class GeneratePackageOnBuildRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable — skipping."));
 		}
 
-		var csprojFiles = context.FindNonTestProjectFiles().ToList();
-
-		foreach (var csproj in csprojFiles)
+		var csproj = context.FindPrimaryProjectFile();
+		if (csproj is null)
 		{
-			var content = context.GetFileContent(csproj);
-			if (content is null || IsExplicitlyNonPackable(content))
-			{
-				continue;
-			}
+			return Task.FromResult(Pass("No primary project found — skipping GeneratePackageOnBuild check."));
+		}
 
-			if (!Contains(content, "<GeneratePackageOnBuild>true</GeneratePackageOnBuild>"))
-			{
-				return Task.FromResult(Fail(
-					$"{csproj} does not enable GeneratePackageOnBuild.",
-					new RuleAdvisory
+		var content = context.GetFileContent(csproj);
+		if (!Contains(content, "<GeneratePackageOnBuild>true</GeneratePackageOnBuild>"))
+		{
+			return Task.FromResult(Fail(
+				$"{csproj} does not enable GeneratePackageOnBuild.",
+				new RuleAdvisory
+				{
+					Summary = "Add <GeneratePackageOnBuild>true</GeneratePackageOnBuild> to the .csproj.",
+					Detail = $"The project `{csproj}` does not enable `GeneratePackageOnBuild`. Add `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>` to a `<PropertyGroup>`.",
+					Data = new()
 					{
-						Summary = "Add <GeneratePackageOnBuild>true</GeneratePackageOnBuild> to the .csproj.",
-						Detail = $"The project `{csproj}` does not enable `GeneratePackageOnBuild`. Add `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>` to a `<PropertyGroup>`.",
-						Data = new()
-						{
-							["file"] = csproj,
-							["remediation_type"] = "ensure_csproj_property",
-							["property_name"] = "GeneratePackageOnBuild",
-							["property_value"] = "true"
-						}
-					}));
-			}
-			}
+						["file"] = csproj,
+						["remediation_type"] = "ensure_csproj_property",
+						["property_name"] = "GeneratePackageOnBuild",
+						["property_value"] = "true"
+					}
+				}));
+		}
 
-		return Task.FromResult(Pass("All packable projects have GeneratePackageOnBuild enabled."));
-	}
-}
+		return Task.FromResult(Pass("Primary project has

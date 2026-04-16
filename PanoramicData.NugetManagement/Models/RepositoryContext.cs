@@ -95,6 +95,30 @@ public class RepositoryContext
 		=> FindFiles(".csproj").Where(path => !IsTestProject(path));
 
 	/// <summary>
+	/// Returns the single primary project for this repository: the .csproj whose
+	/// filename (without extension) matches the repository name.
+	/// Returns null if no such project exists (e.g. the repo is an app, not a library).
+	/// </summary>
+	public string? FindPrimaryProjectFile()
+		=> FindNonTestProjectFiles()
+			.FirstOrDefault(path =>
+				string.Equals(
+					Path.GetFileNameWithoutExtension(path),
+					Name,
+					StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// Returns all non-test projects that are NOT the primary project.
+	/// These are ancillary projects (tools, generators, etc.) that should not be published to NuGet.
+	/// </summary>
+	public IEnumerable<string> FindNonPrimaryNonTestProjectFiles()
+	{
+		var primary = FindPrimaryProjectFile();
+		return FindNonTestProjectFiles()
+			.Where(path => !string.Equals(path, primary, StringComparison.OrdinalIgnoreCase));
+	}
+
+	/// <summary>
 	/// Gets the project-level config for a path, if any.
 	/// </summary>
 	public NugetManagementProjectConfig? GetProjectConfig(string projectPath)

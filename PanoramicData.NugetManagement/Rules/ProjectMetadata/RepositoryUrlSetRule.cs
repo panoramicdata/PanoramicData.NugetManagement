@@ -27,35 +27,29 @@ public class RepositoryUrlSetRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable — skipping."));
 		}
 
-		var csprojFiles = context.FindNonTestProjectFiles();
-
-		foreach (var csproj in csprojFiles)
+		var csproj = context.FindPrimaryProjectFile();
+		if (csproj is null)
 		{
-			var content = context.GetFileContent(csproj);
-			if (content is null || IsExplicitlyNonPackable(content))
-			{
-				continue;
-			}
+			return Task.FromResult(Pass("No primary project found — skipping RepositoryUrl check."));
+		}
 
-			if (!Contains(content, "<RepositoryUrl>"))
-			{
-				return Task.FromResult(Fail(
-					$"{csproj} does not have RepositoryUrl set.",
-					new RuleAdvisory
+		var content = context.GetFileContent(csproj);
+		if (!Contains(content, "<RepositoryUrl>"))
+		{
+			return Task.FromResult(Fail(
+				$"{csproj} does not have RepositoryUrl set.",
+				new RuleAdvisory
+				{
+					Summary = "Add <RepositoryUrl>https://github.com/org/repo</RepositoryUrl> to the .csproj.",
+					Detail = $"The project `{csproj}` does not have `<RepositoryUrl>` set. Add `<RepositoryUrl>https://github.com/org/repo</RepositoryUrl>` to a `<PropertyGroup>`.",
+					Data = new()
 					{
-						Summary = "Add <RepositoryUrl>https://github.com/org/repo</RepositoryUrl> to the .csproj.",
-						Detail = $"The project `{csproj}` does not have `<RepositoryUrl>` set. Add `<RepositoryUrl>https://github.com/org/repo</RepositoryUrl>` to a `<PropertyGroup>`.",
-						Data = new()
-						{
-							["file"] = csproj,
-							["remediation_type"] = "ensure_csproj_property",
-							["property_name"] = "RepositoryUrl",
-							["property_value"] = $"https://github.com/{context.FullName}"
-						}
-					}));
-			}
-			}
+						["file"] = csproj,
+						["remediation_type"] = "ensure_csproj_property",
+						["property_name"] = "RepositoryUrl",
+						["property_value"] = $"https://github.com/{context.FullName}"
+					}
+				}));
+		}
 
-		return Task.FromResult(Pass("All packable projects have RepositoryUrl set."));
-	}
-}
+		return Task.FromResult(Pass("Primary project has

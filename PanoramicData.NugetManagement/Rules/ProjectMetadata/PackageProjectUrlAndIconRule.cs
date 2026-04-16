@@ -27,33 +27,27 @@ public class PackageProjectUrlAndIconRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable — skipping."));
 		}
 
-		var csprojFiles = context.FindNonTestProjectFiles();
-
-		var issues = new List<string>();
-		foreach (var csproj in csprojFiles)
+		var csproj = context.FindPrimaryProjectFile();
+		if (csproj is null)
 		{
-			var content = context.GetFileContent(csproj);
-			if (content is null || IsExplicitlyNonPackable(content))
-			{
-				continue;
-			}
+			return Task.FromResult(Pass("No primary project found — skipping PackageProjectUrl/PackageIcon check."));
+		}
 
-			if (!Contains(content, "<PackageProjectUrl>"))
-			{
-				issues.Add($"{csproj}: missing PackageProjectUrl");
-			}
+		var content = context.GetFileContent(csproj);
+		var issues = new List<string>();
 
-			if (!Contains(content, "<PackageIcon>"))
-			{
-				issues.Add($"{csproj}: missing PackageIcon");
-			}
+		if (!Contains(content, "<PackageProjectUrl>"))
+		{
+			issues.Add($"{csproj}: missing PackageProjectUrl");
+		}
+
+		if (!Contains(content, "<PackageIcon>"))
+		{
+			issues.Add($"{csproj}: missing PackageIcon");
 		}
 
 		return Task.FromResult(issues.Count == 0
-			? Pass("All packable projects have PackageProjectUrl and PackageIcon set.")
-			: Fail(
-				string.Join("; ", issues),
-				new RuleAdvisory
+			? Pass("Primary project has
 				{
 					Summary = "Set <PackageProjectUrl> and <PackageIcon> with a corresponding <None Include> in the .csproj.",
 					Detail = $"The following issues were found: {string.Join("; ", issues)}. Add `<PackageProjectUrl>` and `<PackageIcon>` to the `<PropertyGroup>` and include the icon file via `<None Include>` in an `<ItemGroup>`.",

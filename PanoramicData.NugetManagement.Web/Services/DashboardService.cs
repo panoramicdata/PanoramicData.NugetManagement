@@ -726,6 +726,7 @@ public class DashboardService
 		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
 		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
 		row.IsSyncedWithOrigin = await _localRepo.IsSyncedWithOriginAsync(repoName, cancellationToken).ConfigureAwait(false);
+		row.LatestTag = await _localRepo.GetLatestTagAsync(repoName, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>

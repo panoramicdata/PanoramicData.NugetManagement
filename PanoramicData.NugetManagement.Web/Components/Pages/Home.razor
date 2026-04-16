@@ -121,7 +121,15 @@ else
 									{
 										<span class="git-clean-badge" title="In sync with origin">⇅ Synced</span>
 									}
-									<!-- Inline git actions after repo info -->
+																		@if (_selectedRow.NuGetVersionMatchesTag == true)
+									{
+										<span class="git-clean-badge" title="NuGet @_selectedRow.LatestVersion matches latest tag @_selectedRow.LatestTag">📦 @_selectedRow.LatestTag ✓</span>
+									}
+									else if (_selectedRow.NuGetVersionMatchesTag == false)
+									{
+										<span class="git-dirty-badge" title="NuGet @(_selectedRow.LatestVersion ?? """) does not match latest tag @(_selectedRow.LatestTag ?? """)">📦 tag @(_selectedRow.LatestTag ?? """) ≠ nuget @(_selectedRow.LatestVersion ?? """)</span>
+									}
+<!-- Inline git actions after repo info -->
 									<button class="btn btn-xs btn-breadcrumb" @onclick="GitSyncAsync" disabled="@_isRunning" title="Fetch, pull --rebase, push">
 										<i class="fas fa-sync"></i>
 									</button>

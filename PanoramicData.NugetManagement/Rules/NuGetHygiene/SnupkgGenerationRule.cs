@@ -27,36 +27,30 @@ public class SnupkgGenerationRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable — skipping."));
 		}
 
-		var csprojFiles = context.FindNonTestProjectFiles().ToList();
-
-		foreach (var csproj in csprojFiles)
+		var csproj = context.FindPrimaryProjectFile();
+		if (csproj is null)
 		{
-			var content = context.GetFileContent(csproj);
-			if (content is null || IsExplicitlyNonPackable(content))
-			{
-				continue;
-			}
-
-			if (!Contains(content, "<IncludeSymbols>true</IncludeSymbols>") ||
-				!Contains(content, "<SymbolPackageFormat>snupkg</SymbolPackageFormat>"))
-			{
-				return Task.FromResult(Fail(
-					$"{csproj} does not enable snupkg generation.",
-					new RuleAdvisory
-					{
-						Summary = "Add <IncludeSymbols>true</IncludeSymbols> and <SymbolPackageFormat>snupkg</SymbolPackageFormat> to the .csproj.",
-						Detail = $"The project `{csproj}` does not enable snupkg symbol package generation. Add both `<IncludeSymbols>true</IncludeSymbols>` and `<SymbolPackageFormat>snupkg</SymbolPackageFormat>` to a `<PropertyGroup>`.",
-						Data = new()
-						{
-							["file"] = csproj,
-							["remediation_type"] = "ensure_csproj_property",
-							["property_name"] = "IncludeSymbols",
-							["property_value"] = "true"
-						}
-					}));
-			}
+			return Task.FromResult(Pass("No primary project found — skipping snupkg check."));
 		}
 
-		return Task.FromResult(Pass("All packable projects have snupkg generation enabled."));
-	}
-}
+		var content = context.GetFileContent(csproj);
+		if (!Contains(content, "<IncludeSymbols>true</IncludeSymbols>") ||
+			!Contains(content, "<SymbolPackageFormat>snupkg</SymbolPackageFormat>"))
+		{
+			return Task.FromResult(Fail(
+				$"{csproj} does not enable snupkg generation.",
+				new RuleAdvisory
+				{
+					Summary = "Add <IncludeSymbols>true</IncludeSymbols> and <SymbolPackageFormat>snupkg</SymbolPackageFormat> to the .csproj.",
+					Detail = $"The project `{csproj}` does not enable snupkg symbol package generation. Add both `<IncludeSymbols>true</IncludeSymbols>` and `<SymbolPackageFormat>snupkg</SymbolPackageFormat>` to a `<PropertyGroup>`.",
+					Data = new()
+					{
+						["file"] = csproj,
+						["remediation_type"] = "ensure_csproj_property",
+						["property_name"] = "IncludeSymbols",
+						["property_value"] = "true"
+					}
+				}));
+		}
+
+		return Task.FromResult(Pass("Primary project has

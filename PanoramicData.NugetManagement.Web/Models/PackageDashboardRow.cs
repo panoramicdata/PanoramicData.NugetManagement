@@ -59,6 +59,20 @@ public class PackageDashboardRow
 	public bool? IsSyncedWithOrigin { get; set; }
 
 	/// <summary>
+	/// The latest git tag on the local repo (e.g. "1.0.55").
+	/// </summary>
+	public string? LatestTag { get; set; }
+
+	/// <summary>
+	/// Whether the latest NuGet published version matches the latest local git tag.
+	/// Null when either value is unknown.
+	/// </summary>
+	public bool? NuGetVersionMatchesTag =>
+		LatestVersion is not null && LatestTag is not null
+			? string.Equals(LatestVersion, LatestTag, StringComparison.OrdinalIgnoreCase)
+			: null;
+
+	/// <summary>
 	/// The assessment result from the governance rules. Null if not yet assessed.
 	/// </summary>
 	public RepoAssessment? Assessment { get; set; }
