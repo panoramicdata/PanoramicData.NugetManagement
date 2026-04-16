@@ -106,6 +106,52 @@ public class LocalRepoService
 	}
 
 	/// <summary>
+	/// Gets the remote default branch name for origin when available.
+	/// </summary>
+	public async Task<string?> GetRemoteDefaultBranchAsync(string repoName, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
+		_ = await RunCommandAsync(path, "git", "fetch --prune origin", cancellationToken).ConfigureAwait(false);
+
+		var (headExitCode, headOutput) = await RunCommandAsync(path, "git", "symbolic-ref --quiet --short refs/remotes/origin/HEAD", cancellationToken).ConfigureAwait(false);
+		if (headExitCode == 0)
+		{
+			var full = headOutput.Trim();
+			if (!string.IsNullOrWhiteSpace(full))
+			{
+				return full.StartsWith("origin/", StringComparison.OrdinalIgnoreCase)
+					? full["origin/".Length..]
+					: full;
+			}
+		}
+
+		var (showExitCode, showOutput) = await RunCommandAsync(path, "git", "remote show origin", cancellationToken).ConfigureAwait(false);
+		if (showExitCode != 0)
+		{
+			return null;
+		}
+
+		var headBranchLine = showOutput
+			.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+			.FirstOrDefault(line => line.Contains("HEAD branch:", StringComparison.OrdinalIgnoreCase));
+
+		if (headBranchLine is null)
+		{
+			return null;
+		}
+
+		var idx = headBranchLine.IndexOf(':');
+		return idx < 0
+			? null
+			: headBranchLine[(idx + 1)..].Trim();
+	}
+
+	/// <summary>
 	/// Checks whether the working tree is clean.
 	/// </summary>
 	public async Task<bool> IsWorkingTreeCleanAsync(string repoName, CancellationToken cancellationToken = default)

@@ -62,12 +62,14 @@ public class LocalRepositoryContextBuilder
 	/// <param name="repositoryFullName">The GitHub full name (e.g. "owner/repo").</param>
 	/// <param name="options">Per-repo assessment options.</param>
 	/// <param name="defaultBranch">The default branch name (used for context only).</param>
+	/// <param name="currentBranch">The currently checked out local branch when known.</param>
 	/// <returns>A fully populated <see cref="RepositoryContext"/>.</returns>
 	public RepositoryContext Build(
 		string localPath,
 		string repositoryFullName,
 		RepoOptions options,
-		string defaultBranch = "main")
+		string defaultBranch = "main",
+		string? currentBranch = null)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]
@@ -83,6 +85,7 @@ public class LocalRepositoryContextBuilder
 			FullName = repositoryFullName,
 			Name = repoName,
 			DefaultBranch = defaultBranch,
+			CurrentBranch = currentBranch,
 			Options = options,
 			FilePaths = filePaths,
 			FileContents = fileContents

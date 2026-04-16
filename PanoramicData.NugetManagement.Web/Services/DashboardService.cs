@@ -221,6 +221,19 @@ public class DashboardService
 
 		try
 		{
+			var repoName = row.RepositoryUrl is null ? null : ExtractRepoName(row.RepositoryUrl);
+			if (!string.IsNullOrWhiteSpace(repoName))
+			{
+				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
+			}
+
+			var detectedDefaultBranch = !string.IsNullOrWhiteSpace(repoName)
+				? await _localRepo.GetRemoteDefaultBranchAsync(repoName!, cancellationToken).ConfigureAwait(false)
+				: null;
+			var defaultBranch = string.IsNullOrWhiteSpace(detectedDefaultBranch)
+				? row.Assessment?.DefaultBranch ?? "main"
+				: detectedDefaultBranch;
+
 			var repoOptions = new RepoOptions
 			{
 				ExpectedLicense = _settings.ExpectedLicense,
@@ -238,7 +251,7 @@ public class DashboardService
 
 			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 			var localBuilder = new LocalRepositoryContextBuilder(loggerFactory.CreateLogger<LocalRepositoryContextBuilder>());
-			var context = localBuilder.Build(row.LocalPath, row.RepositoryFullName, repoOptions);
+			var context = localBuilder.Build(row.LocalPath, row.RepositoryFullName, repoOptions, defaultBranch, row.CurrentBranch);
 
 			var rules = RuleRegistry.Rules;
 			var results = new List<RuleResult>();
@@ -493,9 +506,14 @@ public class DashboardService
 
 		var failures = row.Assessment.RuleResults.Where(r => !r.Passed && r.Advisory is not null).ToList();
 
-		// Ensure REPO-05 (Solution Items) runs last so it can pick up files created by other remediations
+		// Ensure REPO-06 (default branch) runs first and REPO-05 (Solution Items) runs last.
 		var ordered = failures
-			.OrderBy(f => f.RuleId == "REPO-05" ? 1 : 0)
+			.OrderBy(f => f.RuleId switch
+			{
+				"REPO-06" => 0,
+				"REPO-05" => 2,
+				_ => 1
+			})
 			.ToList();
 
 		foreach (var failure in ordered)

@@ -111,9 +111,11 @@ public class IdeDetectionService
 		var psi = new ProcessStartInfo
 		{
 			FileName = ide.ExecutablePath,
-			Arguments = $"\"{targetPath}\"",
-			UseShellExecute = true
+			UseShellExecute = false,
+			RedirectStandardOutput = true,
+			RedirectStandardError = true
 		};
+		psi.ArgumentList.Add(targetPath);
 
 		Process? process;
 		try
@@ -164,11 +166,21 @@ public class IdeDetectionService
 					process.Refresh();
 					if (process.HasExited)
 					{
+						process.WaitForExit(250);
+						var exitCode = process.ExitCode;
+						var errorOutput = ReadProcessErrorOutput(process);
+						var diagnosticMessage = $"Process exited before creating a visible main window. Exit code: {exitCode}."
+							+ (string.IsNullOrWhiteSpace(errorOutput)
+								? " No error output was captured."
+								: $" Error: {errorOutput}");
+
 						_logger.LogWarning("OpenInIde launched process exited quickly: IdeId={IdeId}, PID={Pid}, ElapsedMs={ElapsedMs}", ide.Id, process.Id, sw.ElapsedMilliseconds);
 						result = result with
 						{
 							ExitedQuickly = true,
-							DiagnosticMessage = "Process exited before creating a visible main window."
+							ExitCode = exitCode,
+							ErrorOutput = errorOutput,
+							DiagnosticMessage = diagnosticMessage
 						};
 						break;
 					}
@@ -243,6 +255,8 @@ public class IdeDetectionService
 		string TargetPath,
 		int? ProcessId,
 		bool ExitedQuickly,
+		int? ExitCode,
+		string? ErrorOutput,
 		nint MainWindowHandle,
 		bool? ShowWindowSucceeded,
 		bool? SetForegroundSucceeded,
@@ -259,6 +273,8 @@ public class IdeDetectionService
 				TargetPath: targetPath,
 				ProcessId: null,
 				ExitedQuickly: false,
+				ExitCode: null,
+				ErrorOutput: null,
 				MainWindowHandle: nint.Zero,
 				ShowWindowSucceeded: null,
 				SetForegroundSucceeded: null,
@@ -275,12 +291,33 @@ public class IdeDetectionService
 				TargetPath: targetPath,
 				ProcessId: processId,
 				ExitedQuickly: false,
+				ExitCode: null,
+				ErrorOutput: null,
 				MainWindowHandle: nint.Zero,
 				ShowWindowSucceeded: null,
 				SetForegroundSucceeded: null,
 				ForegroundProcessId: null,
 				IsLaunchedProcessForeground: null,
 				DiagnosticMessage: null);
+	}
+
+	private static string? ReadProcessErrorOutput(Process process)
+	{
+		try
+		{
+			var error = process.StandardError.ReadToEnd().Trim();
+			if (!string.IsNullOrWhiteSpace(error))
+			{
+				return error;
+			}
+
+			var output = process.StandardOutput.ReadToEnd().Trim();
+			return string.IsNullOrWhiteSpace(output) ? null : output;
+		}
+		catch
+		{
+			return null;
+		}
 	}
 
 	private static List<InstalledIde> Detect()

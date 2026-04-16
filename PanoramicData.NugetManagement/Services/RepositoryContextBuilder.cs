@@ -119,6 +119,7 @@ public class RepositoryContextBuilder : IDisposable
 			FullName = repository.FullName,
 			Name = repoName,
 			DefaultBranch = defaultBranch,
+			CurrentBranch = defaultBranch,
 			Options = options,
 			FilePaths = filePaths,
 			FileContents = fileContents

@@ -258,6 +258,28 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
+	public async Task REPO06_ShouldPass_WhenDefaultAndCurrentBranchAreMain()
+	{
+		var context = CreateEmptyContext(defaultBranch: "main", currentBranch: "main");
+
+		var rule = GetRule("REPO-06");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task REPO06_ShouldFail_WhenDefaultBranchIsMaster()
+	{
+		var context = CreateEmptyContext(defaultBranch: "master", currentBranch: "master");
+
+		var rule = GetRule("REPO-06");
+		var result = await rule.EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory.Should().NotBeNull();
+		result.Message.Should().Contain("master");
+	}
+
+	[Fact]
 	public async Task CQ04_ShouldPass_WhenTabIndentationEnforced()
 	{
 		var editorconfig = """
@@ -1698,21 +1720,27 @@ public class RuleEvaluationTests : TestWithOutput
 	private static IRule GetRule(string ruleId)
 		=> RuleRegistry.Rules.Single(r => r.RuleId == ruleId);
 
-	private static RepositoryContext CreateEmptyContext() => new()
+	private static RepositoryContext CreateEmptyContext(string defaultBranch = "main", string? currentBranch = "main") => new()
 	{
 		FullName = "test-org/test-repo",
 		Name = "test-repo",
-		DefaultBranch = "main",
+		DefaultBranch = defaultBranch,
+		CurrentBranch = currentBranch,
 		Options = new RepoOptions(),
 		FilePaths = [],
 		FileContents = new Dictionary<string, string>()
 	};
 
-	private static RepositoryContext CreateContext(Dictionary<string, string> files, RepoOptions? options = null) => new()
+	private static RepositoryContext CreateContext(
+		Dictionary<string, string> files,
+		RepoOptions? options = null,
+		string defaultBranch = "main",
+		string? currentBranch = "main") => new()
 	{
 		FullName = "test-org/test-repo",
 		Name = "test-repo",
-		DefaultBranch = "main",
+		DefaultBranch = defaultBranch,
+		CurrentBranch = currentBranch,
 		Options = options ?? new RepoOptions(),
 		FilePaths = [.. files.Keys],
 		FileContents = files

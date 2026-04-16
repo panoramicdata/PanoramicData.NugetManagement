@@ -1668,7 +1668,7 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
-		var blockReason = GetFixBlockReason();
+		var blockReason = GetFixBlockReason(result.RuleId == "REPO-06");
 		if (blockReason is not null)
 		{
 			AppendConsole($"❌ Cannot fix: {blockReason}");
@@ -2077,18 +2077,23 @@ else
 			return false;
 		}
 
+		if (_selectedRow.Assessment.RuleResults.Any(r => !r.Passed && r.RuleId == "REPO-06" && Dashboard.IsAutoRemediable(r)))
+		{
+			return true;
+		}
+
 		return _selectedRow.CurrentBranch == "main"
 			&& _selectedRow.IsSyncedWithOrigin != false;
 	}
 
-	private string? GetFixBlockReason()
+	private string? GetFixBlockReason(bool allowBranchMigrationOffMain = false)
 	{
 		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
 		{
 			return "Repository is not cloned locally";
 		}
 
-		if (_selectedRow.CurrentBranch != "main")
+		if (_selectedRow.CurrentBranch != "main" && !allowBranchMigrationOffMain)
 		{
 			return $"Must be on 'main' branch (currently on '{_selectedRow.CurrentBranch ?? "unknown"}')";
 		}
@@ -2146,6 +2151,11 @@ else
 		if (_isAssessing || _isRunning)
 		{
 			return "Please wait...";
+		}
+
+		if (_selectedRow?.Assessment?.RuleResults.Any(r => !r.Passed && r.RuleId == "REPO-06" && Dashboard.IsAutoRemediable(r)) == true)
+		{
+			return GetFixBlockReason(allowBranchMigrationOffMain: true) ?? "Auto-fix this issue";
 		}
 
 		return GetFixBlockReason() ?? "Auto-fix this issue";
@@ -2529,6 +2539,15 @@ else
 			if (!string.IsNullOrWhiteSpace(launch.DiagnosticMessage))
 			{
 				AppendConsole($"ℹ️ IDE diagnostic: {launch.DiagnosticMessage}");
+			}
+
+			if (launch.ExitedQuickly)
+			{
+				AppendConsole($"ℹ️ IDE exit code: {launch.ExitCode?.ToString() ?? "(unknown)"}");
+				if (!string.IsNullOrWhiteSpace(launch.ErrorOutput))
+				{
+					AppendConsole($"ℹ️ IDE error output: {launch.ErrorOutput}");
+				}
 			}
 		}
 		catch (Exception ex)

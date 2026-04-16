@@ -22,6 +22,12 @@ public class RepositoryContext
 	public required string DefaultBranch { get; init; }
 
 	/// <summary>
+	/// The currently checked out local branch when available.
+	/// Null when context is built from remote-only repository metadata.
+	/// </summary>
+	public string? CurrentBranch { get; init; }
+
+	/// <summary>
 	/// The per-repo options (may be default).
 	/// </summary>
 	public required RepoOptions Options { get; init; }
