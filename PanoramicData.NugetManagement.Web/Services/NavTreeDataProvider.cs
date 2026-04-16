@@ -91,6 +91,10 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 				// Determine RAG icon for the package
 				var pkgIcon = GetHealthIcon(row.Assessment is not null && !row.IsReassessing, pkgIssues, pkgHasErrors, pkgHasWarnings);
+				if (row.IsWorkingTreeClean == false)
+				{
+					pkgIcon += " tree-node-dirty";
+				}
 
 				items.Add(new NavItem
 				{
@@ -103,7 +107,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					IsLeaf = row.Assessment is null,
 					IssueCount = pkgIssues,
 					HasErrors = pkgHasErrors,
-					HasWarnings = pkgHasWarnings
+					HasWarnings = pkgHasWarnings,
+					IsWorkingTreeDirty = row.IsWorkingTreeClean == false
 				});
 
 				// Category sub-nodes (only if assessed)

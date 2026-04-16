@@ -259,10 +259,10 @@ else
 								}
 								@if (_selectedRow is not null)
 								{
-									<button class="btn toolbar-action-btn @(_aiClipboardCueStep.HasValue ? "toolbar-ai-ready" : "")"
+									<button class="btn toolbar-action-btn @(CurrentAiClipboardCueStep.HasValue ? "toolbar-ai-ready" : "")"
 											@onclick="CopyPromptToClipboardAsync"
-											disabled="@(string.IsNullOrEmpty(_lastPromptText) || _isRunning)"
-											title="@(string.IsNullOrEmpty(_lastPromptText) ? "No AI prompt generated yet" : "Copy the last generated AI prompt to clipboard")">
+											disabled="@(string.IsNullOrEmpty(CurrentLastPromptText) || _isRunning)"
+											title="@(string.IsNullOrEmpty(CurrentLastPromptText) ? "No AI prompt generated yet" : "Copy the last generated AI prompt to clipboard")">
 										<i class="fas fa-copy"></i>
 									</button>
 								}
@@ -384,17 +384,21 @@ else
 	// === Console state ===
 	private bool _consoleVisible = true;
 	private bool _consoleScrollPending;
-	private List<ConsoleLine> _consoleLines = [];
 	private ElementReference _consoleElement;
-	private string? _lastPromptText;
-	private bool _copyFeedback;
-	private bool _consoleCopyFeedback;
-	private WorkflowStep? _aiClipboardCueStep;
+	private string _selectedNodeKey = "root";
+	private readonly Dictionary<string, NodeUiState> _nodeUiStateByKey = [];
 	private WorkflowStep? _lastFailedWorkflowStep;
 	private WorkflowStep? _activeWorkflowStep;
 	private CancellationTokenSource? _operationCts;
 	private PackageStatus? _statusBeforeOperation;
 	private string? _statusMessageBeforeOperation;
+
+	private NodeUiState CurrentNodeUiState => GetOrCreateNodeUiState(_selectedNodeKey);
+	private List<ConsoleLine> CurrentConsoleLines => CurrentNodeUiState.ConsoleLines;
+	private string? CurrentLastPromptText { get => CurrentNodeUiState.LastPromptText; set => CurrentNodeUiState.LastPromptText = value; }
+	private bool CurrentCopyFeedback { get => CurrentNodeUiState.CopyFeedback; set => CurrentNodeUiState.CopyFeedback = value; }
+	private bool CurrentConsoleCopyFeedback { get => CurrentNodeUiState.ConsoleCopyFeedback; set => CurrentNodeUiState.ConsoleCopyFeedback = value; }
+	private WorkflowStep? CurrentAiClipboardCueStep { get => CurrentNodeUiState.AiClipboardCueStep; set => CurrentNodeUiState.AiClipboardCueStep = value; }
 
 	// === Merlin chat state ===
 	private string _chatInput = string.Empty;
@@ -447,6 +451,7 @@ else
 			if (_selectedRow is not null)
 			{
 				_selectedPackageId = _selectedRow.PackageId;
+				_selectedNodeKey = $"pkg:{_selectedRow.PackageId}";
 				_currentView = NavView.PackageDetail;
 			}
 		}
@@ -506,6 +511,7 @@ else
 		_selectedPackageId = item.PackageId;
 		_selectedCategory = item.Category;
 		_selectedRuleId = item.RuleId;
+		_selectedNodeKey = item.Key;
 
 		if (item.PackageId is not null)
 		{
@@ -538,6 +544,7 @@ else
 		_selectedPackageId = null;
 		_selectedCategory = null;
 		_selectedRuleId = null;
+		_selectedNodeKey = "root";
 		_completedSteps.Clear();
 		_failedSteps.Clear();
       _lastFailedWorkflowStep = null;
@@ -551,6 +558,7 @@ else
 		_selectedPackageId = null;
 		_selectedCategory = null;
 		_selectedRuleId = null;
+		_selectedNodeKey = "settings";
 		_completedSteps.Clear();
 		_failedSteps.Clear();
       _lastFailedWorkflowStep = null;
@@ -721,10 +729,10 @@ else
 		<div class="console-panel-header">
 			<span><i class="fas fa-terminal"></i> Console</span>
 			<div class="console-panel-actions">
-				@if (_consoleLines.Count > 0)
+				@if (CurrentConsoleLines.Count > 0)
 				{
-					<button class="btn btn-sm btn-copy @(_consoleCopyFeedback ? "btn-copied" : "")" @onclick="CopyConsoleToClipboardAsync" title="Copy console output to clipboard">
-						@if (_consoleCopyFeedback)
+					<button class="btn btn-sm btn-copy @(CurrentConsoleCopyFeedback ? "btn-copied" : "")" @onclick="CopyConsoleToClipboardAsync" title="Copy console output to clipboard">
+						@if (CurrentConsoleCopyFeedback)
 						{
 							<i class="fas fa-check"></i> <span>Copied!</span>
 						}
@@ -734,10 +742,10 @@ else
 						}
 					</button>
 				}
-				@if (!string.IsNullOrEmpty(_lastPromptText))
+				@if (!string.IsNullOrEmpty(CurrentLastPromptText))
 				{
-					<button class="btn btn-sm btn-copy @(_copyFeedback ? "btn-copied" : "")" @onclick="CopyPromptToClipboardAsync" title="Copy AI prompt to clipboard">
-							@if (_copyFeedback)
+					<button class="btn btn-sm btn-copy @(CurrentCopyFeedback ? "btn-copied" : "")" @onclick="CopyPromptToClipboardAsync" title="Copy AI prompt to clipboard">
+							@if (CurrentCopyFeedback)
 							{
 								<i class="fas fa-check"></i> <span>Copied!</span>
 							}
@@ -747,20 +755,20 @@ else
 							}
 						</button>
 				}
-				@if (_consoleLines.Count > 0)
+				@if (CurrentConsoleLines.Count > 0)
 				{
 					<button class="btn btn-sm btn-icon" @onclick="ClearConsole" title="Clear console"><i class="fas fa-trash"></i></button>
 				}
 			</div>
 		</div>
 		<div class="detail-console-output" @ref="_consoleElement">
-			@if (_consoleLines.Count == 0)
+			@if (CurrentConsoleLines.Count == 0)
 			{
 				<span class="console-placeholder">Actions and output will appear here...</span>
 			}
 			else
 			{
-				@foreach (var line in _consoleLines.ToArray())
+				@foreach (var line in CurrentConsoleLines.ToArray())
 				{
 					<div class="@line.CssClass">@line.Text</div>
 				}
@@ -1236,6 +1244,7 @@ else
 		// Single click selects in tree navigation
 		_selectedRow = row;
 		_selectedPackageId = row.PackageId;
+		_selectedNodeKey = $"pkg:{row.PackageId}";
 		_currentView = NavView.PackageDetail;
 		StateHasChanged();
 	}
@@ -1593,6 +1602,7 @@ else
 		}
 
 		_isRunning = true;
+		ClearConsole();
 		AppendConsole("▶ Applying all auto-remediations...");
 		StateHasChanged();
 
@@ -1605,6 +1615,7 @@ else
 			});
 
 			await Dashboard.RefreshGitStatusAsync(_selectedRow);
+			await PersistSelectedRowUpdateAsync();
 			AppendConsole($"✅ Applied {applied.Count} remediation(s)");
 
 			// Re-assess
@@ -1666,6 +1677,7 @@ else
 		}
 
 		_isRunning = true;
+		ClearConsole();
 		AppendConsole($"▶ Fixing {category}...");
 		StateHasChanged();
 
@@ -1678,6 +1690,7 @@ else
 			});
 
 			await Dashboard.RefreshGitStatusAsync(_selectedRow);
+			await PersistSelectedRowUpdateAsync();
 			AppendConsole($"✅ Applied {applied.Count} remediation(s) for {category}");
 
 			_isAssessing = true;
@@ -1722,6 +1735,7 @@ else
 		}
 
 		_isRunning = true;
+		ClearConsole();
 		AppendConsole($"▶ Fixing {result.RuleId}...");
 		StateHasChanged();
 
@@ -1735,6 +1749,7 @@ else
 			});
 
 			await Dashboard.RefreshGitStatusAsync(_selectedRow);
+			await PersistSelectedRowUpdateAsync();
 			AppendConsole(applied.Count > 0 ? $"✅ Fixed {result.RuleId}" : $"⚠️ Could not fix {result.RuleId}");
 
 			_isAssessing = true;
@@ -1768,6 +1783,7 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		_isRunning = true;
+		ClearConsole();
 		AppendConsole("▶ Building...");
 		StateHasChanged();
 
@@ -1796,7 +1812,7 @@ else
 				var prompt = DashboardService.GenerateConciseWorkflowFailurePrompt(
 					_selectedRow,
 					"build",
-					_consoleLines.Select(line => line.Text));
+					CurrentConsoleLines.Select(line => line.Text));
 				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Build, "build failure");
 			}
 		}
@@ -1821,6 +1837,7 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		_isRunning = true;
+		ClearConsole();
 		AppendConsole("▶ Running tests...");
 		StateHasChanged();
 
@@ -1849,7 +1866,7 @@ else
 				var prompt = DashboardService.GenerateConciseWorkflowFailurePrompt(
 					_selectedRow,
 					"test",
-					_consoleLines.Select(line => line.Text));
+					CurrentConsoleLines.Select(line => line.Text));
 				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Test, "test failure");
 			}
 		}
@@ -1874,6 +1891,7 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		_isRunning = true;
+		ClearConsole();
 		AppendConsole("▶ Git syncing...");
 		StateHasChanged();
 
@@ -1886,6 +1904,7 @@ else
 			});
 
 			AppendConsole(_selectedRow.Status == PackageStatus.GitSynced ? "✅ Git sync complete" : "❌ Git sync failed");
+			await PersistSelectedRowUpdateAsync();
 
 			if (_selectedRow.CurrentBranch is not null)
 			{
@@ -1913,6 +1932,7 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		_isRunning = true;
+		ClearConsole();
 		AppendConsole("▶ Publishing...");
 		StateHasChanged();
 
@@ -1946,8 +1966,8 @@ else
 			return;
 		}
 
-      _lastPromptText = null;
-		_copyFeedback = false;
+      CurrentLastPromptText = null;
+		CurrentCopyFeedback = false;
 		var prompt = DashboardService.GenerateRemediationPrompt(_selectedRow, _includeInfoInAiPrompt);
 		if (string.IsNullOrEmpty(prompt))
 		{
@@ -1955,7 +1975,7 @@ else
 			return;
 		}
 
-       _lastPromptText = prompt;
+       CurrentLastPromptText = prompt;
 		_completedSteps.Add(WorkflowStep.FixWithAi);
 		AppendConsole("── AI Remediation Prompt (All) ──");
 		AppendConsole(prompt);
@@ -1971,13 +1991,13 @@ else
 			return;
 		}
 
-      _lastPromptText = null;
-		_copyFeedback = false;
+      CurrentLastPromptText = null;
+		CurrentCopyFeedback = false;
 		var workflowArea = failedStep == WorkflowStep.Test ? "test" : "build";
 		var prompt = DashboardService.GenerateWorkflowFailurePrompt(
 			_selectedRow,
 			workflowArea,
-			_consoleLines.Select(line => line.Text));
+			CurrentConsoleLines.Select(line => line.Text));
 
 		if (string.IsNullOrWhiteSpace(prompt))
 		{
@@ -1985,7 +2005,7 @@ else
 			return;
 		}
 
-       _lastPromptText = prompt;
+       CurrentLastPromptText = prompt;
 		_completedSteps.Add(WorkflowStep.FixWithAi);
 		AppendConsole($"── AI {char.ToUpperInvariant(workflowArea[0]) + workflowArea[1..]} Failure Prompt ──");
 		AppendConsole(prompt);
@@ -2001,8 +2021,8 @@ else
 			return;
 		}
 
-        _lastPromptText = null;
-		_copyFeedback = false;
+        CurrentLastPromptText = null;
+		CurrentCopyFeedback = false;
 		var prompt = DashboardService.GenerateCategoryRemediationPrompt(_selectedRow, category, includeInfo: true);
 		if (string.IsNullOrEmpty(prompt))
 		{
@@ -2010,7 +2030,7 @@ else
 			return;
 		}
 
-       _lastPromptText = prompt;
+       CurrentLastPromptText = prompt;
 		AppendConsole($"── AI Remediation Prompt ({category}) ──");
 		AppendConsole(prompt);
 		AppendConsole("── End Prompt ──");
@@ -2025,8 +2045,8 @@ else
 			return;
 		}
 
-      _lastPromptText = null;
-		_copyFeedback = false;
+      CurrentLastPromptText = null;
+		CurrentCopyFeedback = false;
 		var prompt = DashboardService.GenerateRuleRemediationPrompt(_selectedRow, result);
 		if (string.IsNullOrEmpty(prompt))
 		{
@@ -2034,7 +2054,7 @@ else
 			return;
 		}
 
-       _lastPromptText = prompt;
+       CurrentLastPromptText = prompt;
 		AppendConsole($"── AI Remediation Prompt ({result.RuleId}) ──");
 		AppendConsole(prompt);
 		AppendConsole("── End Prompt ──");
@@ -2160,24 +2180,35 @@ else
 
 	// === Console helpers ===
 
-	private void AppendConsole(string line) { _consoleLines.Add(new ConsoleLine(line, GetConsoleLineClass(line))); _consoleScrollPending = true; }
-	private void ClearConsole() { _consoleLines.Clear(); _lastPromptText = null; _copyFeedback = false; _consoleCopyFeedback = false; }
+	private NodeUiState GetOrCreateNodeUiState(string nodeKey)
+	{
+		if (!_nodeUiStateByKey.TryGetValue(nodeKey, out var state))
+		{
+			state = new NodeUiState();
+			_nodeUiStateByKey[nodeKey] = state;
+		}
+
+		return state;
+	}
+
+	private void AppendConsole(string line) { CurrentConsoleLines.Add(new ConsoleLine(line, GetConsoleLineClass(line))); _consoleScrollPending = true; }
+	private void ClearConsole() { CurrentConsoleLines.Clear(); CurrentLastPromptText = null; CurrentCopyFeedback = false; CurrentConsoleCopyFeedback = false; }
 
 	private async Task CopyConsoleToClipboardAsync()
 	{
-		if (_consoleLines.Count == 0)
+		if (CurrentConsoleLines.Count == 0)
 		{
 			return;
 		}
 
 		try
 		{
-			var text = string.Join(Environment.NewLine, _consoleLines.ToArray().Select(l => l.Text));
+			var text = string.Join(Environment.NewLine, CurrentConsoleLines.ToArray().Select(l => l.Text));
 			await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-			_consoleCopyFeedback = true;
+			CurrentConsoleCopyFeedback = true;
 			StateHasChanged();
 			await Task.Delay(2000);
-			_consoleCopyFeedback = false;
+			CurrentConsoleCopyFeedback = false;
 			StateHasChanged();
 		}
 		catch
@@ -2188,18 +2219,18 @@ else
 
 	private async Task CopyPromptToClipboardAsync()
 	{
-		if (string.IsNullOrEmpty(_lastPromptText))
+		if (string.IsNullOrEmpty(CurrentLastPromptText))
 		{
 			return;
 		}
 
 		try
 		{
-			await JS.InvokeVoidAsync("navigator.clipboard.writeText", _lastPromptText);
-			_copyFeedback = true;
+			await JS.InvokeVoidAsync("navigator.clipboard.writeText", CurrentLastPromptText);
+			CurrentCopyFeedback = true;
 			StateHasChanged();
 			await Task.Delay(2000);
-			_copyFeedback = false;
+			CurrentCopyFeedback = false;
 			StateHasChanged();
 		}
 		catch
@@ -2216,10 +2247,10 @@ else
 			return;
 		}
 
-		_lastPromptText = prompt;
+		CurrentLastPromptText = prompt;
 		try
 		{
-			await JS.InvokeVoidAsync("navigator.clipboard.writeText", _lastPromptText);
+			await JS.InvokeVoidAsync("navigator.clipboard.writeText", CurrentLastPromptText);
 		}
 		catch
 		{
@@ -2231,13 +2262,13 @@ else
 
 	private async Task TriggerAiClipboardCueAsync(WorkflowStep sourceStep)
 	{
-		_aiClipboardCueStep = sourceStep;
+		CurrentAiClipboardCueStep = sourceStep;
 		StateHasChanged();
 
 		await Task.Delay(2300);
-		if (_aiClipboardCueStep == sourceStep)
+		if (CurrentAiClipboardCueStep == sourceStep)
 		{
-			_aiClipboardCueStep = null;
+			CurrentAiClipboardCueStep = null;
 			StateHasChanged();
 		}
 	}
@@ -2690,6 +2721,7 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		_isRunning = true;
+		ClearConsole();
 		AppendConsole("▶ Committing and pushing...");
 		StateHasChanged();
 
@@ -2706,6 +2738,7 @@ else
 			{
 				_completedSteps.Add(WorkflowStep.CommitAndPush);
 				AppendConsole("✅ Changes committed and pushed");
+				await PersistSelectedRowUpdateAsync();
 
 				if (_selectedRow.CurrentBranch is not null)
 				{
@@ -2715,6 +2748,7 @@ else
 			else
 			{
 				AppendConsole("❌ Commit and push failed");
+				await PersistSelectedRowUpdateAsync();
 			}
 		}
 		catch (Exception ex)
@@ -2824,7 +2858,7 @@ else
 	private string GetStepCssClassFull(WorkflowStep step)
 	{
 		var baseCss = GetStepCssClass(step);
-		if (_aiClipboardCueStep == step)
+		if (CurrentAiClipboardCueStep == step)
 		{
 			baseCss = string.IsNullOrWhiteSpace(baseCss) ? "toolbar-ai-ready" : $"{baseCss} toolbar-ai-ready";
 		}
@@ -2895,5 +2929,15 @@ else
 		public required string Text { get; init; }
 	}
 
+	private sealed class NodeUiState
+	{
+		public List<ConsoleLine> ConsoleLines { get; } = [];
+		public string? LastPromptText { get; set; }
+		public bool CopyFeedback { get; set; }
+		public bool ConsoleCopyFeedback { get; set; }
+		public WorkflowStep? AiClipboardCueStep { get; set; }
+	}
+
 	private sealed record ConsoleLine(string Text, string CssClass);
 }
+
