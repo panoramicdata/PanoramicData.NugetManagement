@@ -161,11 +161,48 @@ public class LocalRepoService
 	/// <summary>
 	/// Checks whether the working tree is clean.
 	/// </summary>
-	public async Task<bool> IsWorkingTreeCleanAsync(string repoName, CancellationToken cancellationToken = default)
+	public async Task<bool?> IsWorkingTreeCleanAsync(string repoName, CancellationToken cancellationToken = default)
 	{
 		var path = GetLocalPath(repoName);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
 		var (exitCode, output) = await RunCommandAsync(path, "git", "status --porcelain", cancellationToken).ConfigureAwait(false);
-		return exitCode == 0 && string.IsNullOrWhiteSpace(output);
+		if (exitCode != 0)
+		{
+			_logger.LogWarning("Failed to determine working tree cleanliness for {RepoName}. git status exit code: {ExitCode}", repoName, exitCode);
+			return null;
+		}
+
+		return string.IsNullOrWhiteSpace(output);
+	}
+
+	/// <summary>
+	/// Gets a preview of git status porcelain lines for dirty working tree diagnostics.
+	/// </summary>
+	public async Task<IReadOnlyList<string>> GetWorkingTreeStatusPreviewAsync(
+		string repoName,
+		int maxLines = 3,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		if (!Directory.Exists(path) || maxLines <= 0)
+		{
+			return [];
+		}
+
+		var (exitCode, output) = await RunCommandAsync(path, "git", "status --porcelain", cancellationToken).ConfigureAwait(false);
+		if (exitCode != 0 || string.IsNullOrWhiteSpace(output))
+		{
+			return [];
+		}
+
+		return output
+			.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+			.Take(maxLines)
+			.ToArray();
 	}
 
 	/// <summary>
@@ -494,61 +531,75 @@ public class LocalRepoService
 			return string.Empty;
 		}
 
-		var clauses = new List<string>();
+		var baseClauses = new List<string>();
 
 		if (config.DefaultTestingLevel == ProjectTestingLevel.Smoke)
 		{
-			clauses.Add("TestCategory!=Integration");
-			clauses.Add("TestCategory!=Slow");
-			clauses.Add("Category!=Integration");
-			clauses.Add("Category!=Slow");
+			baseClauses.Add("(TestCategory!=Integration&Category!=Integration)");
+			baseClauses.Add("(TestCategory!=Slow&Category!=Slow)");
 		}
 
-		if (config.IncludeCollections.Length > 0)
+		var includeCollections = config.CollectionTreatments
+			.Where(rule => !string.IsNullOrWhiteSpace(rule.Name) && rule.Treatment == ProjectTreatment.Include)
+			.Select(rule => rule.Name.Trim())
+			.ToArray();
+
+		var excludeCollections = config.CollectionTreatments
+			.Where(rule => !string.IsNullOrWhiteSpace(rule.Name) && rule.Treatment == ProjectTreatment.Exclude)
+			.Select(rule => rule.Name.Trim())
+			.ToArray();
+
+		if (includeCollections.Length > 0)
 		{
-			var includeCollections = config.IncludeCollections
-				.Where(value => !string.IsNullOrWhiteSpace(value))
-				.Select(value => $"(TestCategory={value.Trim()}|Category={value.Trim()})")
+			var includeExpression = includeCollections
+				.Select(value => $"(TestCategory={value}|Category={value})")
 				.ToArray();
 
-			if (includeCollections.Length > 0)
+			if (includeExpression.Length > 0)
 			{
-				clauses.Add("(" + string.Join("|", includeCollections) + ")");
+				baseClauses.Add("(" + string.Join("|", includeExpression) + ")");
 			}
 		}
 
-		if (config.ExcludeCollections.Length > 0)
+		if (excludeCollections.Length > 0)
 		{
-			foreach (var value in config.ExcludeCollections.Where(value => !string.IsNullOrWhiteSpace(value)))
+			foreach (var value in excludeCollections)
 			{
-				var trimmed = value.Trim();
-				clauses.Add($"TestCategory!={trimmed}");
-				clauses.Add($"Category!={trimmed}");
+				baseClauses.Add($"(TestCategory!={value}&Category!={value})");
 			}
 		}
 
-		if (config.IncludeTests.Length > 0)
+		var includeTests = config.TestTreatments
+			.Where(rule => !string.IsNullOrWhiteSpace(rule.Id) && rule.Treatment == ProjectTreatment.Include)
+			.Select(rule => $"FullyQualifiedName~{rule.Id.Trim()}")
+			.ToArray();
+
+		var excludeTests = config.TestTreatments
+			.Where(rule => !string.IsNullOrWhiteSpace(rule.Id) && rule.Treatment == ProjectTreatment.Exclude)
+			.Select(rule => $"FullyQualifiedName!~{rule.Id.Trim()}")
+			.ToArray();
+
+		var baseExpression = string.Join('&', baseClauses);
+		var explicitTestIncludeExpression = includeTests.Length == 0
+			? string.Empty
+			: "(" + string.Join('|', includeTests) + ")";
+
+		var combined = baseExpression;
+		if (!string.IsNullOrWhiteSpace(explicitTestIncludeExpression))
 		{
-			var includeTests = config.IncludeTests
-				.Where(value => !string.IsNullOrWhiteSpace(value))
-				.Select(value => $"FullyQualifiedName~{value.Trim()}")
-				.ToArray();
-
-			if (includeTests.Length > 0)
-			{
-				clauses.Add("(" + string.Join("|", includeTests) + ")");
-			}
+			combined = string.IsNullOrWhiteSpace(baseExpression)
+				? explicitTestIncludeExpression
+				: $"(({baseExpression})|{explicitTestIncludeExpression})";
 		}
 
-		if (config.ExcludeTests.Length > 0)
+		foreach (var exclusion in excludeTests)
 		{
-			foreach (var value in config.ExcludeTests.Where(value => !string.IsNullOrWhiteSpace(value)))
-			{
-				clauses.Add($"FullyQualifiedName!~{value.Trim()}");
-			}
+			combined = string.IsNullOrWhiteSpace(combined)
+				? exclusion
+				: $"({combined})&({exclusion})";
 		}
 
-		return string.Join('&', clauses);
+		return combined;
 	}
 
 	private static bool IsLikelyTestProject(string projectPath)

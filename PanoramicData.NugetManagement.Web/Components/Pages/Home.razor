@@ -1456,6 +1456,8 @@ else
 			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
 			{
 				await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
+				await Dashboard.RefreshGitStatusAsync(_selectedRow);
+				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
 			{
@@ -1507,6 +1509,7 @@ else
 					if (row.IsClonedLocally && row.LocalPath is not null)
 					{
 						await Dashboard.AssessLocalRepositoryAsync(row);
+						await Dashboard.RefreshGitStatusAsync(row);
 					}
 					else
 					{
@@ -1562,6 +1565,8 @@ else
 			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
 			{
 				await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
+				await Dashboard.RefreshGitStatusAsync(_selectedRow);
+				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
 			{
@@ -1911,6 +1916,8 @@ else
 			{
 				AppendConsole($"ℹ️ Branch: {_selectedRow.CurrentBranch} | Clean: {_selectedRow.IsWorkingTreeClean} | Synced: {_selectedRow.IsSyncedWithOrigin}");
 			}
+
+			await AppendDirtyWorkingTreePreviewAsync();
 		}
 		catch (Exception ex)
 		{
@@ -1920,6 +1927,27 @@ else
 		{
 			_isRunning = false;
 			StateHasChanged();
+		}
+	}
+
+	private async Task AppendDirtyWorkingTreePreviewAsync()
+	{
+		if (_selectedRow is null || _selectedRow.IsWorkingTreeClean != false)
+		{
+			return;
+		}
+
+		var lines = await Dashboard.GetWorkingTreeStatusPreviewAsync(_selectedRow, maxLines: 3);
+		if (lines.Count == 0)
+		{
+			AppendConsole("ℹ️ Working tree is dirty but no git porcelain entries were captured.");
+			return;
+		}
+
+		AppendConsole("ℹ️ Dirty files (git status --porcelain):");
+		foreach (var line in lines)
+		{
+			AppendConsole($"  {line}");
 		}
 	}
 

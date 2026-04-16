@@ -676,13 +676,7 @@ public class DashboardService
 
 		var (success, _) = await _localRepo.GitSyncAsync(repoName, onOutput, cancellationToken).ConfigureAwait(false);
 
-		if (success)
-		{
-			// Refresh git status after sync
-			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
-			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
-			row.IsSyncedWithOrigin = true; // Just synced, so by definition in sync
-		}
+		await RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 
 		row.Status = success ? PackageStatus.GitSynced : PackageStatus.Error;
 		row.StatusMessage = success ? "Synced with remote." : "Git sync failed.";
@@ -732,6 +726,23 @@ public class DashboardService
 		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
 		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
 		row.IsSyncedWithOrigin = await _localRepo.IsSyncedWithOriginAsync(repoName, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Returns a short preview of dirty working tree lines for diagnostics in UI output.
+	/// </summary>
+	public async Task<IReadOnlyList<string>> GetWorkingTreeStatusPreviewAsync(
+		PackageDashboardRow row,
+		int maxLines = 3,
+		CancellationToken cancellationToken = default)
+	{
+		var repoName = ExtractRepoName(row.RepositoryUrl);
+		if (repoName is null || !row.IsClonedLocally)
+		{
+			return [];
+		}
+
+		return await _localRepo.GetWorkingTreeStatusPreviewAsync(repoName, maxLines, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
