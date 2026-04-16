@@ -936,5 +936,77 @@ internal static class RemediationHelpers
 		}
 	}
 
+	/// <summary>
+	/// Removes all PackageReference elements with the given name from the specified project files.
+	/// </summary>
+	public static void RemovePackageReference(
+		string localPath,
+		string packageName,
+		string[] projectPaths,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		foreach (var projectPath in projectPaths)
+		{
+			var fullPath = ResolvePath(localPath, projectPath);
+			if (!File.Exists(fullPath))
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not exist — skipping.");
+				continue;
+			}
+
+			try
+			{
+				var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+				var toRemove = doc.Descendants("PackageReference")
+					.Where(e => string.Equals(
+						e.Attribute("Include")?.Value,
+						packageName,
+						StringComparison.OrdinalIgnoreCase))
+					.ToList();
+
+				if (toRemove.Count == 0)
+				{
+					onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not reference {packageName} — skipping.");
+					continue;
+				}
+
+				foreach (var element in toRemove)
+				{
+					// Remove the preceding whitespace/newline node too for clean diffs
+					if (element.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
+					{
+						element.PreviousNode.Remove();
+					}
+
+					element.Remove();
+				}
+
+				// Remove any now-empty ItemGroups
+				var emptyGroups = doc.Descendants("ItemGroup")
+					.Where(g => !g.HasElements)
+					.ToList();
+				foreach (var g in emptyGroups)
+				{
+					if (g.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
+					{
+						g.PreviousNode.Remove();
+					}
+
+					g.Remove();
+				}
+
+				doc.Save(fullPath);
+				applied.Add(projectPath);
+				onOutput?.Invoke($"✅ [{result.RuleId}] Removed {packageName} PackageReference from {projectPath}");
+			}
+			catch (Exception ex)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
+			}
+		}
+	}
+
 }
 

@@ -18,7 +18,24 @@ public class IdeDetectionService
 	[DllImport("user32.dll")]
 	[return: MarshalAs(UnmanagedType.Bool)]
 	private static extern bool ShowWindow(nint hWnd, int nCmdShow);
+
+	[DllImport("user32.dll")]
+	private static extern nint GetForegroundWindow();
+
+	[DllImport("user32.dll")]
+	private static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
+	private readonly ILogger<IdeDetectionService> _logger;
 	private List<InstalledIde>? _detectedIdes;
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="IdeDetectionService"/> class.
+	/// </summary>
+	/// <param name="logger">Logger used for IDE launch diagnostics.</param>
+	public IdeDetectionService(ILogger<IdeDetectionService> logger)
+	{
+		_logger = logger;
+	}
 
 	/// <summary>
 	/// Gets the list of detected IDE installations on the local machine.
@@ -71,7 +88,7 @@ public class IdeDetectionService
 	/// </summary>
 	/// <param name="ide">The IDE to open.</param>
 	/// <param name="localPath">The local repository path to open.</param>
-	public Process? OpenInIde(InstalledIde ide, string localPath)
+	internal IdeLaunchResult OpenInIde(InstalledIde ide, string localPath)
 	{
 		// Find a .slnx or .sln file in the local path
 		string? targetPath = null;
@@ -84,6 +101,13 @@ public class IdeDetectionService
 
 		targetPath ??= localPath;
 
+		_logger.LogInformation("OpenInIde requested: IdeId={IdeId}, DisplayName={DisplayName}, ExecutablePath={ExecutablePath}, LocalPath={LocalPath}, TargetPath={TargetPath}",
+			ide.Id,
+			ide.DisplayName,
+			ide.ExecutablePath,
+			localPath,
+			targetPath);
+
 		var psi = new ProcessStartInfo
 		{
 			FileName = ide.ExecutablePath,
@@ -91,34 +115,172 @@ public class IdeDetectionService
 			UseShellExecute = true
 		};
 
-		var process = Process.Start(psi);
-
-		if (process is not null && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		Process? process;
+		try
 		{
-			// Wait for the main window to become available, then bring it to the foreground maximized.
-			Task.Run(() =>
-			{
-				try
-				{
-					if (process.WaitForInputIdle(10_000))
-					{
-						process.Refresh();
-						var hWnd = process.MainWindowHandle;
-						if (hWnd != nint.Zero)
-						{
-							ShowWindow(hWnd, SW_SHOWMAXIMIZED);
-							SetForegroundWindow(hWnd);
-						}
-					}
-				}
-				catch
-				{
-					// Best-effort; ignore if the process exited or handle is unavailable.
-				}
-			});
+			process = Process.Start(psi);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "OpenInIde failed to start process for IdeId={IdeId} at {ExecutablePath}", ide.Id, ide.ExecutablePath);
+			return IdeLaunchResult.Failed(
+				ide.Id,
+				ide.DisplayName,
+				ide.ExecutablePath,
+				targetPath,
+				$"Failed to start process: {ex.Message}");
 		}
 
-		return process;
+		if (process is null)
+		{
+			_logger.LogWarning("OpenInIde Process.Start returned null for IdeId={IdeId} at {ExecutablePath}", ide.Id, ide.ExecutablePath);
+			return IdeLaunchResult.Failed(
+				ide.Id,
+				ide.DisplayName,
+				ide.ExecutablePath,
+				targetPath,
+				"Process.Start returned null.");
+		}
+
+		_logger.LogInformation("OpenInIde process launched: IdeId={IdeId}, PID={Pid}", ide.Id, process.Id);
+
+		var result = IdeLaunchResult.Launched(
+			ide.Id,
+			ide.DisplayName,
+			ide.ExecutablePath,
+			targetPath,
+			process.Id);
+
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			try
+			{
+				// Wait briefly for the main window to appear, then bring it to foreground.
+				var sw = Stopwatch.StartNew();
+				nint mainWindowHandle = nint.Zero;
+
+				while (sw.ElapsedMilliseconds < 5_000)
+				{
+					process.Refresh();
+					if (process.HasExited)
+					{
+						_logger.LogWarning("OpenInIde launched process exited quickly: IdeId={IdeId}, PID={Pid}, ElapsedMs={ElapsedMs}", ide.Id, process.Id, sw.ElapsedMilliseconds);
+						result = result with
+						{
+							ExitedQuickly = true,
+							DiagnosticMessage = "Process exited before creating a visible main window."
+						};
+						break;
+					}
+
+					mainWindowHandle = process.MainWindowHandle;
+					if (mainWindowHandle != nint.Zero)
+					{
+						break;
+					}
+
+					Thread.Sleep(100);
+				}
+
+				if (mainWindowHandle != nint.Zero)
+				{
+					var showResult = ShowWindow(mainWindowHandle, SW_SHOWMAXIMIZED);
+					var setForegroundResult = SetForegroundWindow(mainWindowHandle);
+
+					Thread.Sleep(150);
+
+					var foregroundWindow = GetForegroundWindow();
+					uint foregroundPid = 0;
+					if (foregroundWindow != nint.Zero)
+					{
+						_ = GetWindowThreadProcessId(foregroundWindow, out foregroundPid);
+					}
+
+					var isForeground = foregroundPid == process.Id;
+					result = result with
+					{
+						MainWindowHandle = mainWindowHandle,
+						ShowWindowSucceeded = showResult,
+						SetForegroundSucceeded = setForegroundResult,
+						ForegroundProcessId = foregroundPid,
+						IsLaunchedProcessForeground = isForeground,
+						DiagnosticMessage = isForeground
+							? "Launched IDE window is in the foreground."
+							: "Launched IDE window is not the foreground window."
+					};
+
+					_logger.LogInformation(
+						"OpenInIde foreground check: IdeId={IdeId}, PID={Pid}, MainWindowHandle={MainWindowHandle}, ShowWindow={ShowWindow}, SetForeground={SetForeground}, ForegroundPid={ForegroundPid}, IsForeground={IsForeground}",
+						ide.Id,
+						process.Id,
+						mainWindowHandle,
+						showResult,
+						setForegroundResult,
+						foregroundPid,
+						isForeground);
+				}
+				else if (!result.ExitedQuickly)
+				{
+					result = result with { DiagnosticMessage = "Could not find a main window handle for the launched process within timeout." };
+					_logger.LogWarning("OpenInIde could not resolve main window handle: IdeId={IdeId}, PID={Pid}", ide.Id, process.Id);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogWarning(ex, "OpenInIde foreground handling failed: IdeId={IdeId}, PID={Pid}", ide.Id, process.Id);
+				result = result with { DiagnosticMessage = $"Foreground check failed: {ex.Message}" };
+			}
+		}
+
+		return result;
+	}
+
+	internal sealed record IdeLaunchResult(
+		bool Started,
+		string IdeId,
+		string IdeDisplayName,
+		string ExecutablePath,
+		string TargetPath,
+		int? ProcessId,
+		bool ExitedQuickly,
+		nint MainWindowHandle,
+		bool? ShowWindowSucceeded,
+		bool? SetForegroundSucceeded,
+		uint? ForegroundProcessId,
+		bool? IsLaunchedProcessForeground,
+		string? DiagnosticMessage)
+	{
+		public static IdeLaunchResult Failed(string ideId, string ideDisplayName, string executablePath, string targetPath, string message)
+			=> new(
+				Started: false,
+				IdeId: ideId,
+				IdeDisplayName: ideDisplayName,
+				ExecutablePath: executablePath,
+				TargetPath: targetPath,
+				ProcessId: null,
+				ExitedQuickly: false,
+				MainWindowHandle: nint.Zero,
+				ShowWindowSucceeded: null,
+				SetForegroundSucceeded: null,
+				ForegroundProcessId: null,
+				IsLaunchedProcessForeground: null,
+				DiagnosticMessage: message);
+
+		public static IdeLaunchResult Launched(string ideId, string ideDisplayName, string executablePath, string targetPath, int processId)
+			=> new(
+				Started: true,
+				IdeId: ideId,
+				IdeDisplayName: ideDisplayName,
+				ExecutablePath: executablePath,
+				TargetPath: targetPath,
+				ProcessId: processId,
+				ExitedQuickly: false,
+				MainWindowHandle: nint.Zero,
+				ShowWindowSucceeded: null,
+				SetForegroundSucceeded: null,
+				ForegroundProcessId: null,
+				IsLaunchedProcessForeground: null,
+				DiagnosticMessage: null);
 	}
 
 	private static List<InstalledIde> Detect()

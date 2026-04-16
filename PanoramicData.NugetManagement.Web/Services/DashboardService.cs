@@ -320,6 +320,18 @@ public class DashboardService
 	}
 
 	/// <summary>
+	/// Generates an AI remediation prompt from an explicit set of rule failures.
+	/// </summary>
+	public static string GenerateRemediationPromptForFailures(PackageDashboardRow row, IEnumerable<RuleResult> failures, bool includeInfo = false)
+	{
+		var filtered = failures
+			.Where(r => !r.Passed && (includeInfo || r.Severity != AssessmentSeverity.Info))
+			.ToList();
+
+		return GeneratePromptFromFailures(row, filtered);
+	}
+
+	/// <summary>
 	/// Generates an AI remediation prompt for a build or test workflow failure using recent console output.
 	/// </summary>
 	public static string GenerateWorkflowFailurePrompt(PackageDashboardRow row, string workflowArea, IEnumerable<string> consoleLines)
@@ -362,6 +374,58 @@ public class DashboardService
 			lines.Add(row.StatusMessage);
 		}
 
+		return string.Join('\n', lines);
+	}
+
+	/// <summary>
+	/// Generates a concise AI remediation prompt for build/test failures using high-signal log lines.
+	/// </summary>
+	public static string GenerateConciseWorkflowFailurePrompt(PackageDashboardRow row, string workflowArea, IEnumerable<string> consoleLines)
+	{
+		var isTest = workflowArea.Equals("test", StringComparison.OrdinalIgnoreCase);
+		var title = isTest ? "Test Failure" : "Build Failure";
+		var action = isTest ? "dotnet test" : "dotnet build";
+
+		var keyLines = consoleLines
+			.Where(line => !string.IsNullOrWhiteSpace(line))
+			.Where(line =>
+				line.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+				line.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
+				line.Contains("exception", StringComparison.OrdinalIgnoreCase) ||
+				line.Contains("assert", StringComparison.OrdinalIgnoreCase))
+			.TakeLast(24)
+			.ToList();
+
+		if (keyLines.Count == 0)
+		{
+			keyLines = consoleLines
+				.Where(line => !string.IsNullOrWhiteSpace(line))
+				.TakeLast(24)
+				.ToList();
+		}
+
+		var lines = new List<string>
+		{
+			$"# {title} Fix Request",
+			$"Repository: {row.RepositoryFullName}",
+			$"Local path: {row.LocalPath}",
+			"",
+			$"Please fix the root cause of the {workflowArea} failure with the minimum safe code changes, then rerun `{action}`.",
+			"",
+			"## Key Output",
+			"```text"
+		};
+
+		if (keyLines.Count > 0)
+		{
+			lines.AddRange(keyLines);
+		}
+		else if (!string.IsNullOrWhiteSpace(row.StatusMessage))
+		{
+			lines.Add(row.StatusMessage);
+		}
+
+		lines.Add("```");
 		return string.Join('\n', lines);
 	}
 

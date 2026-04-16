@@ -43,6 +43,7 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "add_package_version"
 						or "update_package_versions"
 						or "remove_packagereference_versions"
+						or "remove_packagereference"
 						or "add_json_array_items"
 						or "delete_file";
 		}
@@ -238,6 +239,28 @@ public abstract class DataDrivenRemediation : IRemediation
 					}
 
 					RemediationHelpers.AddJsonArrayItems(localPath, jsonFile, arrayProp, items, result, applied, onOutput);
+				}
+
+				break;
+
+			case "remove_packagereference":
+				if (data["package_name"] is string rpPkg)
+				{
+					string[] rpProjects;
+					if (data["projects"] is string[] strProjects)
+					{
+						rpProjects = strProjects;
+					}
+					else if (data["projects"] is object[] objProjects)
+					{
+						rpProjects = [.. objProjects.OfType<string>()];
+					}
+					else
+					{
+						break;
+					}
+
+					RemediationHelpers.RemovePackageReference(localPath, rpPkg, rpProjects, result, applied, onOutput);
 				}
 
 				break;

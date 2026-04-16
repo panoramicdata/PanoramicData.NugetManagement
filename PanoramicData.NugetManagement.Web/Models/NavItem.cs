@@ -67,6 +67,12 @@ public class NavItem
 	/// Whether this subtree has any warnings (not just info).
 	/// </summary>
 	public bool HasWarnings { get; init; }
+
+	/// <summary>
+	/// Whether the local working tree is dirty (has uncommitted changes).
+	/// Only meaningful for package-level nodes where the repo is cloned locally.
+	/// </summary>
+	public bool IsWorkingTreeDirty { get; init; }
 }
 
 /// <summary>

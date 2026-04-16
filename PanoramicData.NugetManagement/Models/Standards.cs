@@ -51,7 +51,7 @@ public static class Standards
 			var best = output
 				.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
 				.Select(line => line.Split(' ', 2)[0])
-				.Where(v => v.StartsWith(majorPrefix, StringComparison.Ordinal))
+				.Where(v => v.StartsWith(majorPrefix, StringComparison.Ordinal) && !v.Contains('-'))
 				.OrderByDescending(v => v, StringComparer.Ordinal)
 				.FirstOrDefault();
 

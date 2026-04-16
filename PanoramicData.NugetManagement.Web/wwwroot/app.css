@@ -55,6 +55,13 @@ html, body {
     gap: 0.5rem;
 }
 
+.toolbar-action-btn {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.9rem;
+    min-width: 32px;
+    justify-content: center;
+}
+
 .brand-icon {
     font-size: 1.3rem;
 }
@@ -1426,4 +1433,56 @@ h1:focus {
 
 .toolbar-step-running:hover {
     background: rgba(33, 150, 243, 0.1);
+}
+
+.toolbar-step-next {
+    border-color: rgba(255, 180, 40, 0.8) !important;
+    box-shadow: 0 0 0 1px rgba(255, 180, 40, 0.5);
+    animation: next-step-pulse 2s ease-in-out infinite;
+}
+
+@keyframes next-step-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 1px rgba(255, 180, 40, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 0 8px 3px rgba(255, 180, 40, 0.45);
+    }
+}
+
+
+.toolbar-ai-ready {
+    position: relative;
+    overflow: visible !important;
+}
+
+.toolbar-ai-ready::after {
+    content: "✦✦";
+    position: absolute;
+    right: 8px;
+    bottom: 2px;
+    color: #ffe066;
+    font-size: 0.8rem;
+    letter-spacing: 0.08rem;
+    text-shadow: 0 0 6px rgba(255, 224, 102, 0.85);
+    pointer-events: none;
+    animation: ai-ready-float 2.2s ease-out forwards;
+}
+
+@keyframes ai-ready-float {
+    0% {
+        opacity: 0;
+        transform: translateY(0) scale(0.95);
+    }
+
+    15% {
+        opacity: 1;
+        transform: translateY(-6px) scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-28px) scale(1.08);
+    }
 }

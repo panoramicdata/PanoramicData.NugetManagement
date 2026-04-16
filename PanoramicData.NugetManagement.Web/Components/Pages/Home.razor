@@ -169,7 +169,7 @@ else
 						</div>
 					</div>
 
-					<!-- Toolbar — workflow order: Git Sync → Re-assess → Fix → Fix with AI → Build → Test → Commit & Push → Publish → Publish (skip) -->
+					<!-- Toolbar — workflow order: Git Sync → Re-assess → Fix → Build → Test → Commit & Push → Publish -->
 						<PDToolbar CssClass="main-toolbar">
 							<PDToolbarButton Key="refresh"
 											 Text="Refresh"
@@ -183,16 +183,16 @@ else
 							<PDToolbarButton Key="git-sync"
 											 Text="Git Sync"
 											 IconCssClass="fas fa-sync"
-											 CssClass="@GetStepCssClass(WorkflowStep.GitSync)"
-										 IsVisible="@(_selectedRow is not null)"
-											 IsEnabled="@(!_isRunning)"
-										 ToolTip="Clone if needed, then fetch, pull --rebase, push"
+											 CssClass="@GetStepCssClassFull(WorkflowStep.GitSync)"
+											 IsVisible="@(_selectedRow is not null)"
+											 IsEnabled="@IsGitSyncEnabled()"
+											 ToolTip="@GetGitSyncTooltip()"
 											 Click="OnToolbarClick" />
 
 							<PDToolbarButton Key="reassess"
 											 Text="Re-assess"
 											 IconCssClass="fas fa-sync-alt"
-											 CssClass="@GetStepCssClass(WorkflowStep.Reassess)"
+											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
 											 IsVisible="@(_currentView is NavView.Dashboard or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
 											 IsEnabled="@(!_isAssessing)"
 											 ToolTip="@(_currentView == NavView.Dashboard ? "Re-assess all repos" : "Re-assess this package")"
@@ -201,36 +201,18 @@ else
 							<PDToolbarButton Key="fix"
 											 Text="Fix"
 											 IconCssClass="fas fa-wrench"
-											 CssClass="@GetStepCssClass(WorkflowStep.Fix)"
+											 CssClass="@GetStepCssClassFull(WorkflowStep.Fix)"
 											 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
 											 IsEnabled="@IsFixEnabled()"
 											 ToolTip="@GetFixAllTooltip()"
 											 Click="OnToolbarClick" />
-
-							<PDToolbarButton Key="open-ide"
-										 Text="Open IDE"
-										 IconCssClass="fas fa-code"
-										 CssClass="@GetStepCssClass(WorkflowStep.FixWithAi)"
-										 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
-										 IsEnabled="@IsOpenIdeEnabled()"
-										 ToolTip="@GetOpenIdeTooltip()"
-										 Click="OnToolbarClick" />
-
-							<PDToolbarButton Key="copy-ai-prompt"
-										 Text="Copy AI Prompt"
-										 IconCssClass="fas fa-copy"
-										 CssClass="@GetStepCssClass(WorkflowStep.FixWithAi)"
-										 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
-										 IsEnabled="@IsFixWithAiEnabled()"
-										 ToolTip="@GetFixWithAiTooltip()"
-										 Click="OnToolbarClick" />
 
 							<PDToolbarSeparator IsVisible="@(_selectedRow?.IsClonedLocally == true)" />
 
 							<PDToolbarButton Key="build"
 											 Text="Build"
 											 IconCssClass="fas fa-hammer"
-											 CssClass="@GetStepCssClass(WorkflowStep.Build)"
+											 CssClass="@GetStepCssClassFull(WorkflowStep.Build)"
 											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
 											 IsEnabled="@(!_isRunning)"
 											 ToolTip="Build the solution"
@@ -239,7 +221,7 @@ else
 							<PDToolbarButton Key="test"
 											 Text="Test"
 											 IconCssClass="fas fa-flask"
-											 CssClass="@GetStepCssClass(WorkflowStep.Test)"
+											 CssClass="@GetStepCssClassFull(WorkflowStep.Test)"
 											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
 											 IsEnabled="@(!_isRunning)"
 											 ToolTip="Run unit tests"
@@ -250,7 +232,7 @@ else
 							<PDToolbarButton Key="commit-and-push"
 											 Text="Commit & Push"
 											 IconCssClass="fas fa-cloud-upload-alt"
-											 CssClass="@GetStepCssClass(WorkflowStep.CommitAndPush)"
+											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
 											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
 											 IsEnabled="@(!_isRunning)"
 											 ToolTip="Commit changes, fetch, rebase and push to origin"
@@ -259,28 +241,37 @@ else
 							<PDToolbarButton Key="publish"
 										 Text="Publish"
 										 IconCssClass="fas fa-rocket"
-										 CssClass="@(IsPublishDone() ? "btn-success toolbar-step-done" : "btn-success")"
+										 CssClass="@GetPublishCssClass()"
 										 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
 										 IsEnabled="@IsPublishEnabled()"
 										 ToolTip="@GetPublishTooltip()"
 										 Click="OnToolbarClick" />
 
-							<PDToolbarButton Key="publish-skip-integration"
-										 Text="Publish (skip integration)"
-										 IconCssClass="fas fa-forward"
-										 CssClass="btn-warning"
-										 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
-										 IsEnabled="@IsPublishSkipIntegrationEnabled()"
-										 ToolTip="@GetPublishSkipIntegrationTooltip()"
-										 Click="OnToolbarClick" />
-
 							<PDToolbarPlaceholder ShiftRight="true">
-								<button class="btn btn-xs @(_currentView == NavView.Settings ? "btn-console-active" : "")"
+								@if (_selectedRow?.IsClonedLocally == true)
+								{
+									<button class="btn toolbar-action-btn"
+											@onclick="() => OpenInIde()"
+											disabled="@(!IsOpenIdeEnabled())"
+											title="@GetOpenIdeTooltip()">
+										<i class="fas fa-code"></i>
+									</button>
+								}
+								@if (_selectedRow is not null)
+								{
+									<button class="btn toolbar-action-btn @(_aiClipboardCueStep.HasValue ? "toolbar-ai-ready" : "")"
+											@onclick="CopyPromptToClipboardAsync"
+											disabled="@(string.IsNullOrEmpty(_lastPromptText) || _isRunning)"
+											title="@(string.IsNullOrEmpty(_lastPromptText) ? "No AI prompt generated yet" : "Copy the last generated AI prompt to clipboard")">
+										<i class="fas fa-copy"></i>
+									</button>
+								}
+								<button class="btn toolbar-action-btn @(_currentView == NavView.Settings ? "btn-console-active" : "")"
 										@onclick="NavigateToSettings"
 										title="Application settings">
 									<i class="fas fa-cog"></i>
 								</button>
-								<button class="btn btn-xs @(_consoleVisible ? "btn-console-active" : "")"
+								<button class="btn toolbar-action-btn @(_consoleVisible ? "btn-console-active" : "")"
 										@onclick="ToggleConsole"
 										title="Toggle console panel">
 									<i class="fas fa-terminal"></i>
@@ -398,6 +389,7 @@ else
 	private string? _lastPromptText;
 	private bool _copyFeedback;
 	private bool _consoleCopyFeedback;
+	private WorkflowStep? _aiClipboardCueStep;
 	private WorkflowStep? _lastFailedWorkflowStep;
 	private WorkflowStep? _activeWorkflowStep;
 	private CancellationTokenSource? _operationCts;
@@ -685,9 +677,6 @@ else
 				await CommitAndPushAsync();
 				break;
 			case "publish":
-				await RunPublishAsync();
-				break;
-			case "publish-skip-integration":
 				await RunPublishAsync();
 				break;
 		}
@@ -1636,7 +1625,10 @@ else
 					AppendConsole($"⚠️ [{r.RuleId}] {r.RuleName} — no auto-fix available");
 				}
 
-				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Press \"Fix with AI\" to generate a prompt.");
+				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Preparing AI prompt for clipboard...");
+				var prompt = DashboardService.GenerateRemediationPromptForFailures(_selectedRow, remaining, includeInfo: false);
+				OpenInIde();
+				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Fix, "remaining remediation options");
 			}
 			else if (_selectedRow.TotalFailures == 0)
 			{
@@ -1800,7 +1792,12 @@ else
 				_completedSteps.Remove(WorkflowStep.Build);
 				_failedSteps.Add(WorkflowStep.Build);
                 AppendConsole("❌ Build failed");
-				AppendConsole("ℹ️ Use 'Fix with AI' to generate a build-failure prompt from the recent console output.");
+				OpenInIde();
+				var prompt = DashboardService.GenerateConciseWorkflowFailurePrompt(
+					_selectedRow,
+					"build",
+					_consoleLines.Select(line => line.Text));
+				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Build, "build failure");
 			}
 		}
 		catch (Exception ex)
@@ -1848,7 +1845,12 @@ else
 				_completedSteps.Remove(WorkflowStep.Test);
 				_failedSteps.Add(WorkflowStep.Test);
 				AppendConsole("❌ Tests failed");
-               AppendConsole("ℹ️ Use 'Fix with AI' to generate a test-failure prompt from the recent console output.");
+				OpenInIde();
+				var prompt = DashboardService.GenerateConciseWorkflowFailurePrompt(
+					_selectedRow,
+					"test",
+					_consoleLines.Select(line => line.Text));
+				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Test, "test failure");
 			}
 		}
 		catch (Exception ex)
@@ -2136,11 +2138,6 @@ else
 		return _selectedRow is not null && !_isRunning && _selectedRow.IsClonedLocally;
 	}
 
-	private bool IsPublishSkipIntegrationEnabled()
-	{
-		return _selectedRow is not null && !_isRunning && _selectedRow.IsClonedLocally;
-	}
-
 	private string GetPublishTooltip()
 	{
 		if (_isRunning)
@@ -2159,26 +2156,6 @@ else
 		}
 
 		return GetFixBlockReason() ?? "Run Publish.ps1";
-	}
-
-	private string GetPublishSkipIntegrationTooltip()
-	{
-		if (_isRunning)
-		{
-			return "Another operation is running";
-		}
-
-		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
-		{
-			return "Clone the repository first";
-		}
-
-		if (_selectedRow.Status != PackageStatus.TestsPassed)
-		{
-			return "Run unit tests first — they must pass before publishing";
-		}
-
-		return GetFixBlockReason() ?? "Publish, skipping integration tests";
 	}
 
 	// === Console helpers ===
@@ -2228,6 +2205,40 @@ else
 		catch
 		{
 			AppendConsole("⚠️ Failed to copy to clipboard.");
+		}
+	}
+
+	private async Task AutoCopyAiPromptAsync(string prompt, WorkflowStep sourceStep, string reason)
+	{
+		if (string.IsNullOrWhiteSpace(prompt))
+		{
+			AppendConsole($"ℹ️ Could not generate an AI prompt for {reason}.");
+			return;
+		}
+
+		_lastPromptText = prompt;
+		try
+		{
+			await JS.InvokeVoidAsync("navigator.clipboard.writeText", _lastPromptText);
+		}
+		catch
+		{
+			AppendConsole("⚠️ Failed to auto-copy AI prompt to clipboard.");
+		}
+		AppendConsole($"✨ AI prompt for {reason} copied to clipboard. Open IDE and paste into Copilot Chat.");
+		_ = TriggerAiClipboardCueAsync(sourceStep);
+	}
+
+	private async Task TriggerAiClipboardCueAsync(WorkflowStep sourceStep)
+	{
+		_aiClipboardCueStep = sourceStep;
+		StateHasChanged();
+
+		await Task.Delay(2300);
+		if (_aiClipboardCueStep == sourceStep)
+		{
+			_aiClipboardCueStep = null;
+			StateHasChanged();
 		}
 	}
 
@@ -2458,8 +2469,36 @@ else
 
 		try
 		{
-			IdeDetection.OpenInIde(ide, _selectedRow.LocalPath);
+			var launch = IdeDetection.OpenInIde(ide, _selectedRow.LocalPath);
+
+			if (!launch.Started)
+			{
+				AppendConsole($"❌ Failed to launch {ide.DisplayName}: {launch.DiagnosticMessage}");
+				StateHasChanged();
+				return;
+			}
+
 			AppendConsole($"✅ Opened {_selectedRow.PackageId} in {ide.DisplayName}");
+			AppendConsole($"ℹ️ IDE launch: id={launch.IdeId}, exe={launch.ExecutablePath}");
+			AppendConsole($"ℹ️ IDE target: {launch.TargetPath}");
+			AppendConsole($"ℹ️ IDE PID: {launch.ProcessId?.ToString() ?? "(unknown)"}");
+
+			if (launch.IsLaunchedProcessForeground.HasValue)
+			{
+				if (launch.IsLaunchedProcessForeground.Value)
+				{
+					AppendConsole($"✅ Foreground check passed: PID {launch.ProcessId} is the foreground window process.");
+				}
+				else
+				{
+					AppendConsole($"⚠️ Foreground check failed: foreground PID is {launch.ForegroundProcessId}, launched PID is {launch.ProcessId}.");
+				}
+			}
+
+			if (!string.IsNullOrWhiteSpace(launch.DiagnosticMessage))
+			{
+				AppendConsole($"ℹ️ IDE diagnostic: {launch.DiagnosticMessage}");
+			}
 		}
 		catch (Exception ex)
 		{
@@ -2580,6 +2619,19 @@ else
 		}
 
 		return "Open selected repository in IDE";
+	}
+
+	private bool IsGitSyncEnabled()
+		=> !_isRunning && _selectedRow?.IsWorkingTreeClean != false;
+
+	private string GetGitSyncTooltip()
+	{
+		if (_selectedRow?.IsWorkingTreeClean == false)
+		{
+			return "Working tree has uncommitted changes — commit or stash changes first";
+		}
+
+		return "Clone if needed, then fetch, pull --rebase, push";
 	}
 
 	private string GetFixWithAiTooltip()
@@ -2767,6 +2819,66 @@ else
 		}
 
 		return IsStepDone(step) ? "toolbar-step-done" : "";
+	}
+
+	private string GetStepCssClassFull(WorkflowStep step)
+	{
+		var baseCss = GetStepCssClass(step);
+		if (_aiClipboardCueStep == step)
+		{
+			baseCss = string.IsNullOrWhiteSpace(baseCss) ? "toolbar-ai-ready" : $"{baseCss} toolbar-ai-ready";
+		}
+
+		if (!IsStepDone(step) && !IsStepFailed(step) && !IsStepRunning(step) && GetNextPendingStep() == step)
+		{
+			baseCss = string.IsNullOrWhiteSpace(baseCss) ? "toolbar-step-next" : $"{baseCss} toolbar-step-next";
+		}
+
+		return baseCss;
+	}
+
+	private WorkflowStep? GetNextPendingStep()
+	{
+		if (_selectedRow is null)
+		{
+			return null;
+		}
+
+		WorkflowStep[] order = [
+			WorkflowStep.GitSync,
+			WorkflowStep.Reassess,
+			WorkflowStep.Fix,
+			WorkflowStep.Build,
+			WorkflowStep.Test,
+			WorkflowStep.CommitAndPush,
+			WorkflowStep.Publish
+		];
+
+		foreach (var s in order)
+		{
+			if (IsStepFailed(s))
+			{
+				return null;
+			}
+
+			if (!IsStepDone(s))
+			{
+				return s;
+			}
+		}
+
+		return null;
+	}
+
+	private string GetPublishCssClass()
+	{
+		var css = IsPublishDone() ? "btn-success toolbar-step-done" : "btn-success";
+		if (!IsPublishDone() && GetNextPendingStep() == WorkflowStep.Publish)
+		{
+			css += " toolbar-step-next";
+		}
+
+		return css;
 	}
 
 	// === Inner types ===
