@@ -52,4 +52,6 @@ public class RepositoryUrlSetRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass("Primary project has
+		return Task.FromResult(Pass("Primary project has RepositoryUrl set."));
+	}
+}

@@ -47,7 +47,10 @@ public class PackageProjectUrlAndIconRule : RuleBase
 		}
 
 		return Task.FromResult(issues.Count == 0
-			? Pass("Primary project has
+			? Pass("Primary project has PackageProjectUrl and PackageIcon set.")
+			: Fail(
+				string.Join("; ", issues),
+				new RuleAdvisory
 				{
 					Summary = "Set <PackageProjectUrl> and <PackageIcon> with a corresponding <None Include> in the .csproj.",
 					Detail = $"The following issues were found: {string.Join("; ", issues)}. Add `<PackageProjectUrl>` and `<PackageIcon>` to the `<PropertyGroup>` and include the icon file via `<None Include>` in an `<ItemGroup>`.",

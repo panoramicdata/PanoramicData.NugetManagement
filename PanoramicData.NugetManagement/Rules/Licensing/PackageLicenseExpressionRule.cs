@@ -56,4 +56,6 @@ public class PackageLicenseExpressionRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass($"Primary project has
+		return Task.FromResult(Pass($"Primary project has PackageLicenseExpression = \"{expected}\"."));
+	}
+}

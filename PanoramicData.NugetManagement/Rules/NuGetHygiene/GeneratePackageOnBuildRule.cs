@@ -52,4 +52,6 @@ public class GeneratePackageOnBuildRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass("Primary project has
+		return Task.FromResult(Pass("Primary project has GeneratePackageOnBuild enabled."));
+	}
+}

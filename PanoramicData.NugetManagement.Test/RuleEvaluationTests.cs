@@ -1230,6 +1230,35 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Severity.Should().Be(AssessmentSeverity.Critical);
 	}
 
+	// ── PKG-09 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task PKG09_ShouldPass_WhenAncillaryProjectsAreExplicitlyNonPackable()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageId>test-repo</PackageId></PropertyGroup></Project>",
+			["Generator/Generator.csproj"] = "<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>",
+			["Tooling/Tooling.csproj"] = "<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("PKG-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task PKG09_ShouldFail_WhenAncillaryProjectIsNotExplicitlyNonPackable()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageId>test-repo</PackageId></PropertyGroup></Project>",
+			["Generator/Generator.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("PKG-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
 	// ── META-01 ─────────────────────────────────────────────────────────
 
 	[Fact]

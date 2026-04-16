@@ -52,4 +52,6 @@ public class PackageIdSetRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass("Primary project has
+		return Task.FromResult(Pass("Primary project has PackageId set."));
+	}
+}

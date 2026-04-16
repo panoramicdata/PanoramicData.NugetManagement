@@ -53,4 +53,6 @@ public class SnupkgGenerationRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass("Primary project has
+		return Task.FromResult(Pass("Primary project has snupkg generation enabled."));
+	}
+}
