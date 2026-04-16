@@ -35,7 +35,17 @@ public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 			return Task.FromResult(Pass("No ancillary projects found — nothing to check."));
 		}
 
-		var missing = ancillary
+		// .Cli projects are treated as dotnet tools and are expected to be packable.
+		var requiredNonPackable = ancillary
+			.Where(csproj => !IsCliProject(csproj))
+			.ToList();
+
+		if (requiredNonPackable.Count == 0)
+		{
+			return Task.FromResult(Pass("No non-cli ancillary projects found — nothing to check."));
+		}
+
+		var missing = requiredNonPackable
 			.Where(csproj =>
 			{
 				var content = context.GetFileContent(csproj);
@@ -44,17 +54,21 @@ public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 			.ToList();
 
 		return Task.FromResult(missing.Count == 0
-			? Pass("All non-primary projects have <IsPackable>false</IsPackable>.")
+			? Pass("All non-primary non-cli projects have <IsPackable>false</IsPackable>.")
 			: Fail(
-				$"{missing.Count} ancillary project(s) are missing <IsPackable>false</IsPackable>: {string.Join(", ", missing)}.",
+				$"{missing.Count} ancillary non-cli project(s) are missing <IsPackable>false</IsPackable>: {string.Join(", ", missing)}.",
 				new RuleAdvisory
 				{
-					Summary = "Add <IsPackable>false</IsPackable> to each non-primary project.",
-					Detail = $"The following projects are not the primary NuGet package for this repository but do not have `<IsPackable>false</IsPackable>`. Add it to each to prevent accidental publishing: {string.Join(", ", missing)}.",
+					Summary = "Add <IsPackable>false</IsPackable> to each non-primary non-cli project.",
+					Detail = $"The following projects are not the primary NuGet package for this repository and do not have `<IsPackable>false</IsPackable>`. Add it to each to prevent accidental publishing. Projects ending with `.Cli` are intentionally exempt: {string.Join(", ", missing)}.",
 					Data = new()
 					{
 						["missing_projects"] = missing.ToArray()
 					}
 				}));
 	}
+
+	private static bool IsCliProject(string csprojPath)
+		=> Path.GetFileNameWithoutExtension(csprojPath)
+			.EndsWith(".Cli", StringComparison.OrdinalIgnoreCase);
 }

@@ -1259,6 +1259,20 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	[Fact]
+	public async Task PKG09_ShouldPass_WhenAncillaryCliProjectIsPackable()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageId>test-repo</PackageId></PropertyGroup></Project>",
+			["Lifx.Cli/Lifx.Cli.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>",
+			["Generator/Generator.csproj"] = "<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("PKG-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
 	// ── META-01 ─────────────────────────────────────────────────────────
 
 	[Fact]
