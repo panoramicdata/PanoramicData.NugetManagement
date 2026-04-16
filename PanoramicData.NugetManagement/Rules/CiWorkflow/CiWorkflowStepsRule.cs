@@ -31,7 +31,7 @@ public class CiWorkflowStepsRule : RuleBase
 				new RuleAdvisory
 				{
 					Summary = $"Create `{ciWorkflowPath}` with restore, build (Release), and pack steps",
-					Detail = $"Create `{ciWorkflowPath}` with `dotnet restore`, `dotnet build --configuration Release`, `dotnet test`, and `dotnet pack` steps.",
+					Detail = $"Create `{ciWorkflowPath}` with `dotnet restore`, `dotnet build --configuration Release`, and `dotnet pack` steps. A `dotnet test` step is optional.",
 					Data = new() { ["expected_path"] = ciWorkflowPath }
 				}));
 		}

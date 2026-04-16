@@ -316,9 +316,6 @@ public static class Standards
 			- name: Build
 			  run: dotnet build --configuration Release --no-restore
 
-			- name: Test
-			  run: dotnet test --configuration Release --no-build --verbosity normal
-
 			- name: Pack
 			  run: dotnet pack --configuration Release --no-build --output ./artifacts
 
@@ -364,9 +361,6 @@ public static class Standards
 				string.Empty,
 				"    - name: Build",
 				"      run: dotnet build --configuration Release --no-restore",
-				string.Empty,
-				"    - name: Test",
-				"      run: dotnet test --configuration Release --no-build --verbosity normal",
 				string.Empty,
 				"    - name: Pack",
 				"      run: dotnet pack --configuration Release --no-build --output ./artifacts",
