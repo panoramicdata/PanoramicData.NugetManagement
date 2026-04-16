@@ -1593,7 +1593,7 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
-		var blockReason = GetFixBlockReason();
+		var blockReason = GetFixBlockReason(CanRunMasterToMainAutoFix());
 		if (blockReason is not null)
 		{
 			AppendConsole($"❌ Cannot fix: {blockReason}");
@@ -1668,7 +1668,8 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
-		var blockReason = GetFixBlockReason();
+		var allowMasterToMainFlow = category == AssessmentCategory.RepositoryHygiene && CanRunMasterToMainAutoFix();
+		var blockReason = GetFixBlockReason(allowMasterToMainFlow);
 		if (blockReason is not null)
 		{
 			AppendConsole($"❌ Cannot fix: {blockReason}");
@@ -2106,6 +2107,13 @@ else
 		return null;
 	}
 
+	private bool HasPendingMasterToMainRemediation()
+		=> _selectedRow?.Assessment?.RuleResults.Any(r => !r.Passed && r.RuleId == "REPO-06" && Dashboard.IsAutoRemediable(r)) == true;
+
+	private bool CanRunMasterToMainAutoFix()
+		=> HasPendingMasterToMainRemediation()
+			&& string.Equals(_selectedRow?.CurrentBranch, "master", StringComparison.OrdinalIgnoreCase);
+
 	private string GetFixAllTooltip()
 	{
 		if (_isAssessing)
@@ -2133,7 +2141,7 @@ else
 			return "No auto-remediable issues found";
 		}
 
-		return GetFixBlockReason() ?? "Auto-fix remediable issues";
+		return GetFixBlockReason(CanRunMasterToMainAutoFix()) ?? "Auto-fix remediable issues";
 	}
 
 	private string GetFixCategoryTooltip(AssessmentCategory category)
@@ -2143,7 +2151,8 @@ else
 			return "Please wait...";
 		}
 
-		return GetFixBlockReason() ?? $"Auto-fix {category}";
+		var allowMasterToMainFlow = category == AssessmentCategory.RepositoryHygiene && CanRunMasterToMainAutoFix();
+		return GetFixBlockReason(allowMasterToMainFlow) ?? $"Auto-fix {category}";
 	}
 
 	private string GetFixSingleTooltip()
@@ -2153,7 +2162,7 @@ else
 			return "Please wait...";
 		}
 
-		if (_selectedRow?.Assessment?.RuleResults.Any(r => !r.Passed && r.RuleId == "REPO-06" && Dashboard.IsAutoRemediable(r)) == true)
+		if (HasPendingMasterToMainRemediation())
 		{
 			return GetFixBlockReason(allowBranchMigrationOffMain: true) ?? "Auto-fix this issue";
 		}

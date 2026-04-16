@@ -117,6 +117,29 @@ public class LocalRepoService
 		}
 
 		_ = await RunCommandAsync(path, "git", "fetch --prune origin", cancellationToken).ConfigureAwait(false);
+		_ = await RunCommandAsync(path, "git", "remote set-head origin -a", cancellationToken).ConfigureAwait(false);
+
+		var (showExitCode, showOutput) = await RunCommandAsync(path, "git", "remote show origin", cancellationToken).ConfigureAwait(false);
+		if (showExitCode == 0)
+		{
+			var headBranchLine = showOutput
+				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+				.FirstOrDefault(line => line.Contains("HEAD branch:", StringComparison.OrdinalIgnoreCase));
+
+			if (headBranchLine is not null)
+			{
+				var idx = headBranchLine.IndexOf(':');
+				if (idx >= 0)
+				{
+					var remoteHeadBranch = headBranchLine[(idx + 1)..].Trim();
+					if (!string.IsNullOrWhiteSpace(remoteHeadBranch) &&
+						!string.Equals(remoteHeadBranch, "(unknown)", StringComparison.OrdinalIgnoreCase))
+					{
+						return remoteHeadBranch;
+					}
+				}
+			}
+		}
 
 		var (headExitCode, headOutput) = await RunCommandAsync(path, "git", "symbolic-ref --quiet --short refs/remotes/origin/HEAD", cancellationToken).ConfigureAwait(false);
 		if (headExitCode == 0)
@@ -130,25 +153,7 @@ public class LocalRepoService
 			}
 		}
 
-		var (showExitCode, showOutput) = await RunCommandAsync(path, "git", "remote show origin", cancellationToken).ConfigureAwait(false);
-		if (showExitCode != 0)
-		{
-			return null;
-		}
-
-		var headBranchLine = showOutput
-			.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-			.FirstOrDefault(line => line.Contains("HEAD branch:", StringComparison.OrdinalIgnoreCase));
-
-		if (headBranchLine is null)
-		{
-			return null;
-		}
-
-		var idx = headBranchLine.IndexOf(':');
-		return idx < 0
-			? null
-			: headBranchLine[(idx + 1)..].Trim();
+		return null;
 	}
 
 	/// <summary>
