@@ -67,6 +67,7 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 			? ghRepoName.Trim()
 			: repoFullName;
 
+		onOutput?.Invoke($"ℹ️ [REPO-06] gh repo target: {repoFullName}");
 		onOutput?.Invoke($"✅ [REPO-06] Pre-flight gh access confirmed for {repoFullName}.");
 
 		_ = Run(localPath, "git", "status --porcelain", out var porcelainOutput);
@@ -93,6 +94,7 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 			return;
 		}
 
+		onOutput?.Invoke($"ℹ️ [REPO-06] Updating GitHub default branch for {repoFullName}.");
 		if (!Run(localPath, "gh", $"repo edit {repoFullName} --default-branch main", out var ghEditOutput))
 		{
 			onOutput?.Invoke($"❌ [REPO-06] Failed to set GitHub default branch to main. {TrimOutput(ghEditOutput)}");

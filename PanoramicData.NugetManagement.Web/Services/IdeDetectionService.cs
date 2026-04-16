@@ -111,11 +111,9 @@ public class IdeDetectionService
 		var psi = new ProcessStartInfo
 		{
 			FileName = ide.ExecutablePath,
-			UseShellExecute = false,
-			RedirectStandardOutput = true,
-			RedirectStandardError = true
+			Arguments = $"\"{targetPath}\"",
+			UseShellExecute = true
 		};
-		psi.ArgumentList.Add(targetPath);
 
 		Process? process;
 		try
@@ -168,7 +166,45 @@ public class IdeDetectionService
 					{
 						process.WaitForExit(250);
 						var exitCode = process.ExitCode;
-						var errorOutput = ReadProcessErrorOutput(process);
+						string? errorOutput = null;
+
+						if (exitCode == 0 && IsSingleInstanceLauncherIde(ide.Id))
+						{
+							if (TryFindExistingIdeWindow(ide.ExecutablePath, out var existingWindowHandle))
+							{
+								var showResult = ShowWindow(existingWindowHandle, SW_SHOWMAXIMIZED);
+								var setForegroundResult = SetForegroundWindow(existingWindowHandle);
+
+								Thread.Sleep(150);
+
+								var foregroundWindow = GetForegroundWindow();
+								uint foregroundPid = 0;
+								if (foregroundWindow != nint.Zero)
+								{
+									_ = GetWindowThreadProcessId(foregroundWindow, out foregroundPid);
+								}
+
+								result = result with
+								{
+									MainWindowHandle = existingWindowHandle,
+									ShowWindowSucceeded = showResult,
+									SetForegroundSucceeded = setForegroundResult,
+									ForegroundProcessId = foregroundPid,
+									IsLaunchedProcessForeground = setForegroundResult,
+									DiagnosticMessage = "Launcher process exited with code 0; reused existing IDE window."
+								};
+							}
+							else
+							{
+								result = result with
+								{
+									DiagnosticMessage = "Launcher process exited with code 0 before window detection. This can be normal for VS Code when it reuses an existing instance."
+								};
+							}
+
+							break;
+						}
+
 						var diagnosticMessage = $"Process exited before creating a visible main window. Exit code: {exitCode}."
 							+ (string.IsNullOrWhiteSpace(errorOutput)
 								? " No error output was captured."
@@ -247,6 +283,43 @@ public class IdeDetectionService
 		return result;
 	}
 
+	private static bool IsSingleInstanceLauncherIde(string ideId)
+		=> ideId is "vscode" or "vscode-insiders";
+
+	private static bool TryFindExistingIdeWindow(string executablePath, out nint windowHandle)
+	{
+		windowHandle = nint.Zero;
+		var processName = Path.GetFileNameWithoutExtension(executablePath);
+		if (string.IsNullOrWhiteSpace(processName))
+		{
+			return false;
+		}
+
+		var sw = Stopwatch.StartNew();
+		while (sw.ElapsedMilliseconds < 3_000)
+		{
+			foreach (var candidate in Process.GetProcessesByName(processName))
+			{
+				try
+				{
+					if (!candidate.HasExited && candidate.MainWindowHandle != nint.Zero)
+					{
+						windowHandle = candidate.MainWindowHandle;
+						return true;
+					}
+				}
+				catch
+				{
+					// Ignore race conditions while enumerating processes.
+				}
+			}
+
+			Thread.Sleep(100);
+		}
+
+		return false;
+	}
+
 	internal sealed record IdeLaunchResult(
 		bool Started,
 		string IdeId,
@@ -299,25 +372,6 @@ public class IdeDetectionService
 				ForegroundProcessId: null,
 				IsLaunchedProcessForeground: null,
 				DiagnosticMessage: null);
-	}
-
-	private static string? ReadProcessErrorOutput(Process process)
-	{
-		try
-		{
-			var error = process.StandardError.ReadToEnd().Trim();
-			if (!string.IsNullOrWhiteSpace(error))
-			{
-				return error;
-			}
-
-			var output = process.StandardOutput.ReadToEnd().Trim();
-			return string.IsNullOrWhiteSpace(output) ? null : output;
-		}
-		catch
-		{
-			return null;
-		}
 	}
 
 	private static List<InstalledIde> Detect()

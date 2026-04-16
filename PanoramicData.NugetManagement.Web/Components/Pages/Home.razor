@@ -1668,7 +1668,7 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
-		var blockReason = GetFixBlockReason(result.RuleId == "REPO-06");
+		var blockReason = GetFixBlockReason();
 		if (blockReason is not null)
 		{
 			AppendConsole($"❌ Cannot fix: {blockReason}");
@@ -1726,7 +1726,7 @@ else
 			return;
 		}
 
-		var blockReason = GetFixBlockReason();
+		var blockReason = GetFixBlockReason(result.RuleId == "REPO-06");
 		if (blockReason is not null)
 		{
 			AppendConsole($"❌ Cannot fix: {blockReason}");
