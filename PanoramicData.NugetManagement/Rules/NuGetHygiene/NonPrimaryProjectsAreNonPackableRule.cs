@@ -26,13 +26,13 @@ public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 	{
 		if (!context.Options.IsPackable)
 		{
-			return Task.FromResult(Pass("Repository is not packable — skipping."));
+			return Task.FromResult(Pass("Repository is not packable - skipping."));
 		}
 
 		var ancillary = context.FindNonPrimaryNonTestProjectFiles().ToList();
 		if (ancillary.Count == 0)
 		{
-			return Task.FromResult(Pass("No ancillary projects found — nothing to check."));
+			return Task.FromResult(Pass("No ancillary projects found - nothing to check."));
 		}
 
 		// .Cli projects are treated as dotnet tools and are expected to be packable.
@@ -42,7 +42,7 @@ public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 
 		if (requiredNonPackable.Count == 0)
 		{
-			return Task.FromResult(Pass("No non-cli ancillary projects found — nothing to check."));
+			return Task.FromResult(Pass("No non-cli ancillary projects found - nothing to check."));
 		}
 
 		var missing = requiredNonPackable
@@ -63,7 +63,11 @@ public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 					Detail = $"The following projects are not the primary NuGet package for this repository and do not have `<IsPackable>false</IsPackable>`. Add it to each to prevent accidental publishing. Projects ending with `.Cli` are intentionally exempt: {string.Join(", ", missing)}.",
 					Data = new()
 					{
-						["missing_projects"] = missing.ToArray()
+						["missing_projects"] = missing.ToArray(),
+						["remediation_type"] = "ensure_csproj_property",
+						["projects"] = missing.ToArray(),
+						["property_name"] = "IsPackable",
+						["property_value"] = "false"
 					}
 				}));
 	}

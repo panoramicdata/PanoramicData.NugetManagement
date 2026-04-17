@@ -1257,6 +1257,12 @@ public class RuleEvaluationTests : TestWithOutput
 
 		var result = await GetRule("PKG-09").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
+		result.Advisory.Should().NotBeNull();
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_csproj_property");
+		result.Advisory!.Data["property_name"].Should().Be("IsPackable");
+		result.Advisory!.Data["property_value"].Should().Be("false");
+		result.Advisory!.Data["projects"].Should().BeOfType<string[]>();
+		((string[])result.Advisory!.Data["projects"]).Should().Contain("Generator/Generator.csproj");
 	}
 
 	[Fact]
