@@ -89,8 +89,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				var pkgHasErrors = row.TotalCriticals > 0 || row.TotalErrors > 0;
 				var pkgHasWarnings = row.TotalWarnings > 0;
 
-				// Determine RAG icon for the package
-				var pkgIcon = GetHealthIcon(row.Assessment is not null && !row.IsReassessing, pkgIssues, pkgHasErrors, pkgHasWarnings);
+				// Determine RAG icon for the package using shared row health state.
+				var pkgIcon = GetPackageHealthIcon(row.HealthStatus);
 				if (row.IsWorkingTreeClean == false)
 				{
 					pkgIcon += " tree-node-dirty";
@@ -201,4 +201,13 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			? "fas fa-cube text-warning"
 			: "fas fa-cube text-info";
 	}
+
+	private static string GetPackageHealthIcon(PackageHealthStatus healthStatus) => healthStatus switch
+	{
+		PackageHealthStatus.Pending => "fas fa-spinner fa-spin text-muted",
+		PackageHealthStatus.Success => "fas fa-cube text-success",
+		PackageHealthStatus.Error => "fas fa-cube text-danger",
+		PackageHealthStatus.Warning => "fas fa-cube text-warning",
+		_ => "fas fa-cube text-info"
+	};
 }

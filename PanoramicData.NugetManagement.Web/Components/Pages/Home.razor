@@ -2396,24 +2396,14 @@ else
 
 	private static string GetPackageHealthIcon(PackageDashboardRow row)
 	{
-		if (row.Assessment is null)
+		return row.HealthStatus switch
 		{
-			return "fas fa-spinner fa-spin text-muted";
-		}
-
-		if (row.TotalFailures == 0)
-		{
-			return "fas fa-cube text-success";
-		}
-
-		if (row.TotalErrors > 0)
-		{
-			return "fas fa-cube text-danger";
-		}
-
-		return row.TotalWarnings > 0
-			? "fas fa-cube text-warning"
-			: "fas fa-cube text-info";
+			PackageHealthStatus.Pending => "fas fa-spinner fa-spin text-muted",
+			PackageHealthStatus.Success => "fas fa-cube text-success",
+			PackageHealthStatus.Error => "fas fa-cube text-danger",
+			PackageHealthStatus.Warning => "fas fa-cube text-warning",
+			_ => "fas fa-cube text-info"
+		};
 	}
 
 	private bool HasAutoRemediableFailures(AssessmentCategory category)

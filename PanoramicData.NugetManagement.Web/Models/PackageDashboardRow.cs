@@ -117,6 +117,65 @@ public class PackageDashboardRow
 	/// Total number of warnings.
 	/// </summary>
 	public int TotalWarnings => Assessment?.WarningCount ?? 0;
+
+	/// <summary>
+	/// Shared health state used by both tree and toolbar visuals.
+	/// </summary>
+	public PackageHealthStatus HealthStatus
+	{
+		get
+		{
+			if (Assessment is null || IsReassessing)
+			{
+				return PackageHealthStatus.Pending;
+			}
+
+			if (TotalFailures == 0)
+			{
+				return PackageHealthStatus.Success;
+			}
+
+			if (TotalCriticals > 0 || TotalErrors > 0)
+			{
+				return PackageHealthStatus.Error;
+			}
+
+			return TotalWarnings > 0
+				? PackageHealthStatus.Warning
+				: PackageHealthStatus.Info;
+		}
+	}
+}
+
+/// <summary>
+/// Shared package health indicator for consistent UI colouring.
+/// </summary>
+public enum PackageHealthStatus
+{
+	/// <summary>
+	/// Assessment not available yet (or reassessment in progress).
+	/// </summary>
+	Pending,
+
+	/// <summary>
+	/// No failures.
+	/// </summary>
+	Success,
+
+	/// <summary>
+	/// One or more critical or error failures.
+	/// </summary>
+	Error,
+
+	/// <summary>
+	/// Warning-only failures.
+	/// </summary>
+	Warning,
+
+	/// <summary>
+	/// Informational failures only.
+	/// </summary>
+	Info
 }
 
 /// <summary>
