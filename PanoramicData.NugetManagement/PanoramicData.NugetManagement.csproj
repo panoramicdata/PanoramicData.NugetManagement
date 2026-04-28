@@ -25,6 +25,7 @@
 	<ItemGroup>
 		<PackageReference Include="Codacy.Api" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+	<PackageReference Include="Microsoft.Extensions.Options" VersionOverride="10.0.7" />
 		<PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
 		<PackageReference Include="NuGet.Protocol" />
 		<PackageReference Include="Octokit" />
