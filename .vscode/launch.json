@@ -5,16 +5,38 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "C#: Web Debug",
-			"type": "dotnet",
+			"name": "C#: Web App",
+			"type": "node-terminal",
 			"request": "launch",
-			"projectPath": "${workspaceFolder}/PanoramicData.NugetManagement.Web/PanoramicData.NugetManagement.Web.csproj"
+			"command": "dotnet run --project PanoramicData.NugetManagement.Web/PanoramicData.NugetManagement.Web.csproj",
+			"presentation": {
+				"hidden": true
+			}
+		},
+		{
+			"name": "C#: Web Browser",
+			"type": "editor-browser",
+			"request": "launch",
+			"url": "file:///${workspaceFolder}/.vscode/waiting.html?target=http%3A%2F%2Flocalhost%3A5023&app=NuGet%20Management",
+			"presentation": {
+				"hidden": true
+			}
 		},
 		{
 			"name": "C#: Test Debug",
 			"type": "dotnet",
 			"request": "launch",
 			"projectPath": "${workspaceFolder}/PanoramicData.NugetManagement.Test/PanoramicData.NugetManagement.Test.csproj"
+		}
+	],
+	"compounds": [
+		{
+			"name": "C#: Web Debug",
+			"configurations": [
+				"C#: Web App",
+				"C#: Web Browser"
+			],
+			"stopAll": true
 		}
 	]
 }
