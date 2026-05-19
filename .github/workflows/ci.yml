@@ -37,6 +37,7 @@ jobs:
         path: |
           ./artifacts/*.nupkg
           ./artifacts/*.snupkg
+        retention-days: 1
 
   publish:
     needs: build
