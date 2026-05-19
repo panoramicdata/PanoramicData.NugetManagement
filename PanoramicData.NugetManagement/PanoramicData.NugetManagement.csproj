@@ -24,6 +24,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Codacy.Api" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" VersionOverride="10.0.8" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 		<PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
 		<PackageReference Include="NuGet.Protocol" />
