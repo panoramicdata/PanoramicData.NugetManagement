@@ -71,6 +71,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				IssueCount = totalIssues,
 				HasErrors = hasAnyErrors,
 				HasWarnings = hasAnyWarnings
+			},
+
+			// Package updates management
+			new() {
+				Key = "nuget-updates",
+				Text = "Package Updates",
+				ParentKey = "root",
+				IconCss = "fas fa-arrow-circle-up",
+				View = NavView.NuGetUpdates,
+				IsLeaf = true
 			}
 		};
 

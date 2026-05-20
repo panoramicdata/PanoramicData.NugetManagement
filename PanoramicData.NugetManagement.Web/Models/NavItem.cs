@@ -96,5 +96,8 @@ public enum NavView
 	RuleDetail,
 
 	/// <summary>Application settings.</summary>
-	Settings
+	Settings,
+
+	/// <summary>Cross-repository NuGet package update management.</summary>
+	NuGetUpdates
 }

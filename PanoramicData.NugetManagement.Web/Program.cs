@@ -26,6 +26,7 @@ builder.Services.AddSingleton<LocalFileSystemDataProvider>();
 builder.Services.AddSingleton<PackageDashboardDataProvider>();
 builder.Services.AddSingleton<NavTreeDataProvider>();
 builder.Services.AddScoped<DashboardService>();
+builder.Services.AddScoped<NuGetUpdateService>();
 
 // GitHub OAuth authentication
 var settings = builder.Configuration.GetSection("AppSettings").Get<AppSettings>() ?? new AppSettings();

@@ -1,0 +1,282 @@
+@page "/ci-template"
+@using Microsoft.Extensions.Options
+@rendermode InteractiveServer
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IOptions<AppSettings> SettingsOptions
+
+<PageTitle>CI Workflow Template</PageTitle>
+
+@if (!_isAuthenticated)
+{
+	<div class="login-page">
+		<div class="login-card">
+			<div class="login-icon">⚙️</div>
+			<h1>CI Workflow Template</h1>
+			<p>Sign in with GitHub to manage your organization's CI workflow template.</p>
+			<a href="/login" class="btn btn-primary btn-login"><i class="fas fa-key"></i> Sign in with GitHub</a>
+		</div>
+	</div>
+}
+else
+{
+	<div class="ci-template-page">
+		<div class="ci-template-header">
+			<a href="/" class="btn btn-sm btn-outline-secondary"><i class="fas fa-arrow-left"></i></a>
+			<div>
+				<h2 class="ci-template-title">CI Workflow Template</h2>
+				<p class="ci-template-subtitle">Manage <code>.github/workflows/ci.yml</code> across all repositories</p>
+			</div>
+		</div>
+
+		<div class="ci-tab-bar">
+			<button class='ci-tab @(_activeTab == "template" ? "active" : "")' @onclick='() => _activeTab = "template"'>
+				<i class="fas fa-file-code"></i> Template
+			</button>
+			<button class='ci-tab @(_activeTab == "repos" ? "active" : "")' @onclick='() => _activeTab = "repos"'>
+				<i class="fas fa-list"></i> Repositories
+				<span class='ci-tab-count @(_matchCount == _totalCount ? "ci-count-green" : "ci-count-amber")'>@_matchCount / @_totalCount</span>
+			</button>
+		</div>
+
+		@if (_activeTab == "template")
+		{
+			<div class="ci-tab-body">
+				<div class="ci-vars-bar">
+					<span class="ci-vars-label"><i class="fas fa-tag"></i> Substitution Variables</span>
+					<div class="ci-var-item">
+						<code class="ci-var-name">{{NUGET_USER}}</code>
+						<span class="ci-var-eq">=</span>
+						<input type="text" class="ci-var-input form-control form-control-sm" @bind="_nugetUser" @bind:event="oninput" />
+					</div>
+				</div>
+				<div class="ci-editor-actions">
+					<button class="btn btn-sm btn-primary" @onclick="ApplyVariables">
+						<i class="fas fa-rotate"></i> Apply Variables
+					</button>
+					<button class="btn btn-sm btn-outline-secondary" @onclick="ResetTemplate">
+						<i class="fas fa-undo"></i> Reset to Default
+					</button>
+					<span class="toolbar-hint">Edit the template then use <strong>Apply Variables</strong> to substitute <code>{{NUGET_USER}}</code></span>
+				</div>
+				<div class="ci-monaco-wrapper">
+					<PDMonacoEditor Language="yaml"
+									Theme="vs-dark"
+									Value="@_templateContent"
+									ValueChanged="@(v => _templateContent = v)" />
+				</div>
+			</div>
+		}
+		else
+		{
+			<div class="ci-tab-body">
+				<div class="ci-repos-toolbar">
+					<div class="ci-repos-stats">
+						<span class='ci-stat-badge @(_matchCount == _totalCount ? "ci-badge-success" : "ci-badge-warning")'>
+							<i class="fas fa-check-circle"></i> @_matchCount matching
+						</span>
+						<span class="ci-stat-badge ci-badge-info">
+							<i class="fas fa-circle-exclamation"></i> @(_totalCount - _matchCount) need update
+						</span>
+					</div>
+					<div class="ci-repos-actions">
+						<button class="btn btn-sm btn-primary" disabled title="Select repos then click Apply">
+							<i class="fas fa-upload"></i> Apply to Selected
+						</button>
+						<button class="btn btn-sm btn-outline-warning" disabled title="Apply template to all non-matching repos">
+							<i class="fas fa-wand-magic-sparkles"></i> Apply to All Non-Matching
+						</button>
+					</div>
+				</div>
+				<table class="governance-table ci-repos-table">
+					<thead>
+						<tr>
+							<th><input type="checkbox" disabled /></th>
+							<th>Repository</th>
+							<th>ci.yml</th>
+							<th>Status</th>
+							<th>Last Updated</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						@foreach (var repo in _mockRepos)
+						{
+							<tr class="@(repo.Selected ? "row-selected" : "")">
+								<td><input type="checkbox" @bind="repo.Selected" /></td>
+								<td>
+									<a href="https://github.com/panoramicdata/@repo.Name/blob/main/.github/workflows/ci.yml"
+									   target="_blank" rel="noopener noreferrer">
+										@repo.Name
+									</a>
+								</td>
+								<td>
+									@if (repo.Status == CiTemplateStatus.NoCiFile)
+									{
+										<span class="ci-badge-error"><i class="fas fa-times"></i> Missing</span>
+									}
+									else
+									{
+										<span class="ci-badge-success"><i class="fas fa-check"></i> Present</span>
+									}
+								</td>
+								<td>
+									<span class="ci-status-badge ci-status-@repo.Status.ToString().ToLowerInvariant()">
+										@GetStatusLabel(repo.Status)
+									</span>
+								</td>
+								<td class="ci-muted">@repo.LastUpdated</td>
+								<td>
+									<button class="btn btn-xs btn-outline-primary" disabled>
+										<i class="fas fa-upload"></i> Apply
+									</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</div>
+}
+
+@code {
+	private bool _isAuthenticated;
+	private string _activeTab = "template";
+	private string _templateContent = string.Empty;
+	private string _nugetUser = Standards.NuGetUser;
+
+	private int _matchCount => _mockRepos.Count(r => r.Status == CiTemplateStatus.Matching);
+	private int _totalCount => _mockRepos.Count;
+
+	private readonly List<MockCiRepo> _mockRepos =
+	[
+		new("PanoramicData.NugetManagement", CiTemplateStatus.Matching, "2 days ago"),
+		new("PanoramicData.NCalcExtensions", CiTemplateStatus.PatternA, "3 months ago"),
+		new("LogicMonitor.Api", CiTemplateStatus.PatternA, "2 months ago"),
+		new("ServiceNow.Api", CiTemplateStatus.PatternA, "4 months ago"),
+		new("Meraki.Api", CiTemplateStatus.PatternA, "6 months ago"),
+		new("PanoramicData.Render", CiTemplateStatus.PatternB, "1 month ago"),
+		new("PanoramicData.Vtl", CiTemplateStatus.PatternB, "2 months ago"),
+		new("Toggl.Api", CiTemplateStatus.PatternA, "5 months ago"),
+		new("Auvik.Api", CiTemplateStatus.PatternA, "4 months ago"),
+		new("HaloPsa.Api", CiTemplateStatus.PatternA, "3 months ago"),
+		new("Jira.Api", CiTemplateStatus.PatternA, "1 month ago"),
+		new("PanoramicData.Encryption", CiTemplateStatus.PatternA, "6 months ago"),
+		new("Dell.CloudIq.Api", CiTemplateStatus.PatternA, "3 months ago"),
+		new("SymphonyAi.Summit.Api", CiTemplateStatus.PatternA, "4 months ago"),
+		new("PanoramicData.SheetMagic", CiTemplateStatus.NoCiFile, "-"),
+	];
+
+	protected override void OnInitialized()
+	{
+		var user = HttpContextAccessor.HttpContext?.User;
+		_isAuthenticated = user?.Identity?.IsAuthenticated == true;
+		_nugetUser = SettingsOptions.Value.NuGetUser;
+		_templateContent = DefaultTemplate.Replace("{{NUGET_USER}}", _nugetUser);
+	}
+
+	private void ApplyVariables()
+	{
+		_templateContent = DefaultTemplate.Replace("{{NUGET_USER}}", _nugetUser);
+	}
+
+	private void ResetTemplate()
+	{
+		_templateContent = DefaultTemplate.Replace("{{NUGET_USER}}", _nugetUser);
+	}
+
+	private static string GetStatusLabel(CiTemplateStatus status) => status switch
+	{
+		CiTemplateStatus.Matching => "Matches template",
+		CiTemplateStatus.PatternA => "Pattern A – outdated",
+		CiTemplateStatus.PatternB => "Pattern B – no retention",
+		CiTemplateStatus.NoCiFile => "No ci.yml",
+		_ => "Unknown",
+	};
+
+	private const string DefaultTemplate = """
+	name: CI
+
+	on:
+	  push:
+	    branches: [main]
+	    tags: ['[0-9]*.[0-9]*.[0-9]*']
+	  pull_request:
+	    branches: [main]
+
+	jobs:
+	  build:
+	    runs-on: ubuntu-latest
+	    steps:
+	    - name: Checkout
+	      uses: actions/checkout@v4
+	      with:
+	        fetch-depth: 0
+
+	    - name: Setup .NET
+	      uses: actions/setup-dotnet@v4
+	      with:
+	        dotnet-version: 10.0.x
+
+	    - name: Restore
+	      run: dotnet restore
+
+	    - name: Build
+	      run: dotnet build --configuration Release --no-restore
+
+	    - name: Pack
+	      run: dotnet pack --configuration Release --no-build --output ./artifacts
+
+	    - name: Upload NuGet artifact
+	      uses: actions/upload-artifact@v4
+	      with:
+	        name: nuget
+	        path: |
+	          ./artifacts/*.nupkg
+	          ./artifacts/*.snupkg
+	        retention-days: 1
+
+	  publish:
+	    needs: build
+	    runs-on: ubuntu-latest
+	    if: startsWith(github.ref, 'refs/tags/')
+	    permissions:
+	      id-token: write
+	    steps:
+	    - name: Download artifacts
+	      uses: actions/download-artifact@v4
+	      with:
+	        name: nuget
+	        path: ./artifacts
+
+	    - name: Setup .NET
+	      uses: actions/setup-dotnet@v4
+	      with:
+	        dotnet-version: 10.0.x
+
+	    - name: Login to NuGet
+	      id: login
+	      uses: NuGet/login@v1
+	      with:
+	        user: {{NUGET_USER}}
+
+	    - name: Push to NuGet
+	      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+	""";
+
+	private sealed class MockCiRepo(string name, CiTemplateStatus status, string lastUpdated)
+	{
+		public string Name { get; } = name;
+		public CiTemplateStatus Status { get; } = status;
+		public string LastUpdated { get; } = lastUpdated;
+		public bool Selected { get; set; }
+	}
+
+	private enum CiTemplateStatus
+	{
+		Matching,
+		PatternA,
+		PatternB,
+		NoCiFile,
+	}
+}

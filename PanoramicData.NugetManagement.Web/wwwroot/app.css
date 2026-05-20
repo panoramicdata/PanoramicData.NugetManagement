@@ -1381,6 +1381,285 @@ h1:focus {
     font-size: 0.82rem;
 }
 
+/* === Nav Footer === */
+.nav-footer {
+    padding: 0.4rem 0.5rem;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.nav-footer-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.nav-footer-link:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+/* === CI Workflow Template Page === */
+.ci-template-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.ci-template-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+}
+
+.ci-template-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.ci-template-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.ci-tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    padding: 0 1rem;
+    flex-shrink: 0;
+}
+
+.ci-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.5rem 1rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.ci-tab:hover {
+    color: var(--text-primary);
+}
+
+.ci-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.ci-tab-count {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+    font-weight: 600;
+}
+
+.ci-count-green {
+    background: var(--success);
+    color: #fff;
+}
+
+.ci-count-amber {
+    background: var(--warning);
+    color: #000;
+}
+
+.ci-tab-body {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 1rem;
+    gap: 0.6rem;
+    min-height: 0;
+}
+
+.ci-vars-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.ci-vars-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.ci-var-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.ci-var-name {
+    color: var(--accent);
+    font-size: 0.82rem;
+}
+
+.ci-var-eq {
+    color: var(--text-muted);
+}
+
+.ci-var-input {
+    width: 200px;
+    background: var(--bg-primary) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    font-size: 0.82rem;
+}
+
+.ci-editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.ci-monaco-wrapper {
+    flex: 1;
+    min-height: 400px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.ci-repos-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.ci-repos-stats {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.ci-repos-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.ci-stat-badge {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.ci-badge-success {
+    color: var(--success);
+    border: 1px solid var(--success);
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.78rem;
+}
+
+.ci-stat-badge.ci-badge-success {
+    border-radius: 9999px;
+    font-size: 0.8rem;
+}
+
+.ci-badge-warning {
+    color: var(--warning);
+    border: 1px solid var(--warning);
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.78rem;
+}
+
+.ci-stat-badge.ci-badge-warning {
+    border-radius: 9999px;
+    font-size: 0.8rem;
+}
+
+.ci-badge-error {
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.78rem;
+}
+
+.ci-badge-info {
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.78rem;
+}
+
+.ci-stat-badge.ci-badge-info {
+    border-radius: 9999px;
+    font-size: 0.8rem;
+}
+
+.ci-repos-table {
+    width: 100%;
+}
+
+.ci-status-badge {
+    font-size: 0.78rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+}
+
+.ci-status-matching {
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.ci-status-patterna,
+.ci-status-patternb {
+    color: var(--warning);
+    border: 1px solid var(--warning);
+}
+
+.ci-status-nocifile {
+    color: var(--error);
+    border: 1px solid var(--error);
+}
+
+.ci-muted {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
 .pd-tree .pd-tree-node-icon {
     color: var(--text-muted);
 }
@@ -1489,4 +1768,151 @@ h1:focus {
         opacity: 0;
         transform: translateY(-28px) scale(1.08);
     }
+}
+
+/* === NuGet Package Updates View === */
+.nuget-updates-view {
+    padding: 1.5rem;
+    overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.nuget-updates-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.nuget-updates-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: var(--text-primary);
+}
+
+.nuget-updates-last-checked {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.nuget-updates-loading,
+.nuget-updates-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.update-groups-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.update-group-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    overflow: hidden;
+}
+
+.update-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.9rem;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.update-group-header:hover {
+    background: var(--hover);
+}
+
+.update-group-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.update-package-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.update-version-arrow {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+}
+
+.version-from {
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+.version-to {
+    color: var(--success);
+    font-family: monospace;
+    font-weight: 600;
+}
+
+.update-version-arrow .fa-long-arrow-alt-right {
+    color: var(--text-secondary);
+}
+
+.update-repo-count.badge {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 999px;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.update-group-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.update-chevron {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    width: 14px;
+    text-align: center;
+}
+
+.update-group-repos {
+    border-top: 1px solid var(--border);
+    padding: 0.5rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.update-repo-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    padding: 0.2rem 0;
+}
+
+.update-repo-row .fa-code-branch {
+    color: var(--accent);
+    width: 14px;
+    text-align: center;
 }
