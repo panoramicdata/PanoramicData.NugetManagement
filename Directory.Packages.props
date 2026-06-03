@@ -10,7 +10,7 @@
     <PackageVersion Include="NuGet.Protocol" Version="7.3.1" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="PanoramicData.Blazor" Version="10.0.84" />
-    <PackageVersion Include="Refit" Version="10.1.6" />
+    <PackageVersion Include="Refit" Version="11.0.0" />
     <!-- Test project dependencies -->
     <PackageVersion Include="AwesomeAssertions" Version="9.4.0" />
     <PackageVersion Include="AwesomeAssertions.Analyzers" Version="9.0.8" />
