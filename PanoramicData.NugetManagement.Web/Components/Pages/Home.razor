@@ -137,7 +137,7 @@ else
 									}
 <!-- Inline git actions after repo info -->
 									<button class="btn btn-xs btn-breadcrumb" @onclick="GitSyncAsync" disabled="@_isRunning" title="Fetch, pull --rebase, push">
-										<i class="fas fa-sync"></i>
+										<i class="fas fa-arrows-rotate"></i>
 									</button>
 									<button class="btn btn-xs btn-breadcrumb" @onclick="BuildAsync" disabled="@_isRunning" title="Build">
 										<i class="fas fa-hammer"></i>
@@ -201,7 +201,6 @@ else
 											 IsVisible="@(_currentView == NavView.NuGetUpdates)"
 											 IsEnabled="@(!NuGetUpdates.IsChecking)"
 											 ToolTip="Scan all assessed repositories for available NuGet package updates"
-											 Click="OnToolbarClick" />
 											 Click="OnToolbarClick" />
 
 							<PDToolbarButton Key="reassess"
@@ -318,43 +317,6 @@ else
 				</div>
 			</PDSplitPanel>
 
-			<!-- Right: Merlin AI Chat -->
-			<PDSplitPanel Size="1" MinSize="280" CssClass="spa-panel spa-chat-panel">
-				<div class="merlin-chat-container">
-					<div class="merlin-chat-header">
-						<i class="fas fa-hat-wizard"></i> Merlin
-					</div>
-					<div class="merlin-chat-messages">
-						@if (_chatMessages.Count == 0)
-						{
-							<div class="merlin-welcome">
-								<div class="merlin-avatar">🧙</div>
-								<p>Hello! I'm <strong>Merlin</strong>, your AI assistant.</p>
-								<p class="text-muted">Select a package and ask about assessment results, remediation, or best practices.</p>
-							</div>
-						}
-						else
-						{
-							@foreach (var msg in _chatMessages)
-							{
-								<div class="merlin-msg @(msg.IsUser ? "merlin-msg-user" : "merlin-msg-ai")">
-									<span class="merlin-msg-icon">@(msg.IsUser ? "👤" : "🧙")</span>
-									<div class="merlin-msg-content">@msg.Text</div>
-								</div>
-							}
-						}
-					</div>
-					<div class="merlin-chat-input">
-						<input type="text" @bind="_chatInput" @bind:event="oninput"
-							   @onkeydown="OnChatKeyDown"
-							   placeholder="Ask Merlin..." />
-						<button class="btn btn-sm btn-primary" @onclick="SendChatMessage" disabled="@(string.IsNullOrWhiteSpace(_chatInput))">
-							<i class="fas fa-paper-plane"></i>
-						</button>
-					</div>
-				</div>
-			</PDSplitPanel>
-
 		</PDSplitter>
 	</div>
 }
@@ -417,10 +379,6 @@ else
 	private bool CurrentCopyFeedback { get => CurrentNodeUiState.CopyFeedback; set => CurrentNodeUiState.CopyFeedback = value; }
 	private bool CurrentConsoleCopyFeedback { get => CurrentNodeUiState.ConsoleCopyFeedback; set => CurrentNodeUiState.ConsoleCopyFeedback = value; }
 	private WorkflowStep? CurrentAiClipboardCueStep { get => CurrentNodeUiState.AiClipboardCueStep; set => CurrentNodeUiState.AiClipboardCueStep = value; }
-
-	// === Merlin chat state ===
-	private string _chatInput = string.Empty;
-	private List<ChatMsg> _chatMessages = [];
 
 	// === IDE state ===
 	private string? _preferredIdeId;
@@ -1522,7 +1480,7 @@ else
 		? "fas fa-spinner fa-spin"
 		: step switch
 		{
-			WorkflowStep.GitSync => "fas fa-sync",
+			WorkflowStep.GitSync => "fas fa-arrows-rotate",
 			WorkflowStep.Reassess => "fas fa-sync-alt",
 			WorkflowStep.Fix => "fas fa-wrench",
 			WorkflowStep.FixWithAi => "fas fa-magic",
@@ -2933,29 +2891,6 @@ else
 		}
 	}
 
-	// === Merlin chat (placeholder) ===
-
-	private void OnChatKeyDown(KeyboardEventArgs e)
-	{
-		if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_chatInput))
-		{
-			SendChatMessage();
-		}
-	}
-
-	private void SendChatMessage()
-	{
-		if (string.IsNullOrWhiteSpace(_chatInput))
-		{
-			return;
-		}
-
-		_chatMessages.Add(new ChatMsg { IsUser = true, Text = _chatInput });
-		_chatMessages.Add(new ChatMsg { IsUser = false, Text = "I'm not connected to an AI backend yet — this is a placeholder. Future versions will provide contextual help about your packages and governance rules." });
-		_chatInput = string.Empty;
-		StateHasChanged();
-	}
-
 	public void Dispose()
 	{
 		_autoRefreshTimer?.Dispose();
@@ -3092,12 +3027,6 @@ else
 	{
 		public AssessmentCategory Category { get; init; }
 		public List<RuleResult> Failures { get; init; } = [];
-	}
-
-	private sealed class ChatMsg
-	{
-		public bool IsUser { get; init; }
-		public required string Text { get; init; }
 	}
 
 	private sealed class NodeUiState
