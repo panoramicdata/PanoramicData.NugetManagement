@@ -504,9 +504,22 @@ public static class Standards
 			exit 1
 		}
 
-		# Get version from Nerdbank.GitVersioning
-		$versionJson = nbgv get-version -f json | ConvertFrom-Json
-		$version = $versionJson.NuGetPackageVersion
+		# Get version from Nerdbank.GitVersioning via the project's MSBuild targets (the
+		# referenced NuGet package), so this does not depend on the global 'nbgv' CLI tool
+		# being installed or on PATH.
+		$packableProject = Get-ChildItem -Recurse -Filter *.csproj |
+			Where-Object { $_.FullName -notmatch '[\\/]obj[\\/]' -and (Get-Content $_.FullName -Raw) -match 'Nerdbank\.GitVersioning' } |
+			Select-Object -First 1
+		if (-not $packableProject) {
+			Write-Error "Could not find a packable project referencing Nerdbank.GitVersioning."
+			exit 1
+		}
+		$buildOutput = dotnet build $packableProject.FullName -t:GetBuildVersion --getProperty:NuGetPackageVersion -nologo -v:quiet -p:TreatWarningsAsErrors=false
+		if ($LASTEXITCODE -ne 0) {
+			Write-Error "Failed to determine version from Nerdbank.GitVersioning.`n$buildOutput"
+			exit 1
+		}
+		$version = ($buildOutput | Select-Object -Last 1).ToString().Trim()
 		Write-Host "Version: $version"
 
 		# Check if tag already exists

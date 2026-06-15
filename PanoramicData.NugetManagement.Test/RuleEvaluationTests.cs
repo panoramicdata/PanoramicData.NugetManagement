@@ -709,7 +709,7 @@ public class RuleEvaluationTests : TestWithOutput
 			$status = git status --porcelain
 			$branch = git rev-parse --abbrev-ref HEAD
 			git fetch origin main --quiet
-			$json = nbgv get-version -f json
+			$buildOutput = dotnet build proj.csproj -t:GetBuildVersion --getProperty:NuGetPackageVersion
 			$exists = git tag -l $version
 			git tag $version
 			git push origin $version
