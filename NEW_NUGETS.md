@@ -273,11 +273,29 @@ Recommended conventions:
 - split unit/integration clearly
 - document any required secrets in `secrets.example.json`
 
+### Unit tests must never be skipped
+
+Unit tests must always run and must always pass or fail — never skip. A skipped test gives a false sense of security and hides real problems.
+
+Every **unit test project** must include an `xunit.runner.json` file alongside its `.csproj`:
+
+```json
+{
+	"$schema": "https://xunit.net/schema/current/xunit.runner.schema.json",
+	"failSkips": true
+}
+```
+
+This causes xUnit v3 to treat any skipped test as a failure, making skips immediately visible in CI.
+
+**Integration test projects** are the only permitted exception. When a test legitimately skips due to a missing credential or unavailable external dependency, set `failSkips: false` explicitly and document the reason in the project README or a code comment. Prefer keeping integration tests in a **separate project** from unit tests so that `failSkips: true` can be enforced unconditionally in the unit test project.
+
 ## Quality Gates (Must Pass Before Release)
 
 1. `dotnet restore`
 2. `dotnet build --configuration Release`
 3. `dotnet test --configuration Release`
+	- Zero skipped tests in unit test projects (enforced by `failSkips: true` in `xunit.runner.json`)
 4. `dotnet pack <main-csproj> --configuration Release`
 5. verify generated `.nupkg` and `.snupkg`
 6. verify README renders on NuGet package page
