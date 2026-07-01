@@ -88,6 +88,29 @@ public class OrganizationAssessor : IDisposable
 		};
 	}
 
+	/// <summary>
+	/// Resolves the effective Codacy API token for a repository: a repository may supply its own
+	/// token; otherwise the organization-level token is used (when Codacy issue checking is enabled).
+	/// The resolved token is written back onto <see cref="RepoOptions.Codacy"/> so the Codacy rules
+	/// (CQ-03 quality gate and CQ-05 issue list) can consume it via the repository context.
+	/// </summary>
+	private static void ResolveCodacyToken(RepoOptions repoOptions, AssessmentOptions options)
+	{
+		if (!options.CheckCodacyIssues || string.IsNullOrWhiteSpace(options.CodacyApiToken))
+		{
+			return;
+		}
+
+		if (repoOptions.Codacy is null)
+		{
+			repoOptions.Codacy = new CodacyOptions { ApiToken = options.CodacyApiToken };
+		}
+		else if (string.IsNullOrWhiteSpace(repoOptions.Codacy.ApiToken))
+		{
+			repoOptions.Codacy.ApiToken = options.CodacyApiToken;
+		}
+	}
+
 	private async Task<IReadOnlyList<Repository>> GetRepositoriesAsync(
 		AssessmentOptions options,
 		CancellationToken _)
@@ -116,6 +139,8 @@ public class OrganizationAssessor : IDisposable
 		var repoOptions = options.RepositoryOptions.TryGetValue(repository.Name, out var opts)
 			? opts
 			: new RepoOptions();
+
+		ResolveCodacyToken(repoOptions, options);
 
 		_logger.LogInformation("Assessing {FullName}...", repository.FullName);
 

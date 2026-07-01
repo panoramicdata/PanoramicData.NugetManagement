@@ -333,6 +333,16 @@ public class DashboardService
 	}
 
 	/// <summary>
+	/// Gets the full Codacy issue report (markdown) for a repository, suitable for download as a
+	/// standalone <c>.md</c> file or for pasting into an AI session. Returns null when the Codacy
+	/// issues rule (CQ-05) did not run or found nothing to report.
+	/// </summary>
+	public static string? GetCodacyReportMarkdown(PackageDashboardRow row)
+		=> row.Assessment?.RuleResults
+			.FirstOrDefault(r => r.RuleId == "CQ-05" && r.Advisory is not null)
+			?.Advisory?.Detail;
+
+	/// <summary>
 	/// Generates an AI remediation prompt from an explicit set of rule failures.
 	/// </summary>
 	public static string GenerateRemediationPromptForFailures(PackageDashboardRow row, IEnumerable<RuleResult> failures, bool includeInfo = false)

@@ -28,6 +28,19 @@ public class AssessmentOptions
 	public bool OnlyPackableRepositories { get; init; }
 
 	/// <summary>
+	/// Organization-level Codacy API token. When set, it is used for every repository that does not
+	/// supply its own <see cref="CodacyOptions.ApiToken"/>, enabling Codacy issue ingestion across
+	/// the organization from a single credential.
+	/// </summary>
+	public string? CodacyApiToken { get; init; }
+
+	/// <summary>
+	/// Whether to query Codacy for each repository's open issues. Has effect only when a Codacy API
+	/// token is available (organization-level or per-repository). Can be slow for large organizations.
+	/// </summary>
+	public bool CheckCodacyIssues { get; init; } = true;
+
+	/// <summary>
 	/// Maximum number of repositories to assess concurrently.
 	/// </summary>
 	public int MaxConcurrency { get; init; } = 5;
