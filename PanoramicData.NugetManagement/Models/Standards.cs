@@ -69,14 +69,25 @@ public static class Standards
 	public const string LatestDotNetVersionSpecifier = "10.0.x";
 
 	/// <summary>
-	/// The standard actions/checkout version used in Meraki.Api workflow.
+	/// The minimum acceptable actions/checkout major version. Repositories at or above this pass;
+	/// the value is derived from the highest version in use across the organization's repositories.
 	/// </summary>
-	public const string LatestActionsCheckoutVersion = "v4";
+	public const string LatestActionsCheckoutVersion = "v6";
 
 	/// <summary>
-	/// The standard actions/setup-dotnet version used in Meraki.Api workflow.
+	/// The minimum acceptable actions/setup-dotnet major version (repositories at or above this pass).
 	/// </summary>
-	public const string LatestActionsSetupDotnetVersion = "v4";
+	public const string LatestActionsSetupDotnetVersion = "v5";
+
+	/// <summary>
+	/// The minimum acceptable actions/upload-artifact major version.
+	/// </summary>
+	public const string LatestActionsUploadArtifactVersion = "v7";
+
+	/// <summary>
+	/// The minimum acceptable actions/download-artifact major version.
+	/// </summary>
+	public const string LatestActionsDownloadArtifactVersion = "v8";
 
 	/// <summary>
 	/// The expected copyright holder name.
@@ -244,7 +255,7 @@ public static class Standards
 
 			steps:
 			- name: Checkout repository
-			  uses: actions/checkout@v4
+			  uses: actions/checkout@v6
 
 			- name: Initialize CodeQL
 			  uses: github/codeql-action/init@v3
@@ -301,12 +312,12 @@ public static class Standards
 			runs-on: ubuntu-latest
 			steps:
 			- name: Checkout
-			  uses: actions/checkout@v4
+			  uses: actions/checkout@v6
 			  with:
 				fetch-depth: 0
 
 			- name: Setup .NET
-			  uses: actions/setup-dotnet@v4
+			  uses: actions/setup-dotnet@v5
 			  with:
 				dotnet-version: 10.0.x
 
@@ -320,7 +331,7 @@ public static class Standards
 			  run: dotnet pack --configuration Release --no-build --output ./artifacts
 
 			- name: Upload artifacts
-			  uses: actions/upload-artifact@v4
+			  uses: actions/upload-artifact@v7
 			  with:
 				name: packages
 				path: ./artifacts/*.nupkg
@@ -347,12 +358,12 @@ public static class Standards
 				"    runs-on: ubuntu-latest",
 				"    steps:",
 				"    - name: Checkout",
-				"      uses: actions/checkout@v4",
+				"      uses: actions/checkout@v6",
 				"      with:",
 				"        fetch-depth: 0",
 				string.Empty,
 				"    - name: Setup .NET",
-				"      uses: actions/setup-dotnet@v4",
+				"      uses: actions/setup-dotnet@v5",
 				"      with:",
 				"        dotnet-version: 10.0.x",
 				string.Empty,
@@ -366,7 +377,7 @@ public static class Standards
 				"      run: dotnet pack --configuration Release --no-build --output ./artifacts",
 				string.Empty,
 				"    - name: Upload artifacts",
-				"      uses: actions/upload-artifact@v4",
+				"      uses: actions/upload-artifact@v7",
 				"      with:",
 				"        name: packages",
 				"        path: ./artifacts/*.nupkg",
@@ -379,13 +390,13 @@ public static class Standards
 				"      id-token: write",
 				"    steps:",
 				"    - name: Download artifacts",
-				"      uses: actions/download-artifact@v4",
+				"      uses: actions/download-artifact@v8",
 				"      with:",
 				"        name: packages",
 				"        path: ./artifacts",
 				string.Empty,
 				"    - name: Setup .NET",
-				"      uses: actions/setup-dotnet@v4",
+				"      uses: actions/setup-dotnet@v5",
 				"      with:",
 				"        dotnet-version: 10.0.x",
 				string.Empty,

@@ -40,19 +40,28 @@ public class CiActionsCheckoutVersionRule : RuleBase
 				}));
 		}
 
-		var expected = $"actions/checkout@{Standards.LatestActionsCheckoutVersion}";
-		return Task.FromResult(Contains(content, expected)
-			? Pass($"CI uses {expected}.")
+		var floor = Services.ActionVersionCatalog.Default.GetFloorSpec("actions/checkout", Standards.LatestActionsCheckoutVersion);
+		var meetsFloor = GitHubActionVersion.UsesAtLeast(content, "actions/checkout", floor, out var used);
+		if (used is not null)
+		{
+			Services.ActionVersionCatalog.Default.Observe("actions/checkout", used.Value, Standards.LatestActionsCheckoutVersion, context.FullName);
+		}
+
+		return Task.FromResult(meetsFloor
+			? Pass($"CI uses actions/checkout@v{used} (at or above {floor}).")
 			: Fail(
-				$"CI does not use {expected}.",
+				used is null
+					? "CI does not use actions/checkout."
+					: $"CI uses actions/checkout@v{used}; expected {floor} or later.",
 				new RuleAdvisory
 				{
-					Summary = "Update actions/checkout to latest major version",
-					Detail = $"Update the checkout step to `uses: {expected}`.",
+					Summary = $"Update actions/checkout to {floor} or later",
+					Detail = $"Update the checkout step to `uses: actions/checkout@{floor}` (or a later major version).",
 					Data = new()
 					{
 						["workflow_file"] = ciWorkflowPath,
-						["latest_version"] = Standards.LatestActionsCheckoutVersion
+						["minimum_version"] = floor,
+						["found_version"] = used is null ? "none" : $"v{used}"
 					}
 				}));
 	}

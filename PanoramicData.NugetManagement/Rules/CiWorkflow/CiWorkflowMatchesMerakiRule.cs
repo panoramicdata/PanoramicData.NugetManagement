@@ -40,7 +40,6 @@ public class CiWorkflowMatchesMerakiRule : RuleBase
 		var requiredSnippets = new[]
 		{
 			"tags: ['[0-9]*.[0-9]*.[0-9]*']",
-			"uses: actions/upload-artifact@v4",
 			"publish:",
 			"if: startsWith(github.ref, 'refs/tags/')",
 			"id-token: write",
@@ -52,6 +51,18 @@ public class CiWorkflowMatchesMerakiRule : RuleBase
 		var missing = requiredSnippets
 			.Where(snippet => !Contains(content, snippet))
 			.ToList();
+
+		// upload-artifact is checked version-aware: at or above the learned floor (repos ahead are fine).
+		var uploadFloor = Services.ActionVersionCatalog.Default.GetFloorSpec("actions/upload-artifact", Standards.LatestActionsUploadArtifactVersion);
+		if (!GitHubActionVersion.UsesAtLeast(content, "actions/upload-artifact", uploadFloor, out var uploadUsed))
+		{
+			missing.Add($"uses: actions/upload-artifact@{uploadFloor} (or later)");
+		}
+
+		if (uploadUsed is not null)
+		{
+			Services.ActionVersionCatalog.Default.Observe("actions/upload-artifact", uploadUsed.Value, Standards.LatestActionsUploadArtifactVersion, context.FullName);
+		}
 
 		return Task.FromResult(missing.Count == 0
 			? Pass("CI workflow matches the Meraki.Api trusted publishing standard.")

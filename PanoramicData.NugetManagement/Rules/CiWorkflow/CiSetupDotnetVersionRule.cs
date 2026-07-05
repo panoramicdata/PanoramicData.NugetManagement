@@ -41,18 +41,23 @@ public class CiSetupDotnetVersionRule : RuleBase
 				}));
 		}
 
-		var expectedAction = $"actions/setup-dotnet@{Standards.LatestActionsSetupDotnetVersion}";
-		var hasAction = Contains(content, expectedAction);
+		var floor = Services.ActionVersionCatalog.Default.GetFloorSpec("actions/setup-dotnet", Standards.LatestActionsSetupDotnetVersion);
+		var hasAction = GitHubActionVersion.UsesAtLeast(content, "actions/setup-dotnet", floor, out var used);
+		if (used is not null)
+		{
+			Services.ActionVersionCatalog.Default.Observe("actions/setup-dotnet", used.Value, Standards.LatestActionsSetupDotnetVersion, context.FullName);
+		}
+
 		var hasSdk = Contains(content, Standards.LatestDotNetVersionSpecifier);
 
 		return Task.FromResult(hasAction && hasSdk
-			? Pass($"CI uses {expectedAction} with {Standards.LatestDotNetVersionSpecifier}.")
+			? Pass($"CI uses actions/setup-dotnet@v{used} (at or above {floor}) with {Standards.LatestDotNetVersionSpecifier}.")
 			: Fail(
-				$"CI does not use {expectedAction} with dotnet-version: '{Standards.LatestDotNetVersionSpecifier}'.",
+				$"CI does not use actions/setup-dotnet@{floor} or later with dotnet-version: '{Standards.LatestDotNetVersionSpecifier}'{(used is null ? "" : $" (found setup-dotnet@v{used})")}.",
 				new RuleAdvisory
 				{
-					Summary = "Update actions/setup-dotnet to latest version and SDK",
-					Detail = $"Update to `uses: {expectedAction}` with `dotnet-version: {Standards.LatestDotNetVersionSpecifier}`.",
+					Summary = $"Update actions/setup-dotnet to {floor} or later and SDK",
+					Detail = $"Update to `uses: actions/setup-dotnet@{floor}` (or later) with `dotnet-version: {Standards.LatestDotNetVersionSpecifier}`.",
 					Data = new()
 					{
 						["workflow_file"] = ciWorkflowPath,

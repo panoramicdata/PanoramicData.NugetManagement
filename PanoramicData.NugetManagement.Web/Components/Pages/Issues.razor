@@ -1,5 +1,6 @@
 @page "/issues"
 @rendermode InteractiveServer
+@using PanoramicData.NugetManagement.Services
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
 @inject IJSRuntime JS
@@ -22,6 +23,17 @@
 			}
 		</div>
 	</header>
+
+	@if (_bumps.Count > 0)
+	{
+		<div class="baseline-banner">
+			<i class="fas fa-arrow-trend-up"></i>
+			<span>
+				<strong>Standard version baseline updated</strong> from an observed repository — commit <code>action-versions.json</code> to roll this out to everyone:
+				@string.Join(", ", _bumps.Select(b => $"{b.Action} {b.From}→{b.To}"))
+			</span>
+		</div>
+	}
 
 	@if (_rows.Count == 0)
 	{
@@ -153,6 +165,7 @@
 	.header-actions { display: flex; gap: .5rem; flex-shrink: 0; }
 	.muted { color: var(--bs-secondary-color, #888); font-size: .85rem; }
 	.summary { font-weight: 600; margin: .5rem 0 1rem; }
+	.baseline-banner { display: flex; gap: .6rem; align-items: center; background: #1f3a2e; border: 1px solid #2e7d32; color: #d7f5df; padding: .6rem .8rem; border-radius: 6px; margin: .5rem 0 1rem; font-size: .9rem; }
 	.empty { padding: 2rem 0; }
 	.cat-node { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
 	.node-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; }
@@ -185,6 +198,7 @@
 @code {
 	private List<PackageDashboardRow> _rows = [];
 	private IssueCentricView? _view;
+	private IReadOnlyList<ActionVersionBump> _bumps = [];
 	private readonly HashSet<string> _expandedCats = new(StringComparer.OrdinalIgnoreCase);
 	private readonly HashSet<string> _expandedRules = new(StringComparer.OrdinalIgnoreCase);
 	private readonly List<string> _log = [];
@@ -197,6 +211,7 @@
 	{
 		_rows = Cache.GetCachedRows() ?? [];
 		_view = Dashboard.BuildIssueCentricView(_rows);
+		_bumps = ActionVersionCatalog.Default.RecentBumps;
 	}
 
 	private static bool IsExpanded(HashSet<string> set, string key) => set.Contains(key);
