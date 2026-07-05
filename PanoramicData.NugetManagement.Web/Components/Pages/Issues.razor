@@ -26,6 +26,36 @@
 		</div>
 	</header>
 
+	@if (_allRepoNames.Count > 0)
+	{
+		<div class="repo-filter">
+			<div class="node-row cat-row">
+				<button class="expander" @onclick="() => _showRepoFilter = !_showRepoFilter">
+					<i class="fas @(_showRepoFilter ? "fa-chevron-down" : "fa-chevron-right")"></i>
+				</button>
+				<i class="fas fa-filter"></i>
+				<strong>Repositories</strong>
+				<span class="muted">@_selectedRepos.Count of @_allRepoNames.Count selected — actions apply to selected repositories only</span>
+				<span class="actions">
+					<button class="btn btn-xs btn-secondary" disabled="@_busy" @onclick="SelectAllRepos">All</button>
+					<button class="btn btn-xs btn-secondary" disabled="@_busy" @onclick="SelectNoRepos">None</button>
+				</span>
+			</div>
+			@if (_showRepoFilter)
+			{
+				<div class="repo-checklist">
+					@foreach (var name in _allRepoNames)
+					{
+						<label class="repo-check">
+							<input type="checkbox" checked="@_selectedRepos.Contains(name)" @onchange="() => ToggleRepo(name)" disabled="@_busy" />
+							<span>@name</span>
+						</label>
+					}
+				</div>
+			}
+		</div>
+	}
+
 	@if (_bumps.Count > 0)
 	{
 		<div class="baseline-banner">
@@ -99,8 +129,8 @@
 								<span class="actions">
 									@if (rule.HasAutomatedRemediation)
 									{
-										<button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyRule(rule)">
-											Apply &amp; push to @rule.AffectedRepositoryCount repo(s)
+										<button class="btn btn-sm btn-primary" disabled="@(_busy || SelectedAffected(rule) == 0)" @onclick="() => ConfirmApplyRule(rule)">
+											Apply &amp; push to @SelectedAffected(rule) repo(s)
 										</button>
 									}
 									else
@@ -114,7 +144,7 @@
 							{
 								@foreach (var inst in rule.Instances)
 								{
-									<div class="node-row repo-row">
+									<div class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected")">
 										<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
 										<span class="repo-name">@inst.RepositoryFullName</span>
 										<span class="muted repo-msg">@Truncate(inst.Result.Message, 120)</span>
@@ -192,6 +222,10 @@
 	.guard-RegressionReverted { background: #b45309; }
 	.guard-BuildFailingNotOurs { background: #6b7280; }
 	.guard-Error { background: #b91c1c; }
+	.repo-filter { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem 0 1rem; overflow: hidden; }
+	.repo-checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .1rem .8rem; padding: .5rem .8rem; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--bs-border-color, #2a2a2a); }
+	.repo-check { display: flex; gap: .4rem; align-items: center; font-family: monospace; font-size: .82rem; cursor: pointer; }
+	.repo-deselected { opacity: .4; }
 	.empty { padding: 2rem 0; }
 	.cat-node { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
 	.node-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; }
@@ -230,6 +264,10 @@
 	private readonly List<string> _log = [];
 	private bool _busy;
 	private PendingConfirm? _confirm;
+	private readonly HashSet<string> _selectedRepos = new(StringComparer.OrdinalIgnoreCase);
+	private readonly HashSet<string> _knownRepos = new(StringComparer.OrdinalIgnoreCase);
+	private List<string> _allRepoNames = [];
+	private bool _showRepoFilter;
 
 	protected override void OnInitialized()
 	{
@@ -246,7 +284,51 @@
 		_rows = Cache.GetCachedRows() ?? [];
 		_view = Dashboard.BuildIssueCentricView(_rows);
 		_bumps = ActionVersionCatalog.Default.RecentBumps;
+
+		_allRepoNames = [.. _rows
+			.Where(r => r.RepositoryFullName is not null)
+			.Select(r => r.RepositoryFullName!)
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.OrderBy(r => r, StringComparer.OrdinalIgnoreCase)];
+
+		// Default all repos selected; newly-seen repos default to selected; user de-selections are
+		// preserved across reloads; repos that disappear are dropped.
+		foreach (var name in _allRepoNames)
+		{
+			if (_knownRepos.Add(name))
+			{
+				_selectedRepos.Add(name);
+			}
+		}
+
+		_selectedRepos.RemoveWhere(r => !_knownRepos.Contains(r) || !_allRepoNames.Contains(r, StringComparer.OrdinalIgnoreCase));
 	}
+
+	private List<PackageDashboardRow> SelectedRows()
+		=> [.. _rows.Where(r => r.RepositoryFullName is not null && _selectedRepos.Contains(r.RepositoryFullName))];
+
+	private bool IsRepoSelected(string? name) => name is not null && _selectedRepos.Contains(name);
+
+	private int SelectedAffected(IssueClassGroup rule)
+		=> rule.Instances.Count(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName));
+
+	private void ToggleRepo(string name)
+	{
+		if (!_selectedRepos.Add(name))
+		{
+			_selectedRepos.Remove(name);
+		}
+	}
+
+	private void SelectAllRepos()
+	{
+		foreach (var name in _allRepoNames)
+		{
+			_selectedRepos.Add(name);
+		}
+	}
+
+	private void SelectNoRepos() => _selectedRepos.Clear();
 
 	private static bool IsExpanded(HashSet<string> set, string key) => set.Contains(key);
 
@@ -273,26 +355,41 @@
 
 	private void ConfirmApplyRule(IssueClassGroup rule)
 	{
-		var repos = rule.Instances.Where(i => i.IsAutoRemediable).Select(i => i.RepositoryFullName).ToList();
+		var repos = rule.Instances
+			.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName))
+			.Select(i => i.RepositoryFullName)
+			.ToList();
+		if (repos.Count == 0)
+		{
+			Append($"No selected repositories are affected by {rule.RuleId}.");
+			return;
+		}
+
 		_confirm = new PendingConfirm
 		{
-			Title = $"Apply {rule.RuleId} across {repos.Count} repositories",
+			Title = $"Apply {rule.RuleId} across {repos.Count} selected repositories",
 			Repos = repos,
-			Action = (log, ct) => Dashboard.ApplyRuleAcrossReposAsync(_rows, rule.RuleId, log, ct)
+			Action = (log, ct) => Dashboard.ApplyRuleAcrossReposAsync(SelectedRows(), rule.RuleId, log, ct)
 		};
 	}
 
 	private void ConfirmApplyCategory(IssueCategoryGroup cat)
 	{
 		var repos = cat.IssueClasses
-			.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable).Select(i => i.RepositoryFullName))
+			.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName)).Select(i => i.RepositoryFullName))
 			.Distinct(StringComparer.OrdinalIgnoreCase)
 			.ToList();
+		if (repos.Count == 0)
+		{
+			Append($"No selected repositories are affected by auto-fixable {cat.Category} rules.");
+			return;
+		}
+
 		_confirm = new PendingConfirm
 		{
-			Title = $"Apply all auto-fixes in {cat.Category}",
+			Title = $"Apply all auto-fixes in {cat.Category} across {repos.Count} selected repositories",
 			Repos = repos,
-			Action = (log, ct) => Dashboard.ApplyCategoryAcrossReposAsync(_rows, cat.Category, log, ct)
+			Action = (log, ct) => Dashboard.ApplyCategoryAcrossReposAsync(SelectedRows(), cat.Category, log, ct)
 		};
 	}
 
@@ -312,14 +409,20 @@
 		var repos = _view is null
 			? []
 			: _view.AllIssueClasses
-				.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable).Select(i => i.RepositoryFullName))
+				.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName)).Select(i => i.RepositoryFullName))
 				.Distinct(StringComparer.OrdinalIgnoreCase)
 				.ToList();
+		if (repos.Count == 0)
+		{
+			Append("No selected repositories have auto-fixable issues.");
+			return;
+		}
+
 		_confirm = new PendingConfirm
 		{
-			Title = "Fix everything (all auto-fixable issues, all repos)",
+			Title = $"Fix everything (all auto-fixable issues across {repos.Count} selected repos)",
 			Repos = repos,
-			Action = (log, ct) => Dashboard.ApplyEverythingAcrossReposAsync(_rows, log, ct)
+			Action = (log, ct) => Dashboard.ApplyEverythingAcrossReposAsync(SelectedRows(), log, ct)
 		};
 	}
 
@@ -361,10 +464,10 @@
 	// ── Combined / per-repo AI prompt copy ──
 
 	private Task CopyRulePromptAsync(string ruleId)
-		=> CopyAsync(Dashboard.GenerateCombinedRulePrompt(_rows, ruleId), $"combined prompt for {ruleId}");
+		=> CopyAsync(Dashboard.GenerateCombinedRulePrompt(SelectedRows(), ruleId), $"combined prompt for {ruleId}");
 
 	private Task CopyCategoryPromptAsync(AssessmentCategory category)
-		=> CopyAsync(Dashboard.GenerateCombinedCategoryPrompt(_rows, category, onlyNonRemediable: true), $"combined prompt for {category}");
+		=> CopyAsync(Dashboard.GenerateCombinedCategoryPrompt(SelectedRows(), category, onlyNonRemediable: true), $"combined prompt for {category}");
 
 	private Task CopyRepoPromptAsync(string ruleId, string repoFullName)
 	{
