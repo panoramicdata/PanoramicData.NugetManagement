@@ -1261,6 +1261,41 @@ else
 		return client;
 	}
 
+	/// <summary>
+	/// Assesses the given repositories in parallel with a bounded degree of concurrency. All console
+	/// and table/UI mutation is marshalled onto the renderer's synchronization context via InvokeAsync
+	/// so shared state is only ever touched from one context.
+	/// </summary>
+	private async Task AssessInParallelAsync(IReadOnlyList<PackageDashboardRow> assessable, Func<PackageDashboardRow, Task> assessOne)
+	{
+		const int maxConcurrency = 6;
+		using var gate = new SemaphoreSlim(maxConcurrency);
+		var completed = 0;
+
+		var tasks = assessable.Select(async row =>
+		{
+			await gate.WaitAsync();
+			try
+			{
+				await assessOne(row);
+			}
+			catch (Exception ex)
+			{
+				await InvokeAsync(() => AppendConsole($"❌ {row.PackageId}: {ex.Message}"));
+			}
+			finally
+			{
+				gate.Release();
+				row.IsReassessing = false;
+				var n = Interlocked.Increment(ref completed);
+				_progressMessage = $"Assessing ({n}/{assessable.Count})...";
+				await InvokeAsync(RefreshTableAsync);
+			}
+		});
+
+		await Task.WhenAll(tasks);
+	}
+
 	private async Task RefreshAsync()
 	{
 		_isLoading = true;
@@ -1291,15 +1326,7 @@ else
 			var github = CreateGitHubClient();
 			var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
 
-			for (var i = 0; i < assessable.Count; i++)
-			{
-				var row = assessable[i];
-				_progressMessage = $"Assessing ({i + 1}/{assessable.Count}): {row.PackageId}...";
-				StateHasChanged();
-
-				await Dashboard.AssessRepositoryAsync(row, github);
-				await RefreshTableAsync();
-			}
+			await AssessInParallelAsync(assessable, row => Dashboard.AssessRepositoryAsync(row, github));
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
@@ -1592,43 +1619,18 @@ else
 		{
 			var github = CreateGitHubClient();
 
-			// Assess repositories in parallel with a bounded degree of concurrency. All UI/console
-			// mutation is marshalled onto the renderer's synchronization context via InvokeAsync so
-			// the shared row/console state is only ever touched from one context.
-			const int maxConcurrency = 6;
-			using var gate = new SemaphoreSlim(maxConcurrency);
-			var completed = 0;
-
-			var tasks = assessable.Select(async row =>
+			await AssessInParallelAsync(assessable, async row =>
 			{
-				await gate.WaitAsync();
-				try
+				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					if (row.IsClonedLocally && row.LocalPath is not null)
-					{
-						await Dashboard.AssessLocalRepositoryAsync(row);
-						await Dashboard.RefreshGitStatusAsync(row);
-					}
-					else
-					{
-						await Dashboard.AssessRepositoryAsync(row, github);
-					}
+					await Dashboard.AssessLocalRepositoryAsync(row);
+					await Dashboard.RefreshGitStatusAsync(row);
 				}
-				catch (Exception ex)
+				else
 				{
-					await InvokeAsync(() => AppendConsole($"❌ {row.PackageId}: {ex.Message}"));
-				}
-				finally
-				{
-					gate.Release();
-					row.IsReassessing = false;
-					var n = Interlocked.Increment(ref completed);
-					_progressMessage = $"Assessing ({n}/{assessable.Count})...";
-					await InvokeAsync(RefreshTableAsync);
+					await Dashboard.AssessRepositoryAsync(row, github);
 				}
 			});
-
-			await Task.WhenAll(tasks);
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
