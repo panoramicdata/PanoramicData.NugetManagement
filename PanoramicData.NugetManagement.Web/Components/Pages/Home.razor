@@ -1268,7 +1268,7 @@ else
 	/// </summary>
 	private async Task AssessInParallelAsync(IReadOnlyList<PackageDashboardRow> assessable, Func<PackageDashboardRow, Task> assessOne)
 	{
-		const int maxConcurrency = 6;
+		const int maxConcurrency = 10;
 		using var gate = new SemaphoreSlim(maxConcurrency);
 		var completed = 0;
 
