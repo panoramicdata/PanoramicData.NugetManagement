@@ -722,6 +722,188 @@ public class DashboardService
 		return success;
 	}
 
+	// ── Issue-centric ("dimensional flip") view + bulk apply across repositories ──
+
+	/// <summary>
+	/// Builds the issue-centric view (Category → Rule → Repository) from the assessed rows,
+	/// marking each occurrence's auto-remediability via the remediation registry.
+	/// </summary>
+	public IssueCentricView BuildIssueCentricView(IEnumerable<PackageDashboardRow> rows)
+	{
+		var entries = rows
+			.Where(r => r.RepositoryFullName is not null && r.Assessment is not null)
+			.Select(r => (r.RepositoryFullName!, r.Assessment!));
+		return IssueCentricViewBuilder.Build(entries, IsAutoRemediable);
+	}
+
+	/// <summary>
+	/// Generates a single consolidated AI prompt for one issue class across every affected repository.
+	/// </summary>
+	public string GenerateCombinedRulePrompt(IEnumerable<PackageDashboardRow> rows, string ruleId)
+	{
+		var issueClass = BuildIssueCentricView(rows).AllIssueClasses
+			.FirstOrDefault(i => string.Equals(i.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+		return issueClass is null ? string.Empty : CombinedRemediationPromptBuilder.ForRule(issueClass);
+	}
+
+	/// <summary>
+	/// Generates a single consolidated AI prompt for a category across every affected repository.
+	/// </summary>
+	public string GenerateCombinedCategoryPrompt(IEnumerable<PackageDashboardRow> rows, AssessmentCategory category, bool onlyNonRemediable = true)
+	{
+		var group = BuildIssueCentricView(rows).Categories.FirstOrDefault(c => c.Category == category);
+		return group is null ? string.Empty : CombinedRemediationPromptBuilder.ForCategory(group, onlyNonRemediable);
+	}
+
+	/// <summary>
+	/// Applies a single rule's remediation across every affected repository: sync → reassess →
+	/// apply → commit → push. Stops on the first failure. Only repositories where the rule is failing
+	/// are touched.
+	/// </summary>
+	public Task<BulkApplyOutcome> ApplyRuleAcrossReposAsync(
+		IEnumerable<PackageDashboardRow> rows,
+		string ruleId,
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var affected = rows.Where(r => RepoHasFailingRule(r, ruleId)).ToList();
+		return ApplyAcrossReposAsync(
+			affected,
+			row => ApplySingleRuleAsync(row, ruleId, onOutput),
+			$"chore: apply {ruleId} governance remediation",
+			onOutput,
+			cancellationToken);
+	}
+
+	/// <summary>
+	/// Applies all auto-remediable rules in a category across every affected repository.
+	/// </summary>
+	public Task<BulkApplyOutcome> ApplyCategoryAcrossReposAsync(
+		IEnumerable<PackageDashboardRow> rows,
+		AssessmentCategory category,
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var affected = rows.Where(r => RepoHasFailingCategory(r, category)).ToList();
+		return ApplyAcrossReposAsync(
+			affected,
+			row => ApplyCategoryRemediationsAsync(row, category, onOutput, cancellationToken),
+			$"chore: apply {category} governance remediations",
+			onOutput,
+			cancellationToken);
+	}
+
+	/// <summary>
+	/// Applies every auto-remediable rule across every affected repository (the global "fix everything").
+	/// </summary>
+	public Task<BulkApplyOutcome> ApplyEverythingAcrossReposAsync(
+		IEnumerable<PackageDashboardRow> rows,
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var affected = rows
+			.Where(r => r.RepositoryFullName is not null
+				&& r.Assessment?.RuleResults.Any(rr => !rr.Passed && IsAutoRemediable(rr)) == true)
+			.ToList();
+		return ApplyAcrossReposAsync(
+			affected,
+			row => ApplyRemediationsAsync(row, onOutput, cancellationToken),
+			"chore: apply governance remediations",
+			onOutput,
+			cancellationToken);
+	}
+
+	private Task<List<string>> ApplySingleRuleAsync(PackageDashboardRow row, string ruleId, Action<string>? onOutput)
+	{
+		var applied = new List<string>();
+		var fresh = row.Assessment?.RuleResults
+			.FirstOrDefault(rr => !rr.Passed && string.Equals(rr.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+		if (fresh is not null && row.LocalPath is not null && IsAutoRemediable(fresh))
+		{
+			ApplySingleRemediationPublic(row.LocalPath, fresh, applied, onOutput);
+		}
+
+		return Task.FromResult(applied);
+	}
+
+	private async Task<BulkApplyOutcome> ApplyAcrossReposAsync(
+		List<PackageDashboardRow> affected,
+		Func<PackageDashboardRow, Task<List<string>>> applyFunc,
+		string commitMessage,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var outcome = new BulkApplyOutcome();
+		onOutput?.Invoke($"Applying across {affected.Count} repositor{(affected.Count == 1 ? "y" : "ies")}...");
+
+		foreach (var row in affected)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			var name = row.RepositoryFullName ?? row.PackageId;
+			onOutput?.Invoke($"── {name} ──");
+
+			try
+			{
+				// Guardrail: never commit onto a stale clone — sync, then reassess the fresh tree.
+				await GitSyncAsync(row, onOutput, cancellationToken).ConfigureAwait(false);
+				await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+
+				var applied = await applyFunc(row).ConfigureAwait(false);
+				if (applied.Count == 0)
+				{
+					outcome.Results.Add(new RepoApplyResult
+					{
+						RepositoryFullName = name,
+						Status = RepoApplyStatus.NothingToDo,
+						Message = "No changes to apply after sync."
+					});
+					continue;
+				}
+
+				var pushed = await CommitAndPushAsync(row, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
+				outcome.Results.Add(new RepoApplyResult
+				{
+					RepositoryFullName = name,
+					Status = pushed ? RepoApplyStatus.Pushed : RepoApplyStatus.Failed,
+					Message = pushed ? $"{applied.Count} file(s) committed & pushed." : "Commit/push failed."
+				});
+
+				if (!pushed)
+				{
+					outcome.StoppedOnFailure = true;
+					onOutput?.Invoke("⛔ Stopping bulk apply: commit/push failed.");
+					break;
+				}
+			}
+			catch (OperationCanceledException)
+			{
+				throw;
+			}
+			catch (Exception ex)
+			{
+				outcome.Results.Add(new RepoApplyResult
+				{
+					RepositoryFullName = name,
+					Status = RepoApplyStatus.Failed,
+					Message = ex.Message
+				});
+				outcome.StoppedOnFailure = true;
+				onOutput?.Invoke($"⛔ Stopping bulk apply: {ex.Message}");
+				break;
+			}
+		}
+
+		return outcome;
+	}
+
+	private static bool RepoHasFailingRule(PackageDashboardRow row, string ruleId)
+		=> row.RepositoryFullName is not null
+			&& row.Assessment?.RuleResults.Any(rr => !rr.Passed && string.Equals(rr.RuleId, ruleId, StringComparison.OrdinalIgnoreCase)) == true;
+
+	private static bool RepoHasFailingCategory(PackageDashboardRow row, AssessmentCategory category)
+		=> row.RepositoryFullName is not null
+			&& row.Assessment?.RuleResults.Any(rr => !rr.Passed && rr.Category == category) == true;
+
 	/// <summary>
 	/// Refreshes the git status for a row (branch, working tree clean state, and sync status with origin).
 	/// </summary>

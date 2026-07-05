@@ -1,0 +1,355 @@
+@page "/issues"
+@rendermode InteractiveServer
+@inject DashboardService Dashboard
+@inject DashboardCacheService Cache
+@inject IJSRuntime JS
+
+<PageTitle>Issues by class — NuGet Management</PageTitle>
+
+<div class="issues-page">
+	<header class="issues-header">
+		<div>
+			<h1><i class="fas fa-layer-group"></i> Issues by class</h1>
+			<p class="muted">The dimensional flip of the dashboard: an issue class, then the repositories it affects. Fix one across every repo in a single action.</p>
+		</div>
+		<div class="header-actions">
+			<a class="btn btn-secondary" href="/"><i class="fas fa-arrow-left"></i> Dashboard</a>
+			@if (_view is { HasAutomatedRemediation: true })
+			{
+				<button class="btn btn-danger" disabled="@_busy" @onclick="ConfirmFixEverything" title="Apply every auto-fixable rule across every affected repository">
+					<i class="fas fa-bolt"></i> Fix everything
+				</button>
+			}
+		</div>
+	</header>
+
+	@if (_rows.Count == 0)
+	{
+		<p class="empty">No assessed repositories are cached. Run an assessment on the <a href="/">Dashboard</a> first.</p>
+	}
+	else if (_view is null || _view.IssueClassCount == 0)
+	{
+		<p class="empty">🎉 No issues found across @_rows.Count assessed repositories.</p>
+	}
+	else
+	{
+		<p class="summary">@_view.IssueClassCount issue class(es) across @_rows.Count repositories.</p>
+
+		@foreach (var cat in _view.Categories)
+		{
+			<div class="cat-node">
+				<div class="node-row cat-row">
+					<button class="expander" @onclick="() => ToggleCategory(cat.Category.ToString())">
+						<i class="fas @(IsExpanded(_expandedCats, cat.Category.ToString()) ? "fa-chevron-down" : "fa-chevron-right")"></i>
+					</button>
+					<span class="sev sev-@cat.Severity">@cat.Severity</span>
+					<strong>@cat.Category</strong>
+					<span class="muted">@cat.IssueClasses.Count rule(s) · @cat.AffectedRepositoryCount repo(s)</span>
+					<span class="actions">
+						@if (cat.HasAutomatedRemediation)
+						{
+							<button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyCategory(cat)">Apply auto-fixes</button>
+						}
+						<button class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="() => CopyCategoryPromptAsync(cat.Category)">Copy AI prompt</button>
+					</span>
+				</div>
+
+				@if (IsExpanded(_expandedCats, cat.Category.ToString()))
+				{
+					@foreach (var rule in cat.IssueClasses)
+					{
+						<div class="rule-node">
+							<div class="node-row rule-row">
+								<button class="expander" @onclick="() => ToggleRule(rule.RuleId)">
+									<i class="fas @(IsExpanded(_expandedRules, rule.RuleId) ? "fa-chevron-down" : "fa-chevron-right")"></i>
+								</button>
+								<span class="sev sev-@rule.Severity">@rule.Severity</span>
+								<strong>@rule.RuleId</strong>
+								<span>@rule.RuleName</span>
+								<span class="muted">@rule.AffectedRepositoryCount repo(s)</span>
+								<span class="actions">
+									@if (rule.HasAutomatedRemediation)
+									{
+										<button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyRule(rule)">
+											Apply &amp; push to @rule.AffectedRepositoryCount repo(s)
+										</button>
+									}
+									else
+									{
+										<button class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="() => CopyRulePromptAsync(rule.RuleId)">Copy combined AI prompt</button>
+									}
+								</span>
+							</div>
+
+							@if (IsExpanded(_expandedRules, rule.RuleId))
+							{
+								@foreach (var inst in rule.Instances)
+								{
+									<div class="node-row repo-row">
+										<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
+										<span class="repo-name">@inst.RepositoryFullName</span>
+										<span class="muted repo-msg">@Truncate(inst.Result.Message, 120)</span>
+										<span class="actions">
+											@if (inst.IsAutoRemediable)
+											{
+												<button class="btn btn-xs btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyRepo(rule.RuleId, inst.RepositoryFullName)">Apply here</button>
+											}
+											else
+											{
+												<button class="btn btn-xs btn-secondary" disabled="@_busy" @onclick="() => CopyRepoPromptAsync(rule.RuleId, inst.RepositoryFullName)">Copy prompt</button>
+											}
+										</span>
+									</div>
+								}
+							}
+						</div>
+					}
+				}
+			</div>
+		}
+	}
+
+	@if (_log.Count > 0)
+	{
+		<div class="console">
+			<div class="console-head">
+				<span><i class="fas fa-terminal"></i> Output</span>
+				<button class="btn btn-xs btn-secondary" @onclick="() => _log.Clear()">Clear</button>
+			</div>
+			<pre>@string.Join("\n", _log)</pre>
+		</div>
+	}
+</div>
+
+@if (_confirm is not null)
+{
+	<div class="modal-overlay" @onclick="CancelConfirm">
+		<div class="modal-box" @onclick:stopPropagation="true">
+			<h3><i class="fas fa-exclamation-triangle"></i> @_confirm.Title</h3>
+			<p>This will <strong>edit, commit and push to <code>main</code></strong> in the following @_confirm.Repos.Count repositor@(_confirm.Repos.Count == 1 ? "y" : "ies"):</p>
+			<ul class="repo-list">
+				@foreach (var r in _confirm.Repos)
+				{
+					<li>@r</li>
+				}
+			</ul>
+			<p class="warn"><i class="fas fa-info-circle"></i> Each repo is synced and re-assessed first, then fixed, committed and pushed. The operation <strong>stops on the first failure</strong>.</p>
+			<div class="modal-actions">
+				<button class="btn btn-secondary" @onclick="CancelConfirm">Cancel</button>
+				<button class="btn btn-danger" @onclick="RunConfirmedAsync">
+					<i class="fas fa-bolt"></i> Confirm — push to @_confirm.Repos.Count repo(s)
+				</button>
+			</div>
+		</div>
+	</div>
+}
+
+<style>
+	/* The shared .app-shell is height:100vh; overflow:hidden, so this page must own its scroll. */
+	.issues-page { height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem 1.5rem 3rem; }
+	.issues-page > * { max-width: 1200px; margin-left: auto; margin-right: auto; }
+	.issues-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+	.issues-header h1 { font-size: 1.4rem; margin: 0; }
+	.header-actions { display: flex; gap: .5rem; flex-shrink: 0; }
+	.muted { color: var(--bs-secondary-color, #888); font-size: .85rem; }
+	.summary { font-weight: 600; margin: .5rem 0 1rem; }
+	.empty { padding: 2rem 0; }
+	.cat-node { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
+	.node-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; }
+	.cat-row { background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); }
+	.rule-row { padding-left: 1.6rem; border-top: 1px solid var(--bs-border-color, #2a2a2a); }
+	.repo-row { padding-left: 3rem; border-top: 1px dashed var(--bs-border-color, #2a2a2a); font-size: .9rem; }
+	.node-row .actions { margin-left: auto; display: flex; gap: .35rem; flex-shrink: 0; }
+	.expander { background: none; border: none; cursor: pointer; color: inherit; width: 1.2rem; }
+	.repo-name { font-family: monospace; }
+	.repo-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.repo-dot { width: .6rem; height: .6rem; border-radius: 50%; display: inline-block; }
+	.repo-dot.fixable { background: #2e7d32; }
+	.repo-dot.manual { background: #b26a00; }
+	.sev { font-size: .7rem; text-transform: uppercase; padding: .1rem .4rem; border-radius: 3px; font-weight: 700; }
+	.sev-Critical { background: #7f1d1d; color: #fff; }
+	.sev-Error { background: #b91c1c; color: #fff; }
+	.sev-Warning { background: #b45309; color: #fff; }
+	.sev-Info { background: #374151; color: #fff; }
+	.btn-xs { font-size: .72rem; padding: .1rem .4rem; }
+	.console { margin-top: 1rem; border: 1px solid var(--bs-border-color, #333); border-radius: 6px; }
+	.console-head { display: flex; justify-content: space-between; padding: .3rem .6rem; background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); }
+	.console pre { margin: 0; padding: .6rem; max-height: 320px; overflow: auto; font-size: .8rem; white-space: pre-wrap; }
+	.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 1050; }
+	.modal-box { background: var(--bs-body-bg, #1e1e1e); color: var(--bs-body-color, #eee); border: 1px solid var(--bs-border-color, #444); border-radius: 8px; padding: 1.2rem 1.4rem; max-width: 560px; width: 90%; max-height: 80vh; overflow: auto; }
+	.repo-list { max-height: 240px; overflow: auto; font-family: monospace; font-size: .85rem; }
+	.warn { color: #f0ad4e; font-size: .85rem; }
+	.modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+</style>
+
+@code {
+	private List<PackageDashboardRow> _rows = [];
+	private IssueCentricView? _view;
+	private readonly HashSet<string> _expandedCats = new(StringComparer.OrdinalIgnoreCase);
+	private readonly HashSet<string> _expandedRules = new(StringComparer.OrdinalIgnoreCase);
+	private readonly List<string> _log = [];
+	private bool _busy;
+	private PendingConfirm? _confirm;
+
+	protected override void OnInitialized() => LoadView();
+
+	private void LoadView()
+	{
+		_rows = Cache.GetCachedRows() ?? [];
+		_view = Dashboard.BuildIssueCentricView(_rows);
+	}
+
+	private static bool IsExpanded(HashSet<string> set, string key) => set.Contains(key);
+
+	private void ToggleCategory(string key)
+	{
+		if (!_expandedCats.Add(key))
+		{
+			_expandedCats.Remove(key);
+		}
+	}
+
+	private void ToggleRule(string ruleId)
+	{
+		if (!_expandedRules.Add(ruleId))
+		{
+			_expandedRules.Remove(ruleId);
+		}
+	}
+
+	private static string Truncate(string value, int max)
+		=> string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..max] + "…";
+
+	// ── Confirmation set-up (bulk apply gated behind the modal) ──
+
+	private void ConfirmApplyRule(IssueClassGroup rule)
+	{
+		var repos = rule.Instances.Where(i => i.IsAutoRemediable).Select(i => i.RepositoryFullName).ToList();
+		_confirm = new PendingConfirm
+		{
+			Title = $"Apply {rule.RuleId} across {repos.Count} repositories",
+			Repos = repos,
+			Action = (log, ct) => Dashboard.ApplyRuleAcrossReposAsync(_rows, rule.RuleId, log, ct)
+		};
+	}
+
+	private void ConfirmApplyCategory(IssueCategoryGroup cat)
+	{
+		var repos = cat.IssueClasses
+			.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable).Select(i => i.RepositoryFullName))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		_confirm = new PendingConfirm
+		{
+			Title = $"Apply all auto-fixes in {cat.Category}",
+			Repos = repos,
+			Action = (log, ct) => Dashboard.ApplyCategoryAcrossReposAsync(_rows, cat.Category, log, ct)
+		};
+	}
+
+	private void ConfirmApplyRepo(string ruleId, string repoFullName)
+	{
+		var scoped = _rows.Where(r => string.Equals(r.RepositoryFullName, repoFullName, StringComparison.OrdinalIgnoreCase)).ToList();
+		_confirm = new PendingConfirm
+		{
+			Title = $"Apply {ruleId} to {repoFullName}",
+			Repos = [repoFullName],
+			Action = (log, ct) => Dashboard.ApplyRuleAcrossReposAsync(scoped, ruleId, log, ct)
+		};
+	}
+
+	private void ConfirmFixEverything()
+	{
+		var repos = _view is null
+			? []
+			: _view.AllIssueClasses
+				.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable).Select(i => i.RepositoryFullName))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+		_confirm = new PendingConfirm
+		{
+			Title = "Fix everything (all auto-fixable issues, all repos)",
+			Repos = repos,
+			Action = (log, ct) => Dashboard.ApplyEverythingAcrossReposAsync(_rows, log, ct)
+		};
+	}
+
+	private void CancelConfirm() => _confirm = null;
+
+	private async Task RunConfirmedAsync()
+	{
+		var pending = _confirm;
+		_confirm = null;
+		if (pending is null)
+		{
+			return;
+		}
+
+		_busy = true;
+		_log.Clear();
+		try
+		{
+			var outcome = await pending.Action(Append, CancellationToken.None);
+			Append($"— Done: {outcome.PushedCount} pushed, {outcome.FailedCount} failed{(outcome.StoppedOnFailure ? " (stopped on failure)" : "")}.");
+			LoadView();
+		}
+		catch (Exception ex)
+		{
+			Append($"⛔ Error: {ex.Message}");
+		}
+		finally
+		{
+			_busy = false;
+		}
+	}
+
+	private void Append(string line)
+	{
+		_log.Add(line);
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	// ── Combined / per-repo AI prompt copy ──
+
+	private Task CopyRulePromptAsync(string ruleId)
+		=> CopyAsync(Dashboard.GenerateCombinedRulePrompt(_rows, ruleId), $"combined prompt for {ruleId}");
+
+	private Task CopyCategoryPromptAsync(AssessmentCategory category)
+		=> CopyAsync(Dashboard.GenerateCombinedCategoryPrompt(_rows, category, onlyNonRemediable: true), $"combined prompt for {category}");
+
+	private Task CopyRepoPromptAsync(string ruleId, string repoFullName)
+	{
+		var row = _rows.FirstOrDefault(r => string.Equals(r.RepositoryFullName, repoFullName, StringComparison.OrdinalIgnoreCase));
+		var result = row?.Assessment?.RuleResults.FirstOrDefault(rr => !rr.Passed && string.Equals(rr.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+		var prompt = row is not null && result is not null
+			? DashboardService.GenerateRuleRemediationPrompt(row, result)
+			: string.Empty;
+		return CopyAsync(prompt, $"prompt for {repoFullName}");
+	}
+
+	private async Task CopyAsync(string text, string label)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			Append($"⚠️ Nothing to copy for {label}.");
+			return;
+		}
+
+		try
+		{
+			await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+			Append($"📋 Copied {label} to clipboard ({text.Length:N0} chars).");
+		}
+		catch (Exception ex)
+		{
+			Append($"⚠️ Copy failed: {ex.Message}");
+		}
+	}
+
+	private sealed class PendingConfirm
+	{
+		public required string Title { get; init; }
+		public required List<string> Repos { get; init; }
+		public required Func<Action<string>, CancellationToken, Task<BulkApplyOutcome>> Action { get; init; }
+	}
+}

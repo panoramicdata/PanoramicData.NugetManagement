@@ -12,6 +12,13 @@ public class FailArmyTests : TestWithOutput
 	private readonly RepositoryContext _failContext;
 
 	/// <summary>
+	/// Rules that cannot fail from repository files alone because they depend on live external
+	/// state (e.g. a Codacy API token and server-side analysis). These are excluded from the
+	/// "every rule must fail" invariant — with no external state configured they correctly report N/A.
+	/// </summary>
+	private static readonly string[] _externalStateRuleIds = ["CQ-05"];
+
+	/// <summary>
 	/// Initializes a new instance of the <see cref="FailArmyTests"/> class.
 	/// </summary>
 	/// <param name="output">The test output helper.</param>
@@ -29,7 +36,7 @@ public class FailArmyTests : TestWithOutput
 		{
 			var result = await rule.EvaluateAsync(_failContext, CancellationToken.None);
 			Output.WriteLine($"[{(result.Passed ? "PASS" : "FAIL")}] {result.RuleId}: {result.Message}");
-			if (result.Passed)
+			if (result.Passed && !_externalStateRuleIds.Contains(result.RuleId, StringComparer.OrdinalIgnoreCase))
 			{
 				unexpectedPasses.Add(result);
 			}
@@ -87,7 +94,9 @@ public class FailArmyTests : TestWithOutput
 		Output.WriteLine($"Critical: {assessment.CriticalCount}, Errors: {assessment.ErrorCount}, Warnings: {assessment.WarningCount}");
 
 		assessment.IsCompliant.Should().BeFalse();
-		assessment.FailedCount.Should().Be(ruleResults.Count, "every rule should fail");
+		ruleResults
+			.Where(r => !_externalStateRuleIds.Contains(r.RuleId, StringComparer.OrdinalIgnoreCase))
+			.Should().OnlyContain(r => !r.Passed, "every file-based rule should fail against the FailArmy fixture");
 	}
 
 	[Fact]

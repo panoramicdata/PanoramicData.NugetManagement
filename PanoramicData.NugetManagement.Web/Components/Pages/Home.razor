@@ -194,6 +194,14 @@ else
 											 ToolTip="Refresh package list"
 											 Click="OnToolbarClick" />
 
+							<PDToolbarButton Key="issues-view"
+											 Text="Issues View"
+											 IconCssClass="fas fa-layer-group"
+											 CssClass="btn-primary"
+											 IsVisible="@(_currentView is NavView.Dashboard or NavView.None)"
+											 ToolTip="Switch to the issue-centric view (fix an issue class across all repos)"
+											 Click="OnToolbarClick" />
+
 							<PDToolbarButton Key="check-for-updates"
 											 Text="Check for Updates"
 											 IconCssClass="fas fa-arrow-circle-up"
@@ -624,6 +632,9 @@ else
 		{
 			case "refresh":
 				await RefreshAsync();
+				break;
+			case "issues-view":
+				Navigation.NavigateTo("/issues");
 				break;
 			case "check-for-updates":
 				await NuGetUpdates.CheckForUpdatesAsync(StateHasChanged);
