@@ -378,6 +378,113 @@ public class LocalRepoService
 	}
 
 	/// <summary>
+	/// Runs a full dotnet build (with restore) on the repository. Used by the regression guard so a
+	/// stale/absent restore never produces a false build failure (and a false rollback).
+	/// </summary>
+	public async Task<(bool Success, string Output)> BuildWithRestoreAsync(
+		string repoName,
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		_logger.LogInformation("Building (with restore) in {Path}", path);
+		return await RunCommandWithStreamingAsync(path, "dotnet", "build --verbosity quiet", onOutput, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Gets the most recent commits (hash + subject line), newest first.
+	/// </summary>
+	public async Task<IReadOnlyList<(string Hash, string Subject)>> GetRecentCommitsAsync(
+		string repoName,
+		int count = 20,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		var (ok, output) = await RunCommandWithStreamingAsync(
+			path, "git", $"log -n {count} --pretty=format:%H%x1f%s", null, cancellationToken).ConfigureAwait(false);
+		if (!ok)
+		{
+			return [];
+		}
+
+		var commits = new List<(string Hash, string Subject)>();
+		foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			var parts = line.Split('\u001f', 2);
+			if (parts.Length == 2)
+			{
+				commits.Add((parts[0].Trim(), parts[1].Trim()));
+			}
+		}
+
+		return commits;
+	}
+
+	/// <summary>
+	/// Builds the repository at a specific commit (detached HEAD), always restoring the original
+	/// branch afterwards. Used to confirm whether a build regression was introduced by our commits.
+	/// </summary>
+	public async Task<(bool Success, string Output)> BuildAtCommitAsync(
+		string repoName,
+		string commitHash,
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		var branch = await GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
+
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", $"checkout {commitHash}", onOutput, cancellationToken).ConfigureAwait(false);
+		if (!ok)
+		{
+			return (false, output);
+		}
+
+		try
+		{
+			// Use a full build (with restore) since dependencies may differ at the parent commit.
+			return await RunCommandWithStreamingAsync(path, "dotnet", "build --verbosity quiet", onOutput, cancellationToken).ConfigureAwait(false);
+		}
+		finally
+		{
+			if (!string.IsNullOrWhiteSpace(branch))
+			{
+				await RunCommandWithStreamingAsync(path, "git", $"checkout {branch}", onOutput, cancellationToken).ConfigureAwait(false);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Reverts every commit after <paramref name="lastGoodCommitHash"/> up to HEAD as a single revert
+	/// commit, then pushes. Used to automatically undo a regression we introduced. On revert conflict
+	/// the revert is aborted and failure is returned (no partial state is pushed).
+	/// </summary>
+	public async Task<(bool Success, string Output)> RevertRangeAndPushAsync(
+		string repoName,
+		string lastGoodCommitHash,
+		string message,
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+
+		var (ok, output) = await RunCommandWithStreamingAsync(
+			path, "git", $"revert --no-edit --no-commit {lastGoodCommitHash}..HEAD", onOutput, cancellationToken).ConfigureAwait(false);
+		if (!ok)
+		{
+			await RunCommandWithStreamingAsync(path, "git", "revert --abort", onOutput, cancellationToken).ConfigureAwait(false);
+			return (false, output);
+		}
+
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", $"commit -m \"{message}\"", onOutput, cancellationToken).ConfigureAwait(false);
+		if (!ok)
+		{
+			return (false, output);
+		}
+
+		return await RunCommandWithStreamingAsync(path, "git", "push", onOutput, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
 	/// Syncs a local repository with its remote: fetch, pull (rebase), push.
 	/// </summary>
 	public async Task<(bool Success, string Output)> GitSyncAsync(

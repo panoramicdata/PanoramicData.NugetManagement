@@ -15,6 +15,7 @@ public class DashboardService
 {
 	private readonly NuGetDiscoveryService _nuget;
 	private readonly LocalRepoService _localRepo;
+	private readonly RegressionGuardService _regressionGuard;
 	private readonly AppSettings _settings;
 	private readonly ILogger<DashboardService> _logger;
 
@@ -25,11 +26,13 @@ public class DashboardService
 		NuGetDiscoveryService nuget,
 		LocalRepoService localRepo,
 		RemediationRegistry remediationRegistry,
+		RegressionGuardService regressionGuard,
 		IOptions<AppSettings> settings,
 		ILogger<DashboardService> logger)
 	{
 		_nuget = nuget;
 		_localRepo = localRepo;
+		_regressionGuard = regressionGuard;
 		RemediationRegistry = remediationRegistry;
 		_settings = settings.Value;
 		_logger = logger;
@@ -867,6 +870,13 @@ public class DashboardService
 					Status = pushed ? RepoApplyStatus.Pushed : RepoApplyStatus.Failed,
 					Message = pushed ? $"{applied.Count} file(s) committed & pushed." : "Commit/push failed."
 				});
+
+				if (pushed && row.RepositoryFullName is not null)
+				{
+					// Verify the build in the background; auto-revert if our change broke it.
+					_regressionGuard.Enqueue(row.RepositoryFullName);
+					onOutput?.Invoke($"🛡️ Queued {row.RepositoryFullName} for build verification.");
+				}
 
 				if (!pushed)
 				{

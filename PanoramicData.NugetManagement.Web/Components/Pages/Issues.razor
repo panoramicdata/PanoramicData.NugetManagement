@@ -1,8 +1,10 @@
 @page "/issues"
 @rendermode InteractiveServer
+@implements IDisposable
 @using PanoramicData.NugetManagement.Services
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
+@inject RegressionGuardService Guard
 @inject IJSRuntime JS
 
 <PageTitle>Issues by class — NuGet Management</PageTitle>
@@ -32,6 +34,21 @@
 				<strong>Standard version baseline updated</strong> from an observed repository — commit <code>action-versions.json</code> to roll this out to everyone:
 				@string.Join(", ", _bumps.Select(b => $"{b.Action} {b.From}→{b.To}"))
 			</span>
+		</div>
+	}
+
+	@if (Guard.Statuses.Count > 0)
+	{
+		<div class="guard-panel">
+			<div class="guard-head"><i class="fas fa-shield-halved"></i> Build guard — repositories we changed are built in the background; regressions we caused are auto-reverted</div>
+			@foreach (var s in Guard.Statuses)
+			{
+				<div class="node-row guard-row">
+					<span class="guard-badge guard-@s.State">@s.State</span>
+					<span class="repo-name">@s.RepositoryFullName</span>
+					<span class="muted repo-msg">@s.Message</span>
+				</div>
+			}
 		</div>
 	}
 
@@ -166,6 +183,15 @@
 	.muted { color: var(--bs-secondary-color, #888); font-size: .85rem; }
 	.summary { font-weight: 600; margin: .5rem 0 1rem; }
 	.baseline-banner { display: flex; gap: .6rem; align-items: center; background: #1f3a2e; border: 1px solid #2e7d32; color: #d7f5df; padding: .6rem .8rem; border-radius: 6px; margin: .5rem 0 1rem; font-size: .9rem; }
+	.guard-panel { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem 0 1rem; overflow: hidden; }
+	.guard-head { padding: .4rem .6rem; background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); font-weight: 600; font-size: .85rem; }
+	.guard-row { border-top: 1px solid var(--bs-border-color, #2a2a2a); font-size: .85rem; }
+	.guard-badge { font-size: .68rem; text-transform: uppercase; font-weight: 700; padding: .1rem .4rem; border-radius: 3px; color: #fff; white-space: nowrap; }
+	.guard-Queued, .guard-Building { background: #374151; }
+	.guard-Verified { background: #2e7d32; }
+	.guard-RegressionReverted { background: #b45309; }
+	.guard-BuildFailingNotOurs { background: #6b7280; }
+	.guard-Error { background: #b91c1c; }
 	.empty { padding: 2rem 0; }
 	.cat-node { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
 	.node-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; }
@@ -205,7 +231,15 @@
 	private bool _busy;
 	private PendingConfirm? _confirm;
 
-	protected override void OnInitialized() => LoadView();
+	protected override void OnInitialized()
+	{
+		LoadView();
+		Guard.StatusesChanged += OnGuardChanged;
+	}
+
+	private void OnGuardChanged() => _ = InvokeAsync(StateHasChanged);
+
+	public void Dispose() => Guard.StatusesChanged -= OnGuardChanged;
 
 	private void LoadView()
 	{

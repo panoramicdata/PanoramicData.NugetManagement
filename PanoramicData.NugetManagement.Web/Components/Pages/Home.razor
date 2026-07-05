@@ -1592,12 +1592,16 @@ else
 		{
 			var github = CreateGitHubClient();
 
-			for (var i = 0; i < assessable.Count; i++)
-			{
-				var row = assessable[i];
-				_progressMessage = $"Assessing ({i + 1}/{assessable.Count}): {row.PackageId}...";
-				StateHasChanged();
+			// Assess repositories in parallel with a bounded degree of concurrency. All UI/console
+			// mutation is marshalled onto the renderer's synchronization context via InvokeAsync so
+			// the shared row/console state is only ever touched from one context.
+			const int maxConcurrency = 6;
+			using var gate = new SemaphoreSlim(maxConcurrency);
+			var completed = 0;
 
+			var tasks = assessable.Select(async row =>
+			{
+				await gate.WaitAsync();
 				try
 				{
 					if (row.IsClonedLocally && row.LocalPath is not null)
@@ -1612,12 +1616,19 @@ else
 				}
 				catch (Exception ex)
 				{
-					AppendConsole($"❌ {row.PackageId}: {ex.Message}");
+					await InvokeAsync(() => AppendConsole($"❌ {row.PackageId}: {ex.Message}"));
 				}
+				finally
+				{
+					gate.Release();
+					row.IsReassessing = false;
+					var n = Interlocked.Increment(ref completed);
+					_progressMessage = $"Assessing ({n}/{assessable.Count})...";
+					await InvokeAsync(RefreshTableAsync);
+				}
+			});
 
-				row.IsReassessing = false;
-				await RefreshTableAsync();
-			}
+			await Task.WhenAll(tasks);
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
