@@ -125,9 +125,16 @@ public class PackageDashboardRow
 	{
 		get
 		{
-			if (Assessment is null || IsReassessing)
+			// Spinner only while an assessment is genuinely in progress.
+			if (IsReassessing || Status is PackageStatus.Assessing)
 			{
 				return PackageHealthStatus.Pending;
+			}
+
+			// No assessment and nothing running → not assessable / not yet assessed (static icon, no spinner).
+			if (Assessment is null)
+			{
+				return PackageHealthStatus.Unknown;
 			}
 
 			if (TotalFailures == 0)
@@ -175,7 +182,13 @@ public enum PackageHealthStatus
 	/// <summary>
 	/// Informational failures only.
 	/// </summary>
-	Info
+	Info,
+
+	/// <summary>
+	/// No assessment is available and none is in progress — e.g. the package has no
+	/// repository URL in its NuGet metadata, or the repository could not be reached.
+	/// </summary>
+	Unknown
 }
 
 /// <summary>

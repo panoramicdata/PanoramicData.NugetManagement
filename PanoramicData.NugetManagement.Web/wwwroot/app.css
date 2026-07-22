@@ -59,6 +59,38 @@ html, body {
     color: #8b5a2b !important;
 }
 
+/* Locally-cloned repo marker: a small branch glyph after the health cube. */
+.tree-node-local::after {
+    content: "\f126"; /* Font Awesome fa-code-branch */
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: 0.7em;
+    margin-left: 4px;
+    vertical-align: middle;
+    color: var(--accent);
+    opacity: 0.85;
+}
+
+/* "Local only" filter toggle — right-aligned under the repo filter box. */
+.nav-tree-local-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    width: 100%;
+    margin-top: 5px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+
+.nav-tree-local-toggle input {
+    margin: 0;
+    position: relative;
+    top: -1px;
+}
+
 .toolbar-action-btn {
     padding: 0.35rem 0.5rem;
     font-size: 0.9rem;
@@ -1559,6 +1591,11 @@ h1:focus {
 
 .pd-tree .pd-tree-node-icon {
     color: var(--text-muted);
+}
+
+/* Gap between every tree node's icon and its label text (root gauge, cubes, category/rule icons). */
+.pdtreenode_content > i {
+    margin-right: 4px;
 }
 
 /* === PDSplitter Gutter Dark Theme === */

@@ -59,6 +59,10 @@ else
 									</button>
 								}
 							</div>
+							<label class="nav-tree-local-toggle" title="Show only locally-cloned repositories">
+								<input type="checkbox" checked="@_localOnly" @onchange="OnLocalOnlyChanged" />
+								<span>Local only</span>
+							</label>
 							@if (_treeFilterError is not null)
 							{
 								<div class="filter-error">@_treeFilterError</div>
@@ -351,6 +355,7 @@ else
 	private string _treeFilterText = string.Empty;
 	private string? _treeFilterError;
 	private System.Threading.Timer? _treeFilterDebounce;
+	private bool _localOnly;
 
 	// === Dashboard state ===
 	private bool _isLoading;
@@ -602,10 +607,7 @@ else
 			}
 		}
 
-		if (_navTree is not null)
-		{
-			await _navTree.RefreshAsync().ConfigureAwait(true);
-		}
+		await RefreshTreeStructureAsync();
 
 		StateHasChanged();
 	}
@@ -616,12 +618,45 @@ else
 		_treeFilterError = null;
 		NavDataProvider.FilterRegex = null;
 
-		if (_navTree is not null)
-		{
-			await _navTree.RefreshAsync().ConfigureAwait(true);
-		}
+		await RefreshTreeStructureAsync();
 
 		StateHasChanged();
+	}
+
+	private async Task OnLocalOnlyChanged(ChangeEventArgs e)
+	{
+		_localOnly = e.Value is true;
+		NavDataProvider.LocalOnly = _localOnly;
+
+		await RefreshTreeStructureAsync();
+
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Reloads the tree's top-level node children so filter changes (regex / local-only) are
+	/// actually applied. PDTree.RefreshAsync only refreshes the selected node's path and never
+	/// reloads the organisation node's children, so on its own it does not prune filtered-out
+	/// packages. RefreshNodeAsync clears and re-fetches a node's children from the data provider,
+	/// which applies the current filter.
+	/// </summary>
+	private async Task RefreshTreeStructureAsync()
+	{
+		if (_navTree is null)
+		{
+			return;
+		}
+
+		var topNodes = _navTree.RootNode.Nodes?.ToList();
+		if (topNodes is null)
+		{
+			return;
+		}
+
+		foreach (var node in topNodes)
+		{
+			await _navTree.RefreshNodeAsync(node).ConfigureAwait(true);
+		}
 	}
 
 	// === Toolbar ===
@@ -2457,7 +2492,12 @@ else
 
 				if (row.Assessment is null)
 				{
-					return $"{row.PackageId} — not yet assessed";
+					return row.Status switch
+					{
+						PackageStatus.Assessing => $"{row.PackageId} — assessing…",
+						PackageStatus.Error => $"{row.PackageId} — not assessable: {row.StatusMessage}",
+						_ => $"{row.PackageId} — not yet assessed"
+					};
 				}
 
 				if (row.TotalFailures == 0)
