@@ -2485,7 +2485,7 @@ else
 	{
 		if (!row.IsClonedLocally)
 		{
-			return " · not cloned locally";
+			return "\n• Not cloned locally";
 		}
 
 		var sync = row.IsSyncedWithOrigin switch
@@ -2496,7 +2496,7 @@ else
 		};
 
 		var dirty = row.IsWorkingTreeClean == false ? "; uncommitted changes" : string.Empty;
-		return $" · local clone, {sync}{dirty}";
+		return $"\n• Local clone, {sync}{dirty}";
 	}
 
 	private string GetNavItemTooltip(NavItem item)
@@ -2518,25 +2518,25 @@ else
 				{
 					return row.Status switch
 					{
-						PackageStatus.Assessing => $"{row.PackageId} — assessing…{GetLocalStateSuffix(row)}",
-						PackageStatus.Error => $"{row.PackageId} — not assessable: {row.StatusMessage}{GetLocalStateSuffix(row)}",
-						_ => $"{row.PackageId} — not yet assessed{GetLocalStateSuffix(row)}"
+						PackageStatus.Assessing => $"{row.PackageId}\n• assessing…{GetLocalStateSuffix(row)}",
+						PackageStatus.Error => $"{row.PackageId}\n• not assessable: {row.StatusMessage}{GetLocalStateSuffix(row)}",
+						_ => $"{row.PackageId}\n• not yet assessed{GetLocalStateSuffix(row)}"
 					};
 				}
 
 				if (row.TotalFailures == 0)
 				{
-					return $"{row.PackageId} — all rules pass ✓ (green = compliant){GetLocalStateSuffix(row)}";
+					return $"{row.PackageId}\n• all rules pass ✓ (green = compliant){GetLocalStateSuffix(row)}";
 				}
 
 				if (row.TotalErrors > 0)
 				{
-					return $"{row.PackageId} — {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found){GetLocalStateSuffix(row)}";
+					return $"{row.PackageId}\n• {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found){GetLocalStateSuffix(row)}";
 				}
 
 				return row.TotalWarnings > 0
-					? $"{row.PackageId} — {row.TotalWarnings} warning(s) (amber = warnings only){GetLocalStateSuffix(row)}"
-					: $"{row.PackageId} — informational only (blue = info){GetLocalStateSuffix(row)}";
+					? $"{row.PackageId}\n• {row.TotalWarnings} warning(s) (amber = warnings only){GetLocalStateSuffix(row)}"
+					: $"{row.PackageId}\n• informational only (blue = info){GetLocalStateSuffix(row)}";
 
 			case NavView.CategoryDetail:
 				if (item.IssueCount == 0)
