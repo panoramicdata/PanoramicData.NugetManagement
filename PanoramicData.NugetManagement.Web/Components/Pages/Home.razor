@@ -76,11 +76,17 @@ else
 									ParentKeyField="x => x.ParentKey!"
 									TextField="x => x.Text"
 									IsLeaf="x => x.IsLeaf"
-									IconCssClass="(item, _) => item.IconCss"
+									IconCssClass="(item, _) => string.Empty"
 									ToolTip="GetNavItemTooltip"
 									AllowSelection="true"
 									ShowRoot="true"
-									SelectionChange="OnNavSelectionChanged" />
+									SelectionChange="OnNavSelectionChanged">
+									<NodeTemplate Context="node">
+										<span class="nav-node-label" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+											<i class="@node.Data?.IconCss"></i>@node.Data?.Text
+										</span>
+									</NodeTemplate>
+								</PDTree>
 						</div>
 						<div class="nav-footer">
 							<a href="/ci-template" class="nav-footer-link">
@@ -2475,6 +2481,24 @@ else
 
 	// === Utility methods ===
 
+	private static string GetLocalStateSuffix(PackageDashboardRow row)
+	{
+		if (!row.IsClonedLocally)
+		{
+			return " · not cloned locally";
+		}
+
+		var sync = row.IsSyncedWithOrigin switch
+		{
+			true => "in sync with origin",
+			false => "out of sync with origin",
+			_ => "sync state unknown"
+		};
+
+		var dirty = row.IsWorkingTreeClean == false ? "; uncommitted changes" : string.Empty;
+		return $" · local clone, {sync}{dirty}";
+	}
+
 	private string GetNavItemTooltip(NavItem item)
 	{
 		switch (item.View)
@@ -2494,25 +2518,25 @@ else
 				{
 					return row.Status switch
 					{
-						PackageStatus.Assessing => $"{row.PackageId} — assessing…",
-						PackageStatus.Error => $"{row.PackageId} — not assessable: {row.StatusMessage}",
-						_ => $"{row.PackageId} — not yet assessed"
+						PackageStatus.Assessing => $"{row.PackageId} — assessing…{GetLocalStateSuffix(row)}",
+						PackageStatus.Error => $"{row.PackageId} — not assessable: {row.StatusMessage}{GetLocalStateSuffix(row)}",
+						_ => $"{row.PackageId} — not yet assessed{GetLocalStateSuffix(row)}"
 					};
 				}
 
 				if (row.TotalFailures == 0)
 				{
-					return $"{row.PackageId} — all rules pass ✓ (green = compliant)";
+					return $"{row.PackageId} — all rules pass ✓ (green = compliant){GetLocalStateSuffix(row)}";
 				}
 
 				if (row.TotalErrors > 0)
 				{
-					return $"{row.PackageId} — {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found)";
+					return $"{row.PackageId} — {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found){GetLocalStateSuffix(row)}";
 				}
 
 				return row.TotalWarnings > 0
-					? $"{row.PackageId} — {row.TotalWarnings} warning(s) (amber = warnings only)"
-					: $"{row.PackageId} — informational only (blue = info)";
+					? $"{row.PackageId} — {row.TotalWarnings} warning(s) (amber = warnings only){GetLocalStateSuffix(row)}"
+					: $"{row.PackageId} — informational only (blue = info){GetLocalStateSuffix(row)}";
 
 			case NavView.CategoryDetail:
 				if (item.IssueCount == 0)

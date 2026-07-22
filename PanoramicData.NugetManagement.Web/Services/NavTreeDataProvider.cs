@@ -120,6 +120,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				if (row.IsClonedLocally)
 				{
 					pkgIcon += " tree-node-local";
+
+					// Colour the branch glyph by sync state: amber if out of sync, muted if unknown.
+					if (row.IsSyncedWithOrigin == false)
+					{
+						pkgIcon += " tree-node-out-of-sync";
+					}
+					else if (row.IsSyncedWithOrigin is null)
+					{
+						pkgIcon += " tree-node-sync-unknown";
+					}
 				}
 
 				if (row.IsWorkingTreeClean == false)

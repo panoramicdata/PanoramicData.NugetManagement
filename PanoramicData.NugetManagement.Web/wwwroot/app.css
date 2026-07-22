@@ -71,6 +71,17 @@ html, body {
     opacity: 0.85;
 }
 
+/* Local-clone sync state colours the branch glyph: amber if behind/ahead of origin,
+   muted grey if the sync state is unknown. Placed after .tree-node-local::after so
+   the (equal-specificity) colour override wins by source order. */
+.tree-node-out-of-sync::after {
+    color: var(--warning);
+}
+
+.tree-node-sync-unknown::after {
+    color: var(--text-muted);
+}
+
 /* "Local only" filter toggle — right-aligned under the repo filter box. */
 .nav-tree-local-toggle {
     display: flex;
@@ -1631,8 +1642,13 @@ h1:focus {
     color: var(--text-muted);
 }
 
+/* The whole node label (icon + text) wrapped so the tooltip covers the icon on hover. */
+.nav-node-label {
+    display: inline;
+}
+
 /* Gap between every tree node's icon and its label text (root gauge, cubes, category/rule icons). */
-.pdtreenode_content > i {
+.nav-node-label > i {
     margin-right: 4px;
 }
 
