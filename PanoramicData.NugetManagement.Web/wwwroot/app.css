@@ -182,8 +182,19 @@ html, body {
 }
 
 .progress-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4.6px;
     color: var(--text-muted);
     font-size: 0.85rem;
+}
+
+.progress-indicator .spinner {
+    width: 12px;
+    height: 12px;
+    border-width: 1.5px;
+    position: relative;
+    top: 1px;
 }
 
 .governance-table {
