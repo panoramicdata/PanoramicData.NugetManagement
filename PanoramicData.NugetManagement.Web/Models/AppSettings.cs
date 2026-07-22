@@ -52,4 +52,24 @@ public class AppSettings
 	/// Defaults to the parent of the current working directory.
 	/// </summary>
 	public string? LocalReposRoot { get; set; }
+
+	/// <summary>
+	/// Development-only: when true (and the environment is Development), the GitHub OAuth
+	/// sign-in is bypassed with a synthetic local identity. Never honoured in Production.
+	/// </summary>
+	public bool DevAuthBypass { get; set; }
+
+	/// <summary>
+	/// The user name presented by the development auth bypass.
+	/// </summary>
+	public string DevAuthUser { get; set; } = "dev";
+
+	/// <summary>
+	/// Optional GitHub Personal Access Token (classic) surfaced as the access_token under the
+	/// development auth bypass, enabling GitHub API calls (e.g. assessing un-cloned repositories)
+	/// without the interactive OAuth sign-in. Requires the same scopes the OAuth flow requests:
+	/// <c>repo</c> (read/write repository contents) and <c>read:org</c> (read organization membership).
+	/// Generate one at https://github.com/settings/tokens (Tokens (classic)).
+	/// </summary>
+	public string? GitHubPat { get; set; }
 }
