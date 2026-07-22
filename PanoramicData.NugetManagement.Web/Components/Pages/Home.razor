@@ -1326,7 +1326,18 @@ else
 			var github = CreateGitHubClient();
 			var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
 
-			await AssessInParallelAsync(assessable, row => Dashboard.AssessRepositoryAsync(row, github));
+			await AssessInParallelAsync(assessable, async row =>
+			{
+				if (row.IsClonedLocally && row.LocalPath is not null)
+				{
+					await Dashboard.AssessLocalRepositoryAsync(row);
+					await Dashboard.RefreshGitStatusAsync(row);
+				}
+				else
+				{
+					await Dashboard.AssessRepositoryAsync(row, github);
+				}
+			});
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;

@@ -55,7 +55,7 @@ public class DashboardService
 			{
 				PackageId = pkg.PackageId,
 				LatestVersion = pkg.LatestVersion,
-				RepositoryFullName = repoName is not null ? $"{_settings.GitHubOrganization}/{repoName}" : null,
+				RepositoryFullName = repoName is not null ? $"{pkg.RepositoryOwner ?? _settings.GitHubOrganization}/{repoName}" : null,
 				RepositoryUrl = pkg.RepositoryUrl,
 				IsClonedLocally = isCloned,
 				LocalPath = repoName is not null ? _localRepo.GetLocalPath(repoName) : null,
@@ -194,6 +194,31 @@ public class DashboardService
 			row.CategorySummaries = BuildCategorySummaries(results);
 			row.Status = PackageStatus.Assessed;
 			row.StatusMessage = $"{row.TotalFailures} issue(s) found.";
+		}
+		catch (NotFoundException)
+		{
+			_logger.LogWarning("Repository {Repo} not found on GitHub (private, renamed, or wrong owner).", row.RepositoryFullName);
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = $"Repository '{row.RepositoryFullName}' not found on GitHub (private, renamed, or wrong owner).";
+		}
+		catch (RateLimitExceededException)
+		{
+			_logger.LogWarning("GitHub rate limit hit while assessing {Repo}.", row.RepositoryFullName);
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = "GitHub rate limit reached. Configure a Personal Access Token (AppSettings:GitHubPat) or wait a few minutes.";
+		}
+		catch (ApiException ex) when (ex.Message.Contains("abuse", StringComparison.OrdinalIgnoreCase)
+			|| ex.Message.Contains("secondary rate limit", StringComparison.OrdinalIgnoreCase))
+		{
+			_logger.LogWarning("GitHub secondary rate limit hit while assessing {Repo}.", row.RepositoryFullName);
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = "GitHub secondary rate limit reached. Configure a Personal Access Token (AppSettings:GitHubPat) or wait a few minutes.";
+		}
+		catch (AuthorizationException)
+		{
+			_logger.LogWarning("GitHub authorization failed while assessing {Repo}.", row.RepositoryFullName);
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = "GitHub authentication failed. Check the token is valid and has 'repo' + 'read:org' scopes.";
 		}
 		catch (Exception ex)
 		{
@@ -1034,7 +1059,15 @@ public class DashboardService
 		{
 			var uri = new Uri(url);
 			var segments = uri.AbsolutePath.Trim('/').Split('/');
-			return segments.Length >= 2 ? segments[1] : null;
+			if (segments.Length < 2)
+			{
+				return null;
+			}
+
+			var name = segments[1];
+			return name.EndsWith(".git", StringComparison.OrdinalIgnoreCase)
+				? name[..^4]
+				: name;
 		}
 		catch
 		{
