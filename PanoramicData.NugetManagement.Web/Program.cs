@@ -34,11 +34,24 @@ builder.Services.AddScoped<NuGetUpdateService>();
 var settings = builder.Configuration.GetSection("AppSettings").Get<AppSettings>() ?? new AppSettings();
 var gitHubAuthConfigured = !string.IsNullOrEmpty(settings.GitHubClientId) && !string.IsNullOrEmpty(settings.GitHubClientSecret);
 
+// Development-only: bypass GitHub OAuth with a synthetic local identity when explicitly enabled.
+// Double-gated (Development environment AND AppSettings:DevAuthBypass) so Production always uses OAuth.
+var devAuthBypass = builder.Environment.IsDevelopment() && settings.DevAuthBypass;
+
 var authBuilder = builder.Services
 	.AddAuthentication(options =>
 	{
-		options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-		options.DefaultChallengeScheme = gitHubAuthConfigured ? "GitHub" : CookieAuthenticationDefaults.AuthenticationScheme;
+		if (devAuthBypass)
+		{
+			options.DefaultScheme = DevBypassAuthenticationHandler.SchemeName;
+			options.DefaultAuthenticateScheme = DevBypassAuthenticationHandler.SchemeName;
+			options.DefaultChallengeScheme = DevBypassAuthenticationHandler.SchemeName;
+		}
+		else
+		{
+			options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+			options.DefaultChallengeScheme = gitHubAuthConfigured ? "GitHub" : CookieAuthenticationDefaults.AuthenticationScheme;
+		}
 	})
 	.AddCookie(options =>
 	{
@@ -47,6 +60,12 @@ var authBuilder = builder.Services
 		options.ExpireTimeSpan = TimeSpan.FromDays(30);
 		options.SlidingExpiration = true;
 	});
+
+if (devAuthBypass)
+{
+	authBuilder.AddScheme<AuthenticationSchemeOptions, DevBypassAuthenticationHandler>(
+		DevBypassAuthenticationHandler.SchemeName, _ => { });
+}
 
 if (gitHubAuthConfigured)
 {

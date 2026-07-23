@@ -31,6 +31,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// </summary>
 	public Regex? FilterRegex { get; set; }
 
+	/// <summary>
+	/// When true, only locally-cloned repositories are included in the tree.
+	/// </summary>
+	public bool LocalOnly { get; set; }
+
 	/// <inheritdoc />
 	public override Task<DataResponse<NavItem>> GetDataAsync(DataRequest<NavItem> request, CancellationToken cancellationToken)
 	{
@@ -47,11 +52,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		var rows = _cache.GetCachedRows();
 		var filter = FilterRegex;
 
-		// Apply filter to determine which packages are visible
+		// Apply filters to determine which packages are visible
 		var visibleRows = rows;
 		if (visibleRows is not null && filter is not null)
 		{
 			visibleRows = [.. visibleRows.Where(r => filter.IsMatch(r.PackageId))];
+		}
+
+		if (visibleRows is not null && LocalOnly)
+		{
+			visibleRows = [.. visibleRows.Where(r => r.IsClonedLocally)];
 		}
 
 		// Calculate overall health for root node based on visible packages
@@ -94,6 +104,12 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				{
 					continue;
 				}
+
+				// Apply local-only filter
+				if (LocalOnly && !row.IsClonedLocally)
+				{
+					continue;
+				}
 				var pkgKey = $"pkg:{row.PackageId}";
 				var pkgIssues = row.TotalFailures;
 				var pkgHasErrors = row.TotalCriticals > 0 || row.TotalErrors > 0;
@@ -101,6 +117,21 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 				// Determine RAG icon for the package using shared row health state.
 				var pkgIcon = GetPackageHealthIcon(row.HealthStatus);
+				if (row.IsClonedLocally)
+				{
+					pkgIcon += " tree-node-local";
+
+					// Colour the branch glyph by sync state: amber if out of sync, muted if unknown.
+					if (row.IsSyncedWithOrigin == false)
+					{
+						pkgIcon += " tree-node-out-of-sync";
+					}
+					else if (row.IsSyncedWithOrigin is null)
+					{
+						pkgIcon += " tree-node-sync-unknown";
+					}
+				}
+
 				if (row.IsWorkingTreeClean == false)
 				{
 					pkgIcon += " tree-node-dirty";
@@ -218,6 +249,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		PackageHealthStatus.Success => "fas fa-cube text-success",
 		PackageHealthStatus.Error => "fas fa-cube text-danger",
 		PackageHealthStatus.Warning => "fas fa-cube text-warning",
+		PackageHealthStatus.Unknown => "fas fa-cube text-muted",
 		_ => "fas fa-cube text-info"
 	};
 }

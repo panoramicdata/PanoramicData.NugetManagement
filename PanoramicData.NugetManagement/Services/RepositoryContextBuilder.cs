@@ -216,6 +216,12 @@ public class RepositoryContextBuilder : IDisposable
 			toFetch.Add(path);
 		}
 
+		// Fetch all xunit.runner.json files (needed by the failSkips rule, which reads their content)
+		foreach (var path in filePaths.Where(p => p.EndsWith("xunit.runner.json", StringComparison.OrdinalIgnoreCase)))
+		{
+			toFetch.Add(path);
+		}
+
 		return [.. toFetch];
 	}
 

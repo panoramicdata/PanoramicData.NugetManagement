@@ -63,7 +63,8 @@ public class NuGetDiscoveryService
 					PackageId = result.Identity.Id,
 					LatestVersion = result.Identity.Version.ToNormalizedString(),
 					RepositoryUrl = repoUrl,
-					RepositoryName = ExtractRepoName(repoUrl)
+					RepositoryOwner = ExtractRepoOwner(repoUrl),
+						RepositoryName = ExtractRepoName(repoUrl)
 				});
 			}
 
@@ -117,6 +118,19 @@ public class NuGetDiscoveryService
 		return null;
 	}
 
+	private static string? ExtractRepoOwner(string? repoUrl)
+	{
+		if (repoUrl is null)
+		{
+			return null;
+		}
+
+		// Extract owner from https://github.com/owner/repo
+		var uri = new Uri(repoUrl);
+		var segments = uri.AbsolutePath.Trim('/').Split('/');
+		return segments.Length >= 1 && !string.IsNullOrEmpty(segments[0]) ? segments[0] : null;
+	}
+
 	private static string? ExtractRepoName(string? repoUrl)
 	{
 		if (repoUrl is null)
@@ -124,10 +138,18 @@ public class NuGetDiscoveryService
 			return null;
 		}
 
-		// Extract repo name from https://github.com/org/repo
+		// Extract repo name from https://github.com/owner/repo, stripping any trailing ".git"
 		var uri = new Uri(repoUrl);
 		var segments = uri.AbsolutePath.Trim('/').Split('/');
-		return segments.Length >= 2 ? segments[1] : null;
+		if (segments.Length < 2)
+		{
+			return null;
+		}
+
+		var name = segments[1];
+		return name.EndsWith(".git", StringComparison.OrdinalIgnoreCase)
+			? name[..^4]
+			: name;
 	}
 }
 
@@ -152,7 +174,13 @@ public class NuGetPackageInfo
 	public string? RepositoryUrl { get; init; }
 
 	/// <summary>
-	/// The repository name extracted from the URL.
+	/// The GitHub repository owner extracted from the URL (may differ from the configured
+	/// organization for vendored/forked packages, e.g. EPPlusSoftware/EPPlus).
+	/// </summary>
+	public string? RepositoryOwner { get; init; }
+
+	/// <summary>
+	/// The repository name extracted from the URL (with any trailing ".git" removed).
 	/// </summary>
 	public string? RepositoryName { get; init; }
 }

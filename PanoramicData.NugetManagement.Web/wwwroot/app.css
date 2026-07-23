@@ -59,6 +59,48 @@ html, body {
     color: #8b5a2b !important;
 }
 
+/* Locally-cloned repo marker: a small branch glyph after the health cube. */
+.tree-node-local::after {
+    content: "\f126"; /* Font Awesome fa-code-branch */
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: 0.7em;
+    margin-left: 4px;
+    vertical-align: middle;
+    color: var(--accent);
+    opacity: 0.85;
+}
+
+/* Local-clone sync state colours the branch glyph: amber if behind/ahead of origin,
+   muted grey if the sync state is unknown. Placed after .tree-node-local::after so
+   the (equal-specificity) colour override wins by source order. */
+.tree-node-out-of-sync::after {
+    color: var(--warning);
+}
+
+.tree-node-sync-unknown::after {
+    color: var(--text-muted);
+}
+
+/* "Local only" filter toggle — right-aligned under the repo filter box. */
+.nav-tree-local-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+
+.nav-tree-local-toggle input {
+    margin: 0;
+    position: relative;
+    top: -1px;
+}
+
 .toolbar-action-btn {
     padding: 0.35rem 0.5rem;
     font-size: 0.9rem;
@@ -182,8 +224,19 @@ html, body {
 }
 
 .progress-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4.6px;
     color: var(--text-muted);
     font-size: 0.85rem;
+}
+
+.progress-indicator .spinner {
+    width: 12px;
+    height: 12px;
+    border-width: 1.5px;
+    position: relative;
+    top: 1px;
 }
 
 .governance-table {
@@ -1074,7 +1127,13 @@ h1:focus {
     font-weight: 500;
 }
 
-.breadcrumb-link:hover {
+/* Gap between the breadcrumb icon and its text, kept OUTSIDE the underline so the
+   hover underline begins under the first letter, not under the gap. */
+.breadcrumb-link-text {
+    margin-left: 0.35rem;
+}
+
+.breadcrumb-link:hover .breadcrumb-link-text {
     text-decoration: underline;
 }
 
@@ -1154,20 +1213,45 @@ h1:focus {
     padding: 0.5rem 0.5rem 0.25rem;
     flex-shrink: 0;
     border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Single border around the whole filter box, so there is no internal divider before the clear (×). */
+.nav-tree-filter .input-group {
+    flex: 1 1 130px;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--surface);
+    overflow: hidden;
+}
+
+.nav-tree-filter .input-group:focus-within {
+    border-color: var(--accent);
 }
 
 .nav-tree-filter .input-group-text {
     background: transparent;
-    border-color: var(--border);
+    border: none;
     color: var(--text-muted);
     padding: 0.2rem 0.5rem;
 }
 
 .nav-tree-filter .form-control {
-    background: var(--surface);
-    border-color: var(--border);
+    background: transparent;
+    border: none;
     color: var(--text);
     font-size: 0.8rem;
+    box-shadow: none;
+}
+
+/* Suppress Bootstrap's blue focus glow; focus is indicated by the subtle accent border above. */
+.nav-tree-filter .form-control:focus {
+    background: transparent;
+    color: var(--text);
+    box-shadow: none;
 }
 
 .nav-tree-filter .form-control::placeholder {
@@ -1175,12 +1259,20 @@ h1:focus {
 }
 
 .nav-tree-filter .btn-outline-secondary {
-    border-color: var(--border);
+    border: none;
+    background: transparent;
     color: var(--text-muted);
     padding: 0.2rem 0.4rem;
+    box-shadow: none;
+}
+
+.nav-tree-filter .btn-outline-secondary:focus,
+.nav-tree-filter .btn-outline-secondary:active {
+    box-shadow: none;
 }
 
 .filter-error {
+    flex-basis: 100%;
     color: var(--error);
     font-size: 0.75rem;
     padding: 0.15rem 0.25rem 0;
@@ -1548,6 +1640,21 @@ h1:focus {
 
 .pd-tree .pd-tree-node-icon {
     color: var(--text-muted);
+}
+
+/* The whole node label (icon + text) wrapped so the tooltip covers the icon on hover. */
+.nav-node-label {
+    display: inline;
+}
+
+/* Gap between every tree node's icon and its label text (root gauge, cubes, category/rule icons). */
+.nav-node-label > i {
+    margin-right: 4px;
+}
+
+/* Remove PDTreeNode's per-level 1px extra indent so non-top-level rows align ~1px further left. */
+.pdtreenode .pdtreenode_child_content {
+    padding-left: 0 !important;
 }
 
 /* === PDSplitter Gutter Dark Theme === */

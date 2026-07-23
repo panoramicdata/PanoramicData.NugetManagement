@@ -59,6 +59,10 @@ else
 									</button>
 								}
 							</div>
+							<label class="nav-tree-local-toggle" title="Show only locally-cloned repositories">
+								<input type="checkbox" checked="@_localOnly" @onchange="OnLocalOnlyChanged" />
+								<span>Local only</span>
+							</label>
 							@if (_treeFilterError is not null)
 							{
 								<div class="filter-error">@_treeFilterError</div>
@@ -72,11 +76,17 @@ else
 									ParentKeyField="x => x.ParentKey!"
 									TextField="x => x.Text"
 									IsLeaf="x => x.IsLeaf"
-									IconCssClass="(item, _) => item.IconCss"
+									IconCssClass="(item, _) => string.Empty"
 									ToolTip="GetNavItemTooltip"
 									AllowSelection="true"
 									ShowRoot="true"
-									SelectionChange="OnNavSelectionChanged" />
+									SelectionChange="OnNavSelectionChanged">
+									<NodeTemplate Context="node">
+										<span class="nav-node-label" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+											<i class="@node.Data?.IconCss"></i>@node.Data?.Text
+										</span>
+									</NodeTemplate>
+								</PDTree>
 						</div>
 						<div class="nav-footer">
 							<a href="/ci-template" class="nav-footer-link">
@@ -94,7 +104,7 @@ else
 					<div class="breadcrumb-bar">
 						<div class="breadcrumb-trail">
 							<a class="breadcrumb-link" @onclick="NavigateToDashboard" @onclick:preventDefault>
-								<i class="fas fa-tachometer-alt"></i> Dashboard
+								<i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span>
 							</a>
 							@if (_selectedRow is not null)
 							{
@@ -351,6 +361,7 @@ else
 	private string _treeFilterText = string.Empty;
 	private string? _treeFilterError;
 	private System.Threading.Timer? _treeFilterDebounce;
+	private bool _localOnly;
 
 	// === Dashboard state ===
 	private bool _isLoading;
@@ -602,10 +613,7 @@ else
 			}
 		}
 
-		if (_navTree is not null)
-		{
-			await _navTree.RefreshAsync().ConfigureAwait(true);
-		}
+		await RefreshTreeStructureAsync();
 
 		StateHasChanged();
 	}
@@ -616,12 +624,45 @@ else
 		_treeFilterError = null;
 		NavDataProvider.FilterRegex = null;
 
-		if (_navTree is not null)
-		{
-			await _navTree.RefreshAsync().ConfigureAwait(true);
-		}
+		await RefreshTreeStructureAsync();
 
 		StateHasChanged();
+	}
+
+	private async Task OnLocalOnlyChanged(ChangeEventArgs e)
+	{
+		_localOnly = e.Value is true;
+		NavDataProvider.LocalOnly = _localOnly;
+
+		await RefreshTreeStructureAsync();
+
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Reloads the tree's top-level node children so filter changes (regex / local-only) are
+	/// actually applied. PDTree.RefreshAsync only refreshes the selected node's path and never
+	/// reloads the organisation node's children, so on its own it does not prune filtered-out
+	/// packages. RefreshNodeAsync clears and re-fetches a node's children from the data provider,
+	/// which applies the current filter.
+	/// </summary>
+	private async Task RefreshTreeStructureAsync()
+	{
+		if (_navTree is null)
+		{
+			return;
+		}
+
+		var topNodes = _navTree.RootNode.Nodes?.ToList();
+		if (topNodes is null)
+		{
+			return;
+		}
+
+		foreach (var node in topNodes)
+		{
+			await _navTree.RefreshNodeAsync(node).ConfigureAwait(true);
+		}
 	}
 
 	// === Toolbar ===
@@ -1326,7 +1367,18 @@ else
 			var github = CreateGitHubClient();
 			var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
 
-			await AssessInParallelAsync(assessable, row => Dashboard.AssessRepositoryAsync(row, github));
+			await AssessInParallelAsync(assessable, async row =>
+			{
+				if (row.IsClonedLocally && row.LocalPath is not null)
+				{
+					await Dashboard.AssessLocalRepositoryAsync(row);
+					await Dashboard.RefreshGitStatusAsync(row);
+				}
+				else
+				{
+					await Dashboard.AssessRepositoryAsync(row, github);
+				}
+			});
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
@@ -2429,6 +2481,24 @@ else
 
 	// === Utility methods ===
 
+	private static string GetLocalStateSuffix(PackageDashboardRow row)
+	{
+		if (!row.IsClonedLocally)
+		{
+			return "\n• Not cloned locally";
+		}
+
+		var sync = row.IsSyncedWithOrigin switch
+		{
+			true => "in sync with origin",
+			false => "out of sync with origin",
+			_ => "sync state unknown"
+		};
+
+		var dirty = row.IsWorkingTreeClean == false ? "; uncommitted changes" : string.Empty;
+		return $"\n• Local clone, {sync}{dirty}";
+	}
+
 	private string GetNavItemTooltip(NavItem item)
 	{
 		switch (item.View)
@@ -2446,22 +2516,27 @@ else
 
 				if (row.Assessment is null)
 				{
-					return $"{row.PackageId} — not yet assessed";
+					return row.Status switch
+					{
+						PackageStatus.Assessing => $"{row.PackageId}\n• assessing…{GetLocalStateSuffix(row)}",
+						PackageStatus.Error => $"{row.PackageId}\n• not assessable: {row.StatusMessage}{GetLocalStateSuffix(row)}",
+						_ => $"{row.PackageId}\n• not yet assessed{GetLocalStateSuffix(row)}"
+					};
 				}
 
 				if (row.TotalFailures == 0)
 				{
-					return $"{row.PackageId} — all rules pass ✓ (green = compliant)";
+					return $"{row.PackageId}\n• all rules pass ✓ (green = compliant){GetLocalStateSuffix(row)}";
 				}
 
 				if (row.TotalErrors > 0)
 				{
-					return $"{row.PackageId} — {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found)";
+					return $"{row.PackageId}\n• {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found){GetLocalStateSuffix(row)}";
 				}
 
 				return row.TotalWarnings > 0
-					? $"{row.PackageId} — {row.TotalWarnings} warning(s) (amber = warnings only)"
-					: $"{row.PackageId} — informational only (blue = info)";
+					? $"{row.PackageId}\n• {row.TotalWarnings} warning(s) (amber = warnings only){GetLocalStateSuffix(row)}"
+					: $"{row.PackageId}\n• informational only (blue = info){GetLocalStateSuffix(row)}";
 
 			case NavView.CategoryDetail:
 				if (item.IssueCount == 0)
