@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
@@ -9,8 +10,21 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// <summary>
 /// Service for executing git and dotnet CLI commands on local repositories.
 /// </summary>
-public class LocalRepoService
+public partial class LocalRepoService
 {
+	/// <summary>
+	/// Matches ANSI/VT escape sequences (e.g. colour codes like <c>ESC[31;1m</c>) that
+	/// console tools such as pwsh emit. These render as gibberish in the dashboard's
+	/// plain-text console, so they are stripped from captured output.
+	/// </summary>
+	[GeneratedRegex(@"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")]
+	private static partial Regex AnsiEscapeRegex();
+
+	/// <summary>
+	/// Removes ANSI/VT escape sequences from a line of captured process output.
+	/// </summary>
+	private static string StripAnsi(string line) => AnsiEscapeRegex().Replace(line, string.Empty);
+
 	private readonly AppSettings _settings;
 	private readonly ILogger<LocalRepoService> _logger;
 
@@ -782,15 +796,16 @@ public class LocalRepoService
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
 				UseShellExecute = false,
-				CreateNoWindow = true
+				CreateNoWindow = true,
+				Environment = { ["NO_COLOR"] = "1" }
 			}
 		};
 
 		process.Start();
 		try
 		{
-			var output = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-			var error = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+			var output = StripAnsi(await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false));
+			var error = StripAnsi(await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false));
 			await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 
 			return (process.ExitCode, string.IsNullOrEmpty(error) ? output : $"{output}\n{error}");
@@ -826,7 +841,8 @@ public class LocalRepoService
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
 				UseShellExecute = false,
-				CreateNoWindow = true
+				CreateNoWindow = true,
+				Environment = { ["NO_COLOR"] = "1" }
 			}
 		};
 
@@ -836,8 +852,9 @@ public class LocalRepoService
 		{
 			if (e.Data is not null)
 			{
-				outputLines.Add(e.Data);
-				onOutput?.Invoke(e.Data);
+				var line = StripAnsi(e.Data);
+				outputLines.Add(line);
+				onOutput?.Invoke(line);
 			}
 		};
 
@@ -845,8 +862,9 @@ public class LocalRepoService
 		{
 			if (e.Data is not null)
 			{
-				outputLines.Add(e.Data);
-				onOutput?.Invoke(e.Data);
+				var line = StripAnsi(e.Data);
+				outputLines.Add(line);
+				onOutput?.Invoke(line);
 			}
 		};
 
