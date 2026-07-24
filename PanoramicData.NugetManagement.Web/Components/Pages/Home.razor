@@ -82,9 +82,13 @@ else
 									ShowRoot="true"
 									SelectionChange="OnNavSelectionChanged">
 									<NodeTemplate Context="node">
-										<span class="nav-node-label" @onclick="() => OnNavSelectionChanged(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+										<span class="nav-node-label" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
 											<i class="@node.Data?.IconCss"></i>@node.Data?.Text
 										</span>
+										@if (node.Data?.Key == "root")
+										{
+											<button type="button" class="nav-org-settings-btn @(_currentView == NavView.Settings ? "active" : "")" title="Organization settings" @onclick="NavigateToSettingsAsync" @onclick:stopPropagation><i class="fas fa-cog"></i></button>
+										}
 									</NodeTemplate>
 								</PDTree>
 						</div>
@@ -103,9 +107,31 @@ else
 					<!-- Breadcrumb bar at the very top -->
 					<div class="breadcrumb-bar">
 						<div class="breadcrumb-trail">
-							<a class="breadcrumb-link" @onclick="NavigateToDashboard" @onclick:preventDefault>
-								<i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span>
-							</a>
+							@if (!_orgSelected && _selectedRow is null && _currentView != NavView.Settings && _currentView != NavView.AppSettings)
+							{
+								<span class="breadcrumb-current"><i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span></span>
+							}
+							else
+							{
+								<a class="breadcrumb-link" @onclick="NavigateToDashboard" @onclick:preventDefault>
+									<i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span>
+								</a>
+							}
+							@* Org crumb — shown at org level or deeper (repo selected, or org settings) *@
+							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings)
+							{
+								<span class="breadcrumb-sep">›</span>
+								@if (_orgSelected && _selectedRow is null && _currentView != NavView.Settings)
+								{
+									<span class="breadcrumb-current">@_organizationName</span>
+								}
+								else
+								{
+									<a class="breadcrumb-link" @onclick="NavigateToOrgAsync" @onclick:preventDefault>
+										<span class="breadcrumb-link-text">@_organizationName</span>
+									</a>
+								}
+							}
 							@if (_currentView == NavView.AppSettings)
 							{
 								<span class="breadcrumb-sep">›</span>
@@ -170,12 +196,12 @@ else
 									<span class="breadcrumb-sep">›</span>
 									<span class="breadcrumb-current" title="@_selectedRuleId">@_selectedRuleId</span>
 								}
-								@if (_currentView == NavView.Settings)
-								{
-									<span class="breadcrumb-sep">›</span>
-									<span class="breadcrumb-current">Settings</span>
-								}
                            }
+							@if (_currentView == NavView.Settings)
+							{
+								<span class="breadcrumb-sep">›</span>
+								<span class="breadcrumb-current">Settings</span>
+							}
 						</div>
 						<div class="breadcrumb-right">
 							@if (_isLoading || _isAssessing)
@@ -349,11 +375,6 @@ else
 										title="Toggle console panel">
 									<i class="fas fa-terminal"></i>
 								</button>
-								<button class="btn toolbar-action-btn @(_currentView == NavView.Settings ? "btn-console-active" : "")"
-										@onclick="NavigateToSettings"
-										title="Organization settings">
-									<i class="fas fa-cog"></i>
-								</button>
 							</PDToolbarPlaceholder>
 						</PDToolbar>
 
@@ -401,6 +422,10 @@ else
 	private PDTree<NavItem>? _navTree;
 	private NavView _currentView = NavView.Dashboard;
 	private bool _userMenuOpen;
+		// True when the org (root) node is the current focus (org overview / org settings),
+		// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
+		private bool _orgSelected;
+		private string _organizationName = string.Empty;
 	private bool ShowWorkflowFlow => _selectedRow is not null && _currentView != NavView.Settings;
 	private string? _selectedPackageId;
 	private AssessmentCategory? _selectedCategory;
@@ -472,6 +497,7 @@ else
 
 		_isAuthenticated = true;
 		_userName = httpContext.User.Identity.Name ?? "User";
+		_organizationName = SettingsOptions.Value.NuGetOrganization;
 		_accessToken = await httpContext.GetTokenAsync("access_token");
 		_categories = Enum.GetValues<AssessmentCategory>();
 		_localReposRoot = RuntimeSettings.LocalReposRoot;
@@ -555,6 +581,7 @@ else
 		_selectedCategory = item.Category;
 		_selectedRuleId = item.RuleId;
 		_selectedNodeKey = item.Key;
+		_orgSelected = item.Key == "root";
 
 		if (item.PackageId is not null)
 		{
@@ -580,6 +607,15 @@ else
 		StateHasChanged();
 	}
 
+	private void OnNavNodeActivated(TreeNode<NavItem> node)
+	{
+		// Apply the visual selection ourselves so re-clicking a node whose highlight was
+		// cleared in place (Dashboard deselect) re-highlights it — PDTree ignores re-clicks.
+		_navTree?.RootNode.Walk(n => { n.IsSelected = false; return true; });
+		node.IsSelected = true;
+		OnNavSelectionChanged(node);
+	}
+
 	private void NavigateToDashboard()
 	{
 		_currentView = NavView.Dashboard;
@@ -588,16 +624,39 @@ else
 		_selectedCategory = null;
 		_selectedRuleId = null;
 		_selectedNodeKey = "root";
+		_orgSelected = false;
 		_completedSteps.Clear();
 		_failedSteps.Clear();
-      _lastFailedWorkflowStep = null;
+		_lastFailedWorkflowStep = null;
+		// Deselect the tree in place — clear the highlight without rebuilding, so
+		// expanded nodes stay open. PDTree has no public clear-selection API.
+		_navTree?.RootNode.Walk(n => { n.IsSelected = false; return true; });
 		StateHasChanged();
 	}
 
-	private void NavigateToSettings()
+	private async Task NavigateToOrgAsync()
 	{
-		// Settings is a sub-view of the selected repo — keep the repo context so the
-		// breadcrumb reads Dashboard › Repo › Settings and the user can click back.
+		// Focus the org (root) node in the tree; its SelectionChange handler sets the state.
+		var orgNode = _navTree?.RootNode.Find("root");
+		if (orgNode is not null)
+		{
+			await _navTree!.SelectNode(orgNode);
+		}
+		else
+		{
+			_currentView = NavView.Dashboard;
+			_selectedRow = null;
+			_selectedNodeKey = "root";
+			_orgSelected = true;
+			StateHasChanged();
+		}
+	}
+
+	private async Task NavigateToSettingsAsync()
+	{
+		// Settings is org-level ("Org Settings"): focus the org node, then switch to the
+		// Settings view so the breadcrumb reads Dashboard › Org › Settings.
+		await NavigateToOrgAsync();
 		_currentView = NavView.Settings;
 		_selectedCategory = null;
 		_selectedRuleId = null;

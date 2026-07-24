@@ -75,7 +75,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			new() {
 				Key = "root",
 				Text = _organizationName,
-				IconCss = "fas fa-tachometer-alt",
+				IconCss = "fas fa-building",
 				View = NavView.Dashboard,
 				IsLeaf = false,
 				IssueCount = totalIssues,

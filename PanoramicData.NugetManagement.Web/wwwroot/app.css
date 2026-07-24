@@ -1223,9 +1223,11 @@ h1:focus {
 }
 
 /* Gap between the breadcrumb icon and its text, kept OUTSIDE the underline so the
-   hover underline begins under the first letter, not under the gap. */
-.breadcrumb-link-text {
-    margin-left: 0.35rem;
+   hover underline begins under the first letter, not under the gap. Keyed off a leading
+   icon (not the link class) so it applies to Dashboard as both a link and the current
+   crumb, but never to the icon-less org crumb (which would otherwise shift right). */
+i + .breadcrumb-link-text {
+    margin-left: calc(0.35rem - 1px);
 }
 
 .breadcrumb-link:hover .breadcrumb-link-text {
@@ -1779,6 +1781,46 @@ h1:focus {
 /* Remove PDTreeNode's per-level 1px extra indent so non-top-level rows align ~1px further left. */
 .pdtreenode .pdtreenode_child_content {
     padding-left: 0 !important;
+}
+
+/* Selected tree node: tone down the framework's bright blue (rgb(0,123,255)) highlight.
+   Needs !important + the container ancestor to beat the framework rule. */
+.nav-tree-scroll .pdtreenode_content.selected {
+    background-color: #0056b3 !important;
+}
+
+/* Org (root) tree row: lay it out as a full-width flex row so the settings cog
+   sits flush against the right edge of the sidebar. */
+.pdtreenode_content:has(.nav-org-settings-btn) {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.nav-org-settings-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 0 2px 0 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    line-height: 1;
+    position: relative;
+    left: -1px;
+    top: 1px;
+}
+
+.nav-org-settings-btn:hover,
+.nav-org-settings-btn.active {
+    color: var(--accent);
+}
+
+/* When the org row is selected, the muted cog blends into the blue highlight — make it
+   white for contrast (but leave the hover/active accent colours alone). */
+.nav-tree-scroll .pdtreenode_content.selected .nav-org-settings-btn:not(:hover):not(.active) {
+    color: #ffffff;
 }
 
 /* === PDSplitter Gutter Dark Theme === */
