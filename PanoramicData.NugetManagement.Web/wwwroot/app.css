@@ -1808,8 +1808,8 @@ i + .breadcrumb-link-text {
 }
 
 /* Container header nodes get distinct label colours to set them apart from repo nodes. */
-.nav-node-label:has(> i.fa-city) {   /* Organisations — cream */
-    color: #efe6c8;
+.nav-node-label:has(> i.fa-city) {   /* Organisations — light green */
+    color: #a5d6a7;
 }
 
 .nav-node-label:has(> i.fa-cubes) {  /* Repositories — pink */
