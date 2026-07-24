@@ -1262,6 +1262,15 @@ h1:focus {
     top: 2px;
 }
 
+/* One-line explainer above the fix list */
+.fixes-intro {
+    margin: 0 0 0.75rem;
+    padding: 0.6rem 0.9rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
 .breadcrumb-right {
     display: flex;
     align-items: center;

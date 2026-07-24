@@ -982,6 +982,7 @@ else
 			}
 			else
 			{
+				<p class="fixes-intro">These are the rules this repository is currently failing. They're grouped by category and ordered by severity, so start with the most serious.</p>
 				@foreach (var group in GetGroupedFailures())
 				{
 					<div class="issue-group">
@@ -1053,7 +1054,8 @@ else
 		var cat = _selectedCategory.Value;
 		var failures = _selectedRow.Assessment.RuleResults
 			.Where(r => !r.Passed && r.Category == cat)
-			.OrderBy(r => r.RuleId)
+			.OrderBy(r => SeverityColorRank(r.Severity))
+			.ThenBy(r => r.RuleId)
 			.ToList();
 
 		<div class="detail-issues">
@@ -2720,22 +2722,36 @@ else
 		return _selectedRow.Assessment.RuleResults
 			.Where(r => !r.Passed)
 			.GroupBy(r => r.Category)
-			.OrderBy(g => g.Key.ToString())
-			.Select(g => new CategoryGroup { Category = g.Key, Failures = [.. g.OrderBy(r => r.RuleId)] })
+			.Select(g => new CategoryGroup { Category = g.Key, Failures = [.. g.OrderBy(r => SeverityColorRank(r.Severity)).ThenBy(r => r.RuleId)] })
+			.OrderBy(GroupColorRank)
+			.ThenBy(g => g.Category.ToString())
 			.ToList();
 	}
 
 	private static string GetGroupBadgeClass(CategoryGroup group)
-		=> group.Failures.Any(f => f.Severity == AssessmentSeverity.Error) ? "badge-fail"
+		=> group.Failures.Any(f => f.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error) ? "badge-fail"
 		 : group.Failures.Any(f => f.Severity == AssessmentSeverity.Warning) ? "badge-warn"
 		 : "badge-info";
 
 	private static string GetSeverityBadgeClass(RuleResult result) => result.Severity switch
 	{
-		AssessmentSeverity.Error => "badge-fail",
+		AssessmentSeverity.Critical or AssessmentSeverity.Error => "badge-fail",
 		AssessmentSeverity.Warning => "badge-warn",
 		_ => "badge-info"
 	};
+
+	// Colour rank for ordering the fix list: red (0) → amber (1) → blue (2), matching the badge colours above.
+	private static int SeverityColorRank(AssessmentSeverity severity) => severity switch
+	{
+		AssessmentSeverity.Critical or AssessmentSeverity.Error => 0,
+		AssessmentSeverity.Warning => 1,
+		_ => 2
+	};
+
+	private static int GroupColorRank(CategoryGroup group)
+		=> group.Failures.Any(f => f.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error) ? 0
+		 : group.Failures.Any(f => f.Severity == AssessmentSeverity.Warning) ? 1
+		 : 2;
 
 	private static string GetConsoleLineClass(string line)
 		=> line.StartsWith("✅") ? "console-line console-success"
