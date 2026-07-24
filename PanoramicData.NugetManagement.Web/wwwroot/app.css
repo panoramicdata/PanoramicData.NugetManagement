@@ -55,6 +55,39 @@ html, body {
     gap: 0.5rem;
 }
 
+/* Flow chevrons between workflow steps, suggesting left-to-right progression. */
+.flow-chevron {
+    align-self: center;
+    color: var(--text-secondary);
+    opacity: 0.55;
+    font-size: 1rem;
+    margin: 0 -1px;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* Disabled toolbar buttons should read as dimmed versions of the enabled ones,
+   not hollow light-outlined ghosts. Without this, the disabled border falls back to
+   the light text colour and the fill disappears. .btn:disabled still fades to 0.4 opacity.
+   Workflow-step colours (done/failed/next) keep their !important borders. */
+/* Enabled workflow buttons get a clearly visible border so they read as buttons. */
+.main-toolbar .pdtoolbarbutton:not(.btn-primary):not(.btn-success) {
+    border: 1px solid #ffffff;
+    color: var(--text-primary);
+}
+
+/* Disabled toolbar buttons: obviously off, but still legibly a button — a brighter,
+   thicker border + clearly muted text + not-allowed cursor, and NO opacity fade
+   (opacity was what dimmed the border into invisibility). */
+.main-toolbar .pdtoolbarbutton:disabled,
+.main-toolbar .pdtoolbarbutton.disabled {
+    background: var(--bg-secondary);
+    border: 1px solid rgba(90, 107, 140, 0.45) !important;
+    color: var(--text-muted) !important;
+    opacity: 1;
+    cursor: not-allowed;
+}
+
 .tree-node-dirty {
     color: #8b5a2b !important;
 }
@@ -106,6 +139,49 @@ html, body {
     font-size: 0.9rem;
     min-width: 32px;
     justify-content: center;
+}
+
+.user-menu {
+    position: relative;
+    display: inline-block;
+}
+
+.user-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+}
+
+.user-menu-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    min-width: 190px;
+    background: var(--bg-secondary);
+    border: 1px solid #5a6b8c;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    z-index: 1050;
+    padding: 4px 0;
+}
+
+.user-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.user-menu-item:hover {
+    background: var(--bg-hover);
+    color: var(--accent);
 }
 
 .brand-icon {
@@ -1138,8 +1214,8 @@ h1:focus {
 }
 
 .breadcrumb-sep {
-    color: var(--text-muted);
-    opacity: 0.5;
+    color: var(--text-secondary);
+    opacity: 0.7;
 }
 
 .breadcrumb-current {
@@ -1682,13 +1758,24 @@ h1:focus {
 
 /* === Workflow Step Done Indicator === */
 .toolbar-step-done {
-    border-color: var(--success) !important;
-    box-shadow: 0 0 0 1px var(--success);
-    color: var(--success) !important;
+    /* Completed step: keep it looking like a normal enabled button (bright text,
+       standard border) and mark completion with a check — NOT a green fill/outline,
+       which reads as a "primary action" and made done steps look the loudest. */
+    color: var(--text-primary) !important;
 }
 
-.toolbar-step-done:hover {
-    background: rgba(40, 167, 69, 0.1);
+/* Sync/Re-assess are repeatable refresh actions, not one-shot steps, so there is no
+   green "done" tick or green hover — it misread as active and fought the disabled look. */
+
+/* Publish is the only button that is both btn-success (green fill) and can gain
+   toolbar-step-done (green text). Without this override the green "done" text lands
+   on the green fill and the label vanishes — keep it white on the solid green. */
+.btn-success.toolbar-step-done {
+    color: #fff !important;
+}
+
+.btn-success.toolbar-step-done:hover {
+    background: var(--success);
 }
 
 .toolbar-step-failed {
@@ -1712,7 +1799,7 @@ h1:focus {
 }
 
 .toolbar-step-next {
-    border-color: rgba(255, 180, 40, 0.8) !important;
+    border: 2px solid rgba(255, 180, 40, 0.9) !important;
     box-shadow: 0 0 0 1px rgba(255, 180, 40, 0.5);
     animation: next-step-pulse 2s ease-in-out infinite;
 }

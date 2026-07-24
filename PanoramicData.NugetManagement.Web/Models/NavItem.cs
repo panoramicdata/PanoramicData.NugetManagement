@@ -95,8 +95,11 @@ public enum NavView
 	/// <summary>Individual rule detail view.</summary>
 	RuleDetail,
 
-	/// <summary>Application settings.</summary>
+	/// <summary>Per-organisation settings (the cog).</summary>
 	Settings,
+
+	/// <summary>Application-wide settings (populated later).</summary>
+	AppSettings,
 
 	/// <summary>Cross-repository NuGet package update management.</summary>
 	NuGetUpdates

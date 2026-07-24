@@ -106,15 +106,20 @@ else
 							<a class="breadcrumb-link" @onclick="NavigateToDashboard" @onclick:preventDefault>
 								<i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span>
 							</a>
+							@if (_currentView == NavView.AppSettings)
+							{
+								<span class="breadcrumb-sep">›</span>
+								<span class="breadcrumb-current">Application settings</span>
+							}
 							@if (_selectedRow is not null)
 							{
 								<span class="breadcrumb-sep">›</span>
-								<span class="breadcrumb-current">
+								<a class="breadcrumb-link" @onclick="NavigateToSelectedPackage" @onclick:preventDefault>
 									<i class="@GetPackageHealthIcon(_selectedRow)"></i>
 									@_selectedRow.PackageId
 									<span class="pkg-version">@_selectedRow.LatestVersion</span>
-								</span>
-								@if (_selectedRow.IsClonedLocally)
+								</a>
+								@if (_selectedRow.IsClonedLocally && _currentView != NavView.Settings)
 								{
 									<span class="breadcrumb-sep">|</span>
 									@if (_selectedRow.IsWorkingTreeClean == false)
@@ -145,26 +150,6 @@ else
 									{
 										<span class="git-dirty-badge" title="NuGet @(_selectedRow.LatestVersion ?? """) does not match latest tag @(_selectedRow.LatestTag ?? """)">📦 tag @(_selectedRow.LatestTag ?? """) ≠ nuget @(_selectedRow.LatestVersion ?? """)</span>
 									}
-<!-- Inline git actions after repo info -->
-									<button class="btn btn-xs btn-breadcrumb" @onclick="GitSyncAsync" disabled="@_isRunning" title="Fetch, pull --rebase, push">
-										<i class="fas fa-arrows-rotate"></i>
-									</button>
-									<button class="btn btn-xs btn-breadcrumb" @onclick="BuildAsync" disabled="@_isRunning" title="Build">
-										<i class="fas fa-hammer"></i>
-									</button>
-									<button class="btn btn-xs btn-breadcrumb" @onclick="RunTestsAsync" disabled="@_isRunning" title="Test">
-										<i class="fas fa-flask"></i>
-									</button>
-									<button class="btn btn-xs btn-breadcrumb btn-breadcrumb-publish" @onclick="RunPublishAsync" disabled="@(!IsPublishEnabled())" title="@GetPublishTooltip()">
-										<i class="fas fa-rocket"></i>
-									</button>
-								}
-								else
-								{
-									<span class="breadcrumb-sep">|</span>
-									<button class="btn btn-xs btn-breadcrumb" @onclick="GitSyncAsync" disabled="@_isRunning" title="Clone and sync repository">
-										<i class="fas fa-sync"></i>
-									</button>
 								}
 								@if (_selectedCategory is not null)
 								{
@@ -175,6 +160,11 @@ else
 								{
 									<span class="breadcrumb-sep">›</span>
 									<span class="breadcrumb-current" title="@_selectedRuleId">@_selectedRuleId</span>
+								}
+								@if (_currentView == NavView.Settings)
+								{
+									<span class="breadcrumb-sep">›</span>
+									<span class="breadcrumb-current">Settings</span>
 								}
                            }
 						</div>
@@ -187,9 +177,23 @@ else
 							{
 								<span class="progress-indicator" style="opacity:0.5">@_lastRefreshUtc.ToLocalTime().ToString("HH:mm")</span>
 							}
-							<a href="/logout" class="btn btn-xs btn-breadcrumb" title="Sign out">
-								<i class="fas fa-user"></i> @_userName
-							</a>
+							<div class="user-menu">
+								<button type="button" class="btn btn-xs btn-breadcrumb" @onclick="() => _userMenuOpen = !_userMenuOpen" title="Account">
+									<i class="fas fa-user"></i> @_userName <i class="fas fa-caret-down"></i>
+								</button>
+								@if (_userMenuOpen)
+								{
+									<div class="user-menu-backdrop" @onclick="() => _userMenuOpen = false"></div>
+									<div class="user-menu-dropdown">
+										<button type="button" class="user-menu-item" @onclick="NavigateToAppSettings">
+											<i class="fas fa-cog"></i> Application settings
+										</button>
+										<a href="/logout" class="user-menu-item">
+											<i class="fas fa-right-from-bracket"></i> Log out
+										</a>
+									</div>
+								}
+							</div>
 						</div>
 					</div>
 
@@ -221,6 +225,20 @@ else
 											 ToolTip="Scan all assessed repositories for available NuGet package updates"
 											 Click="OnToolbarClick" />
 
+							<PDToolbarButton Key="git-sync"
+											 Text="Sync"
+											 IconCssClass="fas fa-arrows-rotate"
+											 CssClass="@GetStepCssClassFull(WorkflowStep.GitSync)"
+											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
+											 IsEnabled="@IsSyncEnabled()"
+											 ToolTip="@GetSyncTooltip()"
+											 Click="OnToolbarClick" />
+
+							@if (ShowWorkflowFlow)
+							{
+								<span class="flow-chevron">›</span>
+							}
+
 							<PDToolbarButton Key="reassess"
 											 Text="Re-assess"
 											 IconCssClass="fas fa-sync-alt"
@@ -229,6 +247,11 @@ else
 											 IsEnabled="@(!_isAssessing)"
 											 ToolTip="@(_currentView == NavView.Dashboard ? "Re-assess all repos" : "Re-assess this package")"
 											 Click="OnToolbarClick" />
+
+							@if (ShowWorkflowFlow)
+							{
+								<span class="flow-chevron">›</span>
+							}
 
 							<PDToolbarButton Key="fix"
 											 Text="Fix"
@@ -239,42 +262,58 @@ else
 											 ToolTip="@GetFixAllTooltip()"
 											 Click="OnToolbarClick" />
 
-							<PDToolbarSeparator IsVisible="@(_selectedRow?.IsClonedLocally == true)" />
+							@if (ShowWorkflowFlow)
+							{
+								<span class="flow-chevron">›</span>
+							}
 
 							<PDToolbarButton Key="build"
 											 Text="Build"
 											 IconCssClass="fas fa-hammer"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Build)"
-											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
-											 IsEnabled="@(!_isRunning)"
-											 ToolTip="Build the solution"
+											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
+											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true)"
+											 ToolTip="@(_selectedRow?.IsClonedLocally == true ? "Build the solution" : "Clone the repository first")"
 											 Click="OnToolbarClick" />
+
+							@if (ShowWorkflowFlow)
+							{
+								<span class="flow-chevron">›</span>
+							}
 
 							<PDToolbarButton Key="test"
 											 Text="Test"
 											 IconCssClass="fas fa-flask"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Test)"
-											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
-											 IsEnabled="@(!_isRunning)"
-											 ToolTip="Run unit tests"
+											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
+											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true)"
+											 ToolTip="@(_selectedRow?.IsClonedLocally == true ? "Run unit tests" : "Clone the repository first")"
 											 Click="OnToolbarClick" />
 
-							<PDToolbarSeparator IsVisible="@(_selectedRow?.IsClonedLocally == true)" />
+							@if (ShowWorkflowFlow)
+							{
+								<span class="flow-chevron">›</span>
+							}
 
 							<PDToolbarButton Key="commit-and-push"
 											 Text="Commit & Push"
 											 IconCssClass="fas fa-cloud-upload-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
-											 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
-											 IsEnabled="@(!_isRunning)"
-											 ToolTip="Commit changes, fetch, rebase and push to origin"
+											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
+											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true)"
+											 ToolTip="@(_selectedRow?.IsClonedLocally == true ? "Commit changes, fetch, rebase and push to origin" : "Clone the repository first")"
 											 Click="OnToolbarClick" />
+
+							@if (ShowWorkflowFlow)
+							{
+								<span class="flow-chevron">›</span>
+							}
 
 							<PDToolbarButton Key="publish"
 										 Text="Publish"
 										 IconCssClass="fas fa-rocket"
 										 CssClass="@GetPublishCssClass()"
-										 IsVisible="@(_selectedRow?.IsClonedLocally == true)"
+										 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
 										 IsEnabled="@IsPublishEnabled()"
 										 ToolTip="@GetPublishTooltip()"
 										 Click="OnToolbarClick" />
@@ -300,7 +339,7 @@ else
 								}
 								<button class="btn toolbar-action-btn @(_currentView == NavView.Settings ? "btn-console-active" : "")"
 										@onclick="NavigateToSettings"
-										title="Application settings">
+										title="Organization settings">
 									<i class="fas fa-cog"></i>
 								</button>
 								<button class="btn toolbar-action-btn @(_consoleVisible ? "btn-console-active" : "")"
@@ -354,6 +393,8 @@ else
 	// === Navigation state ===
 	private PDTree<NavItem>? _navTree;
 	private NavView _currentView = NavView.Dashboard;
+	private bool _userMenuOpen;
+	private bool ShowWorkflowFlow => _selectedRow is not null && _currentView != NavView.Settings;
 	private string? _selectedPackageId;
 	private AssessmentCategory? _selectedCategory;
 	private string? _selectedRuleId;
@@ -548,15 +589,39 @@ else
 
 	private void NavigateToSettings()
 	{
+		// Settings is a sub-view of the selected repo — keep the repo context so the
+		// breadcrumb reads Dashboard › Repo › Settings and the user can click back.
 		_currentView = NavView.Settings;
+		_selectedCategory = null;
+		_selectedRuleId = null;
+		_completedSteps.Clear();
+		_failedSteps.Clear();
+		_lastFailedWorkflowStep = null;
+		StateHasChanged();
+	}
+
+	private void NavigateToSelectedPackage()
+	{
+		if (_selectedRow is null)
+		{
+			NavigateToDashboard();
+			return;
+		}
+
+		_currentView = NavView.PackageDetail;
+		_selectedCategory = null;
+		_selectedRuleId = null;
+		StateHasChanged();
+	}
+
+	private void NavigateToAppSettings()
+	{
+		_currentView = NavView.AppSettings;
 		_selectedRow = null;
 		_selectedPackageId = null;
 		_selectedCategory = null;
 		_selectedRuleId = null;
-		_selectedNodeKey = "settings";
-		_completedSteps.Clear();
-		_failedSteps.Clear();
-      _lastFailedWorkflowStep = null;
+		_userMenuOpen = false;
 		StateHasChanged();
 	}
 
@@ -745,6 +810,9 @@ else
 				break;
 			case NavView.Settings:
 				@RenderSettingsView()
+				break;
+			case NavView.AppSettings:
+				@RenderAppSettingsView()
 				break;
 			case NavView.NuGetUpdates:
 				@RenderNuGetUpdatesView()
@@ -1087,6 +1155,16 @@ else
 					</div>
 				}
 			</div>
+		</div>
+	};
+
+	private RenderFragment RenderAppSettingsView() => __builder =>
+	{
+		<div class="settings-view" style="padding: 1.5rem; max-width: 600px;">
+			<h2>Application settings</h2>
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				Application-wide settings will live here. (Coming soon.)
+			</p>
 		</div>
 	};
 
@@ -2359,9 +2437,51 @@ else
 
 	// === Publish guard methods ===
 
+	private bool IsSyncEnabled()
+	{
+		if (_selectedRow is null || _isRunning)
+		{
+			return false;
+		}
+
+		if (!_selectedRow.IsClonedLocally)
+		{
+			return true;
+		}
+
+		// Nothing to sync when the working tree is clean AND we're in sync with origin.
+		return _selectedRow.IsWorkingTreeClean != true || _selectedRow.IsSyncedWithOrigin != true;
+	}
+
+	private string GetSyncTooltip()
+	{
+		if (_isRunning)
+		{
+			return "Another operation is running";
+		}
+
+		if (_selectedRow is null)
+		{
+			return "Select a repository";
+		}
+
+		if (!_selectedRow.IsClonedLocally)
+		{
+			return "Clone and sync repository";
+		}
+
+		if (_selectedRow.IsWorkingTreeClean == true && _selectedRow.IsSyncedWithOrigin == true)
+		{
+			return "Already in sync with origin";
+		}
+
+		return "Fetch, pull --rebase, push";
+	}
+
 	private bool IsPublishEnabled()
 	{
-		return _selectedRow is not null && !_isRunning && _selectedRow.IsClonedLocally;
+		return _selectedRow is not null && !_isRunning && _selectedRow.IsClonedLocally
+			&& _selectedRow.Status == PackageStatus.TestsPassed;
 	}
 
 	private string GetPublishTooltip()
@@ -3111,10 +3231,16 @@ else
 
 	private string GetPublishCssClass()
 	{
-		var css = IsPublishDone() ? "btn-success toolbar-step-done" : "btn-success";
-		if (!IsPublishDone() && GetNextPendingStep() == WorkflowStep.Publish)
+		if (!IsPublishEnabled())
 		{
-			css += " toolbar-step-next";
+			// Not publishable yet — render neutral (like Build/Test) so green means "ready to publish".
+			return GetStepCssClassFull(WorkflowStep.Publish);
+		}
+
+		var css = "btn-success";
+		if (IsPublishDone())
+		{
+			css += " toolbar-step-done";
 		}
 
 		return css;
