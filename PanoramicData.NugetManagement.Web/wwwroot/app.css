@@ -1795,6 +1795,27 @@ i + .breadcrumb-link-text {
     background-color: #0056b3 !important;
 }
 
+/* The Organisations and Repositories grouping nodes are not selectable, so they must not show
+   a hover background (or they look selectable). Keyed off their icons: fa-city / fa-cubes. */
+.pdtreenode_content:has(.nav-node-label i.fa-city):hover,
+.pdtreenode_content:has(.nav-node-label i.fa-cubes):hover {
+    background: transparent !important;
+}
+
+/* Organisations is always expanded and has no collapse toggle (its chevron is removed). */
+.pdtreenode_header:has(.nav-node-label i.fa-city) > i {
+    display: none;
+}
+
+/* Container header nodes get distinct label colours to set them apart from repo nodes. */
+.nav-node-label:has(> i.fa-city) {   /* Organisations — cream */
+    color: #efe6c8;
+}
+
+.nav-node-label:has(> i.fa-cubes) {  /* Repositories — pink */
+    color: #f48fb1;
+}
+
 /* Org (root) tree row: lay it out as a full-width flex row so the settings cog
    sits flush against the right edge of the sidebar. */
 .pdtreenode_content:has(.nav-org-settings-btn) {

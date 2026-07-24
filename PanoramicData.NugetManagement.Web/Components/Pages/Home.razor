@@ -80,7 +80,9 @@ else
 									ToolTip="GetNavItemTooltip"
 									AllowSelection="true"
 									ShowRoot="true"
-									SelectionChange="OnNavSelectionChanged">
+									BeforeSelectionChange="OnNavBeforeSelect"
+									SelectionChange="OnNavSelectionChanged"
+									Ready="OnNavTreeReady">
 									<NodeTemplate Context="node">
 										<span class="nav-node-label" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
 											<i class="@node.Data?.IconCss"></i>@node.Data?.Text
@@ -107,7 +109,7 @@ else
 					<!-- Breadcrumb bar at the very top -->
 					<div class="breadcrumb-bar">
 						<div class="breadcrumb-trail">
-							@if (!_orgSelected && _selectedRow is null && _currentView != NavView.Settings && _currentView != NavView.AppSettings)
+							@if (!_orgSelected && _selectedRow is null && _currentView != NavView.Settings && _currentView != NavView.AppSettings && _currentView != NavView.NuGetUpdates)
 							{
 								<span class="breadcrumb-current"><i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span></span>
 							}
@@ -117,8 +119,8 @@ else
 									<i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span>
 								</a>
 							}
-							@* Org crumb — shown at org level or deeper (repo selected, or org settings) *@
-							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings)
+							@* Org crumb — shown at org level or deeper (repo selected, org settings, or package updates) *@
+							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || _currentView == NavView.NuGetUpdates)
 							{
 								<span class="breadcrumb-sep">›</span>
 								@if (_orgSelected && _selectedRow is null && _currentView != NavView.Settings)
@@ -201,6 +203,11 @@ else
 							{
 								<span class="breadcrumb-sep">›</span>
 								<span class="breadcrumb-current">Settings</span>
+							}
+							@if (_currentView == NavView.NuGetUpdates)
+							{
+								<span class="breadcrumb-sep">›</span>
+								<span class="breadcrumb-current">Package Updates</span>
 							}
 						</div>
 						<div class="breadcrumb-right">
@@ -570,7 +577,7 @@ else
 
 	private void OnNavSelectionChanged(TreeNode<NavItem> node)
 	{
-		if (node.Data is null)
+		if (node.Data is null || !IsSelectableNavNode(node.Data))
 		{
 			return;
 		}
@@ -609,11 +616,40 @@ else
 
 	private void OnNavNodeActivated(TreeNode<NavItem> node)
 	{
+		// Organisations / Repositories / Package Updates are structural grouping nodes — not selectable.
+		if (!IsSelectableNavNode(node.Data))
+		{
+			return;
+		}
+
 		// Apply the visual selection ourselves so re-clicking a node whose highlight was
 		// cleared in place (Dashboard deselect) re-highlights it — PDTree ignores re-clicks.
 		_navTree?.RootNode.Walk(n => { n.IsSelected = false; return true; });
 		node.IsSelected = true;
 		OnNavSelectionChanged(node);
+	}
+
+	// The Organisations and Repositories grouping nodes are not selectable; everything else
+	// (the org, Package Updates view, and individual repos) is.
+	private static bool IsSelectableNavNode(NavItem? item)
+		=> item is not null && item.Key is not ("organisations" or "repositories");
+
+	private void OnNavBeforeSelect(TreeBeforeSelectionChangeEventArgs<NavItem> args)
+	{
+		if (!IsSelectableNavNode(args.NewNode?.Data))
+		{
+			args.Cancel = true;
+		}
+	}
+
+	// Organisations is always shown expanded (its collapse toggle is hidden in CSS).
+	private async Task OnNavTreeReady()
+	{
+		var org = _navTree?.RootNode.Find("organisations");
+		if (org is not null && !org.IsExpanded)
+		{
+			await _navTree!.ToggleNodeIsExpandedAsync(org).ConfigureAwait(true);
+		}
 	}
 
 	private void NavigateToDashboard()
