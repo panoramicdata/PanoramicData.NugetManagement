@@ -82,7 +82,7 @@ else
 									ShowRoot="true"
 									SelectionChange="OnNavSelectionChanged">
 									<NodeTemplate Context="node">
-										<span class="nav-node-label" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+										<span class="nav-node-label" @onclick="() => OnNavSelectionChanged(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
 											<i class="@node.Data?.IconCss"></i>@node.Data?.Text
 										</span>
 									</NodeTemplate>
@@ -114,11 +114,20 @@ else
 							@if (_selectedRow is not null)
 							{
 								<span class="breadcrumb-sep">›</span>
-								<a class="breadcrumb-link" @onclick="NavigateToSelectedPackage" @onclick:preventDefault>
-									<i class="@GetPackageHealthIcon(_selectedRow)"></i>
-									@_selectedRow.PackageId
-									<span class="pkg-version">@_selectedRow.LatestVersion</span>
-								</a>
+								@if (_currentView == NavView.PackageDetail)
+								{
+									@* Repo is the active page — show as current, not clickable *@
+									<span class="breadcrumb-current breadcrumb-repo">
+										<i class="@GetPackageHealthIcon(_selectedRow)"></i><span class="breadcrumb-repo-name">@_selectedRow.PackageId</span><span class="pkg-version">@_selectedRow.LatestVersion</span>
+									</span>
+								}
+								else
+								{
+									@* Repo is an ancestor crumb — click to return to it *@
+									<a class="breadcrumb-link breadcrumb-repo" @onclick="NavigateToSelectedPackage" @onclick:preventDefault>
+										<i class="@GetPackageHealthIcon(_selectedRow)"></i><span class="breadcrumb-repo-name">@_selectedRow.PackageId</span><span class="pkg-version">@_selectedRow.LatestVersion</span>
+									</a>
+								}
 								@if (_selectedRow.IsClonedLocally && _currentView != NavView.Settings)
 								{
 									<span class="breadcrumb-sep">|</span>
@@ -172,10 +181,6 @@ else
 							@if (_isLoading || _isAssessing)
 							{
 								<span class="progress-indicator"><span class="spinner"></span> @GetProgressIndicatorText()</span>
-							}
-							else if (_lastRefreshUtc > DateTimeOffset.MinValue)
-							{
-								<span class="progress-indicator" style="opacity:0.5">@_lastRefreshUtc.ToLocalTime().ToString("HH:mm")</span>
 							}
 							<div class="user-menu">
 								<button type="button" class="btn btn-xs btn-breadcrumb" @onclick="() => _userMenuOpen = !_userMenuOpen" title="Account">
@@ -321,31 +326,33 @@ else
 							<PDToolbarPlaceholder ShiftRight="true">
 								@if (_selectedRow?.IsClonedLocally == true)
 								{
-									<button class="btn toolbar-action-btn"
-											@onclick="() => OpenInIde()"
-											disabled="@(!IsOpenIdeEnabled())"
-											title="@GetOpenIdeTooltip()">
-										<i class="fas fa-code"></i>
-									</button>
+									<span style="display:inline-flex" title="@GetOpenIdeTooltip()">
+										<button class="btn toolbar-action-btn"
+												@onclick="() => OpenInIde()"
+												disabled="@(!IsOpenIdeEnabled())">
+											<i class="fas fa-code"></i>
+										</button>
+									</span>
 								}
 								@if (_selectedRow is not null)
 								{
-									<button class="btn toolbar-action-btn @(CurrentAiClipboardCueStep.HasValue ? "toolbar-ai-ready" : "")"
-											@onclick="CopyPromptToClipboardAsync"
-											disabled="@(string.IsNullOrEmpty(CurrentLastPromptText) || _isRunning)"
-											title="@(string.IsNullOrEmpty(CurrentLastPromptText) ? "No AI prompt generated yet" : "Copy the last generated AI prompt to clipboard")">
-										<i class="fas fa-copy"></i>
-									</button>
+									<span style="display:inline-flex" title="@(string.IsNullOrEmpty(CurrentLastPromptText) ? "No AI prompt generated yet" : "Copy the last generated AI prompt to clipboard")">
+										<button class="btn toolbar-action-btn @(CurrentAiClipboardCueStep.HasValue ? "toolbar-ai-ready" : "")"
+												@onclick="CopyPromptToClipboardAsync"
+												disabled="@(string.IsNullOrEmpty(CurrentLastPromptText) || _isRunning)">
+											<i class="fas fa-copy"></i>
+										</button>
+									</span>
 								}
-								<button class="btn toolbar-action-btn @(_currentView == NavView.Settings ? "btn-console-active" : "")"
-										@onclick="NavigateToSettings"
-										title="Organization settings">
-									<i class="fas fa-cog"></i>
-								</button>
 								<button class="btn toolbar-action-btn @(_consoleVisible ? "btn-console-active" : "")"
 										@onclick="ToggleConsole"
 										title="Toggle console panel">
 									<i class="fas fa-terminal"></i>
+								</button>
+								<button class="btn toolbar-action-btn @(_currentView == NavView.Settings ? "btn-console-active" : "")"
+										@onclick="NavigateToSettings"
+										title="Organization settings">
+									<i class="fas fa-cog"></i>
 								</button>
 							</PDToolbarPlaceholder>
 						</PDToolbar>

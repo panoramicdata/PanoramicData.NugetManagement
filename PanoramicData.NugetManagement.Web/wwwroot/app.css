@@ -47,6 +47,9 @@ html, body {
     padding: 0.25rem 0.5rem !important;
     flex-shrink: 0;
     gap: 0.25rem;
+    /* Keep a constant row height so icon buttons don't jump up when the taller
+       workflow buttons are hidden (e.g. in Settings view). 40px = Dashboard row height. */
+    min-height: 40px;
 }
 
 .main-toolbar .pdtoolbarplaceholder {
@@ -134,16 +137,32 @@ html, body {
     top: -1px;
 }
 
-.toolbar-action-btn {
+.main-toolbar .toolbar-action-btn {
     padding: 0.35rem 0.5rem;
     font-size: 0.9rem;
     min-width: 32px;
     justify-content: center;
+    border: 1px solid #ffffff;
+}
+
+/* Toolbar button icons read optically high — nudge them all down 1px */
+.main-toolbar button i {
+    position: relative;
+    top: 1px;
 }
 
 .user-menu {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* Match the Account button to the git status badges (e.g. "Synced"): same height, padding, radius */
+.user-menu > button {
+    font-size: 0.7rem;
+    line-height: 1.5;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
 }
 
 .user-menu-backdrop {
@@ -1177,7 +1196,7 @@ h1:focus {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.35rem 0.75rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.75rem;
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -1219,8 +1238,28 @@ h1:focus {
 }
 
 .breadcrumb-current {
-    color: var(--text-primary);
+    color: var(--accent);
     font-weight: 600;
+}
+
+/* Repo crumb lays out icon + name + version as a centered inline-flex row so the
+   monospace version doesn't lift the name above the other crumbs' baseline */
+.breadcrumb-repo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+/* The cube icon and monospace version both render high in their line-boxes;
+   nudge them down so they sit on the repo name's line (version needs 1px more) */
+.breadcrumb-repo > i {
+    position: relative;
+    top: 1px;
+}
+
+.breadcrumb-repo .pkg-version {
+    position: relative;
+    top: 2px;
 }
 
 .breadcrumb-right {
