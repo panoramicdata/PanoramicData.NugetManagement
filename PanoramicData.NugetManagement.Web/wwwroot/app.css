@@ -1778,6 +1778,12 @@ i + .breadcrumb-link-text {
     margin-right: 4px;
 }
 
+/* Nudge the whole Package Updates node label (icon + text) 1px right. */
+.nav-node-label:has(> i.fa-arrow-circle-up) {
+    position: relative;
+    left: 1px;
+}
+
 /* Remove PDTreeNode's per-level 1px extra indent so non-top-level rows align ~1px further left. */
 .pdtreenode .pdtreenode_child_content {
     padding-left: 0 !important;

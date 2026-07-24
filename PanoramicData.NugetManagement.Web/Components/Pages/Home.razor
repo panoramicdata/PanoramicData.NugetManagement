@@ -794,6 +794,18 @@ else
 		{
 			await _navTree.RefreshNodeAsync(node).ConfigureAwait(true);
 		}
+
+		// Packages now sit three levels down (Organisations > org > Repositories > repo) and are
+		// collapsed after a refresh. Expand that path so the (possibly filtered) repository list
+		// is visible rather than hidden under collapsed ancestors.
+		foreach (var key in new[] { "organisations", "root", "repositories" })
+		{
+			var pathNode = _navTree.RootNode.Find(key);
+			if (pathNode is not null && !pathNode.IsExpanded)
+			{
+				await _navTree.ToggleNodeIsExpandedAsync(pathNode).ConfigureAwait(true);
+			}
+		}
 	}
 
 	// === Toolbar ===

@@ -71,10 +71,20 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		var items = new List<NavItem>
 		{
-			// Root: Organisation
+			// Top level: Organisations
+			new() {
+				Key = "organisations",
+				Text = "Organisations",
+				IconCss = "fas fa-city",
+				View = NavView.Dashboard,
+				IsLeaf = false
+			},
+
+			// The organisation
 			new() {
 				Key = "root",
 				Text = _organizationName,
+				ParentKey = "organisations",
 				IconCss = "fas fa-building",
 				View = NavView.Dashboard,
 				IsLeaf = false,
@@ -83,7 +93,17 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				HasWarnings = hasAnyWarnings
 			},
 
-			// Package updates management
+			// Repositories grouping — packages live under here
+			new() {
+				Key = "repositories",
+				Text = "Repositories",
+				ParentKey = "root",
+				IconCss = "fas fa-cubes",
+				View = NavView.Dashboard,
+				IsLeaf = false
+			},
+
+			// Package updates management (also directly under the org)
 			new() {
 				Key = "nuget-updates",
 				Text = "Package Updates",
@@ -141,7 +161,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				{
 					Key = pkgKey,
 					Text = row.PackageId,
-					ParentKey = "root",
+					ParentKey = "repositories",
 					IconCss = pkgIcon,
 					View = NavView.PackageDetail,
 					PackageId = row.PackageId,
