@@ -127,16 +127,47 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
-	public async Task SER01_ShouldFail_WhenNewtonsoftReferenced()
+	public async Task SER01_ShouldFail_WhenNewtonsoftReferencedByAProject()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Newtonsoft.Json\" Version=\"13.0.3\" /></ItemGroup></Project>"
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Newtonsoft.Json\" Version=\"13.0.3\" /></ItemGroup></Project>",
+			["MyProject/MyProject.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Newtonsoft.Json\" /></ItemGroup></Project>"
 		});
 
 		var rule = GetRule("SER-01");
 		var result = await rule.EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
+		result.IsApplicable.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task SER01_ShouldNotApply_WhenNewtonsoftIsOnlyPinnedForATransitiveDependency()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			// Pinned centrally, but no project asks for it: it can only be arriving transitively.
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Newtonsoft.Json\" Version=\"13.0.3\" /></ItemGroup></Project>",
+			["MyProject/MyProject.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Octokit\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("SER-01").EvaluateAsync(context, CancellationToken.None);
+		result.IsApplicable.Should().BeFalse("pinning a transitive dependency is not choosing to use it");
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task SER01_ShouldPass_WhenNewtonsoftIsAbsentEntirely()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Octokit\" Version=\"14.0.0\" /></ItemGroup></Project>",
+			["MyProject/MyProject.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Octokit\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("SER-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeTrue();
 	}
 
 	[Fact]
