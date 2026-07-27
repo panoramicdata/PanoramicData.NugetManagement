@@ -82,6 +82,8 @@ else
 									ShowRoot="true"
 									BeforeSelectionChange="OnNavBeforeSelect"
 									SelectionChange="OnNavSelectionChanged"
+									NodeExpanded="OnNavNodeExpanded"
+									NodeCollapsed="OnNavNodeCollapsed"
 									Ready="OnNavTreeReady">
 									<NodeTemplate Context="node">
 										<span class="nav-node-label" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
@@ -433,10 +435,14 @@ else
 	private PDTree<NavItem>? _navTree;
 	private NavView _currentView = NavView.Dashboard;
 	private bool _userMenuOpen;
-		// True when the org (root) node is the current focus (org overview / org settings),
-		// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
-		private bool _orgSelected;
-		private string _organizationName = string.Empty;
+	// True when the org (root) node is the current focus (org overview / org settings),
+	// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
+	private bool _orgSelected;
+	private string _organizationName = string.Empty;
+	// Which tree branches are open, persisted to localStorage so expansion survives a page reload.
+	private const string ExpandedNodesStorageKey = "navTreeExpandedNodes";
+	private readonly HashSet<string> _expandedNodeKeys = [];
+	private bool _restoringExpansion;
 	private bool ShowWorkflowFlow => _selectedRow is not null && _currentView != NavView.Settings;
 	private string? _selectedPackageId;
 	private AssessmentCategory? _selectedCategory;
@@ -652,13 +658,122 @@ else
 		}
 	}
 
-	// Organisations is always shown expanded (its collapse toggle is hidden in CSS).
+	// Organisations is always shown expanded (its collapse toggle is hidden in CSS), and any
+	// branches the user had open before a reload are re-opened.
 	private async Task OnNavTreeReady()
 	{
-		var org = _navTree?.RootNode.Find("organisations");
-		if (org is not null && !org.IsExpanded)
+		// Suppress saving for the whole sequence: expanding nodes here fires NodeExpanded, which
+		// would otherwise persist a partial set and clobber what we're about to restore.
+		_restoringExpansion = true;
+		try
 		{
-			await _navTree!.ToggleNodeIsExpandedAsync(org).ConfigureAwait(true);
+			await LoadExpandedNodesAsync();
+
+			var org = _navTree?.RootNode.Find("organisations");
+			if (org is not null && !org.IsExpanded)
+			{
+				await _navTree!.ToggleNodeIsExpandedAsync(org).ConfigureAwait(true);
+			}
+
+			_expandedNodeKeys.Add("organisations");
+
+			if (_navTree is not null)
+			{
+				await ExpandSavedNodesAsync(_navTree.RootNode);
+			}
+		}
+		finally
+		{
+			_restoringExpansion = false;
+		}
+
+		StateHasChanged();
+	}
+
+	private async Task OnNavNodeExpanded(TreeNode<NavItem> node)
+	{
+		if (_restoringExpansion || node.Key is null)
+		{
+			return;
+		}
+
+		_expandedNodeKeys.Add(node.Key);
+		await SaveExpandedNodesAsync();
+	}
+
+	private async Task OnNavNodeCollapsed(TreeNode<NavItem> node)
+	{
+		if (_restoringExpansion || node.Key is null)
+		{
+			return;
+		}
+
+		_expandedNodeKeys.Remove(node.Key);
+		await SaveExpandedNodesAsync();
+	}
+
+	private async Task SaveExpandedNodesAsync()
+	{
+		try
+		{
+			await JS.InvokeVoidAsync(
+				"localStorage.setItem",
+				ExpandedNodesStorageKey,
+				System.Text.Json.JsonSerializer.Serialize(_expandedNodeKeys));
+		}
+		catch
+		{
+			// localStorage may not be available
+		}
+	}
+
+	/// <summary>
+	/// Loads the set of previously-expanded branch keys from localStorage.
+	/// </summary>
+	private async Task LoadExpandedNodesAsync()
+	{
+		try
+		{
+			var stored = await JS.InvokeAsync<string?>("localStorage.getItem", ExpandedNodesStorageKey);
+			if (string.IsNullOrWhiteSpace(stored))
+			{
+				return;
+			}
+
+			var keys = System.Text.Json.JsonSerializer.Deserialize<string[]>(stored);
+			if (keys is null)
+			{
+				return;
+			}
+
+			_expandedNodeKeys.Clear();
+			foreach (var key in keys)
+			{
+				_expandedNodeKeys.Add(key);
+			}
+		}
+		catch
+		{
+			// localStorage unavailable or stored value unreadable — leave the tree as-is
+		}
+	}
+
+	private async Task ExpandSavedNodesAsync(TreeNode<NavItem> node)
+	{
+		// Expand this node first so its children are present before recursing into them.
+		if (node.Key is not null && !node.Isleaf && !node.IsExpanded && _expandedNodeKeys.Contains(node.Key))
+		{
+			await _navTree!.ToggleNodeIsExpandedAsync(node).ConfigureAwait(true);
+		}
+
+		if (node.Nodes is null)
+		{
+			return;
+		}
+
+		foreach (var child in node.Nodes.ToList())
+		{
+			await ExpandSavedNodesAsync(child).ConfigureAwait(true);
 		}
 	}
 
