@@ -1,3 +1,5 @@
+using System.Xml;
+using System.Xml.Linq;
 using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Rules;
@@ -34,6 +36,24 @@ public abstract class RuleBase : IRule
 		Category = Category,
 		Severity = Severity,
 		Passed = true,
+		Message = message
+	};
+
+	/// <summary>
+	/// Creates a not-applicable result for this rule: the rule was evaluated but is not relevant to
+	/// this repository. Reported as passing so it never counts as a failure, but flagged via
+	/// <see cref="RuleResult.IsApplicable"/> so "irrelevant" can be told apart from "compliant".
+	/// </summary>
+	/// <param name="message">Explanation of why the rule does not apply.</param>
+	/// <returns>A passing, not-applicable RuleResult.</returns>
+	protected RuleResult NotApplicable(string message) => new()
+	{
+		RuleId = RuleId,
+		RuleName = RuleName,
+		Category = Category,
+		Severity = Severity,
+		Passed = true,
+		IsApplicable = false,
 		Message = message
 	};
 
@@ -93,4 +113,64 @@ public abstract class RuleBase : IRule
 	/// <returns>True if the project contains &lt;IsPackable&gt;false&lt;/IsPackable&gt;.</returns>
 	protected static bool IsExplicitlyNonPackable(string? content)
 		=> Contains(content, "<IsPackable>false</IsPackable>");
+
+	/// <summary>
+	/// The MSBuild elements that declare a NuGet package dependency.
+	/// </summary>
+	private static readonly string[] _packageElementNames =
+		["PackageReference", "PackageVersion", "GlobalPackageReference"];
+
+	/// <summary>
+	/// Checks whether a project or props file actually declares a reference to the given package.
+	/// Unlike a raw substring search this ignores XML comments (including commented-out references)
+	/// and text that merely mentions the package name, matching only the package identifier of a
+	/// PackageReference / PackageVersion / GlobalPackageReference element.
+	/// </summary>
+	/// <param name="xml">The .csproj or .props file content.</param>
+	/// <param name="packageId">The package identifier to look for.</param>
+	/// <param name="includeVariants">
+	/// When true, also matches sub-packages of the same family — e.g. a <paramref name="packageId"/>
+	/// of "Refit" matches "Refit.HttpClientFactory", and "Flurl" matches "Flurl.Http".
+	/// </param>
+	/// <returns>True if the package is referenced.</returns>
+	protected static bool ReferencesPackage(string? xml, string packageId, bool includeVariants = false)
+	{
+		if (string.IsNullOrWhiteSpace(xml) || string.IsNullOrWhiteSpace(packageId))
+		{
+			return false;
+		}
+
+		var referencedIds = TryGetReferencedPackageIds(xml);
+		if (referencedIds is null)
+		{
+			// Not parseable as XML — fall back to a substring match so behaviour never degrades
+			// below the previous best-effort check.
+			return Contains(xml, packageId);
+		}
+
+		return referencedIds.Any(id =>
+			string.Equals(id, packageId, StringComparison.OrdinalIgnoreCase)
+			|| (includeVariants && id.StartsWith($"{packageId}.", StringComparison.OrdinalIgnoreCase)));
+	}
+
+	/// <summary>
+	/// Returns the package identifiers declared in the given MSBuild XML, or null if the content
+	/// could not be parsed as XML.
+	/// </summary>
+	private static List<string>? TryGetReferencedPackageIds(string xml)
+	{
+		try
+		{
+			return [.. XDocument.Parse(xml)
+				.Descendants()
+				.Where(element => _packageElementNames.Contains(element.Name.LocalName, StringComparer.OrdinalIgnoreCase))
+				.Select(element => element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value)
+				.Where(id => !string.IsNullOrWhiteSpace(id))
+				.Select(id => id!.Trim())];
+		}
+		catch (XmlException)
+		{
+			return null;
+		}
+	}
 }

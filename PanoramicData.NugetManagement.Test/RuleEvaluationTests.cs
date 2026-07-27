@@ -1006,7 +1006,67 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
-	public async Task HTTP01_ShouldFail_WhenRefitMissing()
+	public async Task HTTP01_ShouldFail_WhenRefitMissingButRepositoryDoesHttp()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup></ItemGroup></Project>",
+			["MyProject/MyProject.csproj"] = "<Project><ItemGroup><PackageReference Include=\"RestSharp\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("HTTP-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.IsApplicable.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task HTTP01_ShouldNotBeSatisfiedByACommentMentioningThePackage()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup></ItemGroup></Project>",
+			["MyProject/MyProject.csproj"] =
+				"<Project><ItemGroup>"
+				+ "<!-- We should really switch this to Refit one day -->"
+				+ "<PackageReference Include=\"RestSharp\" />"
+				+ "</ItemGroup></Project>"
+		});
+
+		var result = await GetRule("HTTP-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("a comment mentioning the package is not a reference to it");
+	}
+
+	[Fact]
+	public async Task HTTP01_ShouldNotBeSatisfiedByACommentedOutReference()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup></ItemGroup></Project>",
+			["MyProject/MyProject.csproj"] =
+				"<Project><ItemGroup>"
+				+ "<!-- <PackageReference Include=\"Refit\" /> -->"
+				+ "<PackageReference Include=\"RestSharp\" />"
+				+ "</ItemGroup></Project>"
+		});
+
+		var result = await GetRule("HTTP-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("a commented-out reference is not an active reference");
+	}
+
+	[Fact]
+	public async Task HTTP01_ShouldPass_WhenOnlyARefitSubPackageIsReferenced()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Refit.HttpClientFactory\" Version=\"7.0.0\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("HTTP-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue("Refit.HttpClientFactory means Refit is in use");
+	}
+
+	[Fact]
+	public async Task HTTP01_ShouldNotApply_WhenRepositoryDoesNoHttp()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
@@ -1015,7 +1075,8 @@ public class RuleEvaluationTests : TestWithOutput
 		});
 
 		var result = await GetRule("HTTP-01").EvaluateAsync(context, CancellationToken.None);
-		result.Passed.Should().BeFalse();
+		result.IsApplicable.Should().BeFalse();
+		result.Passed.Should().BeTrue("a not-applicable rule must never count as a failure");
 	}
 
 	// ── LIC-02 ──────────────────────────────────────────────────────────

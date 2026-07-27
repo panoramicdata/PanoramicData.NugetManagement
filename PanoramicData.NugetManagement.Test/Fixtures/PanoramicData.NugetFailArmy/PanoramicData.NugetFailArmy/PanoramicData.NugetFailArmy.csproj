@@ -8,5 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- Does HTTP client work, but via the wrong library, so HTTP-01 applies and fails. -->
+    <PackageReference Include="RestSharp" Version="110.2.0" />
   </ItemGroup>
 </Project>

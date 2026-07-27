@@ -31,6 +31,14 @@ public class RuleResult
 	public required bool Passed { get; init; }
 
 	/// <summary>
+	/// Whether this rule is relevant to the repository at all. False when the rule was evaluated
+	/// but does not apply (e.g. an HTTP client rule against a repository that makes no HTTP calls).
+	/// Not-applicable results are reported as passing so they never count as failures, but this
+	/// flag distinguishes "compliant" from "irrelevant".
+	/// </summary>
+	public bool IsApplicable { get; init; } = true;
+
+	/// <summary>
 	/// A human-readable message explaining the result.
 	/// </summary>
 	public required string Message { get; init; }
