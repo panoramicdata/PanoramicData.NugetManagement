@@ -105,6 +105,7 @@
 					IconCssClass="(item, _) => string.Empty"
 					AllowSelection="false"
 					ShowRoot="true"
+					Sort="CompareIssueNodes"
 					ExceptionHandler="OnTreeException">
 				<NodeTemplate Context="node">
 					@if (node.Data is { Kind: IssueNodeKind.Category, Category: not null } catItem)
@@ -288,6 +289,42 @@
 	}
 
 	private void OnGuardChanged() => _ = InvokeAsync(StateHasChanged);
+
+	/// <summary>
+	/// Orders sibling nodes by criticality. PDTree sorts children itself, falling back to comparing
+	/// node text, which would present the tree alphabetically and discard the severity ordering the
+	/// view builder already applied.
+	/// </summary>
+	private static int CompareIssueNodes(IssueNavItem a, IssueNavItem b)
+	{
+		// Most severe first. AssessmentSeverity ascends Info -> Critical, so compare b to a.
+		var severity = SeverityOf(b).CompareTo(SeverityOf(a));
+		if (severity != 0)
+		{
+			return severity;
+		}
+
+		// Then the widest blast radius first, so the rule affecting the most repositories leads.
+		var reach = AffectedCountOf(b).CompareTo(AffectedCountOf(a));
+		return reach != 0
+			? reach
+			: string.Compare(a.Text, b.Text, StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static AssessmentSeverity SeverityOf(IssueNavItem item) => item.Kind switch
+	{
+		IssueNodeKind.Category => item.Category?.Severity ?? AssessmentSeverity.Info,
+		IssueNodeKind.Rule => item.Rule?.Severity ?? AssessmentSeverity.Info,
+		_ => item.Instance?.Result.Severity ?? AssessmentSeverity.Info
+	};
+
+	private static int AffectedCountOf(IssueNavItem item) => item.Kind switch
+	{
+		IssueNodeKind.Category => item.Category?.AffectedRepositoryCount ?? 0,
+		IssueNodeKind.Rule => item.Rule?.AffectedRepositoryCount ?? 0,
+		// Repository nodes are all one occurrence, so they fall through to the name comparison.
+		_ => 0
+	};
 
 	// PDTree swallows load-time exceptions, which shows up as a silently empty tree.
 	private void OnTreeException(Exception exception)
