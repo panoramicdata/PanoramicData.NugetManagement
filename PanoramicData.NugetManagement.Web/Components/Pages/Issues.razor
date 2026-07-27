@@ -238,8 +238,10 @@
 	.cat-node { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
 	.node-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; }
 	.cat-row { background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); }
-	.rule-row { padding-left: 1.6rem; border-top: 1px solid var(--bs-border-color, #2a2a2a); }
-	.repo-row { padding-left: 3rem; border-top: 1px dashed var(--bs-border-color, #2a2a2a); font-size: .9rem; }
+	/* No manual indent: PDTree indents child levels itself. Left-padding here would also push the
+	   row border out to the left of its content. */
+	.rule-row { border-top: 1px solid var(--bs-border-color, #2a2a2a); }
+	.repo-row { border-top: 1px dashed var(--bs-border-color, #2a2a2a); font-size: .9rem; }
 	.node-row .actions { margin-left: auto; display: flex; gap: .35rem; flex-shrink: 0; }
 	.expander { background: none; border: none; cursor: pointer; color: inherit; width: 1.2rem; }
 	.repo-name { font-family: monospace; }
