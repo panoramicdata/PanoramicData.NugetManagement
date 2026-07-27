@@ -2140,3 +2140,125 @@ i + .breadcrumb-link-text {
     width: 14px;
     text-align: center;
 }
+
+/* === Clone repositories dialog ===
+   Same overlay/box pattern the Issues page uses for its confirmation, so dialogs look alike. */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+}
+
+.modal-box {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.4rem;
+    max-width: 560px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: auto;
+}
+
+.modal-box h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.1rem;
+    color: var(--accent);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.clone-dialog {
+    max-width: 640px;
+}
+
+.clone-dialog-status {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin: 0 0 0.75rem;
+}
+
+.clone-dialog-status.error {
+    color: var(--error);
+}
+
+.clone-dialog-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+
+.clone-dialog-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.clone-dialog-count {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.clone-dialog-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 45vh;
+    overflow-y: auto;
+}
+
+.clone-dialog-list li {
+    border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+}
+
+.clone-dialog-list label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.2rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.clone-dialog-list li.selected .clone-repo-name {
+    color: var(--text-primary);
+}
+
+.clone-repo-name {
+    color: var(--text-secondary);
+}
+
+.clone-tag {
+    font-size: 0.7rem;
+    padding: 0 0.35rem;
+    border-radius: 3px;
+    background: rgba(128, 128, 128, 0.18);
+    color: var(--text-muted);
+}
+
+.clone-tag.private {
+    background: rgba(139, 90, 43, 0.22);
+    color: #c8925a;
+}
+
+.clone-tag.archived {
+    background: rgba(128, 128, 128, 0.22);
+}
