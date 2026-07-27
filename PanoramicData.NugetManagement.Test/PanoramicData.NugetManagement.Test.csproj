@@ -30,4 +30,11 @@
 		<ProjectReference Include="..\PanoramicData.NugetManagement\PanoramicData.NugetManagement.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- Must reach the output directory for the runner to honour it, not merely exist in the repo. -->
+		<None Update="xunit.runner.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
 </Project>

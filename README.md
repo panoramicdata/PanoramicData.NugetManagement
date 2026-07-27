@@ -142,8 +142,10 @@ dotnet run --project PanoramicData.NugetManagement.Web
 
 ### Running the tests
 
-Most tests need nothing. The live GitHub integration tests need a token, and **skip** with an
-explanatory message when one is not configured, so the suite is green without it:
+Most tests need nothing, but the live GitHub integration tests need a token. Without one they skip
+with an explanatory message — and because this project sets `failSkips: true` (skipped tests are
+treated as failures, so nothing can hide behind a `Skip`), **a token is required for a green
+suite**:
 
 ```shell
 dotnet user-secrets set "GitHub:Token" (Read-Host) --project PanoramicData.NugetManagement.Test
