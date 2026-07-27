@@ -36,12 +36,12 @@ public class PackageProjectUrlAndIconRule : RuleBase
 		var content = context.GetFileContent(csproj);
 		var issues = new List<string>();
 
-		if (!Contains(content, "<PackageProjectUrl>"))
+		if (!HasMsBuildProperty(content, "PackageProjectUrl"))
 		{
 			issues.Add($"{csproj}: missing PackageProjectUrl");
 		}
 
-		if (!Contains(content, "<PackageIcon>"))
+		if (!HasMsBuildProperty(content, "PackageIcon"))
 		{
 			issues.Add($"{csproj}: missing PackageIcon");
 		}

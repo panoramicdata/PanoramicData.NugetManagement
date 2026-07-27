@@ -23,7 +23,7 @@ public class NullableEnabledRule : RuleBase
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
 		var dirBuild = context.GetFileContent("Directory.Build.props");
-		if (Contains(dirBuild, "<Nullable>enable</Nullable>"))
+		if (HasMsBuildProperty(dirBuild, "Nullable", "enable"))
 		{
 			return Task.FromResult(Pass("Nullable is enabled in Directory.Build.props."));
 		}

@@ -34,7 +34,7 @@ public class RepositoryUrlSetRule : RuleBase
 		}
 
 		var content = context.GetFileContent(csproj);
-		if (!Contains(content, "<RepositoryUrl>"))
+		if (!HasMsBuildProperty(content, "RepositoryUrl"))
 		{
 			return Task.FromResult(Fail(
 				$"{csproj} does not have RepositoryUrl set.",

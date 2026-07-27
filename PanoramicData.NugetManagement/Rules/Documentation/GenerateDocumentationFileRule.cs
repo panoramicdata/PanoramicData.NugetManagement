@@ -24,7 +24,7 @@ public class GenerateDocumentationFileRule : RuleBase
 	{
 		// Check Directory.Build.props first
 		var dirBuildProps = context.GetFileContent("Directory.Build.props");
-		if (Contains(dirBuildProps, "<GenerateDocumentationFile>true</GenerateDocumentationFile>"))
+		if (HasMsBuildProperty(dirBuildProps, "GenerateDocumentationFile", "true"))
 		{
 			return Task.FromResult(Pass("GenerateDocumentationFile is enabled in Directory.Build.props."));
 		}
@@ -41,7 +41,7 @@ public class GenerateDocumentationFileRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is not null && !Contains(content, "<GenerateDocumentationFile>true</GenerateDocumentationFile>"))
+			if (content is not null && !HasMsBuildProperty(content, "GenerateDocumentationFile", "true"))
 			{
 				missing.Add(csproj);
 			}

@@ -23,7 +23,7 @@ public class NuGetAuditModeRule : RuleBase
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
 		var dirBuild = context.GetFileContent("Directory.Build.props");
-		if (Contains(dirBuild, "<NuGetAuditMode>All</NuGetAuditMode>"))
+		if (HasMsBuildProperty(dirBuild, "NuGetAuditMode", "All"))
 		{
 			return Task.FromResult(Pass("NuGetAuditMode is set to All in Directory.Build.props."));
 		}
@@ -33,7 +33,7 @@ public class NuGetAuditModeRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (Contains(content, "<NuGetAuditMode>All</NuGetAuditMode>"))
+			if (HasMsBuildProperty(content, "NuGetAuditMode", "All"))
 			{
 				return Task.FromResult(Pass($"NuGetAuditMode is set to All in {csproj}."));
 			}

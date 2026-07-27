@@ -34,7 +34,7 @@ public class PackageIdSetRule : RuleBase
 		}
 
 		var content = context.GetFileContent(csproj);
-		if (!Contains(content, "<PackageId>"))
+		if (!HasMsBuildProperty(content, "PackageId"))
 		{
 			return Task.FromResult(Fail(
 				$"{csproj} does not have PackageId set.",

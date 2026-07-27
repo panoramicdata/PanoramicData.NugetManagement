@@ -34,7 +34,7 @@ public class PackageReadmeFileRule : RuleBase
 		}
 
 		var content = context.GetFileContent(csproj);
-		if (!Contains(content, "<PackageReadmeFile>"))
+		if (!HasMsBuildProperty(content, "PackageReadmeFile"))
 		{
 			return Task.FromResult(Fail(
 				$"{csproj} does not set PackageReadmeFile.",

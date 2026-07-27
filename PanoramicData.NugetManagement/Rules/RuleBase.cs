@@ -110,9 +110,82 @@ public abstract class RuleBase : IRule
 	/// Checks whether a project file is explicitly marked as non-packable.
 	/// </summary>
 	/// <param name="content">The .csproj file content.</param>
-	/// <returns>True if the project contains &lt;IsPackable&gt;false&lt;/IsPackable&gt;.</returns>
+	/// <returns>True if the project sets IsPackable to false.</returns>
 	protected static bool IsExplicitlyNonPackable(string? content)
-		=> Contains(content, "<IsPackable>false</IsPackable>");
+		=> HasMsBuildProperty(content, "IsPackable", "false");
+
+	/// <summary>
+	/// Checks whether an MSBuild property is declared, whatever its value. Unlike a substring
+	/// search this ignores XML comments, so a commented-out property does not count as set.
+	/// </summary>
+	/// <param name="xml">The .csproj or .props file content.</param>
+	/// <param name="propertyName">The property element name, without angle brackets.</param>
+	/// <returns>True if the property is declared.</returns>
+	protected static bool HasMsBuildProperty(string? xml, string propertyName)
+	{
+		var values = TryGetMsBuildPropertyValues(xml, propertyName);
+		return values is null
+			// Not parseable as XML — fall back to the previous best-effort substring check.
+			? Contains(xml, $"<{propertyName}>")
+			: values.Count > 0;
+	}
+
+	/// <summary>
+	/// Checks whether an MSBuild property is declared with the expected value, ignoring surrounding
+	/// whitespace, case, and any commented-out declarations.
+	/// </summary>
+	/// <param name="xml">The .csproj or .props file content.</param>
+	/// <param name="propertyName">The property element name, without angle brackets.</param>
+	/// <param name="expectedValue">The value the property is expected to have.</param>
+	/// <returns>True if the property is declared with that value.</returns>
+	protected static bool HasMsBuildProperty(string? xml, string propertyName, string expectedValue)
+	{
+		var values = TryGetMsBuildPropertyValues(xml, propertyName);
+		return values is null
+			? Contains(xml, $"<{propertyName}>{expectedValue}</{propertyName}>")
+			: values.Any(value => string.Equals(value, expectedValue, StringComparison.OrdinalIgnoreCase));
+	}
+
+	/// <summary>
+	/// Checks whether an MSBuild property is declared with a value containing the given text. Use
+	/// this in preference to searching the whole file, which would also match the text appearing in
+	/// an unrelated property or a comment.
+	/// </summary>
+	/// <param name="xml">The .csproj or .props file content.</param>
+	/// <param name="propertyName">The property element name, without angle brackets.</param>
+	/// <param name="text">The text the property's value is expected to contain.</param>
+	/// <returns>True if the property's value contains the text.</returns>
+	protected static bool MsBuildPropertyValueContains(string? xml, string propertyName, string text)
+	{
+		var values = TryGetMsBuildPropertyValues(xml, propertyName);
+		return values is null
+			? Contains(xml, text)
+			: values.Any(value => value.Contains(text, StringComparison.OrdinalIgnoreCase));
+	}
+
+	/// <summary>
+	/// Returns the trimmed values of every declaration of the named MSBuild property, or null if the
+	/// content could not be parsed as XML.
+	/// </summary>
+	private static List<string>? TryGetMsBuildPropertyValues(string? xml, string propertyName)
+	{
+		if (string.IsNullOrWhiteSpace(xml))
+		{
+			return [];
+		}
+
+		try
+		{
+			return [.. XDocument.Parse(xml)
+				.Descendants()
+				.Where(element => string.Equals(element.Name.LocalName, propertyName, StringComparison.OrdinalIgnoreCase))
+				.Select(element => element.Value.Trim())];
+		}
+		catch (XmlException)
+		{
+			return null;
+		}
+	}
 
 	/// <summary>
 	/// The MSBuild elements that declare a NuGet package dependency.

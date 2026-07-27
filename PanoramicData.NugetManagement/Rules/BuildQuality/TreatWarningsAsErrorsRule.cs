@@ -23,7 +23,7 @@ public class TreatWarningsAsErrorsRule : RuleBase
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
 		var dirBuild = context.GetFileContent("Directory.Build.props");
-		if (Contains(dirBuild, "<TreatWarningsAsErrors>true</TreatWarningsAsErrors>"))
+		if (HasMsBuildProperty(dirBuild, "TreatWarningsAsErrors", "true"))
 		{
 			return Task.FromResult(Pass("TreatWarningsAsErrors is enabled in Directory.Build.props."));
 		}

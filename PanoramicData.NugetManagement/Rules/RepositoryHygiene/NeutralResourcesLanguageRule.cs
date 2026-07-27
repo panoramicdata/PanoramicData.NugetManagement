@@ -27,7 +27,7 @@ public class NeutralResourcesLanguageRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is not null && !Contains(content, "<NeutralResourcesLanguage>"))
+			if (content is not null && !HasMsBuildProperty(content, "NeutralResourcesLanguage"))
 			{
 				return Task.FromResult(Fail(
 					$"{csproj} does not set NeutralResourcesLanguage.",

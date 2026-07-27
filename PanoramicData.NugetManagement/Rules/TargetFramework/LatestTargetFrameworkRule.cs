@@ -33,7 +33,7 @@ public class LatestTargetFrameworkRule : RuleBase
 				continue;
 			}
 
-			if (!Contains(content, $"<TargetFramework>{Standards.LatestTargetFramework}</TargetFramework>"))
+			if (!HasMsBuildProperty(content, "TargetFramework", Standards.LatestTargetFramework))
 			{
 				outdated.Add(csproj);
 			}

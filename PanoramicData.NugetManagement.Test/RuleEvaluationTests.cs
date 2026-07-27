@@ -474,6 +474,30 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	[Fact]
+	public async Task BLD02_ShouldFail_WhenNullableIsCommentedOut()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Build.props"] = "<Project><PropertyGroup><!-- <Nullable>enable</Nullable> --></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("BLD-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("a commented-out property is not set");
+	}
+
+	[Fact]
+	public async Task BLD02_ShouldPass_WhenNullableValueIsPaddedWithWhitespace()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Build.props"] = "<Project><PropertyGroup><Nullable>\n\t\tenable\n\t</Nullable></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("BLD-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue("the property is set; the surrounding whitespace is not significant");
+	}
+
 	// ── BLD-03 ──────────────────────────────────────────────────────────
 
 	[Fact]
@@ -1160,6 +1184,23 @@ public class RuleEvaluationTests : TestWithOutput
 
 		var result = await GetRule("LIC-03").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task LIC03_ShouldFail_WhenHolderAppearsOutsideTheCopyrightProperty()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			// The holder is named, but not as the copyright: the Copyright property says someone else.
+			["Directory.Build.props"] =
+				"<Project><PropertyGroup>"
+				+ "<Company>Panoramic Data Limited</Company>"
+				+ "<Copyright>Copyright © 2025 Somebody Else</Copyright>"
+				+ "</PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("LIC-03").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("the holder must be the copyright, not merely mentioned somewhere in the file");
 	}
 
 	// ── PKG-01 ──────────────────────────────────────────────────────────

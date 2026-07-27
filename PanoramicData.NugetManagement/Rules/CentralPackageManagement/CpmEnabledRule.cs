@@ -41,7 +41,7 @@ public class CpmEnabledRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Contains(content, "<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>")
+		return Task.FromResult(HasMsBuildProperty(content, "ManagePackageVersionsCentrally", "true")
 			? Pass("Centralized Package Management is enabled.")
 			: Fail(
 				"Directory.Packages.props does not enable ManagePackageVersionsCentrally.",

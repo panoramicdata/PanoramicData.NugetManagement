@@ -37,7 +37,7 @@ public class PackageLicenseExpressionRule : RuleBase
 		}
 
 		var content = context.GetFileContent(csproj);
-		if (!Contains(content, expectedTag))
+		if (!HasMsBuildProperty(content, "PackageLicenseExpression", expected))
 		{
 			return Task.FromResult(Fail(
 				$"{csproj}: PackageLicenseExpression does not match expected \"{expected}\".",

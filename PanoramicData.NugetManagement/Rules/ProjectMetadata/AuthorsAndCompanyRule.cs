@@ -43,8 +43,8 @@ public class AuthorsAndCompanyRule : RuleBase
 				}));
 		}
 
-		var hasAuthors = Contains(content, "<Authors>");
-		var hasCompany = Contains(content, "<Company>");
+		var hasAuthors = HasMsBuildProperty(content, "Authors");
+		var hasCompany = HasMsBuildProperty(content, "Company");
 
 		return Task.FromResult(hasAuthors && hasCompany
 			? Pass("Authors and Company are set in Directory.Build.props.")

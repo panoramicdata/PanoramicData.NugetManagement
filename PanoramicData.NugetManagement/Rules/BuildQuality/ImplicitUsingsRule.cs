@@ -28,7 +28,7 @@ public class ImplicitUsingsRule : RuleBase
 		foreach (var csproj in csprojFiles)
 		{
 			var content = context.GetFileContent(csproj);
-			if (content is not null && !Contains(content, "<ImplicitUsings>enable</ImplicitUsings>"))
+			if (content is not null && !HasMsBuildProperty(content, "ImplicitUsings", "enable"))
 			{
 				missing.Add(csproj);
 			}

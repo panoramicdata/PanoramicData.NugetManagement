@@ -43,7 +43,7 @@ public class CopyrightMessageRule : RuleBase
 				}));
 		}
 
-		var hasCopyright = Contains(content, "<Copyright>") && Contains(content, expected);
+		var hasCopyright = MsBuildPropertyValueContains(content, "Copyright", expected);
 		return Task.FromResult(hasCopyright
 			? Pass($"Copyright message found with \"{expected}\".")
 			: Fail(

@@ -34,7 +34,7 @@ public class GeneratePackageOnBuildRule : RuleBase
 		}
 
 		var content = context.GetFileContent(csproj);
-		if (!Contains(content, "<GeneratePackageOnBuild>true</GeneratePackageOnBuild>"))
+		if (!HasMsBuildProperty(content, "GeneratePackageOnBuild", "true"))
 		{
 			return Task.FromResult(Fail(
 				$"{csproj} does not enable GeneratePackageOnBuild.",

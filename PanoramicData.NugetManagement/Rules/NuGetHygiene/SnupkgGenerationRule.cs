@@ -34,8 +34,8 @@ public class SnupkgGenerationRule : RuleBase
 		}
 
 		var content = context.GetFileContent(csproj);
-		if (!Contains(content, "<IncludeSymbols>true</IncludeSymbols>") ||
-			!Contains(content, "<SymbolPackageFormat>snupkg</SymbolPackageFormat>"))
+		if (!HasMsBuildProperty(content, "IncludeSymbols", "true") ||
+			!HasMsBuildProperty(content, "SymbolPackageFormat", "snupkg"))
 		{
 			return Task.FromResult(Fail(
 				$"{csproj} does not enable snupkg generation.",
