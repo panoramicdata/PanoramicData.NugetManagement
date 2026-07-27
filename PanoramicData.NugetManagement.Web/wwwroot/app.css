@@ -118,6 +118,23 @@ html, body {
     color: var(--text-muted);
 }
 
+/* A repo being assessed uses a spinner icon (fa-spin). fa-spin rotates the whole <i>, which would
+   also spin the branch (::after) decoration on locally-cloned repos. Keep the branch static and
+   visible by moving the spin off the element onto just the spinner glyph (::before). */
+.fa-spin.tree-node-local {
+    animation: none !important;
+}
+
+.fa-spin.tree-node-local::before {
+    display: inline-block;
+    animation: nav-spinner-spin 2s infinite linear;
+}
+
+@keyframes nav-spinner-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* "Local only" filter toggle — right-aligned under the repo filter box. */
 .nav-tree-local-toggle {
     display: flex;
