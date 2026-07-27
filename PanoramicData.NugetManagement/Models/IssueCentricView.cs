@@ -8,6 +8,13 @@ public sealed class IssueInstance
 	/// <summary>The affected repository full name (e.g. "panoramicdata/Highlight.Api").</summary>
 	public required string RepositoryFullName { get; init; }
 
+	/// <summary>
+	/// The package this occurrence was assessed for, when known. A repository can host several
+	/// packages, so it can appear more than once under the same rule — one occurrence per package —
+	/// and this is what tells them apart.
+	/// </summary>
+	public string? PackageId { get; init; }
+
 	/// <summary>The failing rule result for this repository.</summary>
 	public required RuleResult Result { get; init; }
 

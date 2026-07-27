@@ -758,9 +758,11 @@ public class DashboardService
 	/// </summary>
 	public IssueCentricView BuildIssueCentricView(IEnumerable<PackageDashboardRow> rows)
 	{
+		// Pass the package id through: a repository hosting several packages appears once per package
+		// under a rule, and this is what tells those occurrences apart in the issue tree.
 		var entries = rows
 			.Where(r => r.RepositoryFullName is not null && r.Assessment is not null)
-			.Select(r => (r.RepositoryFullName!, r.Assessment!));
+			.Select(r => new AssessedPackage(r.RepositoryFullName!, r.Assessment!, r.PackageId));
 		return IssueCentricViewBuilder.Build(entries, IsAutoRemediable);
 	}
 

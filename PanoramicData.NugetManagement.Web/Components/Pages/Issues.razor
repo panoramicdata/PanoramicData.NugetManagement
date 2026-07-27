@@ -151,6 +151,10 @@
 						<span class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected")">
 							<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
 							<span class="repo-name">@inst.RepositoryFullName</span>
+							@if (repoItem.DisambiguatingPackageId is { Length: > 0 } packageId)
+							{
+								<span class="repo-package" title="This repository hosts several packages; this row is for @packageId">@packageId</span>
+							}
 							<span class="muted repo-msg">@Truncate(inst.Result.Message, 120)</span>
 							<span class="actions">
 								@if (inst.IsAutoRemediable)
@@ -210,11 +214,14 @@
 	.issues-page > * { max-width: 1200px; margin-left: auto; margin-right: auto; }
 	.issues-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
 	.issues-header h1 { font-size: 1.4rem; margin: 0; }
+	/* Scoped to the header: .muted is also used for counts inside tree rows. */
+	.issues-header .muted { margin: .5rem 0 0; }
 	.header-actions { display: flex; gap: .5rem; flex-shrink: 0; }
 	.muted { color: var(--bs-secondary-color, #888); font-size: .85rem; }
-	.summary { font-weight: 600; margin: .5rem 0 1rem; }
-	.baseline-banner { display: flex; gap: .6rem; align-items: center; background: #1f3a2e; border: 1px solid #2e7d32; color: #d7f5df; padding: .6rem .8rem; border-radius: 6px; margin: .5rem 0 1rem; font-size: .9rem; }
-	.guard-panel { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem 0 1rem; overflow: hidden; }
+	.summary { font-weight: 600; margin: .5rem auto 1rem; }
+	.repo-package { font-size: .75rem; padding: 0 .35rem; border-radius: 3px; background: rgba(128,128,128,.18); color: var(--bs-secondary-color, #aaa); }
+	.baseline-banner { display: flex; gap: .6rem; align-items: center; background: #1f3a2e; border: 1px solid #2e7d32; color: #d7f5df; padding: .6rem .8rem; border-radius: 6px; margin: .5rem auto 1rem; font-size: .9rem; }
+	.guard-panel { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem auto 1rem; overflow: hidden; }
 	.guard-head { padding: .4rem .6rem; background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); font-weight: 600; font-size: .85rem; }
 	.guard-row { border-top: 1px solid var(--bs-border-color, #2a2a2a); font-size: .85rem; }
 	.guard-badge { font-size: .68rem; text-transform: uppercase; font-weight: 700; padding: .1rem .4rem; border-radius: 3px; color: #fff; white-space: nowrap; }
@@ -223,7 +230,7 @@
 	.guard-RegressionReverted { background: #b45309; }
 	.guard-BuildFailingNotOurs { background: #6b7280; }
 	.guard-Error { background: #b91c1c; }
-	.repo-filter { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem 0 1rem; overflow: hidden; }
+	.repo-filter { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem auto 1rem; overflow: hidden; }
 	.repo-checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .1rem .8rem; padding: .5rem .8rem; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--bs-border-color, #2a2a2a); }
 	.repo-check { display: flex; gap: .4rem; align-items: center; font-family: monospace; font-size: .82rem; cursor: pointer; }
 	.repo-deselected { opacity: .4; }

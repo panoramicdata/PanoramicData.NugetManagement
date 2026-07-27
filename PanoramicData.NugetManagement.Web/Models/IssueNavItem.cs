@@ -70,4 +70,11 @@ public class IssueNavItem
 	/// knows which rule failed on it.
 	/// </summary>
 	public string? RuleId { get; init; }
+
+	/// <summary>
+	/// The package to show alongside the repository name, set only where the repository appears more
+	/// than once under the same rule because it hosts several packages. Null when the repository name
+	/// alone is unambiguous, so the common case stays uncluttered.
+	/// </summary>
+	public string? DisambiguatingPackageId { get; init; }
 }

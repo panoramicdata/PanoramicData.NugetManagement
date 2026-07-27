@@ -64,9 +64,17 @@ public class IssueTreeDataProvider : DataProviderBase<IssueNavItem>
 					RuleId = rule.RuleId
 				});
 
-				// The index disambiguates: a repository can host several packages, so it legitimately
-				// appears more than once under the same rule — one occurrence per package. Keys must
-				// still be unique, or PDTree rejects the whole tree.
+				// A repository can host several packages, so it legitimately appears more than once
+				// under the same rule — one occurrence per package. Those rows are otherwise identical,
+				// so show the package name on them (and only on them, to avoid cluttering the rest).
+				var repeatedRepositories = rule.Instances
+					.GroupBy(i => i.RepositoryFullName, StringComparer.OrdinalIgnoreCase)
+					.Where(g => g.Count() > 1)
+					.Select(g => g.Key)
+					.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+				// The index keeps keys unique, which PDTree requires: it rejects the whole tree if two
+				// nodes share a key, and does so silently.
 				var occurrence = 0;
 				foreach (var instance in rule.Instances)
 				{
@@ -80,7 +88,10 @@ public class IssueTreeDataProvider : DataProviderBase<IssueNavItem>
 						Kind = IssueNodeKind.Repository,
 						IsLeaf = true,
 						Instance = instance,
-						RuleId = rule.RuleId
+						RuleId = rule.RuleId,
+						DisambiguatingPackageId = repeatedRepositories.Contains(instance.RepositoryFullName)
+							? instance.PackageId
+							: null
 					});
 				}
 			}
