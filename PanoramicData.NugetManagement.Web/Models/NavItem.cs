@@ -73,6 +73,12 @@ public class NavItem
 	/// Only meaningful for package-level nodes where the repo is cloned locally.
 	/// </summary>
 	public bool IsWorkingTreeDirty { get; init; }
+
+	/// <summary>
+	/// Whether this node should show a busy/loading spinner (e.g. the org node while
+	/// the repository list is still being discovered/assessed).
+	/// </summary>
+	public bool IsBusy { get; init; }
 }
 
 /// <summary>

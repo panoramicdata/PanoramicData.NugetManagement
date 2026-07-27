@@ -36,6 +36,12 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// </summary>
 	public bool LocalOnly { get; set; }
 
+	/// <summary>
+	/// When true, the dashboard data is still being discovered/assessed: show a busy
+	/// spinner on the org node and a "loading" placeholder under Repositories if it is empty.
+	/// </summary>
+	public bool IsLoading { get; set; }
+
 	/// <inheritdoc />
 	public override Task<DataResponse<NavItem>> GetDataAsync(DataRequest<NavItem> request, CancellationToken cancellationToken)
 	{
@@ -90,7 +96,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				IsLeaf = false,
 				IssueCount = totalIssues,
 				HasErrors = hasAnyErrors,
-				HasWarnings = hasAnyWarnings
+				HasWarnings = hasAnyWarnings,
+				IsBusy = IsLoading
 			},
 
 			// Repositories grouping — packages live under here
@@ -221,6 +228,20 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					}
 				}
 			}
+		}
+
+		// While loading, show a placeholder under Repositories if no repos are available yet.
+		if (IsLoading && !items.Any(i => i.ParentKey == "repositories"))
+		{
+			items.Add(new NavItem
+			{
+				Key = "repositories-loading",
+				Text = "Loading repositories...",
+				ParentKey = "repositories",
+				IconCss = "fas fa-spinner fa-spin",
+				View = NavView.None,
+				IsLeaf = true
+			});
 		}
 
 		return items;

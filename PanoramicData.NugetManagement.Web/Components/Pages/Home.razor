@@ -87,6 +87,10 @@ else
 										<span class="nav-node-label" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
 											<i class="@node.Data?.IconCss"></i>@node.Data?.Text
 										</span>
+										@if (node.Data?.IsBusy == true)
+										{
+											<i class="fas fa-spinner fa-spin" style="margin-left:6px;font-size:0.8rem;color:var(--text-muted);" title="Loading repositories..."></i>
+										}
 										@if (node.Data?.Key == "root")
 										{
 											<button type="button" class="nav-org-settings-btn @(_currentView == NavView.Settings ? "active" : "")" title="Organization settings" @onclick="NavigateToSettingsAsync" @onclick:stopPropagation><i class="fas fa-cog"></i></button>
@@ -519,6 +523,9 @@ else
 			_lastRefreshUtc = Cache.LastRefreshUtc;
 		}
 
+		// If the cache is stale/empty we're about to (re)load — reflect that in the tree.
+		NavDataProvider.IsLoading = Cache.IsStale;
+
 		// If a PackageId was in the URL, select it
 		if (!string.IsNullOrEmpty(PackageId))
 		{
@@ -632,7 +639,7 @@ else
 	// The Organisations and Repositories grouping nodes are not selectable; everything else
 	// (the org, Package Updates view, and individual repos) is.
 	private static bool IsSelectableNavNode(NavItem? item)
-		=> item is not null && item.Key is not ("organisations" or "repositories");
+		=> item is not null && item.Key is not ("organisations" or "repositories" or "repositories-loading");
 
 	private void OnNavBeforeSelect(TreeBeforeSelectionChangeEventArgs<NavItem> args)
 	{
@@ -840,6 +847,45 @@ else
 			if (pathNode is not null && !pathNode.IsExpanded)
 			{
 				await _navTree.ToggleNodeIsExpandedAsync(pathNode).ConfigureAwait(true);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Rebuilds the tree's nodes from the (now-current) data provider while preserving which
+	/// branches the user had expanded — used after a data load so the repo list fills in without
+	/// collapsing the view. PDTree.RefreshAsync only refreshes the selected path, so it can't do this.
+	/// </summary>
+	private async Task ReloadTreePreservingExpansionAsync()
+	{
+		if (_navTree is null)
+		{
+			return;
+		}
+
+		// Remember which branches are open so the rebuild doesn't collapse the user's view.
+		var expandedKeys = new HashSet<string>();
+		_navTree.RootNode.Walk(n => { if (n.IsExpanded && n.Key is not null) { expandedKeys.Add(n.Key); } return true; });
+
+		var topNodes = _navTree.RootNode.Nodes?.ToList();
+		if (topNodes is null)
+		{
+			return;
+		}
+
+		foreach (var node in topNodes)
+		{
+			await _navTree.RefreshNodeAsync(node).ConfigureAwait(true);
+		}
+
+		// Organisations is always expanded; restore everything else that was open before.
+		expandedKeys.Add("organisations");
+		foreach (var key in expandedKeys)
+		{
+			var n = _navTree.RootNode.Find(key);
+			if (n is not null && !n.IsExpanded && !(n.Data?.IsLeaf ?? true))
+			{
+				await _navTree.ToggleNodeIsExpandedAsync(n).ConfigureAwait(true);
 			}
 		}
 	}
@@ -1534,6 +1580,7 @@ else
 	private async Task RefreshAsync()
 	{
 		_isLoading = true;
+		NavDataProvider.IsLoading = true;
 		_progressMessage = "Discovering packages...";
 		StateHasChanged();
 
@@ -1587,6 +1634,8 @@ else
 		finally
 		{
 			_isLoading = false;
+			NavDataProvider.IsLoading = false;
+			await ReloadTreePreservingExpansionAsync();
 			StateHasChanged();
 		}
 	}
@@ -1598,10 +1647,7 @@ else
 			await _table.RefreshAsync().ConfigureAwait(true);
 		}
 
-		if (_navTree is not null)
-		{
-			await _navTree.RefreshAsync().ConfigureAwait(true);
-		}
+		await ReloadTreePreservingExpansionAsync();
 
 		StateHasChanged();
 	}
