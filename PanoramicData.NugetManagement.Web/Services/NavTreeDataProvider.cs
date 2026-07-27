@@ -110,6 +110,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				IsLeaf = false
 			},
 
+			// Issue-centric view of this organisation's failures
+			new() {
+				Key = "issues",
+				Text = "Issues",
+				ParentKey = "root",
+				IconCss = "fas fa-layer-group",
+				View = NavView.Issues,
+				IsLeaf = true
+			},
+
 			// Package updates management (also directly under the org)
 			new() {
 				Key = "nuget-updates",
