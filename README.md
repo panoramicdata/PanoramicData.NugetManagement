@@ -87,6 +87,75 @@ foreach (var repo in result.RepositoryAssessments)
 }
 ```
 
+## Running the web dashboard locally
+
+The repository also contains `PanoramicData.NugetManagement.Web`, a Blazor dashboard for
+assessing and remediating an organisation's repositories. It needs configuration before it will
+start usefully: `appsettings.json` ships with empty values, and nothing below has a default that
+works out of the box.
+
+Settings are read from configuration, so supply them however you prefer. For local development
+use [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) — they live
+outside the repository, so they cannot be committed by accident. All commands below are run from
+the repository root:
+
+```shell
+dotnet user-secrets set "AppSettings:GitHubOrganization" "your-github-org" --project PanoramicData.NugetManagement.Web
+dotnet user-secrets set "AppSettings:NuGetOrganization" "your-nuget-org" --project PanoramicData.NugetManagement.Web
+```
+
+### Signing in
+
+The dashboard authenticates with GitHub OAuth, so it needs an OAuth app. Register one at
+**Settings → Developer settings → OAuth Apps** on GitHub. The default launch profile serves
+`http://localhost:5023`, so the callback URL is `http://localhost:5023/signin-github`. Sign-in
+requests the `repo` and `read:org` scopes. Then:
+
+```shell
+dotnet user-secrets set "AppSettings:GitHubClientId" "..." --project PanoramicData.NugetManagement.Web
+dotnet user-secrets set "AppSettings:GitHubClientSecret" "..." --project PanoramicData.NugetManagement.Web
+```
+
+If you would rather not register an OAuth app, development can bypass sign-in entirely. This is
+double-gated — it only takes effect when the environment is `Development` **and** the setting is
+on, so it can never apply in production:
+
+```shell
+dotnet user-secrets set "AppSettings:DevAuthBypass" "true" --project PanoramicData.NugetManagement.Web
+# optional, defaults to "dev"
+dotnet user-secrets set "AppSettings:DevAuthUser" "your-github-username" --project PanoramicData.NugetManagement.Web
+```
+
+### Recommended settings
+
+| Setting | Why you want it |
+|---|---|
+| `AppSettings:GitHubPat` | A personal access token covering the same ground as the OAuth scopes above (`repo`, `read:org`). Without one, assessing more than a handful of repositories exhausts GitHub's unauthenticated rate limit. When `DevAuthBypass` is on, this is also used as the access token, so the dashboard can reach GitHub without signing in. |
+| `AppSettings:LocalReposRoot` | The folder your repositories are cloned into. Required before the dashboard can clone, build, test, auto-fix or publish anything — without it only read-only assessment works. This one can also be set from the dashboard's own settings page, which overrides the configured value. |
+| `AppSettings:CodacyApiToken` | Enables the Codacy issue rule (CQ-05). Without it that rule reports as not applicable. |
+
+Then run it:
+
+```shell
+dotnet run --project PanoramicData.NugetManagement.Web
+```
+
+### Running the tests
+
+Most tests need nothing. The live GitHub integration tests need a token, and **skip** with an
+explanatory message when one is not configured, so the suite is green without it:
+
+```shell
+dotnet user-secrets set "GitHub:Token" (Read-Host) --project PanoramicData.NugetManagement.Test
+```
+
+That is PowerShell: typing the value at the `Read-Host` prompt keeps it out of your shell history,
+which is worth doing since history files are stored in plain text. In other shells, pass the token
+as the final argument instead.
+
+Alternatively set the `GitHub__Token` environment variable, which takes precedence over user
+secrets. That is how to supply it in CI, since build agents have no user secrets.
+
 ## Per-Repository Options
 
 ```csharp
