@@ -158,6 +158,30 @@ as the final argument instead.
 Alternatively set the `GitHub__Token` environment variable, which takes precedence over user
 secrets. That is how to supply it in CI, since build agents have no user secrets.
 
+#### These tests spend your GitHub API budget
+
+The integration tests call the live GitHub API, so they draw on the same hourly rate limit
+(5,000 requests for an authenticated user) as everything else that token does. Two consequences are
+worth knowing before they catch you out:
+
+- **Reusing one token for the dashboard and the tests makes them compete.** The limit is per token,
+  not per application, so assessing the organisation in the dashboard and running the suite eat from
+  the same allowance. Repeated full runs of both in one hour can exhaust it. Giving the tests their
+  own token keeps the two budgets separate.
+- **Exhausting it looks like broken tests, not a spent budget.** The failure surfaces as
+  `Octokit.RateLimitExceededException`, and because `failSkips: true` treats skips as failures, there
+  is no gentle degradation — the suite simply goes red. If integration tests fail while everything
+  else passes, check the exception before hunting for a regression: it resolves itself when the
+  window resets, on the hour from your first request.
+
+The dashboard shows the remaining budget in its breadcrumb bar and warns before an action that would
+consume a large share of it, but that reflects the token the application uses — the test token's
+budget is separate and not shown there.
+
+For scale: assessing one repository costs about two API requests. File contents are fetched from
+`raw.githubusercontent.com`, which is a CDN and does not count against the limit, and repositories
+already cloned locally are assessed from disk at no API cost at all.
+
 ## Per-Repository Options
 
 ```csharp
