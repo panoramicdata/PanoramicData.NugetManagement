@@ -2,6 +2,12 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Lets a PackageVersion below pin a transitive dependency without adding an unused direct
+         PackageReference. Needed to keep Refit.HttpClientFactory 10.1.6 (and the Refit 10.1.6 it
+         drags in) out of the restore graph: those are signed with an author certificate that has
+         since been revoked, which fails signature verification during CI restore. They arrive via
+         Codacy.Api, which has no newer release. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
     <!-- Main project dependencies -->
@@ -10,7 +16,10 @@
     <PackageVersion Include="NuGet.Protocol" Version="7.6.0" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="PanoramicData.Blazor" Version="10.0.185" />
-    <PackageVersion Include="Refit" Version="11.0.1" />
+    <PackageVersion Include="Refit" Version="14.0.1" />
+    <!-- Pinned transitively (see CentralPackageTransitivePinningEnabled above), not referenced
+         directly: it reaches us through Codacy.Api. -->
+    <PackageVersion Include="Refit.HttpClientFactory" Version="14.0.1" />
     <!-- Test project dependencies -->
     <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
     <PackageVersion Include="AwesomeAssertions.Analyzers" Version="9.0.8" />
