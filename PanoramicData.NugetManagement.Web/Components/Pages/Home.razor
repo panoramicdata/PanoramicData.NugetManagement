@@ -215,9 +215,9 @@ else
 							}
 						</div>
 						<div class="breadcrumb-right">
-							@if (_isLoading || _isAssessing)
+							@if (_isLoading || _isAssessing || _showDone)
 							{
-								<span class="progress-indicator"><span class="spinner"></span> @GetProgressIndicatorText()</span>
+								<span class="progress-indicator">@if (!_showDone) {<span class="spinner"></span>} @GetProgressIndicatorText()</span>
 							}
 							<div class="user-menu">
 								<button type="button" class="btn btn-xs btn-breadcrumb" @onclick="() => _userMenuOpen = !_userMenuOpen" title="Account">
@@ -450,6 +450,9 @@ else
 	// === Dashboard state ===
 	private bool _isLoading;
 	private string _progressMessage = string.Empty;
+	// Keeps the progress indicator visible briefly (showing "Done") after a refresh completes.
+	private bool _showDone;
+	private System.Threading.Timer? _doneClearTimer;
 	private List<PackageDashboardRow> _rows = [];
 	private AssessmentCategory[] _categories = [];
 	private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
@@ -1511,6 +1514,25 @@ else
 		});
 	}
 
+	/// <summary>
+	/// Clears the lingering "Done" progress message after a short delay so the indicator
+	/// doesn't vanish the instant a refresh completes.
+	/// </summary>
+	private void ScheduleDoneClear()
+	{
+		_doneClearTimer?.Dispose();
+		_doneClearTimer = new System.Threading.Timer(
+			_ => InvokeAsync(() =>
+			{
+				_showDone = false;
+				_progressMessage = string.Empty;
+				StateHasChanged();
+			}),
+			null,
+			2500,
+			Timeout.Infinite);
+	}
+
 	private string GetProgressIndicatorText()
 	{
 		if (!string.IsNullOrWhiteSpace(_progressMessage))
@@ -1623,7 +1645,11 @@ else
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
-			_progressMessage = string.Empty;
+			// Keep the final count message but append " Done" and persist it for a couple of
+			// seconds instead of the indicator vanishing the instant it hits 100%.
+			_progressMessage += " Done";
+			_showDone = true;
+			ScheduleDoneClear();
 		}
 		catch (Exception ex)
 		{
@@ -3290,6 +3316,7 @@ else
 	{
 		_autoRefreshTimer?.Dispose();
 		_treeFilterDebounce?.Dispose();
+		_doneClearTimer?.Dispose();
 	}
 
 	// === Workflow step indicators ===
