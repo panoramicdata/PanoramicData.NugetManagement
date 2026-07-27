@@ -25,11 +25,11 @@ public class CoverletCollectorRule : RuleBase
 	{
 		var dirPackages = context.GetFileContent("Directory.Packages.props");
 		var usesCpm = UsesCentralPackageManagement(dirPackages);
-		var pinnedInProps = HasPackageVersion(dirPackages, "coverlet.collector");
+		var pinnedInProps = PinsPackageVersion(dirPackages, "coverlet.collector", includeVariants: true);
 
 		var testProjects = context.FindTestProjectFiles().ToList();
 
-		var referencedInTestProject = testProjects.Any(tp => HasPackageReference(context.GetFileContent(tp), "coverlet.collector"));
+		var referencedInTestProject = testProjects.Any(tp => ReferencesPackageDirectly(context.GetFileContent(tp), "coverlet.collector", includeVariants: true));
 
 		if (usesCpm)
 		{
@@ -80,17 +80,6 @@ public class CoverletCollectorRule : RuleBase
 	private static bool UsesCentralPackageManagement(string? dirPackages)
 		=> TryParse(dirPackages, out var doc)
 			&& string.Equals(doc.Descendants("ManagePackageVersionsCentrally").FirstOrDefault()?.Value, "true", StringComparison.OrdinalIgnoreCase);
-
-	private static bool HasPackageVersion(string? content, string packageId)
-		=> TryParse(content, out var doc)
-			&& doc.Descendants("PackageVersion").Any(element => MatchesPackage(element, packageId));
-
-	private static bool HasPackageReference(string? content, string packageId)
-		=> TryParse(content, out var doc)
-			&& doc.Descendants("PackageReference").Any(element => MatchesPackage(element, packageId));
-
-	private static bool MatchesPackage(XElement element, string packageId)
-		=> string.Equals(element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value, packageId, StringComparison.OrdinalIgnoreCase);
 
 	private static bool TryParse(string? content, out XDocument document)
 	{

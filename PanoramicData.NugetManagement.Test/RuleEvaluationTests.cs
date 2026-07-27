@@ -1784,6 +1784,50 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	[Fact]
+	public async Task TST03_ShouldFail_WhenTestSdkIsOnlyMentionedInAComment()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] =
+				"<Project><ItemGroup>"
+				+ "<!-- <PackageVersion Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.0.0\" /> -->"
+				+ "</ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-03").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("a commented-out reference is not a reference");
+	}
+
+	// ── PKG-08 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task PKG08_ShouldFail_WhenRoslynatorIsDirectlyReferenced()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject/MyProject.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Roslynator.Analyzers\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("PKG-08").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task PKG08_ShouldPass_WhenRoslynatorIsOnlyMentionedInAComment()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject/MyProject.csproj"] =
+				"<Project><ItemGroup>"
+				+ "<!-- Roslynator.Analyzers is inherited, do not reference it here -->"
+				+ "</ItemGroup></Project>"
+		});
+
+		var result = await GetRule("PKG-08").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue("a comment mentioning the package is not a direct reference to it");
+	}
+
 	// ── TST-04 ──────────────────────────────────────────────────────────
 
 	[Fact]

@@ -24,7 +24,7 @@ public class RoslynatorAnalyzersRule : RuleBase
 	{
 		var violating = context
 			.FindFiles(".csproj")
-			.Where(f => Contains(context.GetFileContent(f), "Roslynator.Analyzers"))
+			.Where(f => ReferencesPackageDirectly(context.GetFileContent(f), "Roslynator.Analyzers"))
 			.ToList();
 
 		if (violating.Count == 0)

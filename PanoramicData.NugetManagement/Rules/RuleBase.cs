@@ -129,6 +129,11 @@ public abstract class RuleBase : IRule
 		["PackageReference", "GlobalPackageReference"];
 
 	/// <summary>
+	/// The MSBuild element that centrally pins a package version.
+	/// </summary>
+	private static readonly string[] _versionPinElementNames = ["PackageVersion"];
+
+	/// <summary>
 	/// Checks whether a project or props file actually declares a reference to the given package.
 	/// Unlike a raw substring search this ignores XML comments (including commented-out references)
 	/// and text that merely mentions the package name, matching only the package identifier of a
@@ -156,6 +161,17 @@ public abstract class RuleBase : IRule
 	/// <returns>True if the package is referenced directly.</returns>
 	protected static bool ReferencesPackageDirectly(string? xml, string packageId, bool includeVariants = false)
 		=> ReferencesPackageCore(xml, packageId, includeVariants, _directReferenceElementNames);
+
+	/// <summary>
+	/// Checks whether the given XML centrally pins a version for the package, i.e. declares a
+	/// PackageVersion for it (as Directory.Packages.props does under central package management).
+	/// </summary>
+	/// <param name="xml">The .props or .csproj file content.</param>
+	/// <param name="packageId">The package identifier to look for.</param>
+	/// <param name="includeVariants">Whether to also match sub-packages of the same family.</param>
+	/// <returns>True if a version is pinned for the package.</returns>
+	protected static bool PinsPackageVersion(string? xml, string packageId, bool includeVariants = false)
+		=> ReferencesPackageCore(xml, packageId, includeVariants, _versionPinElementNames);
 
 	private static bool ReferencesPackageCore(string? xml, string packageId, bool includeVariants, string[] elementNames)
 	{

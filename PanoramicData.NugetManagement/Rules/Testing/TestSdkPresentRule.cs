@@ -23,7 +23,7 @@ public class TestSdkPresentRule : RuleBase
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
 		var dirPackages = context.GetFileContent("Directory.Packages.props");
-		if (Contains(dirPackages, "Microsoft.NET.Test.Sdk"))
+		if (ReferencesPackage(dirPackages, "Microsoft.NET.Test.Sdk", includeVariants: true))
 		{
 			return Task.FromResult(Pass("Microsoft.NET.Test.Sdk is referenced."));
 		}
@@ -33,7 +33,7 @@ public class TestSdkPresentRule : RuleBase
 		foreach (var tp in testProjects)
 		{
 			var content = context.GetFileContent(tp);
-			if (Contains(content, "Microsoft.NET.Test.Sdk"))
+			if (ReferencesPackageDirectly(content, "Microsoft.NET.Test.Sdk", includeVariants: true))
 			{
 				return Task.FromResult(Pass("Microsoft.NET.Test.Sdk is referenced."));
 			}

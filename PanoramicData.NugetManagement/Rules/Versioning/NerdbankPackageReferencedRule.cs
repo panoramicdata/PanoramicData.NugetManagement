@@ -27,8 +27,8 @@ public class NerdbankPackageReferencedRule : RuleBase
 			.Select(context.GetFileContent)
 			.Where(c => c is not null);
 
-		var inCpm = Contains(dirPackages, "Nerdbank.GitVersioning");
-		var inCsproj = allCsprojs.Any(c => Contains(c, "Nerdbank.GitVersioning"));
+		var inCpm = ReferencesPackage(dirPackages, "Nerdbank.GitVersioning", includeVariants: true);
+		var inCsproj = allCsprojs.Any(c => ReferencesPackageDirectly(c, "Nerdbank.GitVersioning", includeVariants: true));
 
 		return Task.FromResult(inCpm || inCsproj
 			? Pass("Nerdbank.GitVersioning is referenced.")

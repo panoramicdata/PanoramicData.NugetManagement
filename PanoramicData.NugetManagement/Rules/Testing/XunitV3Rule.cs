@@ -25,7 +25,7 @@ public class XunitV3Rule : RuleBase
 		var dirPackages = context.GetFileContent("Directory.Packages.props");
 
 		// Check for xunit.v3 in centralized packages
-		if (Contains(dirPackages, "xunit.v3"))
+		if (ReferencesPackage(dirPackages, "xunit.v3", includeVariants: true))
 		{
 			return Task.FromResult(Pass("xUnit v3 is referenced."));
 		}
@@ -36,7 +36,7 @@ public class XunitV3Rule : RuleBase
 		foreach (var tp in testProjects)
 		{
 			var content = context.GetFileContent(tp);
-			if (Contains(content, "xunit.v3"))
+			if (ReferencesPackageDirectly(content, "xunit.v3", includeVariants: true))
 			{
 				return Task.FromResult(Pass("xUnit v3 is referenced."));
 			}
