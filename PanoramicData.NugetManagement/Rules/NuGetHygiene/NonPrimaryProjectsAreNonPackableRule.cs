@@ -32,7 +32,7 @@ public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 		var ancillary = context.FindNonPrimaryNonTestProjectFiles().ToList();
 		if (ancillary.Count == 0)
 		{
-			return Task.FromResult(Pass("No ancillary projects found - nothing to check."));
+			return Task.FromResult(NotApplicable("No ancillary projects found - nothing to check."));
 		}
 
 		// .Cli projects are treated as dotnet tools and are expected to be packable.
@@ -42,7 +42,7 @@ public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 
 		if (requiredNonPackable.Count == 0)
 		{
-			return Task.FromResult(Pass("No non-cli ancillary projects found - nothing to check."));
+			return Task.FromResult(NotApplicable("No non-cli ancillary projects found - nothing to check."));
 		}
 
 		var missing = requiredNonPackable

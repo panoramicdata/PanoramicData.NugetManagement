@@ -12,11 +12,20 @@ public class FailArmyTests : TestWithOutput
 	private readonly RepositoryContext _failContext;
 
 	/// <summary>
-	/// Rules that cannot fail from repository files alone because they depend on live external
-	/// state (e.g. a Codacy API token and server-side analysis). These are excluded from the
-	/// "every rule must fail" invariant — with no external state configured they correctly report N/A.
+	/// Rules that cannot be made to fail by the fixture's files, so they are excluded from the
+	/// "every applicable rule must fail" invariant:
+	/// <list type="bullet">
+	/// <item>PKG-06 depends on live nuget.org state — whether a newer minor version exists today.</item>
+	/// <item>
+	/// CI-10 requires a committed nuget-key.txt, but that filename is gitignored by this repository
+	/// (by design, since committing one is exactly what the rule forbids), so the fixture can never
+	/// contain it.
+	/// </item>
+	/// </list>
+	/// Rules that report themselves as not applicable are excluded automatically via
+	/// <see cref="RuleResult.IsApplicable"/>, so they need no entry here.
 	/// </summary>
-	private static readonly string[] _externalStateRuleIds = ["CQ-05"];
+	private static readonly string[] _unfailableRuleIds = ["PKG-06", "CI-10"];
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="FailArmyTests"/> class.
@@ -35,8 +44,11 @@ public class FailArmyTests : TestWithOutput
 		foreach (var rule in RuleRegistry.Rules)
 		{
 			var result = await rule.EvaluateAsync(_failContext, CancellationToken.None);
-			Output.WriteLine($"[{(result.Passed ? "PASS" : "FAIL")}] {result.RuleId}: {result.Message}");
-			if (result.Passed && !_externalStateRuleIds.Contains(result.RuleId, StringComparer.OrdinalIgnoreCase))
+			var outcome = !result.IsApplicable ? "N/A " : result.Passed ? "PASS" : "FAIL";
+			Output.WriteLine($"[{outcome}] {result.RuleId}: {result.Message}");
+			if (result.Passed
+				&& result.IsApplicable
+				&& !_unfailableRuleIds.Contains(result.RuleId, StringComparer.OrdinalIgnoreCase))
 			{
 				unexpectedPasses.Add(result);
 			}
@@ -52,8 +64,8 @@ public class FailArmyTests : TestWithOutput
 		}
 
 		unexpectedPasses.Should().BeEmpty(
-			"every rule should fail against the FailArmy fixture — " +
-			"if a rule passed, it means the fixture doesn't violate that rule");
+			"every applicable rule should fail against the FailArmy fixture — " +
+			"if an applicable rule passed, it means the fixture doesn't violate that rule");
 	}
 
 	[Fact]
@@ -95,7 +107,8 @@ public class FailArmyTests : TestWithOutput
 
 		assessment.IsCompliant.Should().BeFalse();
 		ruleResults
-			.Where(r => !_externalStateRuleIds.Contains(r.RuleId, StringComparer.OrdinalIgnoreCase))
+			.Where(r => r.IsApplicable)
+			.Where(r => !_unfailableRuleIds.Contains(r.RuleId, StringComparer.OrdinalIgnoreCase))
 			.Should().OnlyContain(r => !r.Passed, "every file-based rule should fail against the FailArmy fixture");
 	}
 
@@ -148,7 +161,9 @@ internal static class FailArmyFixture
 			{
 				IsPackable = true,
 				EnforceRequiredProperties = true
-			});
+			},
+			// Not on 'main', so the default-branch rule fails like everything else.
+			defaultBranch: "master");
 	}
 
 	private static string? FindRepoRoot(string startDir)

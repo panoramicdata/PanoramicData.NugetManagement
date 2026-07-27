@@ -28,7 +28,7 @@ public class FailSkipsRule : RuleBase
 
 		if (testProjects.Count == 0)
 		{
-			return Task.FromResult(Pass("No test projects found; rule does not apply."));
+			return Task.FromResult(NotApplicable("No test projects found; rule does not apply."));
 		}
 
 		var missingOrInvalid = new List<string>();

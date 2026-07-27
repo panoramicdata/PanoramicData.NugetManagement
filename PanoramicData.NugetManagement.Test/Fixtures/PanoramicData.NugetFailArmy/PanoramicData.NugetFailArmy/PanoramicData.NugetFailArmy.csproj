@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ImplicitUsings deliberately absent so BLD-03 fails. -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <WarningLevel>0</WarningLevel>
   </PropertyGroup>
@@ -10,5 +10,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <!-- Does HTTP client work, but via the wrong library, so HTTP-01 applies and fails. -->
     <PackageReference Include="RestSharp" Version="110.2.0" />
+    <!-- Directly referenced rather than inherited, so PKG-08 fails. -->
+    <PackageReference Include="Roslynator.Analyzers" Version="4.12.4" />
   </ItemGroup>
 </Project>

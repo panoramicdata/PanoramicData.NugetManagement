@@ -16,12 +16,17 @@ internal static class LocalRepositoryContextFactory
 	/// <param name="repoFullName">The GitHub-style full name (e.g. "panoramicdata/MyRepo").</param>
 	/// <param name="options">Optional per-repo options.</param>
 	/// <param name="excludedPathPrefixes">Optional relative path prefixes to exclude from the scan.</param>
+	/// <param name="defaultBranch">
+	/// The repository's default branch. Defaults to "main"; fixtures that must violate the
+	/// default-branch rule can pass something else.
+	/// </param>
 	/// <returns>A RepositoryContext populated from the local filesystem.</returns>
 	public static RepositoryContext Build(
 		string rootPath,
 		string repoFullName,
 		RepoOptions? options = null,
-		IEnumerable<string>? excludedPathPrefixes = null)
+		IEnumerable<string>? excludedPathPrefixes = null,
+		string defaultBranch = "main")
 	{
 		var repoOptions = options ?? new RepoOptions();
 		var normalizedExcludedPrefixes = excludedPathPrefixes?
@@ -59,7 +64,7 @@ internal static class LocalRepositoryContextFactory
 		{
 			FullName = repoFullName,
 			Name = repoName,
-			DefaultBranch = "main",
+			DefaultBranch = defaultBranch,
 			Options = repoOptions,
 			FilePaths = allFiles,
 			FileContents = fileContents

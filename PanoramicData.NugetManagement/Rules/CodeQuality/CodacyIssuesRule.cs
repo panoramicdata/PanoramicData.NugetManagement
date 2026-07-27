@@ -50,7 +50,7 @@ public sealed class CodacyIssuesRule : RuleBase
 		var codacy = context.Options.Codacy;
 		if (codacy is null || string.IsNullOrWhiteSpace(codacy.ApiToken))
 		{
-			return Pass("Codacy issue analysis is not configured for this repository.");
+			return NotApplicable("Codacy issue analysis is not configured for this repository.");
 		}
 
 		var parts = context.FullName.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
