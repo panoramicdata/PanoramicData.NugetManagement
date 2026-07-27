@@ -12,8 +12,12 @@ internal static class GitHubIntegrationSettings
 
 	private sealed class SecretMarker;
 
+	// User secrets for local development, environment variables so CI can supply the same settings
+	// (there are no user secrets on a build agent). Environment variables are added last so they win:
+	// set GitHub__Token in the environment to override, or to provide, the token.
 	private static readonly Lazy<IConfigurationRoot> _configuration = new(() => new ConfigurationBuilder()
 		.AddUserSecrets<SecretMarker>()
+		.AddEnvironmentVariables()
 		.Build());
 
 	public static string Token => _configuration.Value["GitHub:Token"]
