@@ -1833,17 +1833,25 @@ i + .breadcrumb-link-text {
     color: #f48fb1;
 }
 
-/* Org (root) tree row: lay it out as a full-width flex row so the settings cog
-   sits flush against the right edge of the sidebar. */
-.pdtreenode_content:has(.nav-org-settings-btn) {
+/* Org (root) tree row: lay it out as a full-width flex row so its action buttons
+   sit flush against the right edge of the sidebar. */
+.pdtreenode_content:has(.nav-org-actions) {
     display: flex;
     align-items: center;
     width: 100%;
 }
 
-.nav-org-settings-btn {
+.nav-org-actions {
     margin-left: auto;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    position: relative;
+    left: -1px;
+    top: 1px;
+}
+
+.nav-org-action-btn {
     background: none;
     border: none;
     padding: 0 2px 0 6px;
@@ -1851,19 +1859,21 @@ i + .breadcrumb-link-text {
     cursor: pointer;
     font-size: 0.8rem;
     line-height: 1;
-    position: relative;
-    left: -1px;
-    top: 1px;
 }
 
-.nav-org-settings-btn:hover,
-.nav-org-settings-btn.active {
+.nav-org-action-btn:hover:not(:disabled),
+.nav-org-action-btn.active {
     color: var(--accent);
+}
+
+.nav-org-action-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 /* When the org row is selected, the muted cog blends into the blue highlight — make it
    white for contrast (but leave the hover/active accent colours alone). */
-.nav-tree-scroll .pdtreenode_content.selected .nav-org-settings-btn:not(:hover):not(.active) {
+.nav-tree-scroll .pdtreenode_content.selected .nav-org-action-btn:not(:hover):not(.active) {
     color: #ffffff;
 }
 

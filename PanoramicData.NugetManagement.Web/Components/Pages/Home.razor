@@ -16,6 +16,7 @@
 @inject RuntimeSettingsService RuntimeSettings
 @inject IdeDetectionService IdeDetection
 @inject LocalFileSystemDataProvider FileSystemDataProvider
+@inject LocalRepoService LocalRepo
 @inject NuGetUpdateService NuGetUpdates
 @implements IDisposable
 
@@ -95,7 +96,17 @@ else
 										}
 										@if (node.Data?.Key == "root")
 										{
-											<button type="button" class="nav-org-settings-btn @(_currentView == NavView.Settings ? "active" : "")" title="Organization settings" @onclick="NavigateToSettingsAsync" @onclick:stopPropagation><i class="fas fa-cog"></i></button>
+											<span class="nav-org-actions">
+												@if (_isCloningAll)
+												{
+													<button type="button" class="nav-org-action-btn active" title="Stop cloning" @onclick="CancelCloneAll" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
+												}
+												else
+												{
+													<button type="button" class="nav-org-action-btn" title="@GetCloneAllTooltip()" disabled="@(RepositoriesToClone.Count == 0)" @onclick="CloneAllRepositoriesAsync" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cloud-arrow-down"></i></button>
+												}
+												<button type="button" class="nav-org-action-btn @(_currentView == NavView.Settings ? "active" : "")" title="Organization settings" @onclick="NavigateToSettingsAsync" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
+											</span>
 										}
 									</NodeTemplate>
 								</PDTree>
@@ -438,6 +449,8 @@ else
 	// True when the org (root) node is the current focus (org overview / org settings),
 	// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
 	private bool _orgSelected;
+	private bool _isCloningAll;
+	private CancellationTokenSource? _cloneAllCts;
 	private string _organizationName = string.Empty;
 	// Which tree branches are open, persisted to localStorage so expansion survives a page reload.
 	private const string ExpandedNodesStorageKey = "navTreeExpandedNodes";
@@ -774,6 +787,123 @@ else
 		foreach (var child in node.Nodes.ToList())
 		{
 			await ExpandSavedNodesAsync(child).ConfigureAwait(true);
+		}
+	}
+
+	/// <summary>
+	/// One row per repository that is not yet cloned. Rows are per package and a repository can host
+	/// several, so they are grouped: cloning once per repository, not once per package.
+	/// </summary>
+	private List<PackageDashboardRow> RepositoriesToClone => [.. _rows
+		.Where(r => r.RepositoryFullName is not null && r.RepositoryUrl is not null && !r.IsClonedLocally)
+		.GroupBy(r => r.RepositoryFullName!, StringComparer.OrdinalIgnoreCase)
+		.Select(g => g.First())];
+
+	private string GetCloneAllTooltip()
+	{
+		var count = RepositoriesToClone.Count;
+		return count == 0
+			? "Every repository is already cloned locally"
+			: $"Clone the {count} repositories that are not cloned yet, into {LocalRepo.GetReposRoot()}";
+	}
+
+	private void CancelCloneAll()
+	{
+		AppendConsole("⏹️ Stopping after the current repository...");
+		_cloneAllCts?.Cancel();
+	}
+
+	/// <summary>
+	/// Clones every repository in the organisation that is not already local, one at a time.
+	/// </summary>
+	private async Task CloneAllRepositoriesAsync()
+	{
+		var targets = RepositoriesToClone;
+		if (targets.Count == 0)
+		{
+			return;
+		}
+
+		// Always resolvable: falls back to the folder containing this solution's repository.
+		var reposRoot = LocalRepo.GetReposRoot();
+
+		// Cloning tens of repositories takes a while and writes a lot to disk, so confirm first.
+		var confirmed = await JS.InvokeAsync<bool>(
+			"confirm",
+			$"Clone {targets.Count} repositories into {reposRoot}? This may take several minutes.");
+		if (!confirmed)
+		{
+			return;
+		}
+
+		_isCloningAll = true;
+		_consoleVisible = true;
+		_cloneAllCts?.Dispose();
+		_cloneAllCts = new CancellationTokenSource();
+		var token = _cloneAllCts.Token;
+
+		var cloned = 0;
+		var failed = 0;
+		AppendConsole($"▶️ Cloning {targets.Count} repositories into {reposRoot}...");
+		await InvokeAsync(StateHasChanged);
+
+		try
+		{
+			foreach (var row in targets)
+			{
+				if (token.IsCancellationRequested)
+				{
+					break;
+				}
+
+				AppendConsole($"⬇️ {row.RepositoryFullName}");
+				try
+				{
+					await Dashboard.CloneRepositoryAsync(row, line => AppendConsole(line), token);
+				}
+				catch (OperationCanceledException)
+				{
+					break;
+				}
+				catch (Exception ex)
+				{
+					row.StatusMessage = ex.Message;
+				}
+
+				if (row.IsClonedLocally)
+				{
+					cloned++;
+					// Other packages in the same repository are now local too.
+					foreach (var sibling in _rows.Where(r =>
+						r != row
+						&& string.Equals(r.RepositoryFullName, row.RepositoryFullName, StringComparison.OrdinalIgnoreCase)))
+					{
+						sibling.IsClonedLocally = true;
+						sibling.LocalPath = row.LocalPath;
+						sibling.CurrentBranch = row.CurrentBranch;
+						sibling.IsWorkingTreeClean = row.IsWorkingTreeClean;
+					}
+				}
+				else
+				{
+					failed++;
+					AppendConsole($"❌ {row.RepositoryFullName}: {row.StatusMessage}");
+				}
+
+				await InvokeAsync(StateHasChanged);
+			}
+
+			var cancelled = token.IsCancellationRequested ? " (stopped early)" : string.Empty;
+			AppendConsole($"✅ Cloned {cloned}, failed {failed}{cancelled}.");
+			Cache.Update(_rows);
+		}
+		finally
+		{
+			_isCloningAll = false;
+			_cloneAllCts?.Dispose();
+			_cloneAllCts = null;
+			await ReloadTreePreservingExpansionAsync();
+			await InvokeAsync(StateHasChanged);
 		}
 	}
 
@@ -1636,6 +1766,7 @@ else
 	private void ScheduleDoneClear()
 	{
 		_doneClearTimer?.Dispose();
+		_cloneAllCts?.Dispose();
 		_doneClearTimer = new System.Threading.Timer(
 			_ => InvokeAsync(() =>
 			{
