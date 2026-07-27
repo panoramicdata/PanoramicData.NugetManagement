@@ -75,7 +75,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			new() {
 				Key = "organisations",
 				Text = "Organisations",
-				IconCss = "fas fa-city",
+				IconCss = "fas fa-sitemap",
 				View = NavView.Dashboard,
 				IsLeaf = false
 			},
@@ -85,7 +85,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				Key = "root",
 				Text = _organizationName,
 				ParentKey = "organisations",
-				IconCss = "fas fa-building",
+				IconCss = "fas fa-people-group",
 				View = NavView.Dashboard,
 				IsLeaf = false,
 				IssueCount = totalIssues,

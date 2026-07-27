@@ -1796,19 +1796,19 @@ i + .breadcrumb-link-text {
 }
 
 /* The Organisations and Repositories grouping nodes are not selectable, so they must not show
-   a hover background (or they look selectable). Keyed off their icons: fa-city / fa-cubes. */
-.pdtreenode_content:has(.nav-node-label i.fa-city):hover,
+   a hover background (or they look selectable). Keyed off their icons: fa-sitemap / fa-cubes. */
+.pdtreenode_content:has(.nav-node-label i.fa-sitemap):hover,
 .pdtreenode_content:has(.nav-node-label i.fa-cubes):hover {
     background: transparent !important;
 }
 
 /* Organisations is always expanded and has no collapse toggle (its chevron is removed). */
-.pdtreenode_header:has(.nav-node-label i.fa-city) > i {
+.pdtreenode_header:has(.nav-node-label i.fa-sitemap) > i {
     display: none;
 }
 
 /* Container header nodes get distinct label colours to set them apart from repo nodes. */
-.nav-node-label:has(> i.fa-city) {   /* Organisations — light green */
+.nav-node-label:has(> i.fa-sitemap) {   /* Organisations — light green */
     color: #a5d6a7;
 }
 
