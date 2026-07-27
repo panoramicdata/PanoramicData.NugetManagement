@@ -232,6 +232,10 @@ else
 							{
 								<span class="progress-indicator">@if (!_showDone) {<span class="spinner"></span>} @GetProgressIndicatorText()</span>
 							}
+							@if (_rateLimitRemaining is not null)
+							{
+								<span class="@RateLimitIndicatorCss" title="@RateLimitIndicatorTooltip"><i class="fab fa-github"></i> @RateLimitIndicatorText</span>
+							}
 							<div class="user-menu">
 								<button type="button" class="btn btn-xs btn-breadcrumb" @onclick="() => _userMenuOpen = !_userMenuOpen" title="Account">
 									<i class="fas fa-user"></i> @_userName <i class="fas fa-caret-down"></i>
@@ -520,6 +524,9 @@ else
 	// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
 	private bool _orgSelected;
 	private bool _isCloningAll;
+	private int? _rateLimitRemaining;
+	private int? _rateLimitLimit;
+	private DateTimeOffset? _rateLimitResetUtc;
 	private bool _cloneDialogOpen;
 	private bool _isLoadingCloneCandidates;
 	private string? _cloneCandidatesError;
@@ -622,6 +629,9 @@ else
 
 		// If the cache is stale/empty we're about to (re)load — reflect that in the tree.
 		NavDataProvider.IsLoading = Cache.IsStale;
+
+		// Populate the API budget indicator. Reading the limit does not consume quota.
+		await RefreshRateLimitAsync();
 
 		// If a PackageId was in the URL, select it
 		if (!string.IsNullOrEmpty(PackageId))
@@ -1022,6 +1032,7 @@ else
 
 			var stopped = token.IsCancellationRequested ? " (stopped early)" : string.Empty;
 			AppendConsole($"✅ Cloned {cloned}, failed {failed}{stopped}.");
+			await RefreshRateLimitAsync();
 			Cache.Update(_rows);
 		}
 		finally
@@ -1059,6 +1070,93 @@ else
 			row.CurrentBranch = branch;
 			row.IsWorkingTreeClean = isClean;
 		}
+	}
+
+	/// <summary>
+	/// GitHub REST calls one repository assessment costs: one to read the repository and one for its
+	/// file tree. File contents come from raw.githubusercontent.com, which is a CDN and does not draw
+	/// on the API quota, and locally-cloned repositories are assessed from disk and cost nothing.
+	/// </summary>
+	private const int ApiCallsPerRemoteAssessment = 2;
+
+	/// <summary>
+	/// Reads the current rate limit. Asking for the limit does not itself consume quota.
+	/// </summary>
+	private async Task RefreshRateLimitAsync()
+	{
+		try
+		{
+			var limits = await CreateGitHubClient().RateLimit.GetRateLimits();
+			_rateLimitRemaining = limits.Resources.Core.Remaining;
+			_rateLimitLimit = limits.Resources.Core.Limit;
+			_rateLimitResetUtc = limits.Resources.Core.Reset;
+		}
+		catch
+		{
+			// Leave it unknown rather than guess; the indicator hides itself.
+			_rateLimitRemaining = null;
+		}
+	}
+
+	private int EstimateRemoteAssessmentCost(IEnumerable<PackageDashboardRow> rows)
+		=> rows.Count(r => r.RepositoryFullName is not null && !r.IsClonedLocally) * ApiCallsPerRemoteAssessment;
+
+	private string RateLimitIndicatorText
+		=> _rateLimitRemaining is null
+			? string.Empty
+			: $"{_rateLimitRemaining} API";
+
+	private string RateLimitIndicatorCss
+		=> _rateLimitRemaining switch
+		{
+			null => "rate-limit-chip",
+			< 250 => "rate-limit-chip critical",
+			< 1000 => "rate-limit-chip low",
+			_ => "rate-limit-chip"
+		};
+
+	private string RateLimitIndicatorTooltip
+		=> _rateLimitRemaining is null
+			? "GitHub API budget unknown"
+			: $"{_rateLimitRemaining} of {_rateLimitLimit} GitHub API calls left this hour"
+				+ (_rateLimitResetUtc is null ? string.Empty : $", resetting at {_rateLimitResetUtc.Value.ToLocalTime():HH:mm}");
+
+	/// <summary>
+	/// Warns before an action that will consume a meaningful share of the remaining GitHub API
+	/// budget, so running out is a choice rather than a surprise. Stays quiet when there is plenty of
+	/// headroom, and never blocks when the budget is unknown.
+	/// </summary>
+	private async Task<bool> ConfirmApiBudgetAsync(string action, int estimatedCalls)
+	{
+		if (estimatedCalls <= 0)
+		{
+			return true;
+		}
+
+		await RefreshRateLimitAsync();
+		if (_rateLimitRemaining is null)
+		{
+			return true;
+		}
+
+		var remaining = _rateLimitRemaining.Value;
+		if (estimatedCalls >= remaining)
+		{
+			var reset = _rateLimitResetUtc is null ? "shortly" : $"at {_rateLimitResetUtc.Value.ToLocalTime():HH:mm}";
+			return await JS.InvokeAsync<bool>(
+				"confirm",
+				$"{action} needs about {estimatedCalls} GitHub API calls but only {remaining} remain, so it will not finish. The budget resets {reset}. Continue anyway?");
+		}
+
+		// Only speak up when this would eat a quarter or more of what is left.
+		if (estimatedCalls * 4 < remaining)
+		{
+			return true;
+		}
+
+		return await JS.InvokeAsync<bool>(
+			"confirm",
+			$"{action} will use about {estimatedCalls} of your {remaining} remaining GitHub API calls this hour. Continue?");
 	}
 
 	private void NavigateToDashboard()
@@ -2001,6 +2099,11 @@ else
 
 	private async Task RefreshAsync()
 	{
+		if (!await ConfirmApiBudgetAsync("Refreshing the package list and re-assessing", EstimateRemoteAssessmentCost(_rows)))
+		{
+			return;
+		}
+
 		_isLoading = true;
 		NavDataProvider.IsLoading = true;
 		_progressMessage = "Discovering packages...";
@@ -2321,8 +2424,13 @@ else
 
 	private async Task ReassessAllReposAsync()
 	{
-		_isAssessing = true;
 		var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
+		if (!await ConfirmApiBudgetAsync($"Re-assessing {assessable.Count} repositories", EstimateRemoteAssessmentCost(assessable)))
+		{
+			return;
+		}
+
+		_isAssessing = true;
 		AppendConsole($"▶ Re-assessing {assessable.Count} repos...");
 
 		// Mark all pending rows so the tree shows spinners

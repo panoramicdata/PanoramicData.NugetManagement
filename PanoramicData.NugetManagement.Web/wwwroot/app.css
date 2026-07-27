@@ -2262,3 +2262,30 @@ i + .breadcrumb-link-text {
 .clone-tag.archived {
     background: rgba(128, 128, 128, 0.22);
 }
+
+/* GitHub API budget indicator: matches the git status badges in the breadcrumb bar. */
+.rate-limit-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-weight: 600;
+    background: rgba(128, 128, 128, 0.14);
+    color: var(--text-muted);
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    white-space: nowrap;
+}
+
+.rate-limit-chip.low {
+    background: rgba(255, 152, 0, 0.15);
+    color: var(--warning);
+    border-color: rgba(255, 152, 0, 0.4);
+}
+
+.rate-limit-chip.critical {
+    background: rgba(244, 67, 54, 0.15);
+    color: var(--error);
+    border-color: rgba(244, 67, 54, 0.45);
+}
