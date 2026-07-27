@@ -94,78 +94,79 @@
 	{
 		<p class="summary">@_view.IssueClassCount issue class(es) across @_rows.Count repositories.</p>
 
-		@foreach (var cat in _view.Categories)
-		{
-			<div class="cat-node">
-				<div class="node-row cat-row">
-					<button class="expander" @onclick="() => ToggleCategory(cat.Category.ToString())">
-						<i class="fas @(IsExpanded(_expandedCats, cat.Category.ToString()) ? "fa-chevron-down" : "fa-chevron-right")"></i>
-					</button>
-					<span class="sev sev-@cat.Severity">@cat.Severity</span>
-					<strong>@cat.Category</strong>
-					<span class="muted">@cat.IssueClasses.Count rule(s) · @cat.AffectedRepositoryCount repo(s)</span>
-					<span class="actions">
-						@if (cat.HasAutomatedRemediation)
-						{
-							<button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyCategory(cat)">Apply auto-fixes</button>
-						}
-						<button class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="() => CopyCategoryPromptAsync(cat.Category)">Copy AI prompt</button>
-					</span>
-				</div>
-
-				@if (IsExpanded(_expandedCats, cat.Category.ToString()))
-				{
-					@foreach (var rule in cat.IssueClasses)
+		<div class="issue-tree">
+			<PDTree TItem="IssueNavItem"
+					@key="_treeVersion"
+					DataProvider="_treeProvider"
+					KeyField="x => x.Key"
+					ParentKeyField="x => x.ParentKey!"
+					TextField="x => x.Text"
+					IsLeaf="x => x.IsLeaf"
+					IconCssClass="(item, _) => string.Empty"
+					AllowSelection="false"
+					ShowRoot="true"
+					ExceptionHandler="OnTreeException">
+				<NodeTemplate Context="node">
+					@if (node.Data is { Kind: IssueNodeKind.Category, Category: not null } catItem)
 					{
-						<div class="rule-node">
-							<div class="node-row rule-row">
-								<button class="expander" @onclick="() => ToggleRule(rule.RuleId)">
-									<i class="fas @(IsExpanded(_expandedRules, rule.RuleId) ? "fa-chevron-down" : "fa-chevron-right")"></i>
-								</button>
-								<span class="sev sev-@rule.Severity">@rule.Severity</span>
-								<strong>@rule.RuleId</strong>
-								<span>@rule.RuleName</span>
-								<span class="muted">@rule.AffectedRepositoryCount repo(s)</span>
-								<span class="actions">
-									@if (rule.HasAutomatedRemediation)
-									{
-										<button class="btn btn-sm btn-primary" disabled="@(_busy || SelectedAffected(rule) == 0)" @onclick="() => ConfirmApplyRule(rule)">
-											Apply &amp; push to @SelectedAffected(rule) repo(s)
-										</button>
-									}
-									else
-									{
-										<button class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="() => CopyRulePromptAsync(rule.RuleId)">Copy combined AI prompt</button>
-									}
-								</span>
-							</div>
-
-							@if (IsExpanded(_expandedRules, rule.RuleId))
-							{
-								@foreach (var inst in rule.Instances)
+						var cat = catItem.Category!;
+						<span class="node-row cat-row">
+							<span class="sev sev-@cat.Severity">@cat.Severity</span>
+							<strong>@cat.Category</strong>
+							<span class="muted">@cat.IssueClasses.Count rule(s) &middot; @cat.AffectedRepositoryCount repo(s)</span>
+							<span class="actions">
+								@if (cat.HasAutomatedRemediation)
 								{
-									<div class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected")">
-										<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
-										<span class="repo-name">@inst.RepositoryFullName</span>
-										<span class="muted repo-msg">@Truncate(inst.Result.Message, 120)</span>
-										<span class="actions">
-											@if (inst.IsAutoRemediable)
-											{
-												<button class="btn btn-xs btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyRepo(rule.RuleId, inst.RepositoryFullName)">Apply here</button>
-											}
-											else
-											{
-												<button class="btn btn-xs btn-secondary" disabled="@_busy" @onclick="() => CopyRepoPromptAsync(rule.RuleId, inst.RepositoryFullName)">Copy prompt</button>
-											}
-										</span>
-									</div>
+									<button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyCategory(cat)" @onclick:stopPropagation @onmousedown:stopPropagation>Apply auto-fixes</button>
 								}
-							}
-						</div>
+								<button class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="() => CopyCategoryPromptAsync(cat.Category)" @onclick:stopPropagation @onmousedown:stopPropagation>Copy AI prompt</button>
+							</span>
+						</span>
 					}
-				}
-			</div>
-		}
+					else if (node.Data is { Kind: IssueNodeKind.Rule, Rule: not null } ruleItem)
+					{
+						var rule = ruleItem.Rule!;
+						<span class="node-row rule-row">
+							<span class="sev sev-@rule.Severity">@rule.Severity</span>
+							<strong>@rule.RuleId</strong>
+							<span>@rule.RuleName</span>
+							<span class="muted">@rule.AffectedRepositoryCount repo(s)</span>
+							<span class="actions">
+								@if (rule.HasAutomatedRemediation)
+								{
+									<button class="btn btn-sm btn-primary" disabled="@(_busy || SelectedAffected(rule) == 0)" @onclick="() => ConfirmApplyRule(rule)" @onclick:stopPropagation @onmousedown:stopPropagation>
+										Apply &amp; push to @SelectedAffected(rule) repo(s)
+									</button>
+								}
+								else
+								{
+									<button class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="() => CopyRulePromptAsync(rule.RuleId)" @onclick:stopPropagation @onmousedown:stopPropagation>Copy combined AI prompt</button>
+								}
+							</span>
+						</span>
+					}
+					else if (node.Data is { Kind: IssueNodeKind.Repository, Instance: not null } repoItem)
+					{
+						var inst = repoItem.Instance!;
+						<span class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected")">
+							<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
+							<span class="repo-name">@inst.RepositoryFullName</span>
+							<span class="muted repo-msg">@Truncate(inst.Result.Message, 120)</span>
+							<span class="actions">
+								@if (inst.IsAutoRemediable)
+								{
+									<button class="btn btn-xs btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyRepo(repoItem.RuleId!, inst.RepositoryFullName)" @onclick:stopPropagation @onmousedown:stopPropagation>Apply here</button>
+								}
+								else
+								{
+									<button class="btn btn-xs btn-secondary" disabled="@_busy" @onclick="() => CopyRepoPromptAsync(repoItem.RuleId!, inst.RepositoryFullName)" @onclick:stopPropagation @onmousedown:stopPropagation>Copy prompt</button>
+								}
+							</span>
+						</span>
+					}
+				</NodeTemplate>
+			</PDTree>
+		</div>
 	}
 
 	@if (_log.Count > 0)
@@ -259,8 +260,10 @@
 	private List<PackageDashboardRow> _rows = [];
 	private IssueCentricView? _view;
 	private IReadOnlyList<ActionVersionBump> _bumps = [];
-	private readonly HashSet<string> _expandedCats = new(StringComparer.OrdinalIgnoreCase);
-	private readonly HashSet<string> _expandedRules = new(StringComparer.OrdinalIgnoreCase);
+	// PDTree owns expansion state, so no hand-rolled expanded-node tracking is needed. The version
+	// is the tree's @key: bumping it rebuilds the tree when the underlying view changes.
+	private readonly IssueTreeDataProvider _treeProvider = new();
+	private int _treeVersion;
 	private readonly List<string> _log = [];
 	private bool _busy;
 	private PendingConfirm? _confirm;
@@ -277,6 +280,13 @@
 
 	private void OnGuardChanged() => _ = InvokeAsync(StateHasChanged);
 
+	// PDTree swallows load-time exceptions, which shows up as a silently empty tree.
+	private void OnTreeException(Exception exception)
+	{
+		Append($"Issue tree failed to load: {exception.GetType().Name}: {exception.Message}");
+		_ = InvokeAsync(StateHasChanged);
+	}
+
 	public void Dispose() => Guard.StatusesChanged -= OnGuardChanged;
 
 	private void LoadView()
@@ -284,6 +294,9 @@
 		_rows = Cache.GetCachedRows() ?? [];
 		_view = Dashboard.BuildIssueCentricView(_rows);
 		_bumps = ActionVersionCatalog.Default.RecentBumps;
+
+		_treeProvider.View = _view;
+		_treeVersion++;
 
 		_allRepoNames = [.. _rows
 			.Where(r => r.RepositoryFullName is not null)
@@ -329,24 +342,6 @@
 	}
 
 	private void SelectNoRepos() => _selectedRepos.Clear();
-
-	private static bool IsExpanded(HashSet<string> set, string key) => set.Contains(key);
-
-	private void ToggleCategory(string key)
-	{
-		if (!_expandedCats.Add(key))
-		{
-			_expandedCats.Remove(key);
-		}
-	}
-
-	private void ToggleRule(string ruleId)
-	{
-		if (!_expandedRules.Add(ruleId))
-		{
-			_expandedRules.Remove(ruleId);
-		}
-	}
 
 	private static string Truncate(string value, int max)
 		=> string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..max] + "…";
