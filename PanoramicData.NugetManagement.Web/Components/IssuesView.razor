@@ -1,0 +1,558 @@
+@implements IDisposable
+@using PanoramicData.NugetManagement.Services
+@inject DashboardService Dashboard
+@inject DashboardCacheService Cache
+@inject RegressionGuardService Guard
+@inject IJSRuntime JS
+
+
+<div class="issues-page @(Embedded ? "embedded" : null)">
+	@if (!Embedded)
+	{
+	<header class="issues-header">
+		<div>
+			<h1><i class="fas fa-layer-group"></i> Issues by class</h1>
+			<p class="muted">The dimensional flip of the dashboard: an issue class, then the repositories it affects. Fix one across every repo in a single action.</p>
+		</div>
+		<div class="header-actions">
+			<a class="btn btn-secondary" href="/"><i class="fas fa-arrow-left"></i> Dashboard</a>
+			@if (_view is { HasAutomatedRemediation: true })
+			{
+				<button class="btn btn-danger" disabled="@_busy" @onclick="ConfirmFixEverything" title="Apply every auto-fixable rule across every affected repository">
+					<i class="fas fa-bolt"></i> Fix everything
+				</button>
+			}
+		</div>
+	</header>
+	}
+
+	@if (_allRepoNames.Count > 0)
+	{
+		<div class="repo-filter">
+			<div class="node-row cat-row">
+				<button class="expander" @onclick="() => _showRepoFilter = !_showRepoFilter">
+					<i class="fas @(_showRepoFilter ? "fa-chevron-down" : "fa-chevron-right")"></i>
+				</button>
+				<i class="fas fa-filter"></i>
+				<strong>Repositories</strong>
+				<span class="muted">@_selectedRepos.Count of @_allRepoNames.Count selected — actions apply to selected repositories only</span>
+				<span class="actions">
+					<button class="btn btn-xs btn-secondary" disabled="@_busy" @onclick="SelectAllRepos">All</button>
+					<button class="btn btn-xs btn-secondary" disabled="@_busy" @onclick="SelectNoRepos">None</button>
+				</span>
+			</div>
+			@if (_showRepoFilter)
+			{
+				<div class="repo-checklist">
+					@foreach (var name in _allRepoNames)
+					{
+						<label class="repo-check">
+							<input type="checkbox" checked="@_selectedRepos.Contains(name)" @onchange="() => ToggleRepo(name)" disabled="@_busy" />
+							<span>@name</span>
+						</label>
+					}
+				</div>
+			}
+		</div>
+	}
+
+	@if (_bumps.Count > 0)
+	{
+		<div class="baseline-banner">
+			<i class="fas fa-arrow-trend-up"></i>
+			<span>
+				<strong>Standard version baseline updated</strong> from an observed repository — commit <code>action-versions.json</code> to roll this out to everyone:
+				@string.Join(", ", _bumps.Select(b => $"{b.Action} {b.From}→{b.To}"))
+			</span>
+		</div>
+	}
+
+	@if (Guard.Statuses.Count > 0)
+	{
+		<div class="guard-panel">
+			<div class="guard-head"><i class="fas fa-shield-halved"></i> Build guard — repositories we changed are built in the background; regressions we caused are auto-reverted</div>
+			@foreach (var s in Guard.Statuses)
+			{
+				<div class="node-row guard-row">
+					<span class="guard-badge guard-@s.State">@s.State</span>
+					<span class="repo-name">@s.RepositoryFullName</span>
+					<span class="muted repo-msg">@s.Message</span>
+				</div>
+			}
+		</div>
+	}
+
+	@if (_rows.Count == 0)
+	{
+		<p class="empty">No assessed repositories are cached. Run an assessment on the <a href="/">Dashboard</a> first.</p>
+	}
+	else if (_view is null || _view.IssueClassCount == 0)
+	{
+		<p class="empty">🎉 No issues found across @_rows.Count assessed repositories.</p>
+	}
+	else
+	{
+		<p class="summary">@_view.IssueClassCount issue class(es) across @_rows.Count repositories.</p>
+
+		<div class="issue-tree">
+			<PDTree TItem="IssueNavItem"
+					@key="_treeVersion"
+					DataProvider="_treeProvider"
+					KeyField="x => x.Key"
+					ParentKeyField="x => x.ParentKey!"
+					TextField="x => x.Text"
+					IsLeaf="x => x.IsLeaf"
+					IconCssClass="(item, _) => string.Empty"
+					AllowSelection="false"
+					ShowRoot="true"
+					Sort="CompareIssueNodes"
+					ExceptionHandler="OnTreeException">
+				<NodeTemplate Context="node">
+					@if (node.Data is { Kind: IssueNodeKind.Category, Category: not null } catItem)
+					{
+						var cat = catItem.Category!;
+						<span class="node-row cat-row">
+							<span class="sev sev-@cat.Severity">@cat.Severity</span>
+							<strong>@cat.Category</strong>
+							<span class="muted">@cat.IssueClasses.Count rule(s) &middot; @cat.AffectedRepositoryCount repo(s)</span>
+							<span class="actions">
+								@if (cat.HasAutomatedRemediation)
+								{
+									<button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyCategory(cat)" @onclick:stopPropagation @onmousedown:stopPropagation>Apply auto-fixes</button>
+								}
+								<button class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="() => CopyCategoryPromptAsync(cat.Category)" @onclick:stopPropagation @onmousedown:stopPropagation>Copy AI prompt</button>
+							</span>
+						</span>
+					}
+					else if (node.Data is { Kind: IssueNodeKind.Rule, Rule: not null } ruleItem)
+					{
+						var rule = ruleItem.Rule!;
+						<span class="node-row rule-row">
+							<span class="sev sev-@rule.Severity">@rule.Severity</span>
+							<strong>@rule.RuleId</strong>
+							<span>@rule.RuleName</span>
+							<span class="muted">@rule.AffectedRepositoryCount repo(s)</span>
+							<span class="actions">
+								@if (rule.HasAutomatedRemediation)
+								{
+									<button class="btn btn-sm btn-primary" disabled="@(_busy || SelectedAffected(rule) == 0)" @onclick="() => ConfirmApplyRule(rule)" @onclick:stopPropagation @onmousedown:stopPropagation>
+										Apply &amp; push to @SelectedAffected(rule) repo(s)
+									</button>
+								}
+								else
+								{
+									<button class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="() => CopyRulePromptAsync(rule.RuleId)" @onclick:stopPropagation @onmousedown:stopPropagation>Copy combined AI prompt</button>
+								}
+							</span>
+						</span>
+					}
+					else if (node.Data is { Kind: IssueNodeKind.Repository, Instance: not null } repoItem)
+					{
+						var inst = repoItem.Instance!;
+						<span class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected")">
+							<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
+							<span class="repo-name">@inst.RepositoryFullName</span>
+							@if (repoItem.DisambiguatingPackageId is { Length: > 0 } packageId)
+							{
+								<span class="repo-package" title="This repository hosts several packages; this row is for @packageId">@packageId</span>
+							}
+							<span class="muted repo-msg">@Truncate(inst.Result.Message, 120)</span>
+							<span class="actions">
+								@if (inst.IsAutoRemediable)
+								{
+									<button class="btn btn-xs btn-primary" disabled="@_busy" @onclick="() => ConfirmApplyRepo(repoItem.RuleId!, inst.RepositoryFullName)" @onclick:stopPropagation @onmousedown:stopPropagation>Apply here</button>
+								}
+								else
+								{
+									<button class="btn btn-xs btn-secondary" disabled="@_busy" @onclick="() => CopyRepoPromptAsync(repoItem.RuleId!, inst.RepositoryFullName)" @onclick:stopPropagation @onmousedown:stopPropagation>Copy prompt</button>
+								}
+							</span>
+						</span>
+					}
+				</NodeTemplate>
+			</PDTree>
+		</div>
+	}
+
+	@if (_log.Count > 0)
+	{
+		<div class="console">
+			<div class="console-head">
+				<span><i class="fas fa-terminal"></i> Output</span>
+				<button class="btn btn-xs btn-secondary" @onclick="() => _log.Clear()">Clear</button>
+			</div>
+			<pre>@string.Join("\n", _log)</pre>
+		</div>
+	}
+</div>
+
+@if (_confirm is not null)
+{
+	<div class="modal-overlay" @onclick="CancelConfirm">
+		<div class="modal-box" @onclick:stopPropagation="true">
+			<h3><i class="fas fa-exclamation-triangle"></i> @_confirm.Title</h3>
+			<p>This will <strong>edit, commit and push to <code>main</code></strong> in the following @_confirm.Repos.Count repositor@(_confirm.Repos.Count == 1 ? "y" : "ies"):</p>
+			<ul class="repo-list">
+				@foreach (var r in _confirm.Repos)
+				{
+					<li>@r</li>
+				}
+			</ul>
+			<p class="warn"><i class="fas fa-info-circle"></i> Each repo is synced and re-assessed first, then fixed, committed and pushed. The operation <strong>stops on the first failure</strong>.</p>
+			<div class="modal-actions">
+				<button class="btn btn-secondary" @onclick="CancelConfirm">Cancel</button>
+				<button class="btn btn-danger" @onclick="RunConfirmedAsync">
+					<i class="fas fa-bolt"></i> Confirm — push to @_confirm.Repos.Count repo(s)
+				</button>
+			</div>
+		</div>
+	</div>
+}
+
+<style>
+	/* The shared .app-shell is height:100vh; overflow:hidden, so this page must own its scroll. */
+	.issues-page { height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem 1.5rem 3rem; }
+	/* Embedded in the dashboard shell: the panel owns the height and scrolling, and the shell
+	   already supplies a title, so less chrome is needed. */
+	.issues-page.embedded { height: auto; overflow-y: visible; padding: 1rem 1.25rem 2rem; }
+	.issues-page > * { max-width: 1200px; margin-left: auto; margin-right: auto; }
+	.issues-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+	.issues-header h1 { font-size: 1.4rem; margin: 0; }
+	/* Scoped to the header: .muted is also used for counts inside tree rows. */
+	.issues-header .muted { margin: 1.5rem 0 0; }
+	.header-actions { display: flex; gap: .5rem; flex-shrink: 0; }
+	.muted { color: var(--bs-secondary-color, #888); font-size: .85rem; }
+	.summary { font-weight: 600; margin: .5rem auto 1rem; }
+	.repo-package { font-size: .75rem; padding: 0 .35rem; border-radius: 3px; background: rgba(128,128,128,.18); color: var(--bs-secondary-color, #aaa); }
+	.baseline-banner { display: flex; gap: .6rem; align-items: center; background: #1f3a2e; border: 1px solid #2e7d32; color: #d7f5df; padding: .6rem .8rem; border-radius: 6px; margin: .5rem auto 1rem; font-size: .9rem; }
+	.guard-panel { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem auto 1rem; overflow: hidden; }
+	.guard-head { padding: .4rem .6rem; background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); font-weight: 600; font-size: .85rem; }
+	.guard-row { border-top: 1px solid var(--bs-border-color, #2a2a2a); font-size: .85rem; }
+	.guard-badge { font-size: .68rem; text-transform: uppercase; font-weight: 700; padding: .1rem .4rem; border-radius: 3px; color: #fff; white-space: nowrap; }
+	.guard-Queued, .guard-Building { background: #374151; }
+	.guard-Verified { background: #2e7d32; }
+	.guard-RegressionReverted { background: #b45309; }
+	.guard-BuildFailingNotOurs { background: #6b7280; }
+	.guard-Error { background: #b91c1c; }
+	.repo-filter { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: 1.5rem auto 1rem; overflow: hidden; }
+	.repo-checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .1rem .8rem; padding: .5rem .8rem; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--bs-border-color, #2a2a2a); }
+	.repo-check { display: flex; gap: .4rem; align-items: center; font-family: monospace; font-size: .82rem; cursor: pointer; }
+	.repo-deselected { opacity: .4; }
+	.empty { padding: 2rem 0; }
+	.cat-node { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
+	.node-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; }
+	.cat-row { background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); }
+	/* No manual indent: PDTree indents child levels itself. Left-padding here would also push the
+	   row border out to the left of its content. */
+	.rule-row { border-top: 1px solid var(--bs-border-color, #2a2a2a); }
+	.repo-row { border-top: 1px dashed var(--bs-border-color, #2a2a2a); font-size: .9rem; }
+	.node-row .actions { margin-left: auto; display: flex; gap: .35rem; flex-shrink: 0; }
+	.expander { background: none; border: none; cursor: pointer; color: inherit; width: 1.2rem; }
+	.repo-name { font-family: monospace; }
+	.repo-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.repo-dot { width: .6rem; height: .6rem; border-radius: 50%; display: inline-block; }
+	.repo-dot.fixable { background: #2e7d32; }
+	.repo-dot.manual { background: #b26a00; }
+	.sev { font-size: .7rem; text-transform: uppercase; padding: .1rem .4rem; border-radius: 3px; font-weight: 700; }
+	.sev-Critical { background: #7f1d1d; color: #fff; }
+	.sev-Error { background: #b91c1c; color: #fff; }
+	.sev-Warning { background: #b45309; color: #fff; }
+	.sev-Info { background: #374151; color: #fff; }
+	.btn-xs { font-size: .72rem; padding: .1rem .4rem; }
+	.console { margin-top: 1rem; border: 1px solid var(--bs-border-color, #333); border-radius: 6px; }
+	.console-head { display: flex; justify-content: space-between; padding: .3rem .6rem; background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); }
+	.console pre { margin: 0; padding: .6rem; max-height: 320px; overflow: auto; font-size: .8rem; white-space: pre-wrap; }
+	.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 1050; }
+	.modal-box { background: var(--bs-body-bg, #1e1e1e); color: var(--bs-body-color, #eee); border: 1px solid var(--bs-border-color, #444); border-radius: 8px; padding: 1.2rem 1.4rem; max-width: 560px; width: 90%; max-height: 80vh; overflow: auto; }
+	.repo-list { max-height: 240px; overflow: auto; font-family: monospace; font-size: .85rem; }
+	.warn { color: #f0ad4e; font-size: .85rem; }
+	.modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+</style>
+
+@code {
+	/// <summary>
+	/// True when hosted inside the dashboard shell rather than on its own page. The shell already
+	/// provides a title and breadcrumb, so the page header is omitted and the panel scrolls instead.
+	/// </summary>
+	[Parameter]
+	public bool Embedded { get; set; }
+
+	private List<PackageDashboardRow> _rows = [];
+	private IssueCentricView? _view;
+	private IReadOnlyList<ActionVersionBump> _bumps = [];
+	// PDTree owns expansion state, so no hand-rolled expanded-node tracking is needed. The version
+	// is the tree's @key: bumping it rebuilds the tree when the underlying view changes.
+	private readonly IssueTreeDataProvider _treeProvider = new();
+	private int _treeVersion;
+	private readonly List<string> _log = [];
+	private bool _busy;
+	private PendingConfirm? _confirm;
+	private readonly HashSet<string> _selectedRepos = new(StringComparer.OrdinalIgnoreCase);
+	private readonly HashSet<string> _knownRepos = new(StringComparer.OrdinalIgnoreCase);
+	private List<string> _allRepoNames = [];
+	private bool _showRepoFilter;
+
+	protected override void OnInitialized()
+	{
+		LoadView();
+		Guard.StatusesChanged += OnGuardChanged;
+	}
+
+	private void OnGuardChanged() => _ = InvokeAsync(StateHasChanged);
+
+	/// <summary>
+	/// Orders sibling nodes by criticality. PDTree sorts children itself, falling back to comparing
+	/// node text, which would present the tree alphabetically and discard the severity ordering the
+	/// view builder already applied.
+	/// </summary>
+	private static int CompareIssueNodes(IssueNavItem a, IssueNavItem b)
+	{
+		// Most severe first. AssessmentSeverity ascends Info -> Critical, so compare b to a.
+		var severity = SeverityOf(b).CompareTo(SeverityOf(a));
+		if (severity != 0)
+		{
+			return severity;
+		}
+
+		// Then the widest blast radius first, so the rule affecting the most repositories leads.
+		var reach = AffectedCountOf(b).CompareTo(AffectedCountOf(a));
+		return reach != 0
+			? reach
+			: string.Compare(a.Text, b.Text, StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static AssessmentSeverity SeverityOf(IssueNavItem item) => item.Kind switch
+	{
+		IssueNodeKind.Category => item.Category?.Severity ?? AssessmentSeverity.Info,
+		IssueNodeKind.Rule => item.Rule?.Severity ?? AssessmentSeverity.Info,
+		_ => item.Instance?.Result.Severity ?? AssessmentSeverity.Info
+	};
+
+	private static int AffectedCountOf(IssueNavItem item) => item.Kind switch
+	{
+		IssueNodeKind.Category => item.Category?.AffectedRepositoryCount ?? 0,
+		IssueNodeKind.Rule => item.Rule?.AffectedRepositoryCount ?? 0,
+		// Repository nodes are all one occurrence, so they fall through to the name comparison.
+		_ => 0
+	};
+
+	// PDTree swallows load-time exceptions, which shows up as a silently empty tree.
+	private void OnTreeException(Exception exception)
+	{
+		Append($"Issue tree failed to load: {exception.GetType().Name}: {exception.Message}");
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	public void Dispose() => Guard.StatusesChanged -= OnGuardChanged;
+
+	private void LoadView()
+	{
+		_rows = Cache.GetCachedRows() ?? [];
+		_view = Dashboard.BuildIssueCentricView(_rows);
+		_bumps = ActionVersionCatalog.Default.RecentBumps;
+
+		_treeProvider.View = _view;
+		_treeVersion++;
+
+		_allRepoNames = [.. _rows
+			.Where(r => r.RepositoryFullName is not null)
+			.Select(r => r.RepositoryFullName!)
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.OrderBy(r => r, StringComparer.OrdinalIgnoreCase)];
+
+		// Default all repos selected; newly-seen repos default to selected; user de-selections are
+		// preserved across reloads; repos that disappear are dropped.
+		foreach (var name in _allRepoNames)
+		{
+			if (_knownRepos.Add(name))
+			{
+				_selectedRepos.Add(name);
+			}
+		}
+
+		_selectedRepos.RemoveWhere(r => !_knownRepos.Contains(r) || !_allRepoNames.Contains(r, StringComparer.OrdinalIgnoreCase));
+	}
+
+	private List<PackageDashboardRow> SelectedRows()
+		=> [.. _rows.Where(r => r.RepositoryFullName is not null && _selectedRepos.Contains(r.RepositoryFullName))];
+
+	private bool IsRepoSelected(string? name) => name is not null && _selectedRepos.Contains(name);
+
+	private int SelectedAffected(IssueClassGroup rule)
+		=> rule.Instances.Count(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName));
+
+	private void ToggleRepo(string name)
+	{
+		if (!_selectedRepos.Add(name))
+		{
+			_selectedRepos.Remove(name);
+		}
+	}
+
+	private void SelectAllRepos()
+	{
+		foreach (var name in _allRepoNames)
+		{
+			_selectedRepos.Add(name);
+		}
+	}
+
+	private void SelectNoRepos() => _selectedRepos.Clear();
+
+	private static string Truncate(string value, int max)
+		=> string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..max] + "…";
+
+	// ── Confirmation set-up (bulk apply gated behind the modal) ──
+
+	private void ConfirmApplyRule(IssueClassGroup rule)
+	{
+		var repos = rule.Instances
+			.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName))
+			.Select(i => i.RepositoryFullName)
+			.ToList();
+		if (repos.Count == 0)
+		{
+			Append($"No selected repositories are affected by {rule.RuleId}.");
+			return;
+		}
+
+		_confirm = new PendingConfirm
+		{
+			Title = $"Apply {rule.RuleId} across {repos.Count} selected repositories",
+			Repos = repos,
+			Action = (log, ct) => Dashboard.ApplyRuleAcrossReposAsync(SelectedRows(), rule.RuleId, log, ct)
+		};
+	}
+
+	private void ConfirmApplyCategory(IssueCategoryGroup cat)
+	{
+		var repos = cat.IssueClasses
+			.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName)).Select(i => i.RepositoryFullName))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (repos.Count == 0)
+		{
+			Append($"No selected repositories are affected by auto-fixable {cat.Category} rules.");
+			return;
+		}
+
+		_confirm = new PendingConfirm
+		{
+			Title = $"Apply all auto-fixes in {cat.Category} across {repos.Count} selected repositories",
+			Repos = repos,
+			Action = (log, ct) => Dashboard.ApplyCategoryAcrossReposAsync(SelectedRows(), cat.Category, log, ct)
+		};
+	}
+
+	private void ConfirmApplyRepo(string ruleId, string repoFullName)
+	{
+		var scoped = _rows.Where(r => string.Equals(r.RepositoryFullName, repoFullName, StringComparison.OrdinalIgnoreCase)).ToList();
+		_confirm = new PendingConfirm
+		{
+			Title = $"Apply {ruleId} to {repoFullName}",
+			Repos = [repoFullName],
+			Action = (log, ct) => Dashboard.ApplyRuleAcrossReposAsync(scoped, ruleId, log, ct)
+		};
+	}
+
+	private void ConfirmFixEverything()
+	{
+		var repos = _view is null
+			? []
+			: _view.AllIssueClasses
+				.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName)).Select(i => i.RepositoryFullName))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+		if (repos.Count == 0)
+		{
+			Append("No selected repositories have auto-fixable issues.");
+			return;
+		}
+
+		_confirm = new PendingConfirm
+		{
+			Title = $"Fix everything (all auto-fixable issues across {repos.Count} selected repos)",
+			Repos = repos,
+			Action = (log, ct) => Dashboard.ApplyEverythingAcrossReposAsync(SelectedRows(), log, ct)
+		};
+	}
+
+	private void CancelConfirm() => _confirm = null;
+
+	private async Task RunConfirmedAsync()
+	{
+		var pending = _confirm;
+		_confirm = null;
+		if (pending is null)
+		{
+			return;
+		}
+
+		_busy = true;
+		_log.Clear();
+		try
+		{
+			var outcome = await pending.Action(Append, CancellationToken.None);
+			Append($"— Done: {outcome.PushedCount} pushed, {outcome.FailedCount} failed{(outcome.StoppedOnFailure ? " (stopped on failure)" : "")}.");
+			LoadView();
+		}
+		catch (Exception ex)
+		{
+			Append($"⛔ Error: {ex.Message}");
+		}
+		finally
+		{
+			_busy = false;
+		}
+	}
+
+	private void Append(string line)
+	{
+		_log.Add(line);
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	// ── Combined / per-repo AI prompt copy ──
+
+	private Task CopyRulePromptAsync(string ruleId)
+		=> CopyAsync(Dashboard.GenerateCombinedRulePrompt(SelectedRows(), ruleId), $"combined prompt for {ruleId}");
+
+	private Task CopyCategoryPromptAsync(AssessmentCategory category)
+		=> CopyAsync(Dashboard.GenerateCombinedCategoryPrompt(SelectedRows(), category, onlyNonRemediable: true), $"combined prompt for {category}");
+
+	private Task CopyRepoPromptAsync(string ruleId, string repoFullName)
+	{
+		var row = _rows.FirstOrDefault(r => string.Equals(r.RepositoryFullName, repoFullName, StringComparison.OrdinalIgnoreCase));
+		var result = row?.Assessment?.RuleResults.FirstOrDefault(rr => !rr.Passed && string.Equals(rr.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+		var prompt = row is not null && result is not null
+			? DashboardService.GenerateRuleRemediationPrompt(row, result)
+			: string.Empty;
+		return CopyAsync(prompt, $"prompt for {repoFullName}");
+	}
+
+	private async Task CopyAsync(string text, string label)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			Append($"⚠️ Nothing to copy for {label}.");
+			return;
+		}
+
+		try
+		{
+			await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+			Append($"📋 Copied {label} to clipboard ({text.Length:N0} chars).");
+		}
+		catch (Exception ex)
+		{
+			Append($"⚠️ Copy failed: {ex.Message}");
+		}
+	}
+
+	private sealed class PendingConfirm
+	{
+		public required string Title { get; init; }
+		public required List<string> Repos { get; init; }
+		public required Func<Action<string>, CancellationToken, Task<BulkApplyOutcome>> Action { get; init; }
+	}
+}
