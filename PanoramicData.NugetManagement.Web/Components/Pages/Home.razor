@@ -341,7 +341,7 @@ else
 
 							@if (ShowWorkflowFlow)
 							{
-								<span class="flow-chevron">›</span>
+								<span class="@FlowChevronCss(WorkflowStep.GitSync)">›</span>
 							}
 
 							<PDToolbarButton Key="reassess"
@@ -355,7 +355,7 @@ else
 
 							@if (ShowWorkflowFlow)
 							{
-								<span class="flow-chevron">›</span>
+								<span class="@FlowChevronCss(WorkflowStep.Reassess)">›</span>
 							}
 
 							<PDToolbarButton Key="fix"
@@ -369,7 +369,7 @@ else
 
 							@if (ShowWorkflowFlow)
 							{
-								<span class="flow-chevron">›</span>
+								<span class="@FlowChevronCss(WorkflowStep.Fix)">›</span>
 							}
 
 							<PDToolbarButton Key="build"
@@ -383,7 +383,7 @@ else
 
 							@if (ShowWorkflowFlow)
 							{
-								<span class="flow-chevron">›</span>
+								<span class="@FlowChevronCss(WorkflowStep.Build)">›</span>
 							}
 
 							<PDToolbarButton Key="test"
@@ -397,7 +397,7 @@ else
 
 							@if (ShowWorkflowFlow)
 							{
-								<span class="flow-chevron">›</span>
+								<span class="@FlowChevronCss(WorkflowStep.Test)">›</span>
 							}
 
 							<PDToolbarButton Key="commit-and-push"
@@ -411,7 +411,7 @@ else
 
 							@if (ShowWorkflowFlow)
 							{
-								<span class="flow-chevron">›</span>
+								<span class="@FlowChevronCss(WorkflowStep.CommitAndPush)">›</span>
 							}
 
 							<PDToolbarButton Key="publish"
@@ -528,6 +528,7 @@ else
 			<input type="text"
 				   class="add-org-input"
 				   placeholder="e.g. contoso"
+				   autocomplete="off"
 				   value="@_addOrgName"
 				   @oninput="e => _addOrgName = e.Value?.ToString() ?? string.Empty"
 				   @onkeydown="OnAddOrgKeyDown"
@@ -1822,6 +1823,24 @@ else
 		_selectedPackageId = null;
 		_selectedCategory = null;
 		_selectedRuleId = null;
+
+		// These settings belong to no organisation, so the breadcrumb must not keep one. Arriving from
+		// an organisation's own Settings page previously left it selected, giving
+		// "Dashboard > panoramicsystems > Application settings" — which is precisely the impression
+		// that splitting the two pages was meant to remove.
+		_orgSelected = false;
+		_selectedOrganization = string.Empty;
+		_selectedNodeKey = NavTreeDataProvider.OrganisationsKey;
+
+		// Move the tree highlight up to Organisations, the level these settings belong to, so the tree
+		// agrees with the breadcrumb. Set directly rather than through SelectNode: that container is
+		// deliberately not user-selectable, so the selection pipeline would refuse it.
+		_navTree?.RootNode.Walk(n =>
+		{
+			n.IsSelected = n.Key == NavTreeDataProvider.OrganisationsKey;
+			return true;
+		});
+
 		_userMenuOpen = false;
 		StateHasChanged();
 	}
@@ -2076,13 +2095,16 @@ else
 					discovered from NuGet and each repository assessed.
 				</li>
 				<li>
-					<strong>Open <em>Repositories</em></strong> under an organisation and pick one. Its
-					icon shows how it fares: green is clean, amber has warnings, red has errors.
+					@* Bold lead-in phrase, then the UI term in accent — matching the other steps. It was
+					   nested inside the strong, making it the only bold-and-blue term of the four. *@
+					<strong>Pick a repository</strong> from <em>Repositories</em> under an organisation.
+					Its icon shows how it fares: green is clean, amber has warnings, red has errors.
 				</li>
 				<li>
 					<strong>Work along the toolbar</strong> left to right — Sync, Re-assess, Fix, Build,
-					Test, Commit &amp; Push, Publish. The amber outline marks the next step, and each
-					becomes available once the one before it makes sense.
+					Test, Commit &amp; Push, Publish. The carets between them turn orange as you go, so
+					where the orange stops is where you are up to, and each step becomes available once
+					the one before it makes sense.
 				</li>
 				<li>
 					<strong>Or fix one problem everywhere at once.</strong> <em>Issues</em> groups the
@@ -2550,13 +2572,16 @@ else
 					}
 				</div>
 				<div class="form-group">
-					<label>Include info items in AI prompt</label>
-					<div style="display: flex; align-items: center; gap: 0.5rem;">
-						<input type="checkbox" checked="@_includeInfoInAiPrompt" @onchange="OnIncludeInfoInAiPromptChanged" />
-						<span style="color: var(--text-secondary); font-size: 0.85rem;">
-							When unchecked, informational (blue) items are excluded from the generated AI prompt.
-						</span>
+					@* Label on the left with the box to its right, vertically centred. "AI prompt" is
+					   held together with a non-breaking space so the text wraps before it rather than
+					   splitting the phrase. *@
+					<div class="settings-checkbox-row">
+						<label for="include-info-in-ai-prompt">Include info items in AI&nbsp;prompt</label>
+						<input id="include-info-in-ai-prompt" type="checkbox" checked="@_includeInfoInAiPrompt" @onchange="OnIncludeInfoInAiPromptChanged" />
 					</div>
+					<span class="settings-hint">
+						When unchecked, informational (blue) items are excluded from the generated AI prompt.
+					</span>
 				</div>
 			</div>
 		</div>
@@ -4793,6 +4818,19 @@ else
 	/// itself with !important on the properties it cares about (border and text colour), so done,
 	/// failed and next-up remain distinguishable on top of the shared scheme.
 	/// </remarks>
+	/// <summary>
+	/// The class for the caret that follows <paramref name="precedingStep"/>. It turns orange once that
+	/// step is done, so the run of orange carets shows how far through the flow you are and the point
+	/// where they stop is where you are up to.
+	/// </summary>
+	/// <remarks>
+	/// The next step's amber button outline is a 2px border that is genuinely hard to pick out; the
+	/// carets are far more legible, so they carry the "where am I" signal and the outline stays as a
+	/// secondary cue on the next button.
+	/// </remarks>
+	private string FlowChevronCss(WorkflowStep precedingStep)
+		=> IsStepDone(precedingStep) ? "flow-chevron flow-chevron-passed" : "flow-chevron";
+
 	private string GetStepCssClass(WorkflowStep step)
 	{
 		if (IsStepFailed(step))

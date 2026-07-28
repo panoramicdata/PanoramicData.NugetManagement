@@ -69,6 +69,17 @@ html, body {
     pointer-events: none;
 }
 
+/* A caret turns orange once the step before it is done, so the run of orange carets shows progress
+   through the flow and the point where they stop is where you are up to. This carries the signal the
+   next button's amber outline was meant to: a 2px border is barely visible, a coloured caret is not.
+   Compound selector deliberately — a single .flow-chevron-passed class ties with .flow-chevron on
+   specificity, so it would lose to whichever came later in the file. */
+.flow-chevron.flow-chevron-passed {
+    color: var(--warning);
+    opacity: 1;
+    font-weight: 700;
+}
+
 /* Fallback for any toolbar button without its own scheme: a visible border so it still reads as a
    button. Every toolbar button now carries btn-primary, so in practice nothing matches this. */
 .main-toolbar .pdtoolbarbutton:not(.btn-primary):not(.btn-success) {
@@ -2307,6 +2318,54 @@ i + .breadcrumb-link-text {
     color: var(--accent);
     text-decoration: underline;
     cursor: pointer;
+}
+
+/* Label on the left, tick box immediately to its right and vertically centred against the text
+   (which may wrap). Two rules from .form-group have to be undone here: labels are block-level, which
+   stacked the two, and `input { width: 100% }` also hits a checkbox — it inflated to fill the row and
+   squeezed the label into what was left, which is what made the text crowd right and wrap oddly. */
+.settings-checkbox-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.5rem;
+}
+
+.settings-checkbox-row label {
+    display: inline;
+    margin: 0;
+    text-align: left;
+    flex: 0 1 auto;
+}
+
+.settings-checkbox-row input[type="checkbox"] {
+    width: auto;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+}
+
+.settings-hint {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+/* Read-only values should look inert. They previously looked like editable fields and gained a focus
+   ring when clicked, implying they could be typed into. The focus ring is suppressed rather than
+   pointer events, so the value can still be selected and copied — a path is worth copying. */
+.settings-view input[readonly] {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+.settings-view input[readonly]:focus,
+.settings-view input[readonly]:focus-visible {
+    outline: none;
+    box-shadow: none;
+    border-color: var(--border);
 }
 
 /* Destructive organisation removal, deliberately set apart from the read-only settings above. */
