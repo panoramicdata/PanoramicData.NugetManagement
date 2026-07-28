@@ -89,6 +89,11 @@ builder.Services.AddRazorComponents()
 
 var app = builder.Build();
 
+// The clone root is the app's own folder, so it exists from the start rather than appearing with the
+// first clone. Without this, a freshly configured root is a path that is named everywhere and present
+// nowhere — including on the settings page that offers to open it.
+app.Services.GetRequiredService<LocalRepoService>().EnsureReposRootExists();
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {

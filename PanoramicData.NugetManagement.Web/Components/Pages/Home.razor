@@ -508,7 +508,11 @@ else
 	<div class="modal-overlay" @onclick="() => ResolveDialog(false)">
 		<div class="modal-box app-dialog" @onclick:stopPropagation="true">
 			<h3>
-				@if (_dialog.IsConfirm)
+				@if (_dialog.Heading is not null)
+				{
+					<i class="@(_dialog.IconCssClass ?? "fas fa-circle-info")"></i><span>&nbsp;@_dialog.Heading</span>
+				}
+				else if (_dialog.IsConfirm)
 				{
 					<i class="fas fa-circle-question"></i><span>&nbsp;Confirm</span>
 				}
@@ -1113,7 +1117,12 @@ else
 	/// <summary>
 	/// A message awaiting the user's response, rendered as an in-app modal.
 	/// </summary>
-	private sealed record PendingDialog(string Message, bool IsConfirm, TaskCompletionSource<bool> Completion);
+	private sealed record PendingDialog(
+		string Message,
+		bool IsConfirm,
+		TaskCompletionSource<bool> Completion,
+		string? Heading = null,
+		string? IconCssClass = null);
 
 	private PendingDialog? _dialog;
 
@@ -1138,10 +1147,10 @@ else
 	/// <summary>
 	/// Shows the user a message with a single acknowledgement, replacing <c>alert()</c>.
 	/// </summary>
-	private Task NotifyAsync(string message)
+	private Task NotifyAsync(string message, string? heading = null, string? iconCssClass = null)
 	{
 		var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-		_dialog = new PendingDialog(message, IsConfirm: false, completion);
+		_dialog = new PendingDialog(message, IsConfirm: false, completion, heading, iconCssClass);
 		StateHasChanged();
 		return completion.Task;
 	}
@@ -1253,9 +1262,21 @@ else
 	private string OrganizationCloneFolder
 		=> Path.Combine(LocalRepo.GetReposRoot(), CurrentOrganization);
 
-	private void OpenOrganizationCloneFolder()
+	private void OpenOrganizationCloneFolder() => OpenFolder(OrganizationCloneFolder);
+
+	/// <summary>
+	/// Opens the clone root, creating it first if it has gone.
+	/// </summary>
+	/// <remarks>
+	/// Ensured here and not only at start-up, because this page invites you into that folder to delete
+	/// things — including, plausibly, the folder itself. Guaranteeing it at start-up alone would leave the
+	/// rest of the session naming a location that is not there, and this button is the one that would then
+	/// fail.
+	/// </remarks>
+	private void OpenCloneRoot() => OpenFolder(LocalRepo.EnsureReposRootExists());
+
+	private void OpenFolder(string folder)
 	{
-		var folder = OrganizationCloneFolder;
 		var (success, message) = LocalRepo.OpenFolder(folder);
 
 		if (!success)
@@ -3190,15 +3211,45 @@ else
 			<h3 class="settings-section">This machine</h3>
 			<div class="settings-form">
 				<div class="form-group">
-					<label>Local Repos Root</label>
-					<div style="display: flex; gap: 0.5rem; align-items: center;">
-						<input type="text" value="@(_localReposRoot ?? "(auto-detected)")" readonly style="flex: 1;" />
-						<button class="btn btn-primary btn-sm" @onclick="BrowseForFolder">📁 Browse</button>
-						@if (_localReposRoot is not null)
-						{
-							<button class="btn btn-sm btn-danger" @onclick="ClearLocalReposRoot" title="Reset">✕</button>
-						}
+					<label>Clone root</label>
+					@* Shows the folder actually in use, not the override, which read "(auto-detected)" and so
+					   never said where anything was. Same row shape as the per-organisation page. *@
+					<div class="settings-path-row">
+						<input type="text" value="@LocalRepo.GetReposRoot()" readonly />
+						@* Open is the everyday action, so it takes the accent; Change reconfigures where clones
+						   go, which is rare and worth looking quieter. They were both blue and similarly
+						   named, which read as two ways to do one thing. *@
+						@* Never disabled: the root is created at start-up and whenever it changes, so it is
+						   always there to open — empty, if nothing has been cloned into it yet. *@
+						<button class="btn btn-sm btn-primary"
+								@onclick="OpenCloneRoot"
+								title="@($"Open {LocalRepo.GetReposRoot()} in the file manager")">
+							<i class="fas fa-folder-open"></i>&nbsp;Open
+						</button>
+						<button class="btn btn-sm" @onclick="BrowseForFolder" title="Choose a different clone root — the clones you already have are moved there">
+							<i class="fas fa-folder-tree"></i>&nbsp;Change
+						</button>
 					</div>
+					<span class="settings-hint">
+						Every clone the app makes lives here, filed by owner and repository. Open it to prune
+						repositories you no longer want — the app re-clones anything it needs again. Changing it
+						moves the clones you already have.
+						@if (_localReposRoot is null)
+						{
+							<text>Chosen automatically, beside this application's own repository.</text>
+						}
+						else
+						{
+							@* No reset button: a red ✕ overstated a harmless setting change, and a dedicated
+							   "back to default" control is not a convention worth inventing. Naming the default
+							   makes Change the way back, and choosing it drops the override rather than pinning
+							   the same path explicitly. *@
+							<text>
+								Set explicitly. Choosing <code>@LocalRepoService.GetDefaultReposRoot()</code> returns
+								it to the automatic choice.
+							</text>
+						}
+					</span>
 					@if (_folderSaved)
 					{
 						<span style="color: var(--success); font-size: 0.8rem;">✓ Saved</span>
@@ -3259,10 +3310,11 @@ else
 					<label>Clone folder</label>
 					<div class="settings-path-row">
 						<input type="text" value="@cloneFolder" readonly />
-						<button class="btn btn-sm"
+						@* Same treatment as the clone root's Open on the application settings page. *@
+						<button class="btn btn-sm btn-primary"
 								@onclick="OpenOrganizationCloneFolder"
 								disabled="@(!cloneFolderExists)"
-								title="@(cloneFolderExists ? $"Open {cloneFolder}" : "Nothing cloned yet, so the folder does not exist")">
+								title="@(cloneFolderExists ? $"Open {cloneFolder} in the file manager" : "Nothing cloned yet, so the folder does not exist")">
 							<i class="fas fa-folder-open"></i>&nbsp;Open
 						</button>
 					</div>
@@ -5148,20 +5200,104 @@ else
 		}
 
 		var result = await _fileModal.ShowOpenAndWaitResultAsync(folderSelect: true).ConfigureAwait(true);
-		if (!string.IsNullOrEmpty(result))
+		if (string.IsNullOrEmpty(result))
 		{
-			_localReposRoot = LocalFileSystemDataProvider.VirtualToRealPath(result);
-			RuntimeSettings.SetLocalReposRoot(_localReposRoot);
-			_folderSaved = true;
-			StateHasChanged();
-			_ = Task.Delay(2000).ContinueWith(_ => { _folderSaved = false; InvokeAsync(StateHasChanged); });
+			return;
 		}
+
+		var chosen = LocalFileSystemDataProvider.VirtualToRealPath(result);
+
+		// Choosing the folder the app would have picked anyway clears the override instead of pinning the
+		// same path, so the setting keeps saying "automatic" and follows the app if it ever moves. This is
+		// what replaces a reset button.
+		var isDefault = string.Equals(
+			Path.TrimEndingDirectorySeparator(chosen),
+			Path.TrimEndingDirectorySeparator(LocalRepoService.GetDefaultReposRoot()),
+			StringComparison.OrdinalIgnoreCase);
+
+		await ChangeCloneRootAsync(isDefault ? null : chosen);
 	}
 
-	private void ClearLocalReposRoot()
+	/// <summary>
+	/// Points the app at a different clone root, taking the existing clones with it.
+	/// </summary>
+	/// <remarks>
+	/// The clones move rather than being left where they were, because this root belongs to the app alone:
+	/// anything stranded in the old one is used by nobody and would simply be fetched again into the new
+	/// one. The setting is changed first so the destination is resolved by the same code that will read it
+	/// afterwards, and reverted if the move turns out to be impossible.
+	/// </remarks>
+	private async Task ChangeCloneRootAsync(string? newRoot)
 	{
-		_localReposRoot = null;
-		RuntimeSettings.SetLocalReposRoot(null);
+		var previousSetting = _localReposRoot;
+		var previousRoot = LocalRepo.GetReposRoot();
+
+		_localReposRoot = newRoot;
+		RuntimeSettings.SetLocalReposRoot(newRoot);
+
+		// Created now rather than at the first clone, so the root is never a path that does not exist.
+		var destinationRoot = LocalRepo.EnsureReposRootExists();
+
+		if (string.Equals(previousRoot, destinationRoot, StringComparison.OrdinalIgnoreCase))
+		{
+			ConfirmSettingSaved();
+			return;
+		}
+
+		var clones = LocalRepoService.EnumerateClones(previousRoot);
+		if (clones.Count > 0)
+		{
+			var confirmed = await ConfirmAsync(
+				$"Move {clones.Count} cloned repositor{(clones.Count == 1 ? "y" : "ies")} from {previousRoot} to {destinationRoot}?");
+
+			if (!confirmed)
+			{
+				// Put the setting back: half-changing it would leave the app looking somewhere empty.
+				_localReposRoot = previousSetting;
+				RuntimeSettings.SetLocalReposRoot(previousSetting);
+				StateHasChanged();
+				return;
+			}
+
+			_consoleVisible = true;
+			AppendConsole($"▶️ Moving {clones.Count} clone(s) to {destinationRoot}...");
+			await InvokeAsync(StateHasChanged);
+
+			var (moved, failures) = LocalRepo.MoveClones(previousRoot, destinationRoot, line =>
+			{
+				AppendConsole(line);
+				InvokeAsync(StateHasChanged);
+			});
+
+			AppendConsole($"✅ Moved {moved} of {clones.Count} clone(s).");
+
+			if (failures.Count > 0)
+			{
+				foreach (var failure in failures)
+				{
+					AppendConsole($"❌ {failure}");
+				}
+
+				await NotifyAsync(
+					$"{moved} of {clones.Count} clones moved to {destinationRoot}.\n\n"
+					+ $"{failures.Count} could not be moved and are still in {previousRoot}. The app will re-clone those when it needs them, so that folder can be deleted once you have checked it.",
+					"Some clones stayed behind",
+					"fas fa-triangle-exclamation");
+			}
+		}
+
+		// Every row's LocalPath was built from the old root.
+		await Dashboard.ReconcileLocalStateAsync(_rows);
+		Cache.SetRows(_rows);
+		await ReloadTreePreservingExpansionAsync();
+		ConfirmSettingSaved();
+	}
+
+	/// <summary>
+	/// Flashes the "✓ Saved" acknowledgement beside the setting.
+	/// </summary>
+	private void ConfirmSettingSaved()
+	{
 		_folderSaved = true;
 		StateHasChanged();
 		_ = Task.Delay(2000).ContinueWith(_ => { _folderSaved = false; InvokeAsync(StateHasChanged); });
@@ -5474,13 +5610,13 @@ else
 		try
 		{
 			var commitMessage = $"NuGet governance remediation for {_selectedRow.PackageId}";
-			var success = await Dashboard.CommitAndPushAsync(_selectedRow, commitMessage, line =>
+			var push = await Dashboard.CommitAndPushAsync(_selectedRow, commitMessage, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
 			});
 
-			if (success)
+			if (push.Success)
 			{
 				_completedSteps.Add(WorkflowStep.CommitAndPush);
 				AppendConsole("✅ Changes committed and pushed");
@@ -5495,6 +5631,16 @@ else
 			{
 				AppendConsole("❌ Commit and push failed");
 				await PersistSelectedRowUpdateAsync();
+
+				// A guard's refusal is the conclusion of the whole fix attempt, so it is put in front of
+				// the user rather than left in the console — which may be collapsed, and is easy to miss
+				// scrolling past even when it is not. A plain git failure is not raised this way: git has
+				// already explained itself in the output, and there is nothing to decide.
+				if (push.WasRefused)
+				{
+					_isRunning = false;
+					await NotifyAsync(push.RefusalReason!, "Nothing was pushed", "fas fa-triangle-exclamation");
+				}
 			}
 		}
 		catch (Exception ex)

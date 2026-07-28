@@ -17,11 +17,19 @@ public class RuntimeSettingsService
 	private readonly RuntimeSettings _runtimeSettings;
 
 	/// <summary>
+	/// What configuration asked for, kept because <see cref="SetLocalReposRoot"/> writes the override into
+	/// the live <see cref="AppSettings"/> and so destroys it. Clearing the override has to put this back,
+	/// not the override it is clearing.
+	/// </summary>
+	private readonly string? _configuredLocalReposRoot;
+
+	/// <summary>
 	/// Initializes a new instance of the <see cref="RuntimeSettingsService"/> class.
 	/// </summary>
 	public RuntimeSettingsService(IOptions<AppSettings> appSettings, ILogger<RuntimeSettingsService> logger)
 	{
 		_appSettings = appSettings.Value;
+		_configuredLocalReposRoot = _appSettings.LocalReposRoot;
 		_logger = logger;
 		_settingsPath = Path.Combine(
 			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -57,8 +65,11 @@ public class RuntimeSettingsService
 
 		SaveToDisk();
 
-		// Also update the AppSettings instance so LocalRepoService picks up the change immediately
-		_appSettings.LocalReposRoot = value ?? _appSettings.LocalReposRoot;
+		// Also update the AppSettings instance so LocalRepoService picks up the change immediately.
+		// Clearing restores what configuration asked for: this used to coalesce to the *current* value,
+		// which meant the reset button saved null, said "Saved", and left the override in force until the
+		// application was restarted.
+		_appSettings.LocalReposRoot = value ?? _configuredLocalReposRoot;
 	}
 
 	/// <summary>

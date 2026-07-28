@@ -822,7 +822,7 @@ public class DashboardService
 			row.LocalPath = _localRepo.GetLocalPath(repoIdentity);
 			onOutput?.Invoke($"Cloned to {row.LocalPath}");
 		}
-		else if (!await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false))
+		else if (await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false) is not null)
 		{
 			// An existing folder of the right name holding the wrong repository: syncing it would pull
 			// somebody else's history into what this row believes is its checkout.
@@ -846,7 +846,7 @@ public class DashboardService
 	/// Commits all local changes, fetches, rebases on remote, and pushes.
 	/// Does not change the row status (preserves current workflow state).
 	/// </summary>
-	public async Task<bool> CommitAndPushAsync(
+	public async Task<CommitAndPushOutcome> CommitAndPushAsync(
 		PackageDashboardRow row,
 		string commitMessage,
 		Action<string>? onOutput = null,
@@ -855,20 +855,24 @@ public class DashboardService
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
 		{
-			onOutput?.Invoke("❌ Cannot determine repo name.");
-			return false;
+			var reason = $"No repository is known for {row.PackageId}, so there is nothing to push to.";
+			onOutput?.Invoke($"❌ {reason}");
+			return CommitAndPushOutcome.Refused(reason);
 		}
 
 		// The last line of defence, and the one that matters most: everything before this is local and
-		// recoverable, whereas a push is not.
-		if (!await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false))
+		// recoverable, whereas a push is not. Each guard's reason travels back so the caller can put it
+		// in front of the user, rather than leaving it in a console they may not have open.
+		var identityRefusal = await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+		if (identityRefusal is not null)
 		{
-			return false;
+			return CommitAndPushOutcome.Refused(identityRefusal);
 		}
 
-		if (!await VerifyNotBehindOriginAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false))
+		var staleRefusal = await VerifyNotBehindOriginAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+		if (staleRefusal is not null)
 		{
-			return false;
+			return CommitAndPushOutcome.Refused(staleRefusal);
 		}
 
 		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
@@ -883,7 +887,7 @@ public class DashboardService
 			row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
 		}
 
-		return success;
+		return success ? CommitAndPushOutcome.Pushed : CommitAndPushOutcome.Failed;
 	}
 
 	// ── Repository identity: making sure we act on the repository we think we are ──
@@ -942,7 +946,8 @@ public class DashboardService
 
 	/// <summary>
 	/// Confirms the local clone really is the repository this row refers to, before anything is written
-	/// to it. Returns false — and says why — when it is not, or when it cannot be established.
+	/// to it. Returns null when it is, or the reason when it is not — including when that cannot be
+	/// established. The reason is both written to the output and handed back, so a caller can show it.
 	/// </summary>
 	/// <remarks>
 	/// Paths are now qualified by owner, so this is no longer the only thing standing between a fix and
@@ -950,7 +955,7 @@ public class DashboardService
 	/// the operations that follow edit files, commit and push. An unverifiable remote is therefore
 	/// treated as a mismatch: refusing to act is recoverable, pushing to the wrong repository is not.
 	/// </remarks>
-	private async Task<bool> VerifyLocalCloneAsync(
+	private async Task<string?> VerifyLocalCloneAsync(
 		PackageDashboardRow row,
 		string repoIdentity,
 		Action<string>? onOutput,
@@ -959,8 +964,7 @@ public class DashboardService
 		var expected = NormaliseRepoIdentity(row.RepositoryFullName);
 		if (expected is null)
 		{
-			onOutput?.Invoke($"❌ {row.PackageId}: no repository is known for this package, so nothing can be applied to it.");
-			return false;
+			return Refuse($"No repository is known for {row.PackageId}, so nothing can be applied to it.", onOutput);
 		}
 
 		var origin = await _localRepo.GetOriginUrlAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
@@ -968,19 +972,28 @@ public class DashboardService
 
 		if (actual is null)
 		{
-			onOutput?.Invoke($"❌ {row.PackageId}: cannot read the origin remote of {_localRepo.GetLocalPath(repoIdentity)}, so it cannot be confirmed as {row.RepositoryFullName}. Refusing to write to it.");
-			return false;
+			return Refuse(
+				$"The origin remote of {_localRepo.GetLocalPath(repoIdentity)} cannot be read, so it cannot be confirmed as {row.RepositoryFullName}. Refusing to write to it.",
+				onOutput);
 		}
 
 		if (!string.Equals(actual, expected, StringComparison.Ordinal))
 		{
-			onOutput?.Invoke(
-				$"❌ {row.PackageId}: {_localRepo.GetLocalPath(repoIdentity)} is a clone of {actual}, not {expected}. " +
-				"Refusing to write to the wrong repository.");
-			return false;
+			return Refuse(
+				$"{_localRepo.GetLocalPath(repoIdentity)} is a clone of {actual}, not {expected}. Refusing to write to the wrong repository.",
+				onOutput);
 		}
 
-		return true;
+		return null;
+	}
+
+	/// <summary>
+	/// Reports a guard's refusal to the output and returns it, so the one wording serves both.
+	/// </summary>
+	private static string Refuse(string reason, Action<string>? onOutput)
+	{
+		onOutput?.Invoke($"❌ {reason}");
+		return reason;
 	}
 
 	/// <summary>
@@ -1047,7 +1060,7 @@ public class DashboardService
 	/// commits a change whose reason no longer holds. Left to itself, the commit would have rebased onto
 	/// that newer work and pushed regardless, quietly.
 	/// </remarks>
-	private async Task<bool> VerifyNotBehindOriginAsync(
+	private async Task<string?> VerifyNotBehindOriginAsync(
 		PackageDashboardRow row,
 		string repoIdentity,
 		Action<string>? onOutput,
@@ -1058,8 +1071,9 @@ public class DashboardService
 		if (behind is null)
 		{
 			// Fails closed, for the same reason the identity check does: not knowing is not a licence.
-			onOutput?.Invoke($"❌ {row.PackageId}: cannot tell whether origin has moved on, so refusing to push. Check the repository can reach origin, then Sync.");
-			return false;
+			return Refuse(
+				$"Whether origin has moved on cannot be established for {row.PackageId}, so nothing was pushed. Check the repository can reach origin, then Sync.",
+				onOutput);
 		}
 
 		if (behind > 0)
@@ -1067,8 +1081,9 @@ public class DashboardService
 			row.IsSyncedWithOrigin = false;
 			row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
 
-			onOutput?.Invoke(
-				$"❌ {row.PackageId}: origin has {behind} commit(s) this clone does not, added since these changes were worked out. Refusing to push, because they were decided against a repository that has moved on.");
+			var reason =
+				$"Origin has {behind} commit(s) that {row.PackageId}'s clone does not, added since these changes were worked out. "
+				+ "Nothing was pushed, because the changes were decided against a repository that has moved on.";
 
 			// Discarded rather than left for the user to deal with: they were derived from an assessment of
 			// a tree that has been superseded, so they cannot be salvaged into something correct — and
@@ -1080,23 +1095,23 @@ public class DashboardService
 
 			if (discardSuccess)
 			{
+				row.IsWorkingTreeClean = true;
+				reason += $"\n\nThe {discarded.Count} local change(s) have been discarded. Sync, then apply the fix again — it may no longer be needed.";
+
+				onOutput?.Invoke($"❌ {reason}");
 				foreach (var line in discarded)
 				{
 					onOutput?.Invoke($"   ↩️ discarded {line}");
 				}
 
-				onOutput?.Invoke($"↩️ {row.PackageId}: {discarded.Count} local change(s) discarded. Sync, then apply the fix again.");
-				row.IsWorkingTreeClean = true;
-			}
-			else
-			{
-				onOutput?.Invoke($"⚠️ {row.PackageId}: could not discard the local changes — Sync will need them cleared first.");
+				return reason;
 			}
 
-			return false;
+			reason += "\n\nThe local changes could not be discarded, so Sync will need them cleared first.";
+			return Refuse(reason, onOutput);
 		}
 
-		return true;
+		return null;
 	}
 
 	/// <summary>
@@ -1115,7 +1130,7 @@ public class DashboardService
 			return false;
 		}
 
-		return await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false)
+		return await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false) is null
 			&& await VerifyCleanWorkingTreeAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 	}
 
@@ -1272,25 +1287,30 @@ public class DashboardService
 					continue;
 				}
 
-				var pushed = await CommitAndPushAsync(row, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
+				var push = await CommitAndPushAsync(row, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
 				outcome.Results.Add(new RepoApplyResult
 				{
 					RepositoryFullName = name,
-					Status = pushed ? RepoApplyStatus.Pushed : RepoApplyStatus.Failed,
-					Message = pushed ? $"{applied.Count} file(s) committed & pushed." : "Commit/push failed."
+					// A refusal is a skip, not a failure: a guard decided, and nothing was left behind.
+					Status = push.Success
+						? RepoApplyStatus.Pushed
+						: push.WasRefused ? RepoApplyStatus.Skipped : RepoApplyStatus.Failed,
+					Message = push.Success
+						? $"{applied.Count} file(s) committed & pushed."
+						: push.RefusalReason ?? "Commit/push failed."
 				});
 
-				if (pushed && row.RepositoryFullName is not null)
+				if (push.Success && row.RepositoryFullName is not null)
 				{
 					// Verify the build in the background; auto-revert if our change broke it.
 					_regressionGuard.Enqueue(row.RepositoryFullName);
 					onOutput?.Invoke($"🛡️ Queued {row.RepositoryFullName} for build verification.");
 				}
 
-				if (!pushed)
+				if (!push.Success)
 				{
 					outcome.StoppedOnFailure = true;
-					onOutput?.Invoke("⛔ Stopping bulk apply: commit/push failed.");
+					onOutput?.Invoke($"⛔ Stopping bulk apply: {(push.WasRefused ? "a guard refused the push" : "commit/push failed")}.");
 					break;
 				}
 			}

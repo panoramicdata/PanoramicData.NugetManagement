@@ -539,6 +539,17 @@ html, body {
     font-weight: 600;
 }
 
+/* A disabled accent button must be a faded version of the enabled one, not a different button. Without
+   this it inherits Bootstrap's own .btn-primary:disabled — more specific than this app's single-class
+   override — and turns stock blue with white text, which at 40% opacity reads as grey lettering on a
+   navy slab. Same reasoning and the same !important as the toolbar's disabled rule; that one is scoped
+   to .main-toolbar, so accent buttons elsewhere never got it. */
+.btn-primary:disabled {
+    background: var(--accent) !important;
+    color: #000 !important;
+    border-color: var(--accent) !important;
+}
+
 .btn-primary:hover {
     background: #29b6f6;
 }
