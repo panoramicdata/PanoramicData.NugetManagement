@@ -50,7 +50,10 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <summary>Builds the key for an organisation's "Package Updates" node.</summary>
 	public static string UpdatesKey(string organization) => $"updates:{organization}";
 
-	/// <summary>The key of the always-expanded top-level container.</summary>
+	/// <summary>
+	/// The key of the always-expanded top-level container. Unlike the other container nodes it is
+	/// selectable, because selecting it shows the estate overview.
+	/// </summary>
 	public const string OrganisationsKey = "organisations";
 
 	/// <summary>
@@ -94,6 +97,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		var items = new List<NavItem>
 		{
+			// Selecting Organisations shows the estate overview: it is the one node whose scope is every
+			// organisation, so the aggregate figures belong to it rather than to a separate node.
 			new()
 			{
 				Key = OrganisationsKey,
@@ -153,7 +158,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			Text = organization,
 			ParentKey = OrganisationsKey,
 			IconCss = "fas fa-people-group",
-			View = NavView.Dashboard,
+			View = NavView.Home,
 			Organization = organization,
 			IsLeaf = false,
 			SortOrder = orgIndex,
@@ -169,7 +174,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			Text = "Repositories",
 			ParentKey = orgKey,
 			IconCss = "fas fa-cubes",
-			View = NavView.Dashboard,
+			View = NavView.Home,
 			Organization = organization,
 			IsLeaf = false,
 			SortOrder = 0

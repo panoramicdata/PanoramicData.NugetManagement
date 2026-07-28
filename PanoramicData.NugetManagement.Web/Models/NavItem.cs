@@ -109,7 +109,16 @@ public enum NavView
 	/// <summary>No view — branch node only.</summary>
 	None,
 
-	/// <summary>Organisation-level dashboard overview.</summary>
+	/// <summary>
+	/// The landing page: what you can do here. Named Home rather than Dashboard because it shows
+	/// guidance, not figures — the aggregate view lives on <see cref="Dashboard"/>.
+	/// </summary>
+	Home,
+
+	/// <summary>
+	/// The estate overview: progress toward every locally-cloned repository being clean, per-
+	/// organisation counts, and the rules affecting the most repositories.
+	/// </summary>
 	Dashboard,
 
 	/// <summary>Package-level detail / assessment view.</summary>

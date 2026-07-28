@@ -161,15 +161,22 @@ else
 					<!-- Breadcrumb bar at the very top -->
 					<div class="breadcrumb-bar">
 						<div class="breadcrumb-trail">
-							@if (!_orgSelected && _selectedRow is null && _currentView != NavView.Settings && _currentView != NavView.AppSettings && _currentView != NavView.NuGetUpdates && !IsIssueView)
+							@* The root is Home: guidance, not figures. The estate overview is the Organisations
+							   crumb below, since that is the node whose scope is every organisation. *@
+							@if (_currentView is NavView.Home or NavView.None && !_orgSelected && _selectedRow is null)
 							{
-								<span class="breadcrumb-current"><i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span></span>
+								<span class="breadcrumb-current"><i class="fas fa-house"></i><span class="breadcrumb-link-text">Home</span></span>
 							}
 							else
 							{
 								<a class="breadcrumb-link" @onclick="NavigateToDashboard" @onclick:preventDefault>
-									<i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span>
+									<i class="fas fa-house"></i><span class="breadcrumb-link-text">Home</span>
 								</a>
+							}
+							@if (_currentView == NavView.Dashboard)
+							{
+								<span class="breadcrumb-sep">›</span>
+								<span class="breadcrumb-current">Organisations</span>
 							}
 							@* Org crumb — shown at org level or deeper (repo selected, org settings, or package updates) *@
 							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || _currentView == NavView.NuGetUpdates || IsIssueView)
@@ -322,7 +329,7 @@ else
 											 Text="@(_orgSelected ? "Rediscover Org" : "Rediscover Orgs")"
 											 IconCssClass="fas fa-magnifying-glass"
 											 CssClass="btn-primary"
-											 IsVisible="@(_currentView is NavView.Dashboard or NavView.None)"
+											 IsVisible="@(_currentView is NavView.Home or NavView.None)"
 											 IsEnabled="@(!IsBulkOperationInFlight)"
 											 ToolTip="@(_orgSelected
 												? $"Re-read {CurrentOrganization}'s package list from NuGet, then assess it. Use Re-assess Org to skip the NuGet lookup."
@@ -356,7 +363,7 @@ else
 											 Text="@GetReassessButtonText()"
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
-											 IsVisible="@(_currentView is NavView.Dashboard or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
+											 IsVisible="@(_currentView is NavView.Home or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
 											 IsEnabled="@(!IsBulkOperationInFlight)"
 											 ToolTip="@GetReassessButtonTooltip()"
 											 Click="OnToolbarClick" />
@@ -649,7 +656,7 @@ else
 
 	// === Navigation state ===
 	private PDTree<NavItem>? _navTree;
-	private NavView _currentView = NavView.Dashboard;
+	private NavView _currentView = NavView.Home;
 	private bool _userMenuOpen;
 	// True when the org (root) node is the current focus (org overview / org settings),
 	// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
@@ -925,12 +932,11 @@ else
 		OnNavSelectionChanged(node);
 	}
 
-	// The Organisations and Repositories grouping nodes are not selectable; everything else
-	// (the org, Package Updates view, Issues and individual repos) is. The Repositories keys are
-	// namespaced per organisation, so these are prefix tests rather than exact matches.
+	// Repositories is a pure grouping node and is not selectable. Organisations *is*: selecting it
+	// shows the estate overview, which is the one view whose scope is every organisation. The
+	// Repositories keys are namespaced per organisation, so these are prefix tests, not exact matches.
 	private static bool IsSelectableNavNode(NavItem? item)
 		=> item is not null
-			&& item.Key != NavTreeDataProvider.OrganisationsKey
 			&& !item.Key.StartsWith("repos:", StringComparison.Ordinal)
 			&& !item.Key.StartsWith("repos-loading:", StringComparison.Ordinal);
 
@@ -1159,6 +1165,21 @@ else
 		return true;
 	}
 
+	/// <summary>
+	/// Selects the Organisations node, which shows the estate overview.
+	/// </summary>
+	private async Task NavigateToOrganisationsAsync()
+	{
+		_selectedRow = null;
+		_selectedPackageId = null;
+		_selectedCategory = null;
+		_selectedRuleId = null;
+		_orgSelected = false;
+		_selectedOrganization = string.Empty;
+
+		await SelectNavNodeAsync(NavTreeDataProvider.OrganisationsKey, NavView.Dashboard);
+	}
+
 	// Breadcrumb hops back up the issue hierarchy, selecting the tree node so the sidebar follows.
 	private async Task NavigateToIssuesAsync()
 		=> await SelectNavNodeAsync(NavTreeDataProvider.IssuesKey(CurrentOrganization), NavView.Issues);
@@ -1231,6 +1252,19 @@ else
 		finally
 		{
 			_restoringExpansion = false;
+		}
+
+		// Land on Home, unless a package was named in the URL. PDTree selects its first node once it is
+		// ready, and now that Organisations is selectable that selection takes effect — so the app
+		// opened straight onto the overview and Home was never seen, which defeats the point of Home
+		// pointing you at the overview in the first place.
+		if (string.IsNullOrEmpty(PackageId))
+		{
+			_navTree?.RootNode.Walk(n => { n.IsSelected = false; return true; });
+			_currentView = NavView.Home;
+			_selectedNodeKey = string.Empty;
+			_orgSelected = false;
+			_selectedOrganization = string.Empty;
 		}
 
 		StateHasChanged();
@@ -1765,7 +1799,7 @@ else
 
 	private void NavigateToDashboard()
 	{
-		_currentView = NavView.Dashboard;
+		_currentView = NavView.Home;
 		_selectedRow = null;
 		_selectedPackageId = null;
 		_selectedCategory = null;
@@ -1794,7 +1828,7 @@ else
 		}
 		else
 		{
-			_currentView = NavView.Dashboard;
+			_currentView = NavView.Home;
 			_selectedRow = null;
 			_selectedNodeKey = orgKey;
 			_selectedOrganization = organization;
@@ -2094,11 +2128,231 @@ else
 		}
 	}
 
+	// === Home overview ===
+
+	/// <summary>
+	/// One organisation's headline counts for the overview table.
+	/// </summary>
+	private sealed record OrgOverview(
+		string Organization,
+		int Repos,
+		int Cloned,
+		int ClonedClean,
+		int Assessed,
+		int Clean,
+		int Warnings,
+		int Errors,
+		int NoRepo,
+		int Unassessed);
+
+	private List<OrgOverview> BuildOrgOverviews()
+	{
+		var organizations = RuntimeSettings.Organizations;
+		var fallback = organizations.Count > 0 ? organizations[0] : _organizationName;
+
+		var result = new List<OrgOverview>();
+		foreach (var organization in organizations)
+		{
+			// Same attribution as the navigation tree: rows cached before multi-organisation support
+			// carry no organisation and belong to the first one.
+			var rows = _rows
+				.Where(r => string.IsNullOrEmpty(r.Organization)
+					? string.Equals(organization, fallback, StringComparison.OrdinalIgnoreCase)
+					: string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))
+				.ToList();
+
+			result.Add(new OrgOverview(
+				Organization: organization,
+				Repos: rows.Count,
+				Cloned: rows.Count(r => r.IsClonedLocally),
+				ClonedClean: rows.Count(r => r.IsClonedLocally && r.HealthStatus == PackageHealthStatus.Success),
+				Assessed: rows.Count(r => r.Assessment is not null),
+				Clean: rows.Count(r => r.HealthStatus == PackageHealthStatus.Success),
+				Warnings: rows.Count(r => r.HealthStatus == PackageHealthStatus.Warning),
+				Errors: rows.Count(r => r.HealthStatus == PackageHealthStatus.Error),
+
+				// Two distinct reasons for having no assessment, previously conflated under one
+				// "not assessed" heading which implied we had simply skipped them:
+				//   - no repository at all in the package's NuGet metadata, so there is nothing to
+				//     identify and assessment is never attempted;
+				//   - a repository is known but the assessment has not run, or errored.
+				NoRepo: rows.Count(r => r.RepositoryFullName is null),
+				Unassessed: rows.Count(r => r.RepositoryFullName is not null && r.Assessment is null)));
+		}
+
+		return result;
+	}
+
+	// The issue-centric view is rebuilt from every rule result, so it is memoised against the data it
+	// was built from rather than recomputed on each render — the home view re-renders on every progress
+	// tick during a run.
+	private List<IssueClassGroup>? _topIssueClasses;
+	private (int Rows, DateTimeOffset Refreshed) _topIssueClassesBuiltFrom;
+
+	private List<IssueClassGroup> TopIssueClasses(int take)
+	{
+		var stamp = (_rows.Count, Cache.LastRefreshUtc);
+		if (_topIssueClasses is not null && _topIssueClassesBuiltFrom == stamp)
+		{
+			return _topIssueClasses;
+		}
+
+		_topIssueClasses =
+		[
+			.. Dashboard.BuildIssueCentricView(_rows).AllIssueClasses
+				.OrderByDescending(i => i.AffectedRepositoryCount)
+				.ThenBy(i => i.RuleId, StringComparer.OrdinalIgnoreCase)
+				.Take(take)
+		];
+
+		_topIssueClassesBuiltFrom = stamp;
+		return _topIssueClasses;
+	}
+
+	/// <summary>
+	/// Opens one of the overview's biggest issue classes in the sidebar's issue hierarchy.
+	/// </summary>
+	private async Task NavigateToTopIssueAsync(IssueClassGroup issueClass)
+	{
+		// An issue class can span organisations, so take the organisation of the first affected
+		// repository rather than assuming the currently selected one.
+		var firstRepository = issueClass.Instances.FirstOrDefault()?.RepositoryFullName;
+		var organization = _rows
+			.FirstOrDefault(r => string.Equals(r.RepositoryFullName, firstRepository, StringComparison.OrdinalIgnoreCase))
+			?.Organization;
+
+		if (string.IsNullOrEmpty(organization))
+		{
+			organization = CurrentOrganization;
+		}
+
+		_selectedOrganization = organization;
+		_selectedCategory = issueClass.Category;
+		_selectedRuleId = issueClass.RuleId;
+		_orgSelected = false;
+
+		await SelectNavNodeAsync(
+			$"irule:{organization}:{issueClass.Category}:{issueClass.RuleId}",
+			NavView.IssueRuleDetail);
+	}
+
 	// === Render Fragments ===
 
 	/// <summary>
-	/// What to do when nothing is selected. Shown in place of an empty pane, because the tree alone
-	/// does not convey that the point of the app is to walk a repository through to a fix.
+	/// The estate overview, shown when Organisations is selected — the one node whose scope is every
+	/// organisation. Leads with locally-cloned repositories because that is the definition of done: only
+	/// a local clone can be auto-fixed, built, tested or published, so the all-repositories figure is
+	/// shown alongside as context rather than as the target.
+	/// </summary>
+	private RenderFragment RenderDashboardView() => __builder =>
+	{
+		var overviews = BuildOrgOverviews();
+		var totalRepos = overviews.Sum(o => o.Repos);
+		var cloned = overviews.Sum(o => o.Cloned);
+		var clonedClean = overviews.Sum(o => o.ClonedClean);
+		var clean = overviews.Sum(o => o.Clean);
+		var assessed = overviews.Sum(o => o.Assessed);
+		var clonedPercent = cloned == 0 ? 0 : (int)Math.Round(clonedClean * 100.0 / cloned);
+		var topIssues = TopIssueClasses(6);
+
+		<div class="home-view">
+			<h2 class="home-title">Organisations</h2>
+
+			@if (totalRepos == 0)
+			{
+				<p class="home-empty">
+					No packages discovered yet. Use <em>Rediscover Orgs</em>, or add an organisation with the
+					<i class="fas fa-plus"></i> beside <em>Organisations</em>.
+				</p>
+			}
+			else
+			{
+				<section class="home-section">
+					<h3 class="home-section-title">Progress</h3>
+					<div class="home-progress-heading">
+						<strong>@clonedClean of @cloned</strong> locally-cloned repositories are clean
+						<span class="home-progress-percent">@clonedPercent%</span>
+					</div>
+					<div class="home-progress-track">
+						<div class="home-progress-fill" style="width: @clonedPercent%"></div>
+					</div>
+					<p class="home-progress-note">
+						Only cloned repositories can be fixed, built, tested or published, so this is the number
+						that matters. Across everything: <strong>@clean of @totalRepos</strong> clean,
+						@assessed assessed.
+					</p>
+				</section>
+
+				<section class="home-section">
+					<h3 class="home-section-title">By organisation</h3>
+					<table class="home-table">
+						<thead>
+							<tr>
+								<th>Organisation</th>
+								<th class="home-num">Repos</th>
+								<th class="home-num">Cloned</th>
+								<th class="home-num">Clean</th>
+								<th class="home-num">Warnings</th>
+								<th class="home-num">Errors</th>
+								<th class="home-num" title="The package's NuGet metadata has no GitHub project URL, so there is no repository to identify or assess.">No repo</th>
+								<th class="home-num" title="A repository is known, but it has not been assessed yet — or the assessment errored.">Not assessed</th>
+							</tr>
+						</thead>
+						<tbody>
+							@foreach (var o in overviews)
+							{
+								<tr>
+									<td>
+										<a href="#" class="home-link" @onclick="() => NavigateToOrgAsync(o.Organization)" @onclick:preventDefault>@o.Organization</a>
+									</td>
+									<td class="home-num">@o.Repos</td>
+									<td class="home-num">@o.Cloned</td>
+									<td class="home-num @(o.Clean > 0 ? "text-success" : null)">@o.Clean</td>
+									<td class="home-num @(o.Warnings > 0 ? "text-warning" : null)">@o.Warnings</td>
+									<td class="home-num @(o.Errors > 0 ? "text-danger" : null)">@o.Errors</td>
+									<td class="home-num">@o.NoRepo</td>
+									<td class="home-num @(o.Unassessed > 0 ? "text-warning" : null)">@o.Unassessed</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</section>
+
+				@if (topIssues.Count > 0)
+				{
+					<section class="home-section">
+						<h3 class="home-section-title">Biggest issue classes</h3>
+						<p class="home-section-note">
+							The rules affecting the most repositories — fixing one of these moves the most at once.
+						</p>
+						<ul class="home-issue-list">
+							@foreach (var issueClass in topIssues)
+							{
+								<li>
+									<a href="#" class="home-link" @onclick="() => NavigateToTopIssueAsync(issueClass)" @onclick:preventDefault>
+										<span class="home-issue-id">@issueClass.RuleId</span>
+										<span class="home-issue-name">@issueClass.RuleName</span>
+									</a>
+									<span class="home-issue-count">@issueClass.AffectedRepositoryCount repos</span>
+								</li>
+							}
+						</ul>
+					</section>
+				}
+
+				@* The tree lists these same repositories but cannot sort or search them, which is what this
+				   adds. Full width, since a table needs more room than the prose above it. *@
+				<section class="home-section home-section-wide">
+					<h3 class="home-section-title">All repositories</h3>
+					@RenderRepositoryTable()
+				</section>
+			}
+		</div>
+	};
+
+	/// <summary>
+	/// Home: what you can do here. Deliberately guidance rather than figures — the aggregate view is
+	/// the Organisations node's, reached by selecting it.
 	/// </summary>
 	private RenderFragment RenderGettingStarted() => __builder =>
 	{
@@ -2106,11 +2360,20 @@ else
 			<i class="fas fa-hand-point-left fa-2x"></i>
 			<p>Select an item from the navigation tree</p>
 
+			@* Without this the overview is effectively hidden: selecting a container node is not an
+			   obvious thing to try, and nothing else hints that Organisations has a view of its own. *@
+			<p class="getting-started-lead">
+				Start with
+				<a href="#" class="home-link" @onclick="NavigateToOrganisationsAsync" @onclick:preventDefault>Organisations</a>
+				— it shows how the whole estate is doing: progress toward every locally-cloned repository
+				being clean, a breakdown per organisation, and the rules affecting the most repositories.
+			</p>
+
 			<ol class="getting-started">
 				<li>
 					<strong>Add an organisation</strong> with the <i class="fas fa-plus"></i> beside
-					<em>Organisations</em>, if the one you want is not listed. Its packages are
-					discovered from NuGet and each repository assessed.
+					<em>Organisations</em>, as needed. Its packages are discovered from NuGet and each
+					repository assessed.
 				</li>
 				<li>
 					@* Bold lead-in phrase, then the UI term in accent — matching the other steps. It was
@@ -2120,9 +2383,7 @@ else
 				</li>
 				<li>
 					<strong>Work along the toolbar</strong> left to right — Sync, Re-assess, Fix, Build,
-					Test, Commit &amp; Push, Publish. The carets between them turn orange as you go, so
-					where the orange stops is where you are up to, and each step becomes available once
-					the one before it makes sense.
+					Test, Commit &amp; Push, Publish.
 				</li>
 				<li>
 					<strong>Or fix one problem everywhere at once.</strong> <em>Issues</em> groups the
@@ -2143,9 +2404,14 @@ else
 	{
 		switch (_currentView)
 		{
-			case NavView.Dashboard:
+			case NavView.Home:
 			case NavView.None:
 				@RenderGettingStarted()
+				break;
+			case NavView.Dashboard:
+				@* Selecting Organisations shows the estate overview, since that node's scope is all of
+				   them. Home keeps the guidance it always had. *@
+				@RenderDashboardView()
 				break;
 			case NavView.PackageDetail:
 				@RenderPackageDetailView()
@@ -2235,73 +2501,66 @@ else
 		</div>
 	};
 
-	private RenderFragment RenderDashboardView() => __builder =>
+	/// <summary>
+	/// The searchable, sortable repository list. Preserved from the original dashboard view, which
+	/// was dead code — nothing rendered it once the navigation tree took over. The tree lists the same
+	/// repositories but cannot sort or search them, so this earns its place; its old summary cards did
+	/// not, being pre-multi-organisation totals that blended every organisation together.
+	/// </summary>
+	/// <remarks>
+	/// Note that @ref="_table" only binds now this is actually rendered. While the fragment was
+	/// unreachable _table stayed null, so the table refresh in RefreshTableAsync was a silent no-op.
+	/// </remarks>
+	private RenderFragment RenderRepositoryTable() => __builder =>
 	{
-		<div class="dashboard-content">
-			<div class="summary-strip">
-				<div class="summary-card">
-					<div class="label">Packages</div>
-					<div class="value blue">@_rows.Count</div>
-				</div>
-				<div class="summary-card">
-					<div class="label">Passing</div>
-					<div class="value green">@_rows.Count(r => r.Assessment is not null && r.TotalFailures == 0)</div>
-				</div>
-				<div class="summary-card">
-					<div class="label">Failing</div>
-					<div class="value red">@_rows.Count(r => r.Assessment is not null && r.TotalErrors > 0)</div>
-				</div>
-				<div class="summary-card">
-					<div class="label">Warnings</div>
-					<div class="value amber">@_rows.Count(r => r.Assessment is not null && r.TotalWarnings > 0 && r.TotalErrors == 0)</div>
-				</div>
-			</div>
-
-			<PDTable @ref="_table"
-					 TItem="PackageDashboardRow"
-					 DataProvider="DataProvider"
-					 KeyField="x => x.PackageId"
-					 SearchText="@_searchText"
-					 Click="OnRowClick"
-					 DoubleClick="OnRowDoubleClick"
-					 TableClass="governance-table">
-				<PDToolbar>
-					<PDToolbarTextbox Placeholder="Search packages..."
-									  Value="@_searchText"
-									  ValueChanged="OnSearchChanged"
-									  Width="250px" />
-				</PDToolbar>
-				<PDColumn TItem="PackageDashboardRow" Field="x => x.PackageId" Title="Package" Sortable="true" Filterable="true" TdClass="text-start">
-					<Template>
-						<span class="pkg-name">@context.PackageId</span>
-						@if (context.IsClonedLocally)
-						{
-							<span class="@(context.IsWorkingTreeClean == true ? "git-clean" : context.IsWorkingTreeClean == false ? "git-dirty" : "")"
-								  title="@(context.IsWorkingTreeClean == true ? "Clean" : context.IsWorkingTreeClean == false ? "Dirty" : "")">●</span>
-						}
-					</Template>
-				</PDColumn>
-				<PDColumn TItem="PackageDashboardRow" Field="x => x.LatestVersion" Title="Version" Sortable="true">
-					<Template><span class="pkg-version">@context.LatestVersion</span></Template>
-				</PDColumn>
-				<PDColumn TItem="PackageDashboardRow" Field="x => x.TotalFailures" Id="total" Title="Issues" Sortable="true">
-					<Template>
-						@if (context.Assessment is not null)
-						{
-							<span class="badge @(context.TotalFailures == 0 ? "badge-pass" : context.TotalErrors > 0 ? "badge-fail" : "badge-warn")">@context.TotalFailures</span>
-						}
-						else if (context.Status == PackageStatus.Assessing)
-						{
-							<span class="spinner"></span>
-						}
-						else
-						{
-							<span class="badge-none">—</span>
-						}
-					</Template>
-				</PDColumn>
-			</PDTable>
-		</div>
+		<PDTable @ref="_table"
+				 TItem="PackageDashboardRow"
+				 DataProvider="DataProvider"
+				 KeyField="x => x.PackageId"
+				 SearchText="@_searchText"
+				 Click="OnRowClick"
+				 DoubleClick="OnRowDoubleClick"
+				 TableClass="governance-table">
+			<PDToolbar>
+				<PDToolbarTextbox Placeholder="Search packages..."
+								  Value="@_searchText"
+								  ValueChanged="OnSearchChanged"
+								  Width="250px" />
+			</PDToolbar>
+			@* Package takes all the slack so Version and Issues sit hard right. Sortable defaults to true
+			   in PDColumn, so Version opts out explicitly: sorting unrelated packages by version string
+			   sorts nothing meaningful. *@
+			<PDColumn TItem="PackageDashboardRow" Field="x => x.PackageId" Title="Package" Sortable="true" Filterable="true" ThClass="home-col-grow" TdClass="text-start home-col-grow">
+				<Template>
+					@* title carries the full name, since a narrow column truncates it with an ellipsis. *@
+					<span class="pkg-name" title="@context.PackageId">@context.PackageId</span>
+					@if (context.IsClonedLocally)
+					{
+						<span class="@(context.IsWorkingTreeClean == true ? "git-clean" : context.IsWorkingTreeClean == false ? "git-dirty" : "")"
+							  title="@(context.IsWorkingTreeClean == true ? "Clean" : context.IsWorkingTreeClean == false ? "Dirty" : "")">●</span>
+					}
+				</Template>
+			</PDColumn>
+			<PDColumn TItem="PackageDashboardRow" Field="x => x.LatestVersion" Title="Version" Sortable="false" ThClass="home-col-shrink" TdClass="home-col-shrink">
+				<Template><span class="pkg-version">@context.LatestVersion</span></Template>
+			</PDColumn>
+			<PDColumn TItem="PackageDashboardRow" Field="x => x.TotalFailures" Id="total" Title="Issues" Sortable="true" ThClass="home-col-shrink" TdClass="home-col-shrink">
+				<Template>
+					@if (context.Assessment is not null)
+					{
+						<span class="badge @(context.TotalFailures == 0 ? "badge-pass" : context.TotalErrors > 0 ? "badge-fail" : "badge-warn")">@context.TotalFailures</span>
+					}
+					else if (context.Status == PackageStatus.Assessing)
+					{
+						<span class="spinner"></span>
+					}
+					else
+					{
+						<span class="badge-none">—</span>
+					}
+				</Template>
+			</PDColumn>
+		</PDTable>
 	};
 
 	private RenderFragment RenderPackageDetailView() => __builder =>
@@ -3192,7 +3451,7 @@ else
 				Cache.RemoveRow(_selectedRow.PackageId);
 				_selectedRow = null;
 				_selectedPackageId = null;
-				_currentView = NavView.Dashboard;
+				_currentView = NavView.Home;
 				await RefreshTableAsync();
 				return;
 			}
@@ -4277,7 +4536,7 @@ else
 	{
 		switch (item.View)
 		{
-			case NavView.Dashboard:
+			case NavView.Home:
 				var assessed = _rows.Count(r => r.Assessment is not null);
 				return $"Dashboard — {_rows.Count} packages ({assessed} assessed, {item.IssueCount} issues)";
 

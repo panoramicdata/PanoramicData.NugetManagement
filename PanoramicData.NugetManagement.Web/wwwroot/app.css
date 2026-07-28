@@ -404,12 +404,7 @@ html, body {
 
 .governance-table th:first-child {
     text-align: left;
-    width: 220px;
     padding-left: 0.75rem;
-}
-
-.governance-table th:nth-child(2) {
-    width: 80px;
 }
 
 .governance-table th.category-col {
@@ -1525,16 +1520,207 @@ i + .breadcrumb-link-text {
     font-size: 0.9rem;
 }
 
-/* Sit the prompt a quarter of the way down the pane rather than dead centre. Done with a flex spacer
-   because a percentage padding or margin would resolve against the pane's width, not its height.
-   The gap is subtracted so the quarter is measured to the icon, not to the gap above it. */
-.spa-placeholder::before {
-    content: "";
-    flex: 0 0 calc(25% - 1rem);
+/* No leading spacer. Pushing the content a quarter down suited a one-line "select something" prompt,
+   but Home now carries a lead paragraph, four steps and a footnote — enough that starting it low
+   wasted the top of the pane and pushed the last of it out of sight. */
+.spa-placeholder {
+    padding-top: 1.5rem;
 }
 
-/* Numbered walkthrough shown under the prompt. Left-aligned text inside a centred column: centred
-   prose is hard to read once it runs to more than a line. */
+/* === Home view: overview above, guidance below === */
+.home-view {
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding: 1.5rem;
+}
+
+.home-title {
+    margin: 0 0 0.25rem;
+    font-size: 1.3rem;
+}
+
+/* Sections are centred in the pane rather than pinned left: capped at a readable width, they
+   otherwise left all their slack as one empty band down the right-hand side. The title is centred
+   with them so it stays aligned to the content it introduces. */
+.home-title,
+.home-section {
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.home-section {
+    margin-bottom: 1.75rem;
+}
+
+/* The table gets the same column as everything else, so the left edges line up down the page. */
+.home-section-wide {
+    max-width: 900px;
+}
+
+/* 60% of the section's width: at full width the table dwarfed the prose above it and left the numbers
+   stranded far from the names. Scoped to this section because .governance-table is also used by the
+   CI template page, which wants full width. */
+.home-section-wide .governance-table {
+    width: 60%;
+}
+
+/* Package absorbs the remaining width so Version and Issues sit hard right.
+   Note .governance-table is table-layout: fixed, where the usual width:100% / width:1% trick does not
+   apply — fixed layout ignores content and honours the declared widths literally. Instead the narrow
+   columns get explicit widths and the greedy one is left auto, which is what fixed layout hands the
+   remaining space to. These replace two positional rules (th:first-child / th:nth-child(2)) that set
+   220px and 80px: being class-based they survive a column being added or reordered, and being
+   positional those beat a plain class on specificity and silently won. */
+.governance-table th.home-col-grow,
+.governance-table td.home-col-grow {
+    width: auto;
+}
+
+.governance-table th.home-col-shrink,
+.governance-table td.home-col-shrink {
+    width: 110px;
+    white-space: nowrap;
+}
+
+/* A narrower table means long package names no longer fit, so they are truncated with an ellipsis and
+   the full name is available on hover. The reserved 14px keeps room for the git-status dot that
+   follows the name on cloned repositories, which the ellipsis would otherwise push out of the cell. */
+.home-section-wide .governance-table td.home-col-grow {
+    overflow: hidden;
+}
+
+.home-section-wide .governance-table .pkg-name {
+    display: inline-block;
+    max-width: calc(100% - 14px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.home-section-title {
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.home-section-note,
+.home-empty {
+    margin: 0 0 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.home-empty em,
+.home-section-note em {
+    color: var(--accent);
+    font-style: normal;
+}
+
+.home-progress-heading {
+    font-size: 0.95rem;
+    margin-bottom: 0.4rem;
+}
+
+.home-progress-percent {
+    float: right;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* A plain track and fill rather than a component — this is the one progress bar in the app. */
+.home-progress-track {
+    height: 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.home-progress-fill {
+    height: 100%;
+    background: var(--success);
+    transition: width 0.5s ease-in-out;
+}
+
+.home-progress-note {
+    margin: 0.5rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.home-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.home-table th,
+.home-table td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+
+.home-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.home-table .home-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.home-issue-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.85rem;
+}
+
+.home-issue-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.home-issue-id {
+    font-weight: 600;
+    margin-right: 0.4rem;
+}
+
+.home-issue-name {
+    color: var(--text-primary);
+}
+
+.home-issue-count {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.home-link {
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.home-link:hover {
+    text-decoration: underline;
+}
+
+/* Numbered walkthrough. Left-aligned: centred prose is hard to read once it runs past a line. */
 .getting-started {
     max-width: 620px;
     margin: 0;
@@ -1554,6 +1740,16 @@ i + .breadcrumb-link-text {
 .getting-started em {
     color: var(--accent);
     font-style: normal;
+}
+
+/* Points at the overview, which is otherwise easy to miss — selecting a container node is not an
+   obvious thing to try. Sits above the numbered steps and reads a shade brighter than them. */
+.getting-started-lead {
+    max-width: 620px;
+    margin: 0;
+    text-align: left;
+    line-height: 1.6;
+    color: var(--text-secondary);
 }
 
 .getting-started-note {
@@ -1935,9 +2131,9 @@ i + .breadcrumb-link-text {
     background-color: #0056b3 !important;
 }
 
-/* The Organisations and Repositories grouping nodes are not selectable, so they must not show
-   a hover background (or they look selectable). Keyed off their icons: fa-sitemap / fa-cubes. */
-.pdtreenode_content:has(.nav-node-label i.fa-sitemap):hover,
+/* Repositories is a pure grouping node and not selectable, so it must not show a hover background or
+   it looks clickable. Organisations is deliberately excluded from this now: selecting it shows the
+   estate overview, so it should behave like any other selectable row. Keyed off the icon. */
 .pdtreenode_content:has(.nav-node-label i.fa-cubes):hover {
     background: transparent !important;
 }
