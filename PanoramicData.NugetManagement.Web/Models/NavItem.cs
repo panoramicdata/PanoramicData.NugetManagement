@@ -33,9 +33,22 @@ public class NavItem
 	public NavView View { get; init; } = NavView.None;
 
 	/// <summary>
+	/// The organisation this node belongs to. Every node below the "Organisations" container carries
+	/// it, so a handler can tell which organisation a selection relates to without parsing the key.
+	/// Empty for the top-level container itself.
+	/// </summary>
+	public string Organization { get; init; } = string.Empty;
+
+	/// <summary>
 	/// Optional associated package ID for package-level nodes.
 	/// </summary>
 	public string? PackageId { get; init; }
+
+	/// <summary>
+	/// For issue-hierarchy nodes, the number of distinct repositories affected. Distinct from
+	/// <see cref="IssueCount"/>, which counts failures rather than repositories.
+	/// </summary>
+	public int AffectedRepoCount { get; init; }
 
 	/// <summary>
 	/// Optional associated assessment category for category-level nodes.
@@ -51,6 +64,13 @@ public class NavItem
 	/// Whether this node is a leaf (no children).
 	/// </summary>
 	public bool IsLeaf { get; init; }
+
+	/// <summary>
+	/// Explicit ordering rank among siblings; lower sorts first, ties broken by <see cref="Text"/>.
+	/// PDTree sorts children alphabetically by text unless given a Sort comparison, which would put
+	/// Critical below Info, so severity-ordered branches set this rather than relying on their label.
+	/// </summary>
+	public int SortOrder { get; init; }
 
 	/// <summary>
 	/// The number of issues at or below this node.  
@@ -114,5 +134,17 @@ public enum NavView
 	/// The issue-centric view for an organisation: the same failures grouped by issue rather than by
 	/// repository. Org-scoped, which is why it hangs off the organisation node.
 	/// </summary>
-	Issues
+	Issues,
+
+	/// <summary>
+	/// One category of the issue hierarchy — every failing rule in that category across the
+	/// organisation, with the affected repositories and bulk actions shown in the centre panel.
+	/// </summary>
+	IssueCategoryDetail,
+
+	/// <summary>
+	/// One rule of the issue hierarchy — the repositories it affects, with the per-rule bulk
+	/// actions (apply auto-fixes, apply and push, copy combined AI prompt).
+	/// </summary>
+	IssueRuleDetail
 }
