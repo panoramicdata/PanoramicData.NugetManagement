@@ -4,9 +4,14 @@
     --bg-secondary: #16213e;
     --bg-surface: #0f3460;
     --bg-hover: #1a3a5c;
+    /* Three steps of emphasis. The lower two were lightened: secondary from #a0a0b0 and muted from
+       #707080, which was too dim to read comfortably against --bg-primary for body copy such as the
+       explanatory notes. Both moved up while keeping a clear gap between the three, so the hierarchy
+       still reads. Changed here rather than per-rule, since these tokens drive every muted string in
+       the app. */
     --text-primary: #e0e0e0;
-    --text-secondary: #a0a0b0;
-    --text-muted: #707080;
+    --text-secondary: #b4b4c4;
+    --text-muted: #8e8ea2;
     --accent: #4fc3f7;
     --success: #4caf50;
     --warning: #ff9800;
