@@ -82,9 +82,15 @@
 		</div>
 	}
 
-	@if (_rows.Count == 0)
+	@if (string.IsNullOrEmpty(Organization))
 	{
-		<p class="empty">No assessed repositories are cached. Run an assessment on the <a href="/">Dashboard</a> first.</p>
+		@* Distinguished from "nothing cached": showing every organisation's repositories here would make
+		   them all eligible for a bulk fix, so an unscoped view shows nothing at all instead. *@
+		<p class="empty">No organisation selected, so there is nothing to show. Pick one under <em>Organisations</em>.</p>
+	}
+	else if (_rows.Count == 0)
+	{
+		<p class="empty">No assessed repositories are cached for @Organization. Run an assessment on the <a href="/">Dashboard</a> first.</p>
 	}
 	else if (_view is null || _view.IssueClassCount == 0)
 	{
@@ -278,10 +284,18 @@
 	public bool Embedded { get; set; }
 
 	/// <summary>
-	/// Restricts the view to one organisation. Null shows every organisation, which is what the
-	/// standalone /issues page does.
+	/// The organisation whose issues are shown. Required.
 	/// </summary>
+	/// <remarks>
+	/// It used to be optional, with null meaning "every organisation" for the benefit of a standalone
+	/// /issues page. That page has been retired, because an unscoped view of this component is a
+	/// hazard: every repository is selected by default and its bulk actions — Fix everything, Apply and
+	/// push to N repositories — would then act across every organisation at once, limited only by boxes
+	/// the user remembered to untick. With no caller left that legitimately wants that, omitting the
+	/// organisation now shows nothing rather than everything.
+	/// </remarks>
 	[Parameter]
+	[EditorRequired]
 	public string? Organization { get; set; }
 
 	/// <summary>
@@ -422,12 +436,15 @@
 	{
 		_rows = Cache.GetCachedRows() ?? [];
 
-		// Restrict to the requested organisation. Rows cached before multi-organisation support carry
-		// no organisation at all; in that case filtering would empty the view, so it is skipped.
-		if (!string.IsNullOrEmpty(Organization) && _rows.Any(r => !string.IsNullOrEmpty(r.Organization)))
-		{
-			_rows = [.. _rows.Where(r => string.Equals(r.Organization, Organization, StringComparison.OrdinalIgnoreCase))];
-		}
+		// Filter to the organisation, unconditionally. This deliberately has no escape hatch: it used
+		// to skip filtering when no row anywhere carried an organisation, to cope with a cache written
+		// before multi-organisation support — but "no organisation supplied" and "cache looks legacy"
+		// both then meant every organisation's repositories became eligible for a bulk fix. A stale
+		// cache is one Rediscover away; a bulk action on the wrong organisation is not undone so easily.
+		// The cost is that untagged legacy rows are invisible until rediscovered, which is recoverable.
+		_rows = string.IsNullOrEmpty(Organization)
+			? []
+			: [.. _rows.Where(r => string.Equals(r.Organization, Organization, StringComparison.OrdinalIgnoreCase))];
 
 		_view = NarrowToFocus(Dashboard.BuildIssueCentricView(_rows));
 		_bumps = ActionVersionCatalog.Default.RecentBumps;

@@ -2441,7 +2441,8 @@ else
 				@RenderNuGetUpdatesView()
 				break;
 			case NavView.Issues:
-				@* Same component the /issues page hosts, embedded so it drops its own page header. *@
+				@* Embedded so it drops its own page header. Organization is required: without it the
+				   component shows nothing rather than every organisation's repositories. *@
 				<IssuesView Embedded="true" Organization="@CurrentOrganization" />
 				break;
 			case NavView.IssueCategoryDetail:
