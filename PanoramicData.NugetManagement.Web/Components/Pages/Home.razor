@@ -329,7 +329,7 @@ else
 											 Text="@(_orgSelected ? "Rediscover Org" : "Rediscover Orgs")"
 											 IconCssClass="fas fa-magnifying-glass"
 											 CssClass="btn-primary"
-											 IsVisible="@(_currentView is NavView.Home or NavView.None)"
+											 IsVisible="@ShowBulkRunButtons"
 											 IsEnabled="@(!IsBulkOperationInFlight)"
 											 ToolTip="@(_orgSelected
 												? $"Re-read {CurrentOrganization}'s package list from NuGet, then assess it. Use Re-assess Org to skip the NuGet lookup."
@@ -363,7 +363,7 @@ else
 											 Text="@GetReassessButtonText()"
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
-											 IsVisible="@(_currentView is NavView.Home or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
+											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
 											 IsEnabled="@(!IsBulkOperationInFlight)"
 											 ToolTip="@GetReassessButtonTooltip()"
 											 Click="OnToolbarClick" />
@@ -952,6 +952,15 @@ else
 	// The three issue views share breadcrumb behaviour; they differ only in how deep they go.
 	private bool IsIssueView
 		=> _currentView is NavView.Issues or NavView.IssueCategoryDetail or NavView.IssueRuleDetail;
+
+	/// <summary>
+	/// Whether the Rediscover/Re-assess buttons apply here. Shown where the scope is unambiguous — the
+	/// Organisations overview, meaning all of them, or a selected organisation, meaning that one — and
+	/// hidden on Home, which has no scope of its own and where offering to reassess everything sat oddly
+	/// beside a page of instructions.
+	/// </summary>
+	private bool ShowBulkRunButtons
+		=> _currentView == NavView.Dashboard || (_currentView == NavView.Home && _orgSelected);
 
 	/// <summary>
 	/// A message awaiting the user's response, rendered as an in-app modal.
