@@ -788,6 +788,14 @@ else
 		{
 			_rows = cached;
 			_lastRefreshUtc = Cache.LastRefreshUtc;
+
+			// The cache records what was cloned when it was written; the disk is the authority now.
+			// SetRows rather than Update: correcting a stale fact is not a refresh, and must not reset
+			// the staleness clock. The rows are reconciled on every load, so the disk copy keeps up.
+			if (await Dashboard.ReconcileLocalStateAsync(_rows) > 0)
+			{
+				Cache.SetRows(_rows);
+			}
 		}
 
 		// Nothing loads automatically on open any more, so this must not claim otherwise: it used to be
@@ -1430,7 +1438,7 @@ else
 				.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
 			_cloneCandidates = [.. repositories
-				.Where(repository => !LocalRepo.IsClonedLocally(repository.Name))
+				.Where(repository => !LocalRepo.IsClonedLocally(repository.FullName))
 				.Select(repository => new RepositoryCloneCandidate
 				{
 					Name = repository.Name,
@@ -1633,14 +1641,14 @@ else
 				{
 					var (success, output) = await LocalRepo.CloneAsync(
 						candidate.CloneUrl,
-						candidate.Name,
+						candidate.FullName,
 						line => AppendConsole(line),
 						token);
 
 					if (success)
 					{
 						cloned++;
-						await AdoptClonedRepositoryAsync(candidate.FullName, candidate.Name, token);
+						await AdoptClonedRepositoryAsync(candidate.FullName, token);
 					}
 					else
 					{
@@ -1681,7 +1689,7 @@ else
 	/// Updates any dashboard rows for a freshly cloned repository so the tree shows it as local
 	/// immediately. A repository can host several packages, hence every matching row.
 	/// </summary>
-	private async Task AdoptClonedRepositoryAsync(string repositoryFullName, string repoName, CancellationToken cancellationToken)
+	private async Task AdoptClonedRepositoryAsync(string repositoryFullName, CancellationToken cancellationToken)
 	{
 		var rows = _rows
 			.Where(r => string.Equals(r.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase))
@@ -1691,9 +1699,9 @@ else
 			return;
 		}
 
-		var localPath = LocalRepo.GetLocalPath(repoName);
-		var branch = await LocalRepo.GetCurrentBranchAsync(repoName, cancellationToken);
-		var isClean = await LocalRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken);
+		var localPath = LocalRepo.GetLocalPath(repositoryFullName);
+		var branch = await LocalRepo.GetCurrentBranchAsync(repositoryFullName, cancellationToken);
+		var isClean = await LocalRepo.IsWorkingTreeCleanAsync(repositoryFullName, cancellationToken);
 
 		foreach (var row in rows)
 		{

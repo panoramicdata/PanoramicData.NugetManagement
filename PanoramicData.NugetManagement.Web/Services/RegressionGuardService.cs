@@ -74,10 +74,9 @@ public sealed class RegressionGuardService(
 
 	private async Task VerifyAsync(string repositoryFullName, CancellationToken cancellationToken)
 	{
-		var repoName = RepoName(repositoryFullName);
 		SetStatus(repositoryFullName, GuardState.Building, "Building…");
 
-		var build = await localRepo.BuildWithRestoreAsync(repoName, null, cancellationToken).ConfigureAwait(false);
+		var build = await localRepo.BuildWithRestoreAsync(repositoryFullName, null, cancellationToken).ConfigureAwait(false);
 		if (build.Success)
 		{
 			SetStatus(repositoryFullName, GuardState.Verified, "Build succeeded after our change.");
@@ -85,7 +84,7 @@ public sealed class RegressionGuardService(
 		}
 
 		// Build failed — is it our change that broke it?
-		var commits = await localRepo.GetRecentCommitsAsync(repoName, 30, cancellationToken).ConfigureAwait(false);
+		var commits = await localRepo.GetRecentCommitsAsync(repositoryFullName, 30, cancellationToken).ConfigureAwait(false);
 		var (ourCount, lastGoodRef) = RegressionAttribution.Identify(commits);
 		if (ourCount == 0 || lastGoodRef is null)
 		{
@@ -95,7 +94,7 @@ public sealed class RegressionGuardService(
 		}
 
 		// Build the last-good commit to confirm our commits are the cause.
-		var parentBuild = await localRepo.BuildAtCommitAsync(repoName, lastGoodRef, null, cancellationToken).ConfigureAwait(false);
+		var parentBuild = await localRepo.BuildAtCommitAsync(repositoryFullName, lastGoodRef, null, cancellationToken).ConfigureAwait(false);
 		if (!parentBuild.Success)
 		{
 			SetStatus(repositoryFullName, GuardState.BuildFailingNotOurs,
@@ -105,18 +104,12 @@ public sealed class RegressionGuardService(
 
 		// Confirmed regression from our commits — revert them and push.
 		logger.LogWarning("Regression guard: our {Count} commit(s) broke {Repo}; reverting.", ourCount, repositoryFullName);
-		var revert = await localRepo.RevertRangeAndPushAsync(repoName, lastGoodRef, RevertMessage, null, cancellationToken).ConfigureAwait(false);
+		var revert = await localRepo.RevertRangeAndPushAsync(repositoryFullName, lastGoodRef, RevertMessage, null, cancellationToken).ConfigureAwait(false);
 		SetStatus(repositoryFullName,
 			revert.Success ? GuardState.RegressionReverted : GuardState.Error,
 			revert.Success
 				? $"Regression detected — reverted {ourCount} of our commit(s) and pushed. The build is green again; investigate the reverted change (it is a bug in our remediation)."
 				: $"Regression detected but the automatic revert failed: {Truncate(revert.Output)}");
-	}
-
-	private static string RepoName(string repositoryFullName)
-	{
-		var slash = repositoryFullName.LastIndexOf('/');
-		return slash >= 0 ? repositoryFullName[(slash + 1)..] : repositoryFullName;
 	}
 
 	private static string Truncate(string value)

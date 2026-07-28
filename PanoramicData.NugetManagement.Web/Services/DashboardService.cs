@@ -74,32 +74,92 @@ public class DashboardService
 
 		foreach (var pkg in packages)
 		{
-			var repoName = pkg.RepositoryName;
-			var isCloned = repoName is not null && _localRepo.IsClonedLocally(repoName);
+			// Local paths are keyed on the full owner/name identity, not the bare repository name.
+			var repoIdentity = pkg.RepositoryName is not null
+				? $"{pkg.RepositoryOwner ?? pkg.Organization}/{pkg.RepositoryName}"
+				: null;
+			var isCloned = repoIdentity is not null && _localRepo.IsClonedLocally(repoIdentity);
 
 			var row = new PackageDashboardRow
 			{
 				PackageId = pkg.PackageId,
 				Organization = pkg.Organization,
 				LatestVersion = pkg.LatestVersion,
-				RepositoryFullName = repoName is not null ? $"{pkg.RepositoryOwner ?? pkg.Organization}/{repoName}" : null,
+				RepositoryFullName = repoIdentity,
 				RepositoryUrl = pkg.RepositoryUrl,
 				IsClonedLocally = isCloned,
-				LocalPath = repoName is not null ? _localRepo.GetLocalPath(repoName) : null,
-				SlnxPath = isCloned && repoName is not null ? _localRepo.FindSlnxFile(repoName) : null,
+				LocalPath = repoIdentity is not null ? _localRepo.GetLocalPath(repoIdentity) : null,
+				SlnxPath = isCloned && repoIdentity is not null ? _localRepo.FindSlnxFile(repoIdentity) : null,
 				Status = isCloned ? PackageStatus.NotAssessed : PackageStatus.NotCloned
 			};
 
-			if (isCloned && repoName is not null)
+			if (isCloned && repoIdentity is not null)
 			{
-				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
-				row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
+				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+				row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			}
 
 			rows.Add(row);
 		}
 
 		return rows;
+	}
+
+	/// <summary>
+	/// Re-derives each row's local clone facts from what is actually on disk, leaving its assessment
+	/// alone. Returns the number of rows whose cloned state changed.
+	/// </summary>
+	/// <remarks>
+	/// The cache stores whether a repository was cloned, but nothing kept that in step with the disk: a
+	/// folder deleted (or a clone root reconfigured) since the last refresh left rows claiming a checkout
+	/// that is not there, and the toolbar offering to build and push it. The write guards fail closed on
+	/// such a row, so the risk was a misleading display rather than a bad write — but "cloned" is exactly
+	/// the count the estate view leads on, so it should be true.
+	/// </remarks>
+	public async Task<int> ReconcileLocalStateAsync(
+		IEnumerable<PackageDashboardRow> rows,
+		CancellationToken cancellationToken = default)
+	{
+		var changed = 0;
+
+		foreach (var row in rows)
+		{
+			var repoIdentity = RepoIdentity(row);
+			if (repoIdentity is null)
+			{
+				continue;
+			}
+
+			row.LocalPath = _localRepo.GetLocalPath(repoIdentity);
+
+			var isCloned = _localRepo.IsClonedLocally(repoIdentity);
+			if (isCloned == row.IsClonedLocally)
+			{
+				continue;
+			}
+
+			row.IsClonedLocally = isCloned;
+			row.SlnxPath = isCloned ? _localRepo.FindSlnxFile(repoIdentity) : null;
+			changed++;
+
+			if (isCloned)
+			{
+				// Read the facts the toolbar gates on, or a newly-found clone would sit there with an
+				// unknown branch and every local action refusing to run until something else filled it in.
+				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+				row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+			}
+			else
+			{
+				// Everything below was read out of a checkout that is no longer there.
+				row.CurrentBranch = null;
+				row.IsWorkingTreeClean = null;
+				row.IsSyncedWithOrigin = null;
+				row.LatestTag = null;
+			}
+		}
+
+		return changed;
 	}
 
 	/// <summary>
@@ -117,8 +177,8 @@ public class DashboardService
 			return;
 		}
 
-		var repoName = ExtractRepoName(row.RepositoryUrl);
-		if (repoName is null)
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null)
 		{
 			row.Status = PackageStatus.Error;
 			row.StatusMessage = "Cannot determine repo name from URL.";
@@ -137,14 +197,14 @@ public class DashboardService
 		row.Status = PackageStatus.Cloning;
 		row.StatusMessage = "Cloning...";
 
-		var (success, output) = await _localRepo.CloneAsync(cloneUrl, repoName, onOutput, cancellationToken).ConfigureAwait(false);
+		var (success, output) = await _localRepo.CloneAsync(cloneUrl, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 
 		if (success)
 		{
 			row.IsClonedLocally = true;
-			row.LocalPath = _localRepo.GetLocalPath(repoName);
-			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
-			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
+			row.LocalPath = _localRepo.GetLocalPath(repoIdentity);
+			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			row.Status = PackageStatus.NotAssessed;
 			row.StatusMessage = "Cloned successfully.";
 		}
@@ -284,14 +344,14 @@ public class DashboardService
 
 		try
 		{
-			var repoName = row.RepositoryUrl is null ? null : ExtractRepoName(row.RepositoryUrl);
-			if (!string.IsNullOrWhiteSpace(repoName))
+			var repoIdentity = RepoIdentity(row);
+			if (!string.IsNullOrWhiteSpace(repoIdentity))
 			{
-				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
+				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			}
 
-			var detectedDefaultBranch = !string.IsNullOrWhiteSpace(repoName)
-				? await _localRepo.GetRemoteDefaultBranchAsync(repoName!, cancellationToken).ConfigureAwait(false)
+			var detectedDefaultBranch = !string.IsNullOrWhiteSpace(repoIdentity)
+				? await _localRepo.GetRemoteDefaultBranchAsync(repoIdentity!, cancellationToken).ConfigureAwait(false)
 				: null;
 			var defaultBranch = string.IsNullOrWhiteSpace(detectedDefaultBranch)
 				? row.Assessment?.DefaultBranch ?? "main"
@@ -577,7 +637,7 @@ public class DashboardService
 			return applied;
 		}
 
-		if (!await VerifyLocalCloneAsync(row, Path.GetFileName(row.LocalPath), onOutput, cancellationToken).ConfigureAwait(false))
+		if (!await VerifyWritableCloneAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
 		{
 			return applied;
 		}
@@ -629,7 +689,7 @@ public class DashboardService
 			return applied;
 		}
 
-		if (!await VerifyLocalCloneAsync(row, Path.GetFileName(row.LocalPath), onOutput, cancellationToken).ConfigureAwait(false))
+		if (!await VerifyWritableCloneAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
 		{
 			return applied;
 		}
@@ -702,8 +762,8 @@ public class DashboardService
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var repoName = ExtractRepoName(row.RepositoryUrl);
-		if (repoName is null)
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null)
 		{
 			row.Status = PackageStatus.Error;
 			row.StatusMessage = "Cannot determine repo name.";
@@ -713,7 +773,7 @@ public class DashboardService
 		row.Status = PackageStatus.Building;
 		row.StatusMessage = "Building...";
 
-		var (success, _) = await _localRepo.BuildAsync(repoName, onOutput, cancellationToken).ConfigureAwait(false);
+		var (success, _) = await _localRepo.BuildAsync(repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 
 		row.Status = success ? PackageStatus.BuildSucceeded : PackageStatus.BuildFailed;
 		row.StatusMessage = success ? "Build succeeded." : "Build failed.";
@@ -727,15 +787,15 @@ public class DashboardService
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var repoName = ExtractRepoName(row.RepositoryUrl);
-		if (repoName is null)
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null)
 		{
 			row.Status = PackageStatus.Error;
 			row.StatusMessage = "Cannot determine repo name.";
 			return;
 		}
 
-		var isClonedLocally = _localRepo.IsClonedLocally(repoName);
+		var isClonedLocally = _localRepo.IsClonedLocally(repoIdentity);
 		if (!isClonedLocally)
 		{
 			var cloneUrl = BuildCloneUrl(row);
@@ -748,7 +808,7 @@ public class DashboardService
 			}
 
 			onOutput?.Invoke($"Cloning {row.RepositoryFullName}...");
-			var (cloneSuccess, cloneOutput) = await _localRepo.CloneAsync(cloneUrl, repoName, onOutput, cancellationToken).ConfigureAwait(false);
+			var (cloneSuccess, cloneOutput) = await _localRepo.CloneAsync(cloneUrl, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 			if (!cloneSuccess)
 			{
 				row.Status = PackageStatus.Error;
@@ -758,10 +818,10 @@ public class DashboardService
 			}
 
 			row.IsClonedLocally = true;
-			row.LocalPath = _localRepo.GetLocalPath(repoName);
+			row.LocalPath = _localRepo.GetLocalPath(repoIdentity);
 			onOutput?.Invoke($"Cloned to {row.LocalPath}");
 		}
-		else if (!await VerifyLocalCloneAsync(row, repoName, onOutput, cancellationToken).ConfigureAwait(false))
+		else if (!await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false))
 		{
 			// An existing folder of the right name holding the wrong repository: syncing it would pull
 			// somebody else's history into what this row believes is its checkout.
@@ -773,7 +833,7 @@ public class DashboardService
 		row.Status = PackageStatus.GitSyncing;
 		row.StatusMessage = "Syncing with remote...";
 
-		var (success, _) = await _localRepo.GitSyncAsync(repoName, onOutput, cancellationToken).ConfigureAwait(false);
+		var (success, _) = await _localRepo.GitSyncAsync(repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 
 		await RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 
@@ -791,8 +851,8 @@ public class DashboardService
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var repoName = ExtractRepoName(row.RepositoryUrl);
-		if (repoName is null)
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null)
 		{
 			onOutput?.Invoke("❌ Cannot determine repo name.");
 			return false;
@@ -800,18 +860,18 @@ public class DashboardService
 
 		// The last line of defence, and the one that matters most: everything before this is local and
 		// recoverable, whereas a push is not.
-		if (!await VerifyLocalCloneAsync(row, repoName, onOutput, cancellationToken).ConfigureAwait(false))
+		if (!await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false))
 		{
 			return false;
 		}
 
-		var (success, _) = await _localRepo.CommitAndPushAsync(repoName, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
+		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
 
 		if (success)
 		{
 			// Refresh git status after push
-			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
-			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
+			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			row.IsSyncedWithOrigin = true;
 		}
 
@@ -835,6 +895,16 @@ public class DashboardService
 		=> row.RepositoryFullName is null
 			? null
 			: $"https://github.com/{row.RepositoryFullName}.git";
+
+	/// <summary>
+	/// The <c>owner/name</c> identity that locates this row's repository, both on GitHub and on disk.
+	/// </summary>
+	/// <remarks>
+	/// Everything that touches the local clone goes through here. It used to derive a bare repository
+	/// name from the URL and discard the owner, which is what let two organisations owning a same-named
+	/// repository share one directory.
+	/// </remarks>
+	private static string? RepoIdentity(PackageDashboardRow row) => row.RepositoryFullName;
 
 	/// <summary>
 	/// Reduces a git remote URL to <c>owner/name</c>, lower-cased, so an https remote and an ssh one
@@ -878,14 +948,14 @@ public class DashboardService
 	/// to it. Returns false — and says why — when it is not, or when it cannot be established.
 	/// </summary>
 	/// <remarks>
-	/// Local paths are derived from the repository name alone, so the directory a row resolves to can
-	/// legitimately contain a different repository of the same name belonging to somebody else. Since
-	/// the operations that follow edit files, commit and push, an unverifiable remote is treated as a
-	/// mismatch: refusing to act is recoverable, pushing to the wrong repository is not.
+	/// Paths are now qualified by owner, so this is no longer the only thing standing between a fix and
+	/// the wrong repository — but a directory's name still does not prove what is checked out in it, and
+	/// the operations that follow edit files, commit and push. An unverifiable remote is therefore
+	/// treated as a mismatch: refusing to act is recoverable, pushing to the wrong repository is not.
 	/// </remarks>
 	private async Task<bool> VerifyLocalCloneAsync(
 		PackageDashboardRow row,
-		string repoName,
+		string repoIdentity,
 		Action<string>? onOutput,
 		CancellationToken cancellationToken)
 	{
@@ -896,24 +966,93 @@ public class DashboardService
 			return false;
 		}
 
-		var origin = await _localRepo.GetOriginUrlAsync(repoName, cancellationToken).ConfigureAwait(false);
+		var origin = await _localRepo.GetOriginUrlAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		var actual = NormaliseRepoIdentity(origin);
 
 		if (actual is null)
 		{
-			onOutput?.Invoke($"❌ {row.PackageId}: cannot read the origin remote of {_localRepo.GetLocalPath(repoName)}, so it cannot be confirmed as {row.RepositoryFullName}. Refusing to write to it.");
+			onOutput?.Invoke($"❌ {row.PackageId}: cannot read the origin remote of {_localRepo.GetLocalPath(repoIdentity)}, so it cannot be confirmed as {row.RepositoryFullName}. Refusing to write to it.");
 			return false;
 		}
 
 		if (!string.Equals(actual, expected, StringComparison.Ordinal))
 		{
 			onOutput?.Invoke(
-				$"❌ {row.PackageId}: {_localRepo.GetLocalPath(repoName)} is a clone of {actual}, not {expected}. " +
-				"Local folders are named after the repository only, so a different repository of the same name can occupy it. Refusing to write to the wrong repository.");
+				$"❌ {row.PackageId}: {_localRepo.GetLocalPath(repoIdentity)} is a clone of {actual}, not {expected}. " +
+				"Refusing to write to the wrong repository.");
 			return false;
 		}
 
 		return true;
+	}
+
+	/// <summary>
+	/// Confirms the clone has no uncommitted changes before the app starts making its own. Returns
+	/// false — and says why — when it does, or when the state cannot be established.
+	/// </summary>
+	/// <remarks>
+	/// The commit that follows a remediation stages with <c>git add -A</c>, so anything already modified
+	/// in the working tree would be swept into it and pushed. Nothing the app does needs to begin from a
+	/// dirty tree, so an unexplained change is treated as a reason to stop: whatever it is, it did not
+	/// come from here, and committing it under a governance message would misattribute it. An
+	/// indeterminate answer fails closed for the same reason the identity check does.
+	/// </remarks>
+	private async Task<bool> VerifyCleanWorkingTreeAsync(
+		PackageDashboardRow row,
+		string repoIdentity,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var isClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.IsWorkingTreeClean = isClean;
+
+		if (isClean == true)
+		{
+			return true;
+		}
+
+		if (isClean is null)
+		{
+			onOutput?.Invoke($"❌ {row.PackageId}: cannot determine whether {_localRepo.GetLocalPath(repoIdentity)} has uncommitted changes. Refusing to write to it.");
+			return false;
+		}
+
+		var preview = await _localRepo
+			.GetWorkingTreeStatusPreviewAsync(repoIdentity, 3, cancellationToken)
+			.ConfigureAwait(false);
+
+		// Deliberately says nothing about whose changes these are, because it cannot tell: a fix applied
+		// and not yet committed looks the same as somebody else's work in progress. Either way the answer
+		// is the same, so the message says what to do rather than guessing at what happened.
+		onOutput?.Invoke(
+			$"❌ {row.PackageId}: {_localRepo.GetLocalPath(repoIdentity)} has uncommitted changes, which a governance commit would stage and push along with its own. Commit or discard them first.");
+
+		foreach (var line in preview)
+		{
+			onOutput?.Invoke($"    {line}");
+		}
+
+		return false;
+	}
+
+	/// <summary>
+	/// The single gate every write to a local clone passes through: it is the repository we think it is,
+	/// and it has nothing uncommitted in it. Returns false — having said why — if either does not hold.
+	/// </summary>
+	private async Task<bool> VerifyWritableCloneAsync(
+		PackageDashboardRow row,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null)
+		{
+			onOutput?.Invoke($"❌ {row.PackageId}: no repository is known for this package, so nothing can be applied to it.");
+			return false;
+		}
+
+		return await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false)
+			&& await VerifyCleanWorkingTreeAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 	}
 
 	// ── Issue-centric ("dimensional flip") view + bulk apply across repositories ──
@@ -1040,6 +1179,19 @@ public class DashboardService
 
 			try
 			{
+				// Checked before the sync rather than after it: a rebase onto an already-dirty tree is
+				// its own hazard, and skipping the repository entirely is the safe outcome either way.
+				if (row.IsClonedLocally && !await VerifyWritableCloneAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
+				{
+					outcome.Results.Add(new RepoApplyResult
+					{
+						RepositoryFullName = name,
+						Status = RepoApplyStatus.Skipped,
+						Message = "Skipped: the local clone is not in a state it is safe to write to."
+					});
+					continue;
+				}
+
 				// Guardrail: never commit onto a stale clone — sync, then reassess the fresh tree.
 				await GitSyncAsync(row, onOutput, cancellationToken).ConfigureAwait(false);
 				await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
@@ -1112,16 +1264,16 @@ public class DashboardService
 	/// </summary>
 	public async Task RefreshGitStatusAsync(PackageDashboardRow row, CancellationToken cancellationToken = default)
 	{
-		var repoName = ExtractRepoName(row.RepositoryUrl);
-		if (repoName is null || !row.IsClonedLocally)
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null || !row.IsClonedLocally)
 		{
 			return;
 		}
 
-		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
-		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoName, cancellationToken).ConfigureAwait(false);
-		row.IsSyncedWithOrigin = await _localRepo.IsSyncedWithOriginAsync(repoName, cancellationToken).ConfigureAwait(false);
-		row.LatestTag = await _localRepo.GetLatestTagAsync(repoName, cancellationToken).ConfigureAwait(false);
+		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.IsSyncedWithOrigin = await _localRepo.IsSyncedWithOriginAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1132,13 +1284,13 @@ public class DashboardService
 		int maxLines = 3,
 		CancellationToken cancellationToken = default)
 	{
-		var repoName = ExtractRepoName(row.RepositoryUrl);
-		if (repoName is null || !row.IsClonedLocally)
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null || !row.IsClonedLocally)
 		{
 			return [];
 		}
 
-		return await _localRepo.GetWorkingTreeStatusPreviewAsync(repoName, maxLines, cancellationToken).ConfigureAwait(false);
+		return await _localRepo.GetWorkingTreeStatusPreviewAsync(repoIdentity, maxLines, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1149,8 +1301,8 @@ public class DashboardService
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var repoName = ExtractRepoName(row.RepositoryUrl);
-		if (repoName is null)
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null)
 		{
 			row.Status = PackageStatus.Error;
 			row.StatusMessage = "Cannot determine repo name.";
@@ -1160,7 +1312,7 @@ public class DashboardService
 		row.Status = PackageStatus.Testing;
 		row.StatusMessage = "Running tests...";
 
-		var (success, _) = await _localRepo.RunTestsAsync(repoName, onOutput, cancellationToken).ConfigureAwait(false);
+		var (success, _) = await _localRepo.RunTestsAsync(repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 
 		row.Status = success ? PackageStatus.TestsPassed : PackageStatus.TestsFailed;
 		row.StatusMessage = success ? "All tests passed." : "Tests failed.";
@@ -1174,8 +1326,8 @@ public class DashboardService
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var repoName = ExtractRepoName(row.RepositoryUrl);
-		if (repoName is null)
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null)
 		{
 			row.Status = PackageStatus.Error;
 			row.StatusMessage = "Cannot determine repo name.";
@@ -1185,7 +1337,7 @@ public class DashboardService
 		row.Status = PackageStatus.Publishing;
 		row.StatusMessage = "Publishing...";
 
-		var (success, _) = await _localRepo.RunPublishScriptAsync(repoName, onOutput, cancellationToken).ConfigureAwait(false);
+		var (success, _) = await _localRepo.RunPublishScriptAsync(repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 
 		row.Status = success ? PackageStatus.Published : PackageStatus.Error;
 		row.StatusMessage = success ? "Published successfully." : "Publish failed.";
@@ -1214,33 +1366,6 @@ public class DashboardService
 		}
 
 		return summaries;
-	}
-
-	private static string? ExtractRepoName(string? url)
-	{
-		if (url is null)
-		{
-			return null;
-		}
-
-		try
-		{
-			var uri = new Uri(url);
-			var segments = uri.AbsolutePath.Trim('/').Split('/');
-			if (segments.Length < 2)
-			{
-				return null;
-			}
-
-			var name = segments[1];
-			return name.EndsWith(".git", StringComparison.OrdinalIgnoreCase)
-				? name[..^4]
-				: name;
-		}
-		catch
-		{
-			return null;
-		}
 	}
 
 	private static string FormatDataValue(object value) => value switch

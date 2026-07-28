@@ -14,6 +14,13 @@ public enum RepoApplyStatus
 	/// <summary>No automated remediation exists for this issue.</summary>
 	NoRemediation,
 
+	/// <summary>
+	/// Left alone because its local clone was not in a state it was safe to write to — it holds a
+	/// different repository than expected, or it has uncommitted changes a governance commit would
+	/// have swept up. Distinct from <see cref="Failed"/>: nothing went wrong and nothing was touched.
+	/// </summary>
+	Skipped,
+
 	/// <summary>The operation failed for this repository.</summary>
 	Failed
 }
@@ -49,4 +56,7 @@ public sealed class BulkApplyOutcome
 
 	/// <summary>The number of repositories that failed.</summary>
 	public int FailedCount => Results.Count(r => r.Status == RepoApplyStatus.Failed);
+
+	/// <summary>The number of repositories left alone because writing to them was not safe.</summary>
+	public int SkippedCount => Results.Count(r => r.Status == RepoApplyStatus.Skipped);
 }

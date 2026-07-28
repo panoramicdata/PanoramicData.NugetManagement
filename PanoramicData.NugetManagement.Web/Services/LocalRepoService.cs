@@ -38,11 +38,23 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
-	/// Gets the root directory where repos are expected to be cloned as siblings.
-	/// Walks up from the current directory to find the .git folder (this solution's
-	/// own repository), then returns its parent — which is the org-level directory
-	/// containing all sibling repos.
+	/// The app-owned clone directory, created alongside this application's own repository.
 	/// </summary>
+	private const string DefaultReposFolderName = ".nugetmanagement-repos";
+
+	/// <summary>
+	/// Gets the root directory the app clones repositories into.
+	/// </summary>
+	/// <remarks>
+	/// This is deliberately a directory of the app's own, and not the directory that holds the user's
+	/// working copies. It used to be the latter: the walk below found this application's repository and
+	/// returned its <em>parent</em>, so every clone, sync, commit and push the app performed happened
+	/// inside whatever the user had checked out there. Since <see cref="CommitAndPushAsync"/> stages with
+	/// <c>git add -A</c>, a bulk fix could commit and push the user's uncommitted work along with its own
+	/// changes, on whatever branch they happened to be on. Cloning into the app's own root keeps the two
+	/// apart, and lets clones be qualified by owner (see <see cref="GetLocalPath"/>) without dictating how
+	/// the user arranges their own repositories.
+	/// </remarks>
 	public string GetReposRoot()
 	{
 		if (_settings.LocalReposRoot is not null)
@@ -50,42 +62,65 @@ public partial class LocalRepoService
 			return _settings.LocalReposRoot;
 		}
 
-		// Walk up from the current working directory to find a .git folder.
-		// The directory containing .git is the solution's repo root;
-		// its parent is where sibling repos live.
+		// Walk up from the current working directory to find a .git folder: the directory containing it
+		// is this application's own repository, and the app's clone root sits beside it — near the user's
+		// code (so paths stay short and on the same volume) but plainly not one of their repositories.
 		var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
 		while (dir is not null)
 		{
 			if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
 			{
-				return dir.Parent?.FullName ?? dir.FullName;
+				return Path.Combine(dir.Parent?.FullName ?? dir.FullName, DefaultReposFolderName);
 			}
 
 			dir = dir.Parent;
 		}
 
-		// Fallback: parent of the current directory
-		return Path.GetDirectoryName(Directory.GetCurrentDirectory())
-			?? Directory.GetCurrentDirectory();
+		// Published or installed, with no repository above us: fall back to per-user application data.
+		return Path.Combine(
+			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+			"PanoramicData.NugetManagement",
+			"repos");
 	}
 
 	/// <summary>
-	/// Gets the local path for a repository by name.
+	/// Gets the local path for a repository, given its <c>owner/name</c> identity.
 	/// </summary>
-	public string GetLocalPath(string repoName)
-		=> Path.Combine(GetReposRoot(), repoName);
+	/// <remarks>
+	/// Paths are qualified by owner, so two organisations owning a same-named repository resolve to
+	/// different directories instead of colliding in one. A bare name (no owner) is still accepted and
+	/// resolves directly under the root, so a hand-configured or legacy layout keeps working.
+	/// </remarks>
+	public string GetLocalPath(string repoIdentity)
+	{
+		var (owner, name) = SplitIdentity(repoIdentity);
+		return owner is null
+			? Path.Combine(GetReposRoot(), name)
+			: Path.Combine(GetReposRoot(), owner, name);
+	}
+
+	/// <summary>
+	/// Splits an <c>owner/name</c> identity into its parts, tolerating a bare name.
+	/// </summary>
+	private static (string? Owner, string Name) SplitIdentity(string repoIdentity)
+	{
+		var segments = repoIdentity.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		return segments.Length >= 2
+			? (segments[^2], segments[^1])
+			: (null, segments.Length == 1 ? segments[0] : repoIdentity);
+	}
 
 	/// <summary>
 	/// Gets the URL of the clone's <c>origin</c> remote, or null if it cannot be determined.
 	/// </summary>
 	/// <remarks>
-	/// Local paths are keyed on repository name alone, so a directory's name does not prove which
-	/// repository is actually checked out in it. This is the only reliable way to find out, and callers
-	/// use it to confirm they are about to write to the repository they think they are.
+	/// A directory's name does not prove which repository is checked out in it — it can be renamed, or
+	/// re-pointed at a fork. This is the only reliable way to find out, and callers use it to confirm
+	/// they are about to write to the repository they think they are.
 	/// </remarks>
-	public async Task<string?> GetOriginUrlAsync(string repoName, CancellationToken cancellationToken = default)
+	public async Task<string?> GetOriginUrlAsync(string repoIdentity, CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
 		{
 			return null;
@@ -100,18 +135,18 @@ public partial class LocalRepoService
 	/// <summary>
 	/// Checks if a repository is cloned locally.
 	/// </summary>
-	public bool IsClonedLocally(string repoName)
+	public bool IsClonedLocally(string repoIdentity)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		return Directory.Exists(Path.Combine(path, ".git"));
 	}
 
 	/// <summary>
 	/// Finds the first .slnx file in a local repository, or null if none exists.
 	/// </summary>
-	public string? FindSlnxFile(string repoName)
+	public string? FindSlnxFile(string repoIdentity)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
 		{
 			return null;
@@ -131,9 +166,9 @@ public partial class LocalRepoService
 	/// <summary>
 	/// Gets the current branch name for a local repository.
 	/// </summary>
-	public async Task<string?> GetCurrentBranchAsync(string repoName, CancellationToken cancellationToken = default)
+	public async Task<string?> GetCurrentBranchAsync(string repoIdentity, CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
 		{
 			return null;
@@ -146,9 +181,9 @@ public partial class LocalRepoService
 	/// <summary>
 	/// Gets the remote default branch name for origin when available.
 	/// </summary>
-	public async Task<string?> GetRemoteDefaultBranchAsync(string repoName, CancellationToken cancellationToken = default)
+	public async Task<string?> GetRemoteDefaultBranchAsync(string repoIdentity, CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
 		{
 			return null;
@@ -197,9 +232,9 @@ public partial class LocalRepoService
 	/// <summary>
 	/// Checks whether the working tree is clean.
 	/// </summary>
-	public async Task<bool?> IsWorkingTreeCleanAsync(string repoName, CancellationToken cancellationToken = default)
+	public async Task<bool?> IsWorkingTreeCleanAsync(string repoIdentity, CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
 		{
 			return null;
@@ -208,7 +243,7 @@ public partial class LocalRepoService
 		var (exitCode, output) = await RunCommandAsync(path, "git", "status --porcelain", cancellationToken).ConfigureAwait(false);
 		if (exitCode != 0)
 		{
-			_logger.LogWarning("Failed to determine working tree cleanliness for {RepoName}. git status exit code: {ExitCode}", repoName, exitCode);
+			_logger.LogWarning("Failed to determine working tree cleanliness for {RepoName}. git status exit code: {ExitCode}", repoIdentity, exitCode);
 			return null;
 		}
 
@@ -219,11 +254,11 @@ public partial class LocalRepoService
 	/// Gets a preview of git status porcelain lines for dirty working tree diagnostics.
 	/// </summary>
 	public async Task<IReadOnlyList<string>> GetWorkingTreeStatusPreviewAsync(
-		string repoName,
+		string repoIdentity,
 		int maxLines = 3,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path) || maxLines <= 0)
 		{
 			return [];
@@ -245,9 +280,9 @@ public partial class LocalRepoService
 	/// Returns the latest git tag reachable from HEAD (e.g. "1.0.55").
 	/// Returns null if the repo has no tags or the command fails.
 	/// </summary>
-	public async Task<string?> GetLatestTagAsync(string repoName, CancellationToken cancellationToken = default)
+	public async Task<string?> GetLatestTagAsync(string repoIdentity, CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
 		{
 			return null;
@@ -267,9 +302,9 @@ public partial class LocalRepoService
 	/// Performs a git fetch first, then compares HEAD against origin/{branch}.
 	/// Returns true if HEAD matches origin/{branch} (not behind and not ahead).
 	/// </summary>
-	public async Task<bool?> IsSyncedWithOriginAsync(string repoName, CancellationToken cancellationToken = default)
+	public async Task<bool?> IsSyncedWithOriginAsync(string repoIdentity, CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
 		{
 			return null;
@@ -317,26 +352,31 @@ public partial class LocalRepoService
 	/// </summary>
 	public async Task<(bool Success, string Output)> CloneAsync(
 		string cloneUrl,
-		string repoName,
+		string repoIdentity,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var targetPath = GetLocalPath(repoName);
+		var targetPath = GetLocalPath(repoIdentity);
+
+		// The owner directory (and the clone root itself, on first use) will not exist yet.
+		var parent = Path.GetDirectoryName(targetPath) ?? GetReposRoot();
+		Directory.CreateDirectory(parent);
+
 		_logger.LogInformation("Cloning {Url} to {Path}", cloneUrl, targetPath);
-		return await RunCommandWithStreamingAsync(GetReposRoot(), "git", $"clone {cloneUrl} {repoName}", onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(parent, "git", $"clone {cloneUrl} {Path.GetFileName(targetPath)}", onOutput, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
 	/// Creates a branch, commits changes, and pushes.
 	/// </summary>
 	public async Task<(bool Success, string Output)> CreateBranchCommitPushAsync(
-		string repoName,
+		string repoIdentity,
 		string branchName,
 		string commitMessage,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 
 		// Create and checkout branch
 		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", $"checkout -b {branchName}", onOutput, cancellationToken).ConfigureAwait(false);
@@ -368,12 +408,12 @@ public partial class LocalRepoService
 	/// Checks out main and merges a branch.
 	/// </summary>
 	public async Task<(bool Success, string Output)> MergeToMainAsync(
-		string repoName,
+		string repoIdentity,
 		string branchName,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 
 		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", "checkout main", onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
@@ -404,11 +444,11 @@ public partial class LocalRepoService
 	/// Runs dotnet build on the repository.
 	/// </summary>
 	public async Task<(bool Success, string Output)> BuildAsync(
-		string repoName,
+		string repoIdentity,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Building in {Path}", path);
 		return await RunCommandWithStreamingAsync(path, "dotnet", "build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
 	}
@@ -418,11 +458,11 @@ public partial class LocalRepoService
 	/// stale/absent restore never produces a false build failure (and a false rollback).
 	/// </summary>
 	public async Task<(bool Success, string Output)> BuildWithRestoreAsync(
-		string repoName,
+		string repoIdentity,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Building (with restore) in {Path}", path);
 		return await RunCommandWithStreamingAsync(path, "dotnet", "build --verbosity quiet", onOutput, cancellationToken).ConfigureAwait(false);
 	}
@@ -431,11 +471,11 @@ public partial class LocalRepoService
 	/// Gets the most recent commits (hash + subject line), newest first.
 	/// </summary>
 	public async Task<IReadOnlyList<(string Hash, string Subject)>> GetRecentCommitsAsync(
-		string repoName,
+		string repoIdentity,
 		int count = 20,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		var (ok, output) = await RunCommandWithStreamingAsync(
 			path, "git", $"log -n {count} --pretty=format:%H%x1f%s", null, cancellationToken).ConfigureAwait(false);
 		if (!ok)
@@ -461,13 +501,13 @@ public partial class LocalRepoService
 	/// branch afterwards. Used to confirm whether a build regression was introduced by our commits.
 	/// </summary>
 	public async Task<(bool Success, string Output)> BuildAtCommitAsync(
-		string repoName,
+		string repoIdentity,
 		string commitHash,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
-		var branch = await GetCurrentBranchAsync(repoName, cancellationToken).ConfigureAwait(false);
+		var path = GetLocalPath(repoIdentity);
+		var branch = await GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 
 		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", $"checkout {commitHash}", onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
@@ -495,13 +535,13 @@ public partial class LocalRepoService
 	/// the revert is aborted and failure is returned (no partial state is pushed).
 	/// </summary>
 	public async Task<(bool Success, string Output)> RevertRangeAndPushAsync(
-		string repoName,
+		string repoIdentity,
 		string lastGoodCommitHash,
 		string message,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 
 		var (ok, output) = await RunCommandWithStreamingAsync(
 			path, "git", $"revert --no-edit --no-commit {lastGoodCommitHash}..HEAD", onOutput, cancellationToken).ConfigureAwait(false);
@@ -524,11 +564,11 @@ public partial class LocalRepoService
 	/// Syncs a local repository with its remote: fetch, pull (rebase), push.
 	/// </summary>
 	public async Task<(bool Success, string Output)> GitSyncAsync(
-		string repoName,
+		string repoIdentity,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Git syncing {Path}", path);
 
 		// Fetch
@@ -554,12 +594,12 @@ public partial class LocalRepoService
 	/// Commits all local changes, fetches from origin, rebases, and pushes.
 	/// </summary>
 	public async Task<(bool Success, string Output)> CommitAndPushAsync(
-		string repoName,
+		string repoIdentity,
 		string commitMessage,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Commit and push in {Path}", path);
 
 		// Stage all changes
@@ -606,11 +646,11 @@ public partial class LocalRepoService
 	/// when tests fail (MSBuild's VSTest target reports its failure as a build failure).
 	/// </summary>
 	public async Task<(bool Success, string Output)> RunTestsAsync(
-		string repoName,
+		string repoIdentity,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Running tests in {Path}", path);
 
 		var testProjects = GetConfiguredTestProjects(path);
@@ -784,11 +824,11 @@ public partial class LocalRepoService
 	/// Runs the Publish.ps1 script.
 	/// </summary>
 	public async Task<(bool Success, string Output)> RunPublishScriptAsync(
-		string repoName,
+		string repoIdentity,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
-		var path = GetLocalPath(repoName);
+		var path = GetLocalPath(repoIdentity);
 		var publishScript = Path.Combine(path, "Publish.ps1");
 		if (!File.Exists(publishScript))
 		{

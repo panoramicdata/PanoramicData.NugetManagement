@@ -48,9 +48,14 @@ public class AppSettings
 	public string? CodacyApiToken { get; set; }
 
 	/// <summary>
-	/// The local root directory where sibling repos are cloned.
-	/// Defaults to the parent of the current working directory.
+	/// The root directory the app clones repositories into, as <c>&lt;root&gt;/&lt;owner&gt;/&lt;name&gt;</c>.
+	/// Defaults to a <c>.nugetmanagement-repos</c> directory beside this application's own repository.
 	/// </summary>
+	/// <remarks>
+	/// Point this somewhere of the app's own, never at a directory holding working copies you edit
+	/// yourself: the app commits with <c>git add -A</c>, so anything uncommitted it finds in a repository
+	/// it is fixing would be committed and pushed along with the fix.
+	/// </remarks>
 	public string? LocalReposRoot { get; set; }
 
 	/// <summary>
