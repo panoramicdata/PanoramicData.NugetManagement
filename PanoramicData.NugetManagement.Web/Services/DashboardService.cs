@@ -16,6 +16,7 @@ public class DashboardService
 	private readonly NuGetDiscoveryService _nuget;
 	private readonly LocalRepoService _localRepo;
 	private readonly RegressionGuardService _regressionGuard;
+	private readonly RuntimeSettingsService _runtimeSettings;
 	private readonly AppSettings _settings;
 	private readonly ILogger<DashboardService> _logger;
 
@@ -27,12 +28,14 @@ public class DashboardService
 		LocalRepoService localRepo,
 		RemediationRegistry remediationRegistry,
 		RegressionGuardService regressionGuard,
+		RuntimeSettingsService runtimeSettings,
 		IOptions<AppSettings> settings,
 		ILogger<DashboardService> logger)
 	{
 		_nuget = nuget;
 		_localRepo = localRepo;
 		_regressionGuard = regressionGuard;
+		_runtimeSettings = runtimeSettings;
 		RemediationRegistry = remediationRegistry;
 		_settings = settings.Value;
 		_logger = logger;
@@ -41,9 +44,32 @@ public class DashboardService
 	/// <summary>
 	/// Discovers all packages and builds initial dashboard rows.
 	/// </summary>
-	public async Task<List<PackageDashboardRow>> DiscoverPackagesAsync(CancellationToken cancellationToken = default)
+	/// <param name="organization">
+	/// When supplied, only this organisation is discovered, so rediscovering one organisation does not
+	/// pay the cost of every other. When null, every configured organisation is discovered.
+	/// </param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	public async Task<List<PackageDashboardRow>> DiscoverPackagesAsync(
+		string? organization = null,
+		CancellationToken cancellationToken = default)
 	{
-		var packages = await _nuget.DiscoverOrganizationPackagesAsync(cancellationToken).ConfigureAwait(false);
+		var organizations = organization is null
+			? _runtimeSettings.Organizations
+			: [organization];
+
+		var packages = new List<NuGetPackageInfo>();
+
+		// Discover each organisation in turn and concatenate. Sequential rather than parallel: this
+		// runs once at start-up, and NuGet's search API is the shared resource being paged through.
+		foreach (var owner in organizations)
+		{
+			var discovered = await _nuget
+				.DiscoverOrganizationPackagesAsync(owner, cancellationToken)
+				.ConfigureAwait(false);
+
+			packages.AddRange(discovered);
+		}
+
 		var rows = new List<PackageDashboardRow>();
 
 		foreach (var pkg in packages)
@@ -54,8 +80,9 @@ public class DashboardService
 			var row = new PackageDashboardRow
 			{
 				PackageId = pkg.PackageId,
+				Organization = pkg.Organization,
 				LatestVersion = pkg.LatestVersion,
-				RepositoryFullName = repoName is not null ? $"{pkg.RepositoryOwner ?? _settings.GitHubOrganization}/{repoName}" : null,
+				RepositoryFullName = repoName is not null ? $"{pkg.RepositoryOwner ?? pkg.Organization}/{repoName}" : null,
 				RepositoryUrl = pkg.RepositoryUrl,
 				IsClonedLocally = isCloned,
 				LocalPath = repoName is not null ? _localRepo.GetLocalPath(repoName) : null,

@@ -13,6 +13,14 @@ public class PackageDashboardRow
 	public required string PackageId { get; init; }
 
 	/// <summary>
+	/// The organisation this package was discovered under. Used to group rows into the
+	/// per-organisation branches of the navigation tree and to scope re-assessment.
+	/// Not the same as the owner segment of <see cref="RepositoryFullName"/>, which can differ
+	/// for vendored or forked packages.
+	/// </summary>
+	public string Organization { get; set; } = string.Empty;
+
+	/// <summary>
 	/// The latest published version on NuGet.
 	/// </summary>
 	public string? LatestVersion { get; set; }

@@ -24,12 +24,15 @@ public class NuGetDiscoveryService
 	}
 
 	/// <summary>
-	/// Searches NuGet for all packages owned by the configured organization.
+	/// Searches NuGet for all packages owned by the given organization, or by the configured
+	/// organization when <paramref name="organization"/> is null or blank.
 	/// Returns package IDs with their latest versions and repository URLs.
 	/// </summary>
-	public async Task<List<NuGetPackageInfo>> DiscoverOrganizationPackagesAsync(CancellationToken cancellationToken = default)
+	public async Task<List<NuGetPackageInfo>> DiscoverOrganizationPackagesAsync(
+		string? organization = null,
+		CancellationToken cancellationToken = default)
 	{
-		var owner = _settings.NuGetOrganization;
+		var owner = string.IsNullOrWhiteSpace(organization) ? _settings.NuGetOrganization : organization.Trim();
 		_logger.LogInformation("Discovering NuGet packages for owner '{Owner}'...", owner);
 
 		var repository = NuGet.Protocol.Core.Types.Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
@@ -62,9 +65,10 @@ public class NuGetDiscoveryService
 				{
 					PackageId = result.Identity.Id,
 					LatestVersion = result.Identity.Version.ToNormalizedString(),
+					Organization = owner,
 					RepositoryUrl = repoUrl,
 					RepositoryOwner = ExtractRepoOwner(repoUrl),
-						RepositoryName = ExtractRepoName(repoUrl)
+					RepositoryName = ExtractRepoName(repoUrl)
 				});
 			}
 
@@ -167,6 +171,15 @@ public class NuGetPackageInfo
 	/// The latest stable version.
 	/// </summary>
 	public required string LatestVersion { get; init; }
+
+	/// <summary>
+	/// The organisation this package was discovered under (the NuGet owner searched for).
+	/// This is deliberately distinct from <see cref="RepositoryOwner"/>: a vendored or forked
+	/// package can be owned by one organisation on NuGet while its repository lives under
+	/// another (e.g. discovered under "panoramicdata" but hosted at EPPlusSoftware/EPPlus), so
+	/// grouping by repository owner would file it under the wrong organisation.
+	/// </summary>
+	public required string Organization { get; init; }
 
 	/// <summary>
 	/// The GitHub repository URL extracted from package metadata.

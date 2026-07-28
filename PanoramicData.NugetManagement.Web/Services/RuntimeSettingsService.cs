@@ -115,6 +115,109 @@ public class RuntimeSettingsService
 		SaveToDisk();
 	}
 
+	/// <summary>
+	/// Gets the organisations to manage, in display order. Falls back to the single configured
+	/// organisation when none have been added explicitly, so an existing single-organisation
+	/// setup behaves exactly as it did before.
+	/// </summary>
+	public IReadOnlyList<string> Organizations
+	{
+		get
+		{
+			lock (_lock)
+			{
+				return _runtimeSettings.Organizations.Count > 0
+					? [.. _runtimeSettings.Organizations]
+					: [_appSettings.NuGetOrganization];
+			}
+		}
+	}
+
+	/// <summary>
+	/// Adds an organisation and persists the list. Returns false when the name is blank or already
+	/// present (compared case-insensitively, as GitHub organisation names are case-insensitive).
+	/// </summary>
+	/// <remarks>
+	/// When no organisations have been persisted yet the effective list is implicitly the single
+	/// configured organisation, so that one is seeded first. Without this, adding a second
+	/// organisation would silently replace the configured one rather than joining it.
+	/// </remarks>
+	public bool AddOrganization(string name)
+	{
+		var trimmed = name?.Trim();
+		if (string.IsNullOrEmpty(trimmed))
+		{
+			return false;
+		}
+
+		lock (_lock)
+		{
+			SeedOrganizationsFromConfigurationIfEmpty();
+
+			if (_runtimeSettings.Organizations.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+			{
+				return false;
+			}
+
+			_runtimeSettings.Organizations.Add(trimmed);
+		}
+
+		SaveToDisk();
+		_logger.LogInformation("Added organisation '{Organization}'.", trimmed);
+		return true;
+	}
+
+	/// <summary>
+	/// Removes an organisation and persists the list. Returns false when the organisation is not
+	/// present, or when it is the only one left — at least one organisation must remain, otherwise
+	/// the list would fall back to the configured organisation and the removal would appear to
+	/// have silently failed.
+	/// </summary>
+	public bool RemoveOrganization(string name)
+	{
+		var trimmed = name?.Trim();
+		if (string.IsNullOrEmpty(trimmed))
+		{
+			return false;
+		}
+
+		lock (_lock)
+		{
+			SeedOrganizationsFromConfigurationIfEmpty();
+
+			if (_runtimeSettings.Organizations.Count <= 1)
+			{
+				return false;
+			}
+
+			var match = _runtimeSettings.Organizations
+				.FirstOrDefault(o => string.Equals(o, trimmed, StringComparison.OrdinalIgnoreCase));
+
+			if (match is null)
+			{
+				return false;
+			}
+
+			_runtimeSettings.Organizations.Remove(match);
+		}
+
+		SaveToDisk();
+		_logger.LogInformation("Removed organisation '{Organization}'.", trimmed);
+		return true;
+	}
+
+	/// <summary>
+	/// Materialises the implicit single-organisation default into the persisted list.
+	/// Callers must already hold <see cref="_lock"/>.
+	/// </summary>
+	private void SeedOrganizationsFromConfigurationIfEmpty()
+	{
+		if (_runtimeSettings.Organizations.Count == 0 && !string.IsNullOrWhiteSpace(_appSettings.NuGetOrganization))
+		{
+			_runtimeSettings.Organizations.Add(_appSettings.NuGetOrganization);
+		}
+	}
+
 	private RuntimeSettings LoadFromDisk()
 	{
 		try
@@ -126,6 +229,10 @@ public class RuntimeSettingsService
 				if (settings is not null)
 				{
 					_logger.LogInformation("Loaded runtime settings from {Path}", _settingsPath);
+
+					// A settings file written before multi-organisation support, or one hand-edited to
+					// "Organizations": null, would otherwise leave the list null and throw on first use.
+					settings.Organizations ??= [];
 
 					// Apply the persisted LocalReposRoot to AppSettings so
 					// LocalRepoService uses it from the start
@@ -163,7 +270,8 @@ public class RuntimeSettingsService
 				{
 					LocalReposRoot = _runtimeSettings.LocalReposRoot,
 					PreferredIdeId = _runtimeSettings.PreferredIdeId,
-					IncludeInfoInAiPrompt = _runtimeSettings.IncludeInfoInAiPrompt
+					IncludeInfoInAiPrompt = _runtimeSettings.IncludeInfoInAiPrompt,
+					Organizations = [.. _runtimeSettings.Organizations]
 				};
 			}
 
@@ -192,6 +300,13 @@ public class RuntimeSettings
 	/// The ID of the user's preferred IDE (e.g. "vs2022-professional", "vscode").
 	/// </summary>
 	public string? PreferredIdeId { get; set; }
+
+	/// <summary>
+	/// The GitHub/NuGet organisations to manage. When empty, the single organisation configured
+	/// in <see cref="AppSettings.NuGetOrganization"/> is used, so existing single-organisation
+	/// setups behave exactly as they did before multi-organisation support was added.
+	/// </summary>
+	public List<string> Organizations { get; set; } = [];
 
 	/// <summary>
 	/// Whether to include informational (Info-severity) items in the AI prompt.
