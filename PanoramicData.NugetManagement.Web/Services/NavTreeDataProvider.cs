@@ -133,6 +133,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		var visibleRows = ApplyFilters(orgRows);
 
+		// While a filter is active, an organisation with nothing matching is omitted entirely rather
+		// than left as an empty branch to open and find nothing in. Only while filtering: an
+		// organisation with genuinely no packages must stay visible when unfiltered, or there would be
+		// no way to reach its settings — including the button that removes it.
+		var isFiltering = FilterRegex is not null || LocalOnly;
+		if (isFiltering && (visibleRows is null || visibleRows.Count == 0))
+		{
+			return;
+		}
+
 		var totalIssues = visibleRows?.Sum(r => r.TotalFailures) ?? 0;
 		var hasAnyErrors = visibleRows?.Any(r => r.TotalCriticals > 0 || r.TotalErrors > 0) == true;
 		var hasAnyWarnings = visibleRows?.Any(r => r.TotalWarnings > 0) == true;
