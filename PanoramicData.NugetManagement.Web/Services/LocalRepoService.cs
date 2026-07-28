@@ -76,6 +76,28 @@ public partial class LocalRepoService
 		=> Path.Combine(GetReposRoot(), repoName);
 
 	/// <summary>
+	/// Gets the URL of the clone's <c>origin</c> remote, or null if it cannot be determined.
+	/// </summary>
+	/// <remarks>
+	/// Local paths are keyed on repository name alone, so a directory's name does not prove which
+	/// repository is actually checked out in it. This is the only reliable way to find out, and callers
+	/// use it to confirm they are about to write to the repository they think they are.
+	/// </remarks>
+	public async Task<string?> GetOriginUrlAsync(string repoName, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoName);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
+		var (exitCode, output) = await RunCommandAsync(path, "git", "remote get-url origin", cancellationToken)
+			.ConfigureAwait(false);
+
+		return exitCode == 0 && !string.IsNullOrWhiteSpace(output) ? output.Trim() : null;
+	}
+
+	/// <summary>
 	/// Checks if a repository is cloned locally.
 	/// </summary>
 	public bool IsClonedLocally(string repoName)

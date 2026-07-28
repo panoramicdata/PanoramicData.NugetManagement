@@ -125,10 +125,18 @@ public class DashboardService
 			return;
 		}
 
+		var cloneUrl = BuildCloneUrl(row);
+		if (cloneUrl is null)
+		{
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = "No repository known for this package.";
+			onOutput?.Invoke($"❌ {row.PackageId}: no repository is known for this package, so there is nothing to clone.");
+			return;
+		}
+
 		row.Status = PackageStatus.Cloning;
 		row.StatusMessage = "Cloning...";
 
-		var cloneUrl = $"https://github.com/{_settings.GitHubOrganization}/{repoName}.git";
 		var (success, output) = await _localRepo.CloneAsync(cloneUrl, repoName, onOutput, cancellationToken).ConfigureAwait(false);
 
 		if (success)
@@ -556,7 +564,7 @@ public class DashboardService
 	/// a registered remediation.
 	/// Returns the list of files created/modified.
 	/// </summary>
-	public Task<List<string>> ApplyRemediationsAsync(
+	public async Task<List<string>> ApplyRemediationsAsync(
 		PackageDashboardRow row,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
@@ -566,7 +574,12 @@ public class DashboardService
 		if (row.Assessment is null || row.LocalPath is null)
 		{
 			onOutput?.Invoke("⚠️ No assessment data or local path — cannot apply remediations.");
-			return Task.FromResult(applied);
+			return applied;
+		}
+
+		if (!await VerifyLocalCloneAsync(row, Path.GetFileName(row.LocalPath), onOutput, cancellationToken).ConfigureAwait(false))
+		{
+			return applied;
 		}
 
 		var failures = row.Assessment.RuleResults.Where(r => !r.Passed && r.Advisory is not null).ToList();
@@ -596,13 +609,13 @@ public class DashboardService
 			onOutput?.Invoke($"✅ Applied {applied.Count} remediation(s).");
 		}
 
-		return Task.FromResult(applied);
+		return applied;
 	}
 
 	/// <summary>
 	/// Applies automatic remediations for a specific category.
 	/// </summary>
-	public Task<List<string>> ApplyCategoryRemediationsAsync(
+	public async Task<List<string>> ApplyCategoryRemediationsAsync(
 		PackageDashboardRow row,
 		AssessmentCategory category,
 		Action<string>? onOutput = null,
@@ -613,7 +626,12 @@ public class DashboardService
 		if (row.Assessment is null || row.LocalPath is null)
 		{
 			onOutput?.Invoke("⚠️ No assessment data or local path — cannot apply remediations.");
-			return Task.FromResult(applied);
+			return applied;
+		}
+
+		if (!await VerifyLocalCloneAsync(row, Path.GetFileName(row.LocalPath), onOutput, cancellationToken).ConfigureAwait(false))
+		{
+			return applied;
 		}
 
 		var failures = row.Assessment.RuleResults
@@ -631,7 +649,7 @@ public class DashboardService
 			onOutput?.Invoke($"ℹ️ No auto-remediable issues found in {category}.");
 		}
 
-		return Task.FromResult(applied);
+		return applied;
 	}
 
 	/// <summary>
@@ -720,8 +738,16 @@ public class DashboardService
 		var isClonedLocally = _localRepo.IsClonedLocally(repoName);
 		if (!isClonedLocally)
 		{
-			onOutput?.Invoke($"Cloning {repoName}...");
-			var cloneUrl = $"https://github.com/{_settings.GitHubOrganization}/{repoName}.git";
+			var cloneUrl = BuildCloneUrl(row);
+			if (cloneUrl is null)
+			{
+				row.Status = PackageStatus.Error;
+				row.StatusMessage = "No repository known for this package.";
+				onOutput?.Invoke($"❌ {row.PackageId}: no repository is known for this package, so there is nothing to clone.");
+				return;
+			}
+
+			onOutput?.Invoke($"Cloning {row.RepositoryFullName}...");
 			var (cloneSuccess, cloneOutput) = await _localRepo.CloneAsync(cloneUrl, repoName, onOutput, cancellationToken).ConfigureAwait(false);
 			if (!cloneSuccess)
 			{
@@ -734,6 +760,14 @@ public class DashboardService
 			row.IsClonedLocally = true;
 			row.LocalPath = _localRepo.GetLocalPath(repoName);
 			onOutput?.Invoke($"Cloned to {row.LocalPath}");
+		}
+		else if (!await VerifyLocalCloneAsync(row, repoName, onOutput, cancellationToken).ConfigureAwait(false))
+		{
+			// An existing folder of the right name holding the wrong repository: syncing it would pull
+			// somebody else's history into what this row believes is its checkout.
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = "Local folder holds a different repository.";
+			return;
 		}
 
 		row.Status = PackageStatus.GitSyncing;
@@ -764,6 +798,13 @@ public class DashboardService
 			return false;
 		}
 
+		// The last line of defence, and the one that matters most: everything before this is local and
+		// recoverable, whereas a push is not.
+		if (!await VerifyLocalCloneAsync(row, repoName, onOutput, cancellationToken).ConfigureAwait(false))
+		{
+			return false;
+		}
+
 		var (success, _) = await _localRepo.CommitAndPushAsync(repoName, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
 
 		if (success)
@@ -775,6 +816,104 @@ public class DashboardService
 		}
 
 		return success;
+	}
+
+	// ── Repository identity: making sure we act on the repository we think we are ──
+
+	/// <summary>
+	/// The clone URL for a row, taken from the repository the row actually points at.
+	/// </summary>
+	/// <remarks>
+	/// This used to be built from AppSettings:GitHubOrganization plus the repository name, which is
+	/// wrong whenever a package's repository is not owned by the organisation it was discovered under —
+	/// and that is not rare: a vendored or forked package is published by one organisation while its
+	/// repository lives under another. Worse, it failed silently rather than loudly, because a
+	/// same-named repository often does exist under the configured organisation, so the app would clone
+	/// that one and push to it.
+	/// </remarks>
+	private static string? BuildCloneUrl(PackageDashboardRow row)
+		=> row.RepositoryFullName is null
+			? null
+			: $"https://github.com/{row.RepositoryFullName}.git";
+
+	/// <summary>
+	/// Reduces a git remote URL to <c>owner/name</c>, lower-cased, so an https remote and an ssh one
+	/// for the same repository compare equal.
+	/// </summary>
+	private static string? NormaliseRepoIdentity(string? remoteOrFullName)
+	{
+		if (string.IsNullOrWhiteSpace(remoteOrFullName))
+		{
+			return null;
+		}
+
+		var value = remoteOrFullName.Trim();
+
+		// git@github.com:owner/name.git
+		var colon = value.LastIndexOf(':');
+		if (value.StartsWith("git@", StringComparison.OrdinalIgnoreCase) && colon > 0)
+		{
+			value = value[(colon + 1)..];
+		}
+		else if (value.Contains("://", StringComparison.Ordinal))
+		{
+			// https://github.com/owner/name.git
+			var host = value.IndexOf("github.com", StringComparison.OrdinalIgnoreCase);
+			value = host >= 0 ? value[(host + "github.com".Length)..].TrimStart('/', ':') : value;
+		}
+
+		if (value.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+		{
+			value = value[..^4];
+		}
+
+		var segments = value.Trim('/').Split('/');
+		return segments.Length >= 2
+			? $"{segments[^2]}/{segments[^1]}".ToLowerInvariant()
+			: null;
+	}
+
+	/// <summary>
+	/// Confirms the local clone really is the repository this row refers to, before anything is written
+	/// to it. Returns false — and says why — when it is not, or when it cannot be established.
+	/// </summary>
+	/// <remarks>
+	/// Local paths are derived from the repository name alone, so the directory a row resolves to can
+	/// legitimately contain a different repository of the same name belonging to somebody else. Since
+	/// the operations that follow edit files, commit and push, an unverifiable remote is treated as a
+	/// mismatch: refusing to act is recoverable, pushing to the wrong repository is not.
+	/// </remarks>
+	private async Task<bool> VerifyLocalCloneAsync(
+		PackageDashboardRow row,
+		string repoName,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var expected = NormaliseRepoIdentity(row.RepositoryFullName);
+		if (expected is null)
+		{
+			onOutput?.Invoke($"❌ {row.PackageId}: no repository is known for this package, so nothing can be applied to it.");
+			return false;
+		}
+
+		var origin = await _localRepo.GetOriginUrlAsync(repoName, cancellationToken).ConfigureAwait(false);
+		var actual = NormaliseRepoIdentity(origin);
+
+		if (actual is null)
+		{
+			onOutput?.Invoke($"❌ {row.PackageId}: cannot read the origin remote of {_localRepo.GetLocalPath(repoName)}, so it cannot be confirmed as {row.RepositoryFullName}. Refusing to write to it.");
+			return false;
+		}
+
+		if (!string.Equals(actual, expected, StringComparison.Ordinal))
+		{
+			onOutput?.Invoke(
+				$"❌ {row.PackageId}: {_localRepo.GetLocalPath(repoName)} is a clone of {actual}, not {expected}. " +
+				"Local folders are named after the repository only, so a different repository of the same name can occupy it. Refusing to write to the wrong repository.");
+			return false;
+		}
+
+		return true;
 	}
 
 	// ── Issue-centric ("dimensional flip") view + bulk apply across repositories ──
