@@ -81,31 +81,55 @@ else
 									ToolTip="GetNavItemTooltip"
 									AllowSelection="true"
 									ShowRoot="true"
+									Sort="NavTreeDataProvider.CompareNavItems"
 									BeforeSelectionChange="OnNavBeforeSelect"
 									SelectionChange="OnNavSelectionChanged"
 									NodeExpanded="OnNavNodeExpanded"
 									NodeCollapsed="OnNavNodeCollapsed"
 									Ready="OnNavTreeReady">
 									<NodeTemplate Context="node">
-										<span class="nav-node-label" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
-											<i class="@node.Data?.IconCss"></i>@node.Data?.Text
+										<span class="nav-node-label @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+											<i class="@GetNodeIconCss(node.Data)"></i>@node.Data?.Text
 										</span>
-										@if (node.Data?.IsBusy == true)
+										@if (ShouldSpinOrgNode(node.Data))
 										{
-											<i class="fas fa-spinner fa-spin" style="margin-left:6px;font-size:0.8rem;color:var(--text-muted);" title="Loading repositories..."></i>
+											@* The only progress indicator in the tree, and it mirrors whichever button
+											   started the run: a searching magnifier while discovering, the recycle
+											   icon while assessing. *@
+											@if (_isDiscovering)
+											{
+												@* 7px rather than the usual 6px: the sweep carries it 2.5px left, and the extra
+												   pixel keeps it clear of the organisation name at that extreme. *@
+												<i class="fas fa-magnifying-glass nav-org-searching" style="margin-left:7px;font-size:0.8rem;color:var(--text-muted);" title="@GetProgressIndicatorText()"></i>
+											}
+											else
+											{
+												<i class="fas fa-sync-alt fa-spin" style="margin-left:6px;font-size:0.8rem;color:var(--text-muted);" title="@GetProgressIndicatorText()"></i>
+											}
 										}
-										@if (node.Data?.Key == "root")
+										@if (node.Data?.Key == NavTreeDataProvider.OrganisationsKey)
+										{
+											@* Add-only by design: removing an organisation lives at the bottom of its own
+											   Settings screen, where a destructive action is harder to hit by accident. *@
+											<span class="nav-org-actions">
+												<button type="button" class="nav-org-action-btn" title="Add an organisation" @onclick="OpenAddOrganizationDialog" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-plus"></i></button>
+											</span>
+										}
+										@if (IsOrgRootNode(node.Data))
 										{
 											<span class="nav-org-actions">
-												@if (_isCloningAll)
+												@* Run-something actions first, then a gap, then the clone and settings pair. *@
+												<button type="button" class="nav-org-action-btn" title="Rediscover this organisation's packages from NuGet, then assess them" disabled="@IsBulkOperationInFlight" @onclick="() => RediscoverOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-magnifying-glass"></i></button>
+												<button type="button" class="nav-org-action-btn nav-org-action-group-end" title="Re-assess every repository in this organisation, without re-reading the package list from NuGet" disabled="@IsBulkOperationInFlight" @onclick="() => ReassessOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-sync-alt"></i></button>
+												@if (_isCloningAll && _cloningOrganization == node.Data!.Organization)
 												{
 													<button type="button" class="nav-org-action-btn active" title="Stop cloning" @onclick="CancelCloneAll" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
 												}
 												else
 												{
-													<button type="button" class="nav-org-action-btn" title="@GetCloneAllTooltip()" @onclick="OpenCloneDialogAsync" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cloud-arrow-down"></i></button>
+													<button type="button" class="nav-org-action-btn" title="@GetCloneAllTooltip()" @onclick="() => OpenCloneDialogAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cloud-arrow-down"></i></button>
 												}
-												<button type="button" class="nav-org-action-btn @(_currentView == NavView.Settings ? "active" : "")" title="Organization settings" @onclick="NavigateToSettingsAsync" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
+												<button type="button" class="nav-org-action-btn @(_currentView == NavView.Settings && _selectedOrganization == node.Data!.Organization ? "active" : "")" title="Organization settings" @onclick="() => NavigateToSettingsAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
 											</span>
 										}
 									</NodeTemplate>
@@ -126,7 +150,7 @@ else
 					<!-- Breadcrumb bar at the very top -->
 					<div class="breadcrumb-bar">
 						<div class="breadcrumb-trail">
-							@if (!_orgSelected && _selectedRow is null && _currentView != NavView.Settings && _currentView != NavView.AppSettings && _currentView != NavView.NuGetUpdates && _currentView != NavView.Issues)
+							@if (!_orgSelected && _selectedRow is null && _currentView != NavView.Settings && _currentView != NavView.AppSettings && _currentView != NavView.NuGetUpdates && !IsIssueView)
 							{
 								<span class="breadcrumb-current"><i class="fas fa-tachometer-alt"></i><span class="breadcrumb-link-text">Dashboard</span></span>
 							}
@@ -137,17 +161,17 @@ else
 								</a>
 							}
 							@* Org crumb — shown at org level or deeper (repo selected, org settings, or package updates) *@
-							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || _currentView == NavView.NuGetUpdates || _currentView == NavView.Issues)
+							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || _currentView == NavView.NuGetUpdates || IsIssueView)
 							{
 								<span class="breadcrumb-sep">›</span>
 								@if (_orgSelected && _selectedRow is null && _currentView != NavView.Settings)
 								{
-									<span class="breadcrumb-current">@_organizationName</span>
+									<span class="breadcrumb-current">@CurrentOrganization</span>
 								}
 								else
 								{
 									<a class="breadcrumb-link" @onclick="NavigateToOrgAsync" @onclick:preventDefault>
-										<span class="breadcrumb-link-text">@_organizationName</span>
+										<span class="breadcrumb-link-text">@CurrentOrganization</span>
 									</a>
 								}
 							}
@@ -226,20 +250,40 @@ else
 								<span class="breadcrumb-sep">›</span>
 								<span class="breadcrumb-current">Package Updates</span>
 							}
-							@if (_currentView == NavView.Issues)
+							@if (IsIssueView)
 							{
 								<span class="breadcrumb-sep">›</span>
-								<span class="breadcrumb-current">Issues</span>
+								@if (_currentView == NavView.Issues)
+								{
+									<span class="breadcrumb-current">Issues</span>
+								}
+								else
+								{
+									@* Deeper in the issue hierarchy: Issues stays clickable so the whole
+									   list is one hop away. *@
+									<a class="breadcrumb-link" @onclick="NavigateToIssuesAsync" @onclick:preventDefault>
+										<span class="breadcrumb-link-text">Issues</span>
+									</a>
+									<span class="breadcrumb-sep">›</span>
+									@if (_currentView == NavView.IssueCategoryDetail)
+									{
+										<span class="breadcrumb-current">@_selectedCategory</span>
+									}
+									else
+									{
+										<a class="breadcrumb-link" @onclick="NavigateToIssueCategoryAsync" @onclick:preventDefault>
+											<span class="breadcrumb-link-text">@_selectedCategory</span>
+										</a>
+										<span class="breadcrumb-sep">›</span>
+										<span class="breadcrumb-current">@_selectedRuleId</span>
+									}
+								}
 							}
 						</div>
 						<div class="breadcrumb-right">
 							@if (_isLoading || _isAssessing || _showDone)
 							{
 								<span class="progress-indicator">@if (!_showDone) {<span class="spinner"></span>} @GetProgressIndicatorText()</span>
-							}
-							@if (_rateLimitRemaining is not null)
-							{
-								<span class="@RateLimitIndicatorCss" title="@RateLimitIndicatorTooltip"><i class="fab fa-github"></i> @RateLimitIndicatorText</span>
 							}
 							<div class="user-menu">
 								<button type="button" class="btn btn-xs btn-breadcrumb" @onclick="() => _userMenuOpen = !_userMenuOpen" title="Account">
@@ -264,12 +308,14 @@ else
 					<!-- Toolbar — workflow order: Git Sync → Re-assess → Fix → Build → Test → Commit & Push → Publish -->
 						<PDToolbar CssClass="main-toolbar">
 							<PDToolbarButton Key="refresh"
-											 Text="Refresh"
-											 IconCssClass="fas fa-sync-alt"
+											 Text="@(_orgSelected ? "Rediscover Org" : "Rediscover Orgs")"
+											 IconCssClass="fas fa-magnifying-glass"
 											 CssClass="btn-primary"
 											 IsVisible="@(_currentView is NavView.Dashboard or NavView.None)"
-											 IsEnabled="@(!_isLoading)"
-											 ToolTip="Refresh package list"
+											 IsEnabled="@(!IsBulkOperationInFlight)"
+											 ToolTip="@(_orgSelected
+												? $"Re-read {CurrentOrganization}'s package list from NuGet, then assess it. Use Re-assess Org to skip the NuGet lookup."
+												: "Re-read every organisation's package list from NuGet, then assess everything. Use Re-assess Orgs to skip the NuGet lookup.")"
 											 Click="OnToolbarClick" />
 
 							<PDToolbarButton Key="check-for-updates"
@@ -296,12 +342,12 @@ else
 							}
 
 							<PDToolbarButton Key="reassess"
-											 Text="Re-assess"
+											 Text="@GetReassessButtonText()"
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
 											 IsVisible="@(_currentView is NavView.Dashboard or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
-											 IsEnabled="@(!_isAssessing)"
-											 ToolTip="@(_currentView == NavView.Dashboard ? "Re-assess all repos" : "Re-assess this package")"
+											 IsEnabled="@(!IsBulkOperationInFlight)"
+											 ToolTip="@GetReassessButtonTooltip()"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -431,11 +477,87 @@ else
 	</div>
 }
 
+@if (_dialog is not null)
+{
+	@* Replaces the browser's confirm()/alert(), which some browsers suppress entirely — a suppressed
+	   confirm returns false and is indistinguishable from the user declining. *@
+	<div class="modal-overlay" @onclick="() => ResolveDialog(false)">
+		<div class="modal-box app-dialog" @onclick:stopPropagation="true">
+			<h3>
+				@if (_dialog.IsConfirm)
+				{
+					<i class="fas fa-circle-question"></i><span>&nbsp;Confirm</span>
+				}
+				else
+				{
+					<i class="fas fa-circle-info"></i><span>&nbsp;Notice</span>
+				}
+			</h3>
+
+			<p class="app-dialog-message">@_dialog.Message</p>
+
+			<div class="modal-actions">
+				@if (_dialog.IsConfirm)
+				{
+					<button class="btn" @onclick="() => ResolveDialog(false)">Cancel</button>
+					<button class="btn btn-primary" @onclick="() => ResolveDialog(true)">Continue</button>
+				}
+				else
+				{
+					<button class="btn btn-primary" @onclick="() => ResolveDialog(true)">OK</button>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+@if (_addOrgDialogOpen)
+{
+	<div class="modal-overlay" @onclick="CloseAddOrganizationDialog">
+		<div class="modal-box add-org-dialog" @onclick:stopPropagation="true">
+			<h3><i class="fas fa-plus"></i> Add an organisation</h3>
+
+			<p class="clone-dialog-status">
+				The GitHub organisation name, as it appears in its URL — its NuGet packages are
+				discovered by the same name.
+			</p>
+
+			<input type="text"
+				   class="add-org-input"
+				   placeholder="e.g. panoramicsystems"
+				   value="@_addOrgName"
+				   @oninput="e => _addOrgName = e.Value?.ToString() ?? string.Empty"
+				   @onkeydown="OnAddOrgKeyDown"
+				   disabled="@_isAddingOrg" />
+
+			@if (_addOrgError is not null)
+			{
+				<p class="clone-dialog-status error"><i class="fas fa-triangle-exclamation"></i> @_addOrgError</p>
+			}
+
+			<div class="modal-actions">
+				<button class="btn" @onclick="CloseAddOrganizationDialog" disabled="@_isAddingOrg">Cancel</button>
+				<button class="btn btn-primary" @onclick="ConfirmAddOrganizationAsync" disabled="@(_isAddingOrg || string.IsNullOrWhiteSpace(_addOrgName))">
+					@if (_isAddingOrg)
+					{
+						<i class="fas fa-spinner fa-spin"></i>
+						<span>&nbsp;Adding...</span>
+					}
+					else
+					{
+						<span>Add</span>
+					}
+				</button>
+			</div>
+		</div>
+	</div>
+}
+
 @if (_cloneDialogOpen)
 {
 	<div class="modal-overlay" @onclick="CloseCloneDialog">
 		<div class="modal-box clone-dialog" @onclick:stopPropagation="true">
-			<h3><i class="fas fa-cloud-arrow-down"></i> Clone repositories</h3>
+			<h3><i class="fas fa-cloud-arrow-down"></i> Clone repositories into @_cloneDialogOrganization</h3>
 
 			@if (_isLoadingCloneCandidates)
 			{
@@ -521,6 +643,9 @@ else
 	// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
 	private bool _orgSelected;
 	private bool _isCloningAll;
+	// Read before a budget-consuming action so the warning can be accurate. Deliberately not surfaced
+	// as a permanent counter: normal dashboard use never approaches the hourly limit, so a visible
+	// count was noise. The warning below speaks up only when an action would actually eat into it.
 	private int? _rateLimitRemaining;
 	private int? _rateLimitLimit;
 	private DateTimeOffset? _rateLimitResetUtc;
@@ -529,10 +654,32 @@ else
 	private string? _cloneCandidatesError;
 	private bool _hidePrivateRepositories = true;
 	private List<RepositoryCloneCandidate> _cloneCandidates = [];
+	// Which organisation the clone dialog is listing, and which one a clone run is working through,
+	// so the stop button only appears on the organisation actually cloning.
+	private string _cloneDialogOrganization = string.Empty;
+	private string _cloningOrganization = string.Empty;
+	// The organisation a rediscover/re-assess run is scoped to, or null when the run covers them all.
+	// Drives which organisation node shows the progress spinner.
+	private string? _busyOrganization;
+	// True only while the package list is being re-read and displayed — the phase in which the nodes
+	// on screen may be replaced. Cleared before assessment begins, which is why dimming ends there.
+	private bool _isDiscovering;
+	// Add-organisation prompt state.
+	private bool _addOrgDialogOpen;
+	private string _addOrgName = string.Empty;
+	private string? _addOrgError;
+	private bool _isAddingOrg;
 	private CancellationTokenSource? _cloneAllCts;
 	private string _organizationName = string.Empty;
+	// The organisation the current selection belongs to. The tree can hold several, so the
+	// breadcrumb, Settings and Issues must follow the selection rather than one global name.
+	private string _selectedOrganization = string.Empty;
 	// Which tree branches are open, persisted to localStorage so expansion survives a page reload.
 	private const string ExpandedNodesStorageKey = "navTreeExpandedNodes";
+	// Identifies this run of the application. Static, so it is created once per process: an F5 keeps
+	// the same value and restores the open branches, while restarting the app changes it and the tree
+	// opens collapsed for a genuinely fresh start.
+	private static readonly string AppInstanceId = Guid.NewGuid().ToString("N");
 	private readonly HashSet<string> _expandedNodeKeys = [];
 	private bool _restoringExpansion;
 	private bool ShowWorkflowFlow => _selectedRow is not null && _currentView != NavView.Settings;
@@ -624,11 +771,11 @@ else
 			_lastRefreshUtc = Cache.LastRefreshUtc;
 		}
 
-		// If the cache is stale/empty we're about to (re)load — reflect that in the tree.
-		NavDataProvider.IsLoading = Cache.IsStale;
+		// Nothing loads automatically on open any more, so this must not claim otherwise: it used to be
+		// set from Cache.IsStale because the auto-refresh timer fired immediately, and leaving it set
+		// would spin the organisation node indefinitely with no run behind it.
+		NavDataProvider.IsLoading = false;
 
-		// Populate the API budget indicator. Reading the limit does not consume quota.
-		await RefreshRateLimitAsync();
 
 		// If a PackageId was in the URL, select it
 		if (!string.IsNullOrEmpty(PackageId))
@@ -638,16 +785,19 @@ else
 			if (_selectedRow is not null)
 			{
 				_selectedPackageId = _selectedRow.PackageId;
-				_selectedNodeKey = $"pkg:{_selectedRow.PackageId}";
+				_selectedOrganization = _selectedRow.Organization;
+				_selectedNodeKey = $"pkg:{_selectedRow.Organization}:{_selectedRow.PackageId}";
 				_currentView = NavView.PackageDetail;
 			}
 		}
 
-		// Start hourly auto-refresh timer
+		// Hourly auto-refresh. The first tick is always a full interval away; a stale cache is handled
+		// once in OnAfterRenderAsync instead, so the run starts after the UI has painted rather than
+		// from a zero-delay timer callback firing before anything is on screen.
 		_autoRefreshTimer = new System.Threading.Timer(
 			OnAutoRefreshTimer,
 			null,
-			Cache.IsStale ? TimeSpan.Zero : DashboardCacheService.CacheDuration,
+			DashboardCacheService.CacheDuration,
 			DashboardCacheService.CacheDuration);
 	}
 
@@ -667,6 +817,14 @@ else
 			catch
 			{
 				// localStorage may not be available
+			}
+
+			// Stale or empty cache: rediscover everything. Done here rather than in OnInitializedAsync
+			// so the tree and the progress indicator are already painted — the run is then visibly
+			// under way instead of the page appearing to hang before it has drawn anything.
+			if (Cache.IsStale && !IsBulkOperationInFlight)
+			{
+				await RefreshAsync();
 			}
 		}
 
@@ -699,7 +857,14 @@ else
 		_selectedCategory = item.Category;
 		_selectedRuleId = item.RuleId;
 		_selectedNodeKey = item.Key;
-		_orgSelected = item.Key == "root";
+		_orgSelected = IsOrgRootNode(item);
+
+		// Every node below "Organisations" carries its organisation, so the breadcrumb and the
+		// org-scoped views follow the selection instead of a single configured name.
+		if (!string.IsNullOrEmpty(item.Organization))
+		{
+			_selectedOrganization = item.Organization;
+		}
 
 		if (item.PackageId is not null)
 		{
@@ -733,6 +898,14 @@ else
 			return;
 		}
 
+		// A repository being rediscovered may be about to be replaced, so it is dimmed and inert.
+		// CSS blocks the pointer; this guards the keyboard and any programmatic activation. Issue
+		// nodes stay selectable while they spin — their existing detail is still worth opening.
+		if (IsNodeDimmedByRediscovery(node.Data))
+		{
+			return;
+		}
+
 		// Apply the visual selection ourselves so re-clicking a node whose highlight was
 		// cleared in place (Dashboard deselect) re-highlights it — PDTree ignores re-clicks.
 		_navTree?.RootNode.Walk(n => { n.IsSelected = false; return true; });
@@ -741,9 +914,275 @@ else
 	}
 
 	// The Organisations and Repositories grouping nodes are not selectable; everything else
-	// (the org, Package Updates view, and individual repos) is.
+	// (the org, Package Updates view, Issues and individual repos) is. The Repositories keys are
+	// namespaced per organisation, so these are prefix tests rather than exact matches.
 	private static bool IsSelectableNavNode(NavItem? item)
-		=> item is not null && item.Key is not ("organisations" or "repositories" or "repositories-loading");
+		=> item is not null
+			&& item.Key != NavTreeDataProvider.OrganisationsKey
+			&& !item.Key.StartsWith("repos:", StringComparison.Ordinal)
+			&& !item.Key.StartsWith("repos-loading:", StringComparison.Ordinal);
+
+	// True for an organisation's own node — the one that carries the clone and settings actions.
+	private static bool IsOrgRootNode(NavItem? item)
+		=> item is not null && item.Key.StartsWith("org:", StringComparison.Ordinal);
+
+	// The organisation currently in context: whatever the selection implies, falling back to the
+	// single configured organisation before anything has been selected.
+	private string CurrentOrganization
+		=> string.IsNullOrEmpty(_selectedOrganization) ? _organizationName : _selectedOrganization;
+
+	// The three issue views share breadcrumb behaviour; they differ only in how deep they go.
+	private bool IsIssueView
+		=> _currentView is NavView.Issues or NavView.IssueCategoryDetail or NavView.IssueRuleDetail;
+
+	/// <summary>
+	/// A message awaiting the user's response, rendered as an in-app modal.
+	/// </summary>
+	private sealed record PendingDialog(string Message, bool IsConfirm, TaskCompletionSource<bool> Completion);
+
+	private PendingDialog? _dialog;
+
+	/// <summary>
+	/// Asks the user to confirm, resolving to their answer.
+	/// </summary>
+	/// <remarks>
+	/// Deliberately an in-app modal rather than the browser's <c>confirm()</c>. Native dialogs are not
+	/// universally available — Claude's in-app browser suppresses them outright and returns false —
+	/// and a suppressed confirm is indistinguishable from the user declining. That made every guarded
+	/// action silently do nothing: "Remove organisation" appeared dead, and the API budget warnings
+	/// silently cancelled the very actions they were meant to let through.
+	/// </remarks>
+	private Task<bool> ConfirmAsync(string message)
+	{
+		var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+		_dialog = new PendingDialog(message, IsConfirm: true, completion);
+		StateHasChanged();
+		return completion.Task;
+	}
+
+	/// <summary>
+	/// Shows the user a message with a single acknowledgement, replacing <c>alert()</c>.
+	/// </summary>
+	private Task NotifyAsync(string message)
+	{
+		var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+		_dialog = new PendingDialog(message, IsConfirm: false, completion);
+		StateHasChanged();
+		return completion.Task;
+	}
+
+	/// <summary>
+	/// Closes the dialog and hands the answer back to whoever is awaiting it.
+	/// </summary>
+	private void ResolveDialog(bool result)
+	{
+		var pending = _dialog;
+		_dialog = null;
+		pending?.Completion.TrySetResult(result);
+	}
+
+	/// <summary>
+	/// True while an operation that spans the whole row set is running. Cloning and re-assessing must
+	/// not overlap: they compete for the same GitHub budget and the same rows, and a clone completing
+	/// mid-assessment flips a repository from remote to local underneath the assessment that is
+	/// already reading it.
+	/// </summary>
+	private bool IsBulkOperationInFlight => _isLoading || _isAssessing || _isCloningAll;
+
+	/// <summary>
+	/// Whether this node should be dimmed and made inert because a rediscovery is replacing the
+	/// repository list underneath it.
+	/// </summary>
+	/// <remarks>
+	/// Only during the discovery phase — while the package list is being re-read from NuGet and shown
+	/// — because that is when the nodes on screen may be about to be replaced. Once the new list is
+	/// displayed the dimming lifts and the assessment phase shows a spinner per repository instead.
+	/// A re-assessment never dims: the same repositories remain and their existing results stay valid
+	/// and worth clicking into while the run proceeds.
+	/// <para>
+	/// Stable for the whole phase. An earlier version un-dimmed each repository as its own result
+	/// arrived, which meant the tree changed on every completion; combined with the per-row tree
+	/// rebuild it made the tree flicker and the scrollbar jitter.
+	/// </para>
+	/// </remarks>
+	private bool IsNodeDimmedByRediscovery(NavItem? item)
+	{
+		if (item is null || !_isDiscovering)
+		{
+			return false;
+		}
+
+		// Only the repositories themselves dim — not the "Repositories" container above them, which
+		// stays legible as a heading. Progress is carried by the indicator on the organisation node
+		// and the counter in the breadcrumb bar.
+		return item.PackageId is not null;
+	}
+
+	/// <summary>
+	/// True while repositories are actually being assessed: either a re-assessment, or the assessment
+	/// phase of a rediscovery (which follows its discovery phase).
+	/// </summary>
+	private bool IsAssessmentInFlight => _isAssessing || (_isLoading && !_isDiscovering);
+
+	/// <summary>
+	/// The icon for a tree node. Package nodes resolve theirs from live row state rather than from the
+	/// NavItem, so a repository's spinner is replaced by its result the moment that result arrives.
+	/// </summary>
+	/// <remarks>
+	/// This is why per-repository progress no longer requires rebuilding the tree. PDTree holds NavItem
+	/// snapshots from when a branch loaded, so the old approach re-fetched every node on each
+	/// completion — which changed the DOM structure and made the tree flicker and the scrollbar jump.
+	/// Re-rendering the template only swaps this one element's class attribute, which moves nothing.
+	/// </remarks>
+	private string GetNodeIconCss(NavItem? item)
+	{
+		if (item is null)
+		{
+			return string.Empty;
+		}
+
+		// Issue categories and rules spin for the duration of an assessment, since their contents are
+		// entirely derived from the results being recomputed.
+		if (IsIssueNodeAwaitingAssessment(item))
+		{
+			return "fas fa-spinner fa-spin text-muted";
+		}
+
+		// Package nodes only. Category and rule nodes carry a PackageId too, so match on the key.
+		if (item.PackageId is null || !item.Key.StartsWith("pkg:", StringComparison.Ordinal))
+		{
+			return item.IconCss;
+		}
+
+		var row = _rows.FirstOrDefault(r =>
+			string.Equals(r.PackageId, item.PackageId, StringComparison.OrdinalIgnoreCase));
+
+		return row is null
+			? item.IconCss
+			: NavTreeDataProvider.BuildPackageIconCss(row);
+	}
+
+	/// <summary>
+	/// The scope the toolbar's run buttons act on, which follows the breadcrumb: a package when one is
+	/// selected, otherwise the selected organisation, otherwise every organisation.
+	/// </summary>
+	private string GetReassessButtonText()
+		=> _selectedRow is not null ? "Re-assess"
+			: _orgSelected ? "Re-assess Org"
+			: "Re-assess Orgs";
+
+	private string GetReassessButtonTooltip()
+		=> _selectedRow is not null
+			? "Re-assess this package"
+			: _orgSelected
+				? $"Assess every {CurrentOrganization} repository again, without re-reading the package list from NuGet"
+				: "Assess every known repository again, without re-reading the package list from NuGet";
+
+	/// <summary>
+	/// Whether this node is issue content whose result is currently being recomputed, and so shows a
+	/// spinner in place of its usual severity glyph.
+	/// </summary>
+	/// <remarks>
+	/// The whole issue hierarchy is derived from assessment results, so unlike repositories these do
+	/// not resolve one at a time — they all spin for the run and are rebuilt together at the end.
+	/// The "Issues" container node itself is excluded, so it stays legible as a heading.
+	/// </remarks>
+	private bool IsIssueNodeAwaitingAssessment(NavItem? item)
+	{
+		if (item is null || !IsAssessmentInFlight)
+		{
+			return false;
+		}
+
+		return item.Key.StartsWith("icat:", StringComparison.Ordinal)
+			|| item.Key.StartsWith("irule:", StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// Whether an organisation node should show a spinner: either its repository list is still being
+	/// discovered, or a run that affects it is in flight. Scoped to the organisation actually being
+	/// worked on, so with several organisations only the relevant one spins.
+	/// </summary>
+	private bool ShouldSpinOrgNode(NavItem? item)
+	{
+		if (item is null || !IsOrgRootNode(item))
+		{
+			return false;
+		}
+
+		if (item.IsBusy)
+		{
+			return true;
+		}
+
+		if (!IsBulkOperationInFlight)
+		{
+			return false;
+		}
+
+		// A null busy organisation means the run covers every organisation.
+		return _busyOrganization is null
+			|| string.Equals(_busyOrganization, item.Organization, StringComparison.OrdinalIgnoreCase);
+	}
+
+	/// <summary>
+	/// Refuses to start <paramref name="action"/> while another bulk operation is running, naming what
+	/// is in the way. Returns true when the caller should abandon what it was about to do.
+	/// </summary>
+	private async Task<bool> BlockIfBulkOperationInFlightAsync(string action)
+	{
+		if (!IsBulkOperationInFlight)
+		{
+			return false;
+		}
+
+		var inProgress = _isCloningAll
+			? "a clone"
+			: _isAssessing
+				? "a re-assessment"
+				: "a package refresh";
+
+		await NotifyAsync($"{action} cannot start while {inProgress} is still running. Let it finish, or stop it first.");
+
+		return true;
+	}
+
+	// Breadcrumb hops back up the issue hierarchy, selecting the tree node so the sidebar follows.
+	private async Task NavigateToIssuesAsync()
+		=> await SelectNavNodeAsync(NavTreeDataProvider.IssuesKey(CurrentOrganization), NavView.Issues);
+
+	private async Task NavigateToIssueCategoryAsync()
+		=> await SelectNavNodeAsync(
+			$"icat:{CurrentOrganization}:{_selectedCategory}",
+			NavView.IssueCategoryDetail);
+
+	/// <summary>
+	/// Selects a node by key so the sidebar highlight follows the breadcrumb. Falls back to setting
+	/// the view directly when the node is not currently realised (its branch may be collapsed).
+	/// </summary>
+	private async Task SelectNavNodeAsync(string key, NavView fallbackView)
+	{
+		var node = _navTree?.RootNode.Find(key);
+		if (node is not null)
+		{
+			await _navTree!.SelectNode(node);
+			return;
+		}
+
+		_currentView = fallbackView;
+		_selectedNodeKey = key;
+		if (fallbackView == NavView.Issues)
+		{
+			_selectedCategory = null;
+			_selectedRuleId = null;
+		}
+		else if (fallbackView == NavView.IssueCategoryDetail)
+		{
+			_selectedRuleId = null;
+		}
+
+		StateHasChanged();
+	}
 
 	private void OnNavBeforeSelect(TreeBeforeSelectionChangeEventArgs<NavItem> args)
 	{
@@ -811,16 +1250,22 @@ else
 	{
 		try
 		{
+			var state = new ExpandedNodesState(AppInstanceId, [.. _expandedNodeKeys]);
 			await JS.InvokeVoidAsync(
 				"localStorage.setItem",
 				ExpandedNodesStorageKey,
-				System.Text.Json.JsonSerializer.Serialize(_expandedNodeKeys));
+				System.Text.Json.JsonSerializer.Serialize(state));
 		}
 		catch
 		{
 			// localStorage may not be available
 		}
 	}
+
+	/// <summary>
+	/// The persisted expansion set, stamped with the run of the application that saved it.
+	/// </summary>
+	private sealed record ExpandedNodesState(string InstanceId, string[] Keys);
 
 	/// <summary>
 	/// Loads the set of previously-expanded branch keys from localStorage.
@@ -835,7 +1280,17 @@ else
 				return;
 			}
 
-			var keys = System.Text.Json.JsonSerializer.Deserialize<string[]>(stored);
+			var state = System.Text.Json.JsonSerializer.Deserialize<ExpandedNodesState>(stored);
+
+			// A fresh start of the application opens collapsed: restoring yesterday's open branches
+			// makes launching the app feel like resuming a session rather than starting one. An F5
+			// within the same run does restore them, because the stamp still matches.
+			if (state is null || state.InstanceId != AppInstanceId)
+			{
+				return;
+			}
+
+			var keys = state.Keys;
 			if (keys is null)
 			{
 				return;
@@ -893,9 +1348,17 @@ else
 	/// Opens the clone dialog, listing the organisation's repositories as GitHub reports them so
 	/// visibility is known. Public, non-archived repositories missing locally start selected.
 	/// </summary>
-	private async Task OpenCloneDialogAsync()
+	private async Task OpenCloneDialogAsync() => await OpenCloneDialogAsync(CurrentOrganization);
+
+	private async Task OpenCloneDialogAsync(string organization)
 	{
+		if (await BlockIfBulkOperationInFlightAsync("Cloning"))
+		{
+			return;
+		}
+
 		_cloneDialogOpen = true;
+		_cloneDialogOrganization = organization;
 		_isLoadingCloneCandidates = true;
 		_cloneCandidatesError = null;
 		_cloneCandidates = [];
@@ -903,7 +1366,6 @@ else
 
 		try
 		{
-			var organization = SettingsOptions.Value.GitHubOrganization;
 			var repositories = await CreateGitHubClient().Repository.GetAllForOrg(organization);
 
 			// Which repositories back a package the dashboard knows about.
@@ -938,6 +1400,122 @@ else
 	}
 
 	private void CloseCloneDialog() => _cloneDialogOpen = false;
+
+	private void OpenAddOrganizationDialog()
+	{
+		_addOrgName = string.Empty;
+		_addOrgError = null;
+		_addOrgDialogOpen = true;
+	}
+
+	private void CloseAddOrganizationDialog() => _addOrgDialogOpen = false;
+
+	// Enter submits, Escape cancels — a single-field prompt should not need the mouse.
+	private async Task OnAddOrgKeyDown(KeyboardEventArgs args)
+	{
+		if (args.Key == "Enter" && !_isAddingOrg && !string.IsNullOrWhiteSpace(_addOrgName))
+		{
+			await ConfirmAddOrganizationAsync();
+		}
+		else if (args.Key == "Escape")
+		{
+			CloseAddOrganizationDialog();
+		}
+	}
+
+	/// <summary>
+	/// Adds the organisation, then rediscovers so its packages appear. A wrong name is the likely
+	/// mistake here, and it surfaces as an organisation with no packages rather than an error, so
+	/// the name is checked against GitHub before being persisted.
+	/// </summary>
+	private async Task ConfirmAddOrganizationAsync()
+	{
+		var name = _addOrgName?.Trim();
+		if (string.IsNullOrEmpty(name))
+		{
+			_addOrgError = "Enter an organisation name.";
+			return;
+		}
+
+		_isAddingOrg = true;
+		_addOrgError = null;
+		await InvokeAsync(StateHasChanged);
+
+		try
+		{
+			// Verify it exists and we can see it, so a typo fails loudly here instead of silently
+			// producing an empty branch in the tree.
+			try
+			{
+				_ = await CreateGitHubClient().Organization.Get(name);
+			}
+			catch (Octokit.NotFoundException)
+			{
+				_addOrgError = $"GitHub has no organisation '{name}', or your token cannot see it.";
+				return;
+			}
+
+			if (!RuntimeSettings.AddOrganization(name))
+			{
+				_addOrgError = $"'{name}' is already in the list.";
+				return;
+			}
+
+			_addOrgDialogOpen = false;
+
+			// Discover only the organisation just added. Rediscovering every organisation would
+			// re-read and re-assess the ones already on screen, which is wasted GitHub budget and
+			// wasted time when nothing about them has changed.
+			await RediscoverOrganizationAsync(name);
+		}
+		catch (Exception ex)
+		{
+			_addOrgError = ex.Message;
+			Logger.LogError(ex, "Failed to add organisation {Organization}", name);
+		}
+		finally
+		{
+			_isAddingOrg = false;
+			await InvokeAsync(StateHasChanged);
+		}
+	}
+
+	/// <summary>
+	/// Removes the organisation currently shown in Settings. Deliberately reached only from the
+	/// bottom of the Settings screen rather than a tree button, and confirmed before acting.
+	/// </summary>
+	private async Task RemoveCurrentOrganizationAsync()
+	{
+		var organization = CurrentOrganization;
+		if (string.IsNullOrEmpty(organization))
+		{
+			return;
+		}
+
+		var confirmed = await ConfirmAsync(
+			$"Remove '{organization}' from the dashboard? Its repositories stay on GitHub and any local clones are left alone.");
+
+		if (!confirmed)
+		{
+			return;
+		}
+
+		if (!RuntimeSettings.RemoveOrganization(organization))
+		{
+			await NotifyAsync("That is the last organisation — at least one must remain.");
+			return;
+		}
+
+		_selectedOrganization = string.Empty;
+		NavigateToDashboard();
+
+		// Drop the removed organisation's rows and rebuild the tree. No GitHub calls needed:
+		// the remaining organisations' cached assessments are still valid.
+		_rows = [.. _rows.Where(r => !string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))];
+		Cache.SetRows(_rows);
+		await ReloadTreePreservingExpansionAsync();
+		StateHasChanged();
+	}
 
 	private List<RepositoryCloneCandidate> VisibleCloneCandidates
 		=> [.. _cloneCandidates.Where(c => !_hidePrivateRepositories || !c.IsPrivate)];
@@ -974,6 +1552,7 @@ else
 
 		_cloneDialogOpen = false;
 		_isCloningAll = true;
+		_cloningOrganization = _cloneDialogOrganization;
 		_consoleVisible = true;
 		_cloneAllCts?.Dispose();
 		_cloneAllCts = new CancellationTokenSource();
@@ -1035,6 +1614,7 @@ else
 		finally
 		{
 			_isCloningAll = false;
+			_cloningOrganization = string.Empty;
 			_cloneAllCts?.Dispose();
 			_cloneAllCts = null;
 			await ReloadTreePreservingExpansionAsync();
@@ -1098,25 +1678,33 @@ else
 	private int EstimateRemoteAssessmentCost(IEnumerable<PackageDashboardRow> rows)
 		=> rows.Count(r => r.RepositoryFullName is not null && !r.IsClonedLocally) * ApiCallsPerRemoteAssessment;
 
-	private string RateLimitIndicatorText
-		=> _rateLimitRemaining is null
-			? string.Empty
-			: $"{_rateLimitRemaining} API";
-
-	private string RateLimitIndicatorCss
-		=> _rateLimitRemaining switch
+	/// <summary>
+	/// Describes when the API budget resets, e.g. "in about 47 minutes, at 15:20 UTC".
+	/// </summary>
+	/// <remarks>
+	/// Leads with the relative time because that is what answers "should I just wait?", and states the
+	/// clock time explicitly as UTC. It is deliberately not converted to local time: this is Blazor
+	/// Server, so a conversion would use the *server's* timezone, which is only the viewer's by
+	/// coincidence when running locally — hosted in UTC, every user would see UTC labelled as local.
+	/// </remarks>
+	private string DescribeRateLimitReset()
+	{
+		if (_rateLimitResetUtc is null)
 		{
-			null => "rate-limit-chip",
-			< 250 => "rate-limit-chip critical",
-			< 1000 => "rate-limit-chip low",
-			_ => "rate-limit-chip"
-		};
+			return "shortly";
+		}
 
-	private string RateLimitIndicatorTooltip
-		=> _rateLimitRemaining is null
-			? "GitHub API budget unknown"
-			: $"{_rateLimitRemaining} of {_rateLimitLimit} GitHub API calls left this hour"
-				+ (_rateLimitResetUtc is null ? string.Empty : $", resetting at {_rateLimitResetUtc.Value.ToLocalTime():HH:mm}");
+		var resetUtc = _rateLimitResetUtc.Value.ToUniversalTime();
+		var minutes = (int)Math.Ceiling((resetUtc - DateTimeOffset.UtcNow).TotalMinutes);
+		var clock = $"at {resetUtc:HH:mm} UTC";
+
+		return minutes switch
+		{
+			<= 0 => $"any moment now, {clock}",
+			1 => $"in about a minute, {clock}",
+			_ => $"in about {minutes} minutes, {clock}"
+		};
+	}
 
 	/// <summary>
 	/// Warns before an action that will consume a meaningful share of the remaining GitHub API
@@ -1139,10 +1727,8 @@ else
 		var remaining = _rateLimitRemaining.Value;
 		if (estimatedCalls >= remaining)
 		{
-			var reset = _rateLimitResetUtc is null ? "shortly" : $"at {_rateLimitResetUtc.Value.ToLocalTime():HH:mm}";
-			return await JS.InvokeAsync<bool>(
-				"confirm",
-				$"{action} needs about {estimatedCalls} GitHub API calls but only {remaining} remain, so it will not finish. The budget resets {reset}. Continue anyway?");
+			return await ConfirmAsync(
+				$"{action} needs about {estimatedCalls} GitHub API calls but only {remaining} remain, so it will not finish. The budget resets {DescribeRateLimitReset()}. Continue anyway?");
 		}
 
 		// Only speak up when this would eat a quarter or more of what is left.
@@ -1151,8 +1737,7 @@ else
 			return true;
 		}
 
-		return await JS.InvokeAsync<bool>(
-			"confirm",
+		return await ConfirmAsync(
 			$"{action} will use about {estimatedCalls} of your {remaining} remaining GitHub API calls this hour. Continue?");
 	}
 
@@ -1163,7 +1748,7 @@ else
 		_selectedPackageId = null;
 		_selectedCategory = null;
 		_selectedRuleId = null;
-		_selectedNodeKey = "root";
+		_selectedNodeKey = string.Empty;
 		_orgSelected = false;
 		_completedSteps.Clear();
 		_failedSteps.Clear();
@@ -1174,10 +1759,13 @@ else
 		StateHasChanged();
 	}
 
-	private async Task NavigateToOrgAsync()
+	private async Task NavigateToOrgAsync() => await NavigateToOrgAsync(CurrentOrganization);
+
+	private async Task NavigateToOrgAsync(string organization)
 	{
-		// Focus the org (root) node in the tree; its SelectionChange handler sets the state.
-		var orgNode = _navTree?.RootNode.Find("root");
+		// Focus that organisation's node in the tree; its SelectionChange handler sets the state.
+		var orgKey = NavTreeDataProvider.OrgKey(organization);
+		var orgNode = _navTree?.RootNode.Find(orgKey);
 		if (orgNode is not null)
 		{
 			await _navTree!.SelectNode(orgNode);
@@ -1186,17 +1774,21 @@ else
 		{
 			_currentView = NavView.Dashboard;
 			_selectedRow = null;
-			_selectedNodeKey = "root";
+			_selectedNodeKey = orgKey;
+			_selectedOrganization = organization;
 			_orgSelected = true;
 			StateHasChanged();
 		}
 	}
 
-	private async Task NavigateToSettingsAsync()
+	private async Task NavigateToSettingsAsync() => await NavigateToSettingsAsync(CurrentOrganization);
+
+	private async Task NavigateToSettingsAsync(string organization)
 	{
 		// Settings is org-level ("Org Settings"): focus the org node, then switch to the
 		// Settings view so the breadcrumb reads Dashboard › Org › Settings.
-		await NavigateToOrgAsync();
+		await NavigateToOrgAsync(organization);
+		_selectedOrganization = organization;
 		_currentView = NavView.Settings;
 		_selectedCategory = null;
 		_selectedRuleId = null;
@@ -1337,8 +1929,16 @@ else
 
 		// Packages now sit three levels down (Organisations > org > Repositories > repo) and are
 		// collapsed after a refresh. Expand that path so the (possibly filtered) repository list
-		// is visible rather than hidden under collapsed ancestors.
-		foreach (var key in new[] { "organisations", "root", "repositories" })
+		// is visible rather than hidden under collapsed ancestors. With several organisations the
+		// path has to be expanded for each of them, not just one hard-coded "root".
+		var pathKeys = new List<string> { NavTreeDataProvider.OrganisationsKey };
+		foreach (var organization in RuntimeSettings.Organizations)
+		{
+			pathKeys.Add(NavTreeDataProvider.OrgKey(organization));
+			pathKeys.Add(NavTreeDataProvider.ReposKey(organization));
+		}
+
+		foreach (var key in pathKeys)
 		{
 			var pathNode = _navTree.RootNode.Find(key);
 			if (pathNode is not null && !pathNode.IsExpanded)
@@ -1394,7 +1994,16 @@ else
 		switch (args.Key)
 		{
 			case "refresh":
-				await RefreshAsync();
+				// Scope follows the breadcrumb: the selected organisation, or all of them.
+				if (_orgSelected)
+				{
+					await RediscoverOrganizationAsync(CurrentOrganization);
+				}
+				else
+				{
+					await RefreshAsync();
+				}
+
 				break;
 			case "check-for-updates":
 				await NuGetUpdates.CheckForUpdatesAsync(StateHasChanged);
@@ -1412,13 +2021,18 @@ else
 				await CopyPromptToClipboardAsync();
 				break;
 			case "reassess":
-						if (_currentView == NavView.Dashboard)
+						// Same scoping as the label: package, then organisation, then everything.
+						if (_selectedRow is not null)
 						{
-							await ReassessAllReposAsync();
+							await ReassessAllAsync();
+						}
+						else if (_orgSelected)
+						{
+							await ReassessOrganizationAsync(CurrentOrganization);
 						}
 						else
 						{
-							await ReassessAllAsync();
+							await ReassessAllReposAsync();
 						}
 
 						break;
@@ -1473,7 +2087,15 @@ else
 				break;
 			case NavView.Issues:
 				@* Same component the /issues page hosts, embedded so it drops its own page header. *@
-				<IssuesView Embedded="true" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" />
+				break;
+			case NavView.IssueCategoryDetail:
+				@* The hierarchy itself now lives in the sidebar; this panel shows the selected
+				   category's rules with their affected repositories and bulk actions. *@
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" />
+				break;
+			case NavView.IssueRuleDetail:
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" />
 				break;
 			default:
 				<div class="spa-placeholder">
@@ -1832,13 +2454,14 @@ else
 	{
 		var settings = SettingsOptions.Value;
 		<div class="settings-view" style="padding: 1.5rem; max-width: 600px;">
-			<h2>⚙️ Settings</h2>
+			<h2>⚙️ Settings — @CurrentOrganization</h2>
 			<p style="color: var(--text-secondary); font-size: 0.85rem;">
 				Settings from user secrets. Use <code style="color: var(--accent);">dotnet user-secrets set</code> to update.
 			</p>
 			<div class="settings-form">
-				<div class="form-group"><label>GitHub Organization</label><input type="text" value="@settings.GitHubOrganization" readonly /></div>
-				<div class="form-group"><label>NuGet Organization</label><input type="text" value="@settings.NuGetOrganization" readonly /></div>
+				<div class="form-group"><label>Organization</label><input type="text" value="@CurrentOrganization" readonly /></div>
+				<div class="form-group"><label>Configured GitHub Organization</label><input type="text" value="@settings.GitHubOrganization" readonly /></div>
+				<div class="form-group"><label>Configured NuGet Organization</label><input type="text" value="@settings.NuGetOrganization" readonly /></div>
 				<div class="form-group"><label>Expected License</label><input type="text" value="@settings.ExpectedLicense" readonly /></div>
 				<div class="form-group"><label>Copyright Holder</label><input type="text" value="@settings.CopyrightHolder" readonly /></div>
 				<div class="form-group">
@@ -1885,6 +2508,20 @@ else
 						</span>
 					</div>
 				</div>
+			</div>
+
+			@* Removal lives here rather than as a "−" beside the tree's "+", so a destructive
+			   action takes deliberate effort to reach. *@
+			<div class="settings-danger-zone">
+				<h3>Remove organisation</h3>
+				<p>
+					Stops the dashboard managing <strong>@CurrentOrganization</strong>. Its repositories
+					stay on GitHub and any local clones are left untouched. At least one organisation
+					must remain.
+				</p>
+				<button class="btn btn-danger" @onclick="RemoveCurrentOrganizationAsync" disabled="@(RuntimeSettings.Organizations.Count <= 1)">
+					<i class="fas fa-trash"></i>&nbsp;Remove @CurrentOrganization
+				</button>
 			</div>
 		</div>
 	};
@@ -2088,21 +2725,47 @@ else
 				row.IsReassessing = false;
 				var n = Interlocked.Increment(ref completed);
 				_progressMessage = $"Assessing ({n}/{assessable.Count})...";
-				await InvokeAsync(RefreshTableAsync);
+
+				// Table and progress counter only. Rebuilding the navigation tree here — which is what
+				// RefreshTableAsync also does — tears down every node and re-expands them one by one,
+				// so doing it per completed row meant dozens of full rebuilds: the tree flickered and
+				// the scrollbar jumped as its height changed under the pointer. The tree is rebuilt
+				// once when the whole run finishes instead.
+				await InvokeAsync(RefreshRowsOnlyAsync);
 			}
 		});
 
 		await Task.WhenAll(tasks);
 	}
 
+	/// <summary>
+	/// Refreshes the table and the progress counter without touching the navigation tree.
+	/// Used for per-row updates during a long assessment; see the note in AssessInParallelAsync.
+	/// </summary>
+	private async Task RefreshRowsOnlyAsync()
+	{
+		if (_table is not null)
+		{
+			await _table.RefreshAsync().ConfigureAwait(true);
+		}
+
+		StateHasChanged();
+	}
+
 	private async Task RefreshAsync()
 	{
+		if (await BlockIfBulkOperationInFlightAsync("A package refresh"))
+		{
+			return;
+		}
+
 		if (!await ConfirmApiBudgetAsync("Refreshing the package list and re-assessing", EstimateRemoteAssessmentCost(_rows)))
 		{
 			return;
 		}
 
 		_isLoading = true;
+		_isDiscovering = true;
 		NavDataProvider.IsLoading = true;
 		_progressMessage = "Discovering packages...";
 		StateHasChanged();
@@ -2126,10 +2789,22 @@ else
 
 			_rows = freshRows;
 			Cache.SetRows(_rows);
-			await RefreshTableAsync();
 
 			var github = CreateGitHubClient();
 			var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
+
+			// Mark them pending before the tree is rebuilt, so the new list appears already showing a
+			// spinner per repository.
+			foreach (var row in assessable)
+			{
+				row.IsReassessing = true;
+			}
+
+			// Discovery is done: dimming lifts here and the per-repository spinners take over. This is
+			// the one tree rebuild mid-run; the tree then stays still until the assessment finishes.
+			_isDiscovering = false;
+			_progressMessage = "Assessing...";
+			await RefreshTableAsync();
 
 			await AssessInParallelAsync(assessable, async row =>
 			{
@@ -2161,7 +2836,16 @@ else
 		finally
 		{
 			_isLoading = false;
+			_isDiscovering = false;
 			NavDataProvider.IsLoading = false;
+
+			// Any rows still flagged pending (e.g. after an early exit) must be cleared, or they would
+			// keep their spinner icon indefinitely.
+			foreach (var row in _rows)
+			{
+				row.IsReassessing = false;
+			}
+
 			await ReloadTreePreservingExpansionAsync();
 			StateHasChanged();
 		}
@@ -2184,7 +2868,8 @@ else
 		// Single click selects in tree navigation
 		_selectedRow = row;
 		_selectedPackageId = row.PackageId;
-		_selectedNodeKey = $"pkg:{row.PackageId}";
+		_selectedOrganization = row.Organization;
+		_selectedNodeKey = $"pkg:{row.Organization}:{row.PackageId}";
 		_currentView = NavView.PackageDetail;
 		StateHasChanged();
 	}
@@ -2420,16 +3105,158 @@ else
 		}
 	}
 
-	private async Task ReassessAllReposAsync()
+	private async Task ReassessAllReposAsync() => await ReassessOrganizationAsync(null);
+
+	/// <summary>
+	/// Re-reads one organisation's package list from NuGet and assesses it, leaving every other
+	/// organisation's rows untouched. This is the org-node counterpart of the dashboard's
+	/// "Rediscover Orgs", which does the same for all of them.
+	/// </summary>
+	private async Task RediscoverOrganizationAsync(string organization)
 	{
-		var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
-		if (!await ConfirmApiBudgetAsync($"Re-assessing {assessable.Count} repositories", EstimateRemoteAssessmentCost(assessable)))
+		if (await BlockIfBulkOperationInFlightAsync("A rediscovery"))
+		{
+			return;
+		}
+
+		var existingForOrg = _rows
+			.Where(r => string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))
+			.ToList();
+
+		if (!await ConfirmApiBudgetAsync(
+			$"Rediscovering and assessing {organization}",
+			EstimateRemoteAssessmentCost(existingForOrg)))
+		{
+			return;
+		}
+
+		_isLoading = true;
+		_isDiscovering = true;
+		_busyOrganization = organization;
+		_progressMessage = $"Discovering {organization} packages...";
+		StateHasChanged();
+
+		try
+		{
+			var freshRows = await Dashboard.DiscoverPackagesAsync(organization);
+
+			// Carry over assessments we already have, so rediscovery does not throw away results for
+			// packages that have not changed.
+			var existingByPackageId = existingForOrg
+				.Where(r => r.Assessment is not null)
+				.ToDictionary(r => r.PackageId, StringComparer.OrdinalIgnoreCase);
+
+			foreach (var row in freshRows)
+			{
+				if (existingByPackageId.TryGetValue(row.PackageId, out var existing))
+				{
+					row.Assessment = existing.Assessment;
+					row.CategorySummaries = existing.CategorySummaries;
+				}
+			}
+
+			// Swap in this organisation's rows only; the others are left exactly as they were.
+			_rows =
+			[
+				.. _rows.Where(r => !string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase)),
+				.. freshRows
+			];
+
+			Cache.SetRows(_rows);
+
+			var github = CreateGitHubClient();
+			var assessable = freshRows.Where(r => r.RepositoryFullName is not null).ToList();
+
+			// Mark them pending before the tree is rebuilt, so the new list appears already showing a
+			// spinner per repository.
+			foreach (var row in assessable)
+			{
+				row.IsReassessing = true;
+			}
+
+			// Discovery is done: the new list is about to be displayed, so dimming lifts here and the
+			// per-repository spinners take over for the assessment phase. This is the one tree rebuild
+			// in the middle of the run; the tree then stays still until it finishes.
+			_isDiscovering = false;
+			_progressMessage = $"Assessing {organization}...";
+			await RefreshTableAsync();
+
+			AppendConsole($"▶ Rediscovering {organization}: {assessable.Count} repositories...");
+
+			await AssessInParallelAsync(assessable, async row =>
+			{
+				if (row.IsClonedLocally && row.LocalPath is not null)
+				{
+					await Dashboard.AssessLocalRepositoryAsync(row);
+					await Dashboard.RefreshGitStatusAsync(row);
+				}
+				else
+				{
+					await Dashboard.AssessRepositoryAsync(row, github);
+				}
+			});
+
+			Cache.Update(_rows);
+			_lastRefreshUtc = Cache.LastRefreshUtc;
+			AppendConsole($"✅ Rediscovered {organization}: {assessable.Count} repositories.");
+			_progressMessage += " Done";
+			_showDone = true;
+			ScheduleDoneClear();
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError(ex, "Failed to rediscover {Organization}", organization);
+			AppendConsole($"❌ Rediscover failed: {ex.Message}");
+			_progressMessage = $"Error: {ex.Message}";
+		}
+		finally
+		{
+			foreach (var row in _rows)
+			{
+				row.IsReassessing = false;
+			}
+
+			_isLoading = false;
+			_isDiscovering = false;
+			_busyOrganization = null;
+			await ReloadTreePreservingExpansionAsync();
+			StateHasChanged();
+		}
+	}
+
+	/// <summary>
+	/// Re-assesses every repository, or only one organisation's when <paramref name="organization"/>
+	/// is supplied. Scoping matters because assessing every organisation multiplies the GitHub API
+	/// cost for no benefit when only one of them is being worked on.
+	/// </summary>
+	private async Task ReassessOrganizationAsync(string? organization)
+	{
+		if (await BlockIfBulkOperationInFlightAsync("A re-assessment"))
+		{
+			return;
+		}
+
+		var assessable = _rows
+			.Where(r => r.RepositoryFullName is not null)
+			.Where(r => organization is null
+				|| string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))
+			.ToList();
+
+		if (assessable.Count == 0)
+		{
+			AppendConsole("Nothing to re-assess.");
+			return;
+		}
+
+		var scope = organization is null ? "repositories" : $"{organization} repositories";
+		if (!await ConfirmApiBudgetAsync($"Re-assessing {assessable.Count} {scope}", EstimateRemoteAssessmentCost(assessable)))
 		{
 			return;
 		}
 
 		_isAssessing = true;
-		AppendConsole($"▶ Re-assessing {assessable.Count} repos...");
+		_busyOrganization = organization;
+		AppendConsole($"▶ Re-assessing {assessable.Count} {scope}...");
 
 		// Mark all pending rows so the tree shows spinners
 		foreach (var r in assessable)
@@ -2473,7 +3300,12 @@ else
 			}
 
 			_isAssessing = false;
+			_busyOrganization = null;
 			_progressMessage = string.Empty;
+
+			// The tree is left untouched during the run so it cannot flicker; rebuild it once here so
+			// the new results, icons and issue hierarchy appear.
+			await ReloadTreePreservingExpansionAsync();
 			StateHasChanged();
 		}
 	}
@@ -3879,14 +4711,24 @@ else
 		};
 	}
 
+	/// <summary>
+	/// The CSS for a workflow-step toolbar button: the shared button scheme plus any state modifier.
+	/// </summary>
+	/// <remarks>
+	/// btn-primary is the base in every state so these buttons match Rediscover rather than falling
+	/// back to the toolbar's default dark-blue-with-white-outline look, which made the workflow steps
+	/// appear to be a different kind of control. The step-state classes still show through: each marks
+	/// itself with !important on the properties it cares about (border and text colour), so done,
+	/// failed and next-up remain distinguishable on top of the shared scheme.
+	/// </remarks>
 	private string GetStepCssClass(WorkflowStep step)
 	{
 		if (IsStepFailed(step))
 		{
-			return "toolbar-step-failed";
+			return "btn-primary toolbar-step-failed";
 		}
 
-		return IsStepDone(step) ? "toolbar-step-done" : "";
+		return IsStepDone(step) ? "btn-primary toolbar-step-done" : "btn-primary";
 	}
 
 	private string GetStepCssClassFull(WorkflowStep step)
