@@ -2075,6 +2075,10 @@ i + .breadcrumb-link-text {
 
 /* The whole node label (icon + text) wrapped so the tooltip covers the icon on hover. */
 .nav-node-label {
+    /* Softer than --text-primary. At full #e0e0e0 the tree read as the brightest thing on screen,
+       competing with the RAG icons and the panel content it is there to navigate. Container labels
+       keep their own accent colour; this is the content rows. */
+    color: #c9c9d4;
     display: inline;
     /* Fades the dim on and off rather than flipping. Matches the reconnect modal's backdrop fade
        (0.5s ease-in-out) so the two feel like the same app. Declared on the base rather than on
@@ -2530,14 +2534,24 @@ i + .breadcrumb-link-text {
    Deliberately not a spin — spinning is reserved for the assessment phase, which uses the recycle
    icon so the tree matches whichever button started the run. inline-block is required for the
    transform to apply to an inline <i>. */
+/* A small circular sweep, as if scanning, rather than a left-right wipe. Eight steps at a 2px radius
+   with linear timing: fewer steps or an eased curve makes the motion visibly hesitate at each quarter
+   instead of travelling smoothly round. */
 @keyframes nav-org-searching {
-    0%, 100% { transform: translateX(-2.5px); }
-    50%      { transform: translateX(2.5px); }
+    0%     { transform: translate(2px, 0); }
+    12.5%  { transform: translate(1.4px, 1.4px); }
+    25%    { transform: translate(0, 2px); }
+    37.5%  { transform: translate(-1.4px, 1.4px); }
+    50%    { transform: translate(-2px, 0); }
+    62.5%  { transform: translate(-1.4px, -1.4px); }
+    75%    { transform: translate(0, -2px); }
+    87.5%  { transform: translate(1.4px, -1.4px); }
+    100%   { transform: translate(2px, 0); }
 }
 
 .nav-org-searching {
     display: inline-block;
-    animation: nav-org-searching 0.9s ease-in-out infinite;
+    animation: nav-org-searching 1.2s linear infinite;
 }
 
 /* Separates the run-something actions (Rediscover, Re-assess) from the clone and settings pair. */
