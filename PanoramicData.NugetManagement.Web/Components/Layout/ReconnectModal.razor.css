@@ -19,13 +19,38 @@
     display: block;
 }
 
+/* Show only the state we are actually in. Blazor adds components-reconnect-retrying and
+   components-reconnect-failed *alongside* components-reconnect-show rather than replacing it, so the
+   rules above match more than one message at a time — the modal read "Rejoining the server..." and
+   "Rejoin failed... trying again in 0 seconds." simultaneously. These must stay after those rules:
+   the selectors tie on specificity, so the later declaration is what wins. */
+#components-reconnect-modal.components-reconnect-retrying .components-reconnect-first-attempt-visible,
+#components-reconnect-modal.components-reconnect-failed .components-reconnect-first-attempt-visible,
+#components-reconnect-modal.components-reconnect-failed .components-reconnect-repeated-attempt-visible,
+#components-reconnect-modal.components-reconnect-paused .components-reconnect-first-attempt-visible,
+#components-reconnect-modal.components-reconnect-paused .components-reconnect-repeated-attempt-visible {
+    display: none;
+}
 
+/* Nothing is in flight once it has given up or been paused, so the spinner stops too. */
+#components-reconnect-modal.components-reconnect-failed .components-rejoining-animation,
+#components-reconnect-modal.components-reconnect-resume-failed .components-rejoining-animation,
+#components-reconnect-modal.components-reconnect-paused .components-rejoining-animation {
+    display: none;
+}
+
+
+/* Styled to match the application's own modals (.modal-box). As shipped by the template this was a
+   white box with no colour of its own, so its text inherited the app's light global text colour and
+   came out white-on-white — readable only by selecting it. A stark white panel was also the one thing
+   in this dark UI that did not belong. */
 #components-reconnect-modal {
-    background-color: white;
+    background-color: var(--bg-secondary, #16213e);
+    color: var(--text-primary, #e0e0e0);
+    border: 1px solid var(--border, #2a2a4a);
     width: 20rem;
     margin: 20vh auto;
     padding: 2rem;
-    border: 0;
     border-radius: 0.5rem;
     box-shadow: 0 3px 6px 2px rgba(0, 0, 0, 0.3);
     opacity: 0;
@@ -88,20 +113,24 @@
     text-align: center;
 }
 
+/* Matches the app's primary buttons — accent fill with dark text — rather than the template's own
+   blue, so Retry/Resume look like the rest of the application. */
 #components-reconnect-modal button {
     border: 0;
-    background-color: #6b9ed2;
-    color: white;
+    background-color: var(--accent, #4fc3f7);
+    color: #000;
+    font-weight: 600;
     padding: 4px 24px;
     border-radius: 4px;
+    cursor: pointer;
 }
 
     #components-reconnect-modal button:hover {
-        background-color: #3b6ea2;
+        background-color: #29b6f6;
     }
 
     #components-reconnect-modal button:active {
-        background-color: #6b9ed2;
+        background-color: var(--accent, #4fc3f7);
     }
 
 .components-rejoining-animation {
