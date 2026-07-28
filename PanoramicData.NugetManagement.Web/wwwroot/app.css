@@ -1494,6 +1494,37 @@ i + .breadcrumb-link-text {
     flex: 0 0 calc(25% - 1rem);
 }
 
+/* Numbered walkthrough shown under the prompt. Left-aligned text inside a centred column: centred
+   prose is hard to read once it runs to more than a line. */
+.getting-started {
+    max-width: 620px;
+    margin: 0;
+    padding-left: 1.5rem;
+    text-align: left;
+    line-height: 1.6;
+}
+
+.getting-started li + li {
+    margin-top: 0.6rem;
+}
+
+.getting-started strong {
+    color: var(--text-primary);
+}
+
+.getting-started em {
+    color: var(--accent);
+    font-style: normal;
+}
+
+.getting-started-note {
+    max-width: 620px;
+    margin: 0;
+    text-align: left;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
 /* === Console Panel Actions === */
 .console-panel-actions {
     display: flex;
@@ -2256,6 +2287,26 @@ i + .breadcrumb-link-text {
 /* Separates the run-something actions (Rediscover, Re-assess) from the clone and settings pair. */
 .nav-org-action-btn.nav-org-action-group-end {
     margin-right: 0.5rem;
+}
+
+/* Separates per-organisation settings from application-wide ones, so a value on this page is never
+   mistaken for belonging to the organisation named in the heading. */
+.settings-section {
+    margin: 1.5rem 0 0.5rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.settings-view > .settings-section:first-of-type {
+    margin-top: 0.5rem;
+}
+
+.settings-link {
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
 }
 
 /* Destructive organisation removal, deliberately set apart from the read-only settings above. */

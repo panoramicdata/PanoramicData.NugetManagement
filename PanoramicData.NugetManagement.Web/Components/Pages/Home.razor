@@ -113,6 +113,9 @@ else
 											   Settings screen, where a destructive action is harder to hit by accident. *@
 											<span class="nav-org-actions">
 												<button type="button" class="nav-org-action-btn" title="Add an organisation" @onclick="OpenAddOrganizationDialog" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-plus"></i></button>
+												@* Application-wide settings hang off Organisations, the level they actually
+												   apply to, mirroring how each organisation's cog sits on its own node. *@
+												<button type="button" class="nav-org-action-btn @(_currentView == NavView.AppSettings ? "active" : "")" title="Application settings — these apply to every organisation" @onclick="NavigateToAppSettings" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
 											</span>
 										}
 										@if (IsOrgRootNode(node.Data))
@@ -524,7 +527,7 @@ else
 
 			<input type="text"
 				   class="add-org-input"
-				   placeholder="e.g. panoramicsystems"
+				   placeholder="e.g. contoso"
 				   value="@_addOrgName"
 				   @oninput="e => _addOrgName = e.Value?.ToString() ?? string.Empty"
 				   @onkeydown="OnAddOrgKeyDown"
@@ -2056,16 +2059,53 @@ else
 
 	// === Render Fragments ===
 
+	/// <summary>
+	/// What to do when nothing is selected. Shown in place of an empty pane, because the tree alone
+	/// does not convey that the point of the app is to walk a repository through to a fix.
+	/// </summary>
+	private RenderFragment RenderGettingStarted() => __builder =>
+	{
+		<div class="spa-placeholder">
+			<i class="fas fa-hand-point-left fa-2x"></i>
+			<p>Select an item from the navigation tree</p>
+
+			<ol class="getting-started">
+				<li>
+					<strong>Add an organisation</strong> with the <i class="fas fa-plus"></i> beside
+					<em>Organisations</em>, if the one you want is not listed. Its packages are
+					discovered from NuGet and each repository assessed.
+				</li>
+				<li>
+					<strong>Open <em>Repositories</em></strong> under an organisation and pick one. Its
+					icon shows how it fares: green is clean, amber has warnings, red has errors.
+				</li>
+				<li>
+					<strong>Work along the toolbar</strong> left to right — Sync, Re-assess, Fix, Build,
+					Test, Commit &amp; Push, Publish. The amber outline marks the next step, and each
+					becomes available once the one before it makes sense.
+				</li>
+				<li>
+					<strong>Or fix one problem everywhere at once.</strong> <em>Issues</em> groups the
+					same failures by rule instead of by repository, so a single action can apply a fix
+					across every repository it affects.
+				</li>
+			</ol>
+
+			<p class="getting-started-note">
+				Auto-fix, build, test and publish need the repository cloned locally — use the
+				<i class="fas fa-cloud-arrow-down"></i> on an organisation to clone. Repositories that
+				are not cloned can only be assessed.
+			</p>
+		</div>
+	};
+
 	private RenderFragment RenderCurrentView() => __builder =>
 	{
 		switch (_currentView)
 		{
 			case NavView.Dashboard:
 			case NavView.None:
-				<div class="spa-placeholder">
-					<i class="fas fa-hand-point-left fa-2x"></i>
-					<p>Select an item from the navigation tree</p>
-				</div>
+				@RenderGettingStarted()
 				break;
 			case NavView.PackageDetail:
 				@RenderPackageDetailView()
@@ -2098,10 +2138,7 @@ else
 				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" />
 				break;
 			default:
-				<div class="spa-placeholder">
-					<i class="fas fa-hand-point-left fa-2x"></i>
-					<p>Select an item from the navigation tree</p>
-				</div>
+				@RenderGettingStarted()
 				break;
 		}
 	};
@@ -2440,30 +2477,43 @@ else
 		</div>
 	};
 
+	/// <summary>
+	/// Settings that apply to the whole application rather than to one organisation.
+	/// </summary>
+	/// <remarks>
+	/// These used to sit on the per-organisation Settings page, where they read as belonging to the
+	/// organisation named in its heading — the configured GitHub/NuGet organisation was the worst of
+	/// it, always showing the first organisation whichever one you were looking at. Reached by the cog
+	/// on the Organisations node, which is the level these actually apply to.
+	/// </remarks>
 	private RenderFragment RenderAppSettingsView() => __builder =>
-	{
-		<div class="settings-view" style="padding: 1.5rem; max-width: 600px;">
-			<h2>Application settings</h2>
-			<p style="color: var(--text-secondary); font-size: 0.85rem;">
-				Application-wide settings will live here. (Coming soon.)
-			</p>
-		</div>
-	};
-
-	private RenderFragment RenderSettingsView() => __builder =>
 	{
 		var settings = SettingsOptions.Value;
 		<div class="settings-view" style="padding: 1.5rem; max-width: 600px;">
-			<h2>⚙️ Settings — @CurrentOrganization</h2>
+			<h2>⚙️ Application settings</h2>
 			<p style="color: var(--text-secondary); font-size: 0.85rem;">
-				Settings from user secrets. Use <code style="color: var(--accent);">dotnet user-secrets set</code> to update.
+				These apply to every organisation. Read-only values come from user secrets — use
+				<code style="color: var(--accent);">dotnet user-secrets set</code> to change them.
 			</p>
+
+			<h3 class="settings-section">Assessment defaults</h3>
 			<div class="settings-form">
-				<div class="form-group"><label>Organization</label><input type="text" value="@CurrentOrganization" readonly /></div>
-				<div class="form-group"><label>Configured GitHub Organization</label><input type="text" value="@settings.GitHubOrganization" readonly /></div>
-				<div class="form-group"><label>Configured NuGet Organization</label><input type="text" value="@settings.NuGetOrganization" readonly /></div>
 				<div class="form-group"><label>Expected License</label><input type="text" value="@settings.ExpectedLicense" readonly /></div>
 				<div class="form-group"><label>Copyright Holder</label><input type="text" value="@settings.CopyrightHolder" readonly /></div>
+			</div>
+
+			<h3 class="settings-section">Configured defaults</h3>
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				The organisation used when none has been added explicitly. Adding organisations in the
+				tree overrides this; it is not the setting of any particular organisation.
+			</p>
+			<div class="settings-form">
+				<div class="form-group"><label>GitHub Organization</label><input type="text" value="@settings.GitHubOrganization" readonly /></div>
+				<div class="form-group"><label>NuGet Organization</label><input type="text" value="@settings.NuGetOrganization" readonly /></div>
+			</div>
+
+			<h3 class="settings-section">This machine</h3>
+			<div class="settings-form">
 				<div class="form-group">
 					<label>Local Repos Root</label>
 					<div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -2509,6 +2559,28 @@ else
 					</div>
 				</div>
 			</div>
+		</div>
+	};
+
+	private RenderFragment RenderSettingsView() => __builder =>
+	{
+		<div class="settings-view" style="padding: 1.5rem; max-width: 600px;">
+			<h2>⚙️ Settings — @CurrentOrganization</h2>
+
+			@* Strictly per-organisation. Anything application-wide lives on the Application settings
+			   page, reached by the cog on the Organisations node — on this page it read as belonging to
+			   the organisation in the heading, and the configured GitHub/NuGet organisation was
+			   actively wrong, showing the first organisation whichever one you were looking at. *@
+			<div class="settings-form">
+				<div class="form-group"><label>Organization</label><input type="text" value="@CurrentOrganization" readonly /></div>
+			</div>
+
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				Settings that apply to every organisation — licence, copyright, clone location, IDE —
+				are on the
+				<a href="#" class="settings-link" @onclick="NavigateToAppSettings" @onclick:preventDefault>Application settings</a>
+				page.
+			</p>
 
 			@* Removal lives here rather than as a "−" beside the tree's "+", so a destructive
 			   action takes deliberate effort to reach. *@
