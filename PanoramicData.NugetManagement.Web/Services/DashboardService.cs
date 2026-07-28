@@ -155,6 +155,7 @@ public class DashboardService
 				row.CurrentBranch = null;
 				row.IsWorkingTreeClean = null;
 				row.IsSyncedWithOrigin = null;
+				row.SyncStatusCheckedAtUtc = null;
 				row.LatestTag = null;
 			}
 		}
@@ -865,14 +866,21 @@ public class DashboardService
 			return false;
 		}
 
+		if (!await VerifyNotBehindOriginAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false))
+		{
+			return false;
+		}
+
 		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
 
 		if (success)
 		{
-			// Refresh git status after push
+			// Refresh git status after push. The push itself establishes that we match origin, so no
+			// fetch is needed to know it — but it is knowledge with an age, like any other.
 			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			row.IsSyncedWithOrigin = true;
+			row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
 		}
 
 		return success;
@@ -1022,6 +1030,73 @@ public class DashboardService
 		}
 
 		return false;
+	}
+
+	/// <summary>
+	/// Confirms origin has not moved on since the changes about to be committed were decided. Returns
+	/// false, having said why, when it has — or when that cannot be established.
+	/// </summary>
+	/// <remarks>
+	/// This is where staleness is caught, rather than before each fix or prompt, and deliberately so.
+	/// Applying a fix edits files in a clone of the app's own and generating a prompt produces text: both
+	/// are undoable and invisible to anybody else, so checking them would add friction in several places
+	/// to prevent damage that can only happen in one. A push is the single step that cannot be taken back.
+	///
+	/// What it prevents specifically: a fix decided from an assessment of an older tree being committed on
+	/// top of work pushed since — which at best duplicates a fix somebody already made, and at worst
+	/// commits a change whose reason no longer holds. Left to itself, the commit would have rebased onto
+	/// that newer work and pushed regardless, quietly.
+	/// </remarks>
+	private async Task<bool> VerifyNotBehindOriginAsync(
+		PackageDashboardRow row,
+		string repoIdentity,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var behind = await _localRepo.CountCommitsBehindOriginAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+
+		if (behind is null)
+		{
+			// Fails closed, for the same reason the identity check does: not knowing is not a licence.
+			onOutput?.Invoke($"❌ {row.PackageId}: cannot tell whether origin has moved on, so refusing to push. Check the repository can reach origin, then Sync.");
+			return false;
+		}
+
+		if (behind > 0)
+		{
+			row.IsSyncedWithOrigin = false;
+			row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
+
+			onOutput?.Invoke(
+				$"❌ {row.PackageId}: origin has {behind} commit(s) this clone does not, added since these changes were worked out. Refusing to push, because they were decided against a repository that has moved on.");
+
+			// Discarded rather than left for the user to deal with: they were derived from an assessment of
+			// a tree that has been superseded, so they cannot be salvaged into something correct — and
+			// leaving them would only block the next fix on the clean-tree gate. Re-applying after a sync
+			// is cheap, and may turn out to be unnecessary.
+			var (discardSuccess, discarded) = await _localRepo
+				.DiscardLocalChangesAsync(repoIdentity, cancellationToken)
+				.ConfigureAwait(false);
+
+			if (discardSuccess)
+			{
+				foreach (var line in discarded)
+				{
+					onOutput?.Invoke($"   ↩️ discarded {line}");
+				}
+
+				onOutput?.Invoke($"↩️ {row.PackageId}: {discarded.Count} local change(s) discarded. Sync, then apply the fix again.");
+				row.IsWorkingTreeClean = true;
+			}
+			else
+			{
+				onOutput?.Invoke($"⚠️ {row.PackageId}: could not discard the local changes — Sync will need them cleared first.");
+			}
+
+			return false;
+		}
+
+		return true;
 	}
 
 	/// <summary>
@@ -1262,7 +1337,32 @@ public class DashboardService
 		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		row.IsSyncedWithOrigin = await _localRepo.IsSyncedWithOriginAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
 		row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Refreshes only the git facts that can be read without contacting the remote: the current branch
+	/// and whether the working tree is clean.
+	/// </summary>
+	/// <remarks>
+	/// Separate from <see cref="RefreshGitStatusAsync"/> because that one compares against origin, which
+	/// costs a fetch — too much to pay every time a repository is clicked. These two are local reads, and
+	/// they are the ones that go stale behind the app's back: anything done to a checkout outside the
+	/// dashboard leaves the row asserting a branch and a cleanliness that were true when it last acted.
+	/// The sync comparison is deliberately left alone rather than invalidated, so what it last established
+	/// stays on screen with its age (see <see cref="PackageDashboardRow.SyncStatusCheckedAtUtc"/>).
+	/// </remarks>
+	public async Task RefreshLocalGitStatusAsync(PackageDashboardRow row, CancellationToken cancellationToken = default)
+	{
+		var repoIdentity = RepoIdentity(row);
+		if (repoIdentity is null || !row.IsClonedLocally)
+		{
+			return;
+		}
+
+		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>

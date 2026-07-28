@@ -232,11 +232,17 @@ else
 									}
 									@if (_selectedRow.IsSyncedWithOrigin == false)
 									{
-										<span class="git-dirty-badge" title="Not in sync with origin">⇅ Out of sync</span>
+										<span class="git-dirty-badge" title="@SyncBadgeTooltip("Not in sync with origin")">⇅ Out of sync</span>
+									}
+									else if (IsRecentlyConfirmedInSync(_selectedRow))
+									{
+										<span class="git-clean-badge" title="@SyncBadgeTooltip("In sync with origin")">⇅ Synced</span>
 									}
 									else if (_selectedRow.IsSyncedWithOrigin == true)
 									{
-										<span class="git-clean-badge" title="In sync with origin">⇅ Synced</span>
+										@* Same fact the Sync button gates on, so the two cannot contradict each other: while
+										   this shows unconfirmed, Sync is available, and vice versa. *@
+										<span class="git-unknown-badge" title="@UnconfirmedSyncBadgeTooltip">⇅ Synced?</span>
 									}
 																		@if (_selectedRow.NuGetVersionMatchesTag == true)
 									{
@@ -364,8 +370,8 @@ else
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
 											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
-											 IsEnabled="@(!IsBulkOperationInFlight)"
-											 ToolTip="@GetReassessButtonTooltip()"
+											 IsEnabled="@(!IsBulkOperationInFlight && !IsBlockedByOutOfSync)"
+											 ToolTip="@(IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -392,8 +398,8 @@ else
 											 IconCssClass="fas fa-hammer"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Build)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true)"
-											 ToolTip="@(_selectedRow?.IsClonedLocally == true ? "Build the solution" : "Clone the repository first")"
+											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
+											 ToolTip="@WorkflowStepTooltip("Build the solution")"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -406,8 +412,8 @@ else
 											 IconCssClass="fas fa-flask"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Test)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true)"
-											 ToolTip="@(_selectedRow?.IsClonedLocally == true ? "Run unit tests" : "Clone the repository first")"
+											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
+											 ToolTip="@WorkflowStepTooltip("Run unit tests")"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -420,8 +426,8 @@ else
 											 IconCssClass="fas fa-cloud-upload-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true)"
-											 ToolTip="@(_selectedRow?.IsClonedLocally == true ? "Commit changes, fetch, rebase and push to origin" : "Clone the repository first")"
+											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
+											 ToolTip="@WorkflowStepTooltip("Commit changes, fetch, rebase and push to origin")"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -1006,6 +1012,16 @@ else
 			}
 
 			_selectedRow = newRow;
+
+			// The branch and cleanliness on the row were read the last time the app did something to the
+			// checkout, and anything done to it since — by the user, or by another tool — has left them
+			// asserting a state that may no longer hold. Re-read them on selection so the badges and the
+			// buttons that gate on them describe the repository rather than the app's memory of it. Not
+			// awaited: it shells out to git, and the pane should not wait to render.
+			if (newRow is not null)
+			{
+				_ = RefreshSelectedRowGitStatusAsync(newRow);
+			}
 		}
 		else
 		{
@@ -1016,6 +1032,29 @@ else
 		}
 
 		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Re-reads the selected row's local git facts, repainting only if it is still the row on screen.
+	/// </summary>
+	private async Task RefreshSelectedRowGitStatusAsync(PackageDashboardRow row)
+	{
+		try
+		{
+			await Dashboard.RefreshLocalGitStatusAsync(row);
+		}
+		catch (Exception ex)
+		{
+			// Badges that cannot be refreshed are not worth an error: they keep their last known values.
+			Logger.LogWarning(ex, "Could not refresh git status for {Repository}", row.RepositoryFullName);
+			return;
+		}
+
+		// Clicking through the tree quickly can leave this arriving after the selection moved on.
+		if (ReferenceEquals(_selectedRow, row))
+		{
+			await InvokeAsync(StateHasChanged);
+		}
 	}
 
 	private void OnNavNodeActivated(TreeNode<NavItem> node)
@@ -1207,12 +1246,93 @@ else
 			: _orgSelected ? "Re-assess Org"
 			: "Re-assess Orgs";
 
+	/// <summary>
+	/// Where this organisation's clones are kept. Repositories owned by another account are filed under
+	/// that owner rather than here, so this is where most of them are, not necessarily all.
+	/// </summary>
+	private string OrganizationCloneFolder
+		=> Path.Combine(LocalRepo.GetReposRoot(), CurrentOrganization);
+
+	private void OpenOrganizationCloneFolder()
+	{
+		var folder = OrganizationCloneFolder;
+		var (success, message) = LocalRepo.OpenFolder(folder);
+
+		if (!success)
+		{
+			// Console rather than a dialog: it is a convenience, and the path is on screen to open by hand.
+			_consoleVisible = true;
+			AppendConsole($"⚠️ Could not open {folder}: {message}");
+		}
+	}
+
 	private string GetReassessButtonTooltip()
-		=> _selectedRow is not null
+	{
+		var scope = _selectedRow is not null
 			? "Re-assess this package"
 			: _orgSelected
 				? $"Assess every {CurrentOrganization} repository again, without re-reading the package list from NuGet"
 				: "Assess every known repository again, without re-reading the package list from NuGet";
+
+		var lastAssessed = LastAssessedInScope();
+		return lastAssessed is null ? scope : $"{scope}. Last assessed {DescribeAssessmentAge(lastAssessed.Value)}";
+	}
+
+	/// <summary>
+	/// The most recent assessment within whatever the toolbar currently acts on, or null if nothing in
+	/// scope has been assessed.
+	/// </summary>
+	/// <remarks>
+	/// The most recent rather than the oldest, because for a bulk scope the question the tooltip answers
+	/// is "have I only just done this?" — and the newest assessment is what makes a repeat redundant.
+	/// </remarks>
+	private DateTimeOffset? LastAssessedInScope()
+	{
+		if (_selectedRow is not null)
+		{
+			return _selectedRow.Assessment?.AssessedAtUtc;
+		}
+
+		var inScope = _orgSelected
+			? _rows.Where(r => string.Equals(r.Organization, CurrentOrganization, StringComparison.OrdinalIgnoreCase))
+			: _rows;
+
+		return inScope
+			.Select(r => r.Assessment?.AssessedAtUtc)
+			.Where(at => at is not null)
+			.Max();
+	}
+
+	/// <summary>
+	/// Describes how long ago an assessment ran, e.g. "4 minutes ago, at 15:20 UTC".
+	/// </summary>
+	/// <remarks>
+	/// Same shape as <see cref="DescribeRateLimitReset"/>, and UTC for the same reason: this is Blazor
+	/// Server, so converting to local time would use the server's timezone rather than the viewer's. The
+	/// date is included once the assessment is no longer from today, since a bare clock time on a
+	/// week-old assessment reads as if it were minutes ago.
+	/// </remarks>
+	private static string DescribeAssessmentAge(DateTimeOffset assessedAtUtc)
+	{
+		var assessed = assessedAtUtc.ToUniversalTime();
+		var age = DateTimeOffset.UtcNow - assessed;
+		var clock = age.TotalHours < 24
+			? $"at {assessed:HH:mm} UTC"
+			: $"at {assessed:HH:mm} UTC on {assessed:d MMM}";
+
+		var relative = age switch
+		{
+			{ TotalMinutes: < 1 } => "moments ago",
+			{ TotalMinutes: < 2 } => "a minute ago",
+			{ TotalHours: < 1 } => $"{(int)age.TotalMinutes} minutes ago",
+			{ TotalHours: < 2 } => "an hour ago",
+			{ TotalDays: < 1 } => $"{(int)age.TotalHours} hours ago",
+			{ TotalDays: < 2 } => "yesterday",
+			_ => $"{(int)age.TotalDays} days ago"
+		};
+
+		return $"{relative}, {clock}";
+	}
 
 	/// <summary>
 	/// Whether this node is issue content whose result is currently being recomputed, and so shows a
@@ -2630,6 +2750,13 @@ else
 					Its icon shows how it fares: green is clean, amber has warnings, red has errors.
 				</li>
 				<li>
+					<strong>Clone the ones you want to work on</strong> with the
+					<i class="fas fa-cloud-arrow-down"></i> on an organisation. Clones go to
+					<code>@LocalRepo.GetReposRoot()</code> — the app's own folder, kept apart from
+					wherever you keep your own checkouts, so nothing it does can disturb them.
+					<em>Seen Locally</em> picks out the ones you already work on.
+				</li>
+				<li>
 					<strong>Work along the toolbar</strong> left to right — Sync, Re-assess, Fix, Build,
 					Test, Commit &amp; Push, Publish.
 				</li>
@@ -2641,9 +2768,9 @@ else
 			</ol>
 
 			<p class="getting-started-note">
-				Auto-fix, build, test and publish need the repository cloned locally — use the
-				<i class="fas fa-cloud-arrow-down"></i> on an organisation to clone. Repositories that
-				are not cloned can only be assessed.
+				Auto-fix, build, test and publish need a clone, so a repository that has none can only be
+				assessed. Clones are always fetched fresh from GitHub, including for repositories you
+				already have elsewhere — a copy would start out however far behind that one had drifted.
 			</p>
 		</div>
 	};
@@ -3115,6 +3242,10 @@ else
 
 	private RenderFragment RenderSettingsView() => __builder =>
 	{
+		// Read once rather than per attribute: the path feeds the field, the button's state and its tooltip.
+		var cloneFolder = OrganizationCloneFolder;
+		var cloneFolderExists = Directory.Exists(cloneFolder);
+
 		<div class="settings-view" style="padding: 1.5rem; max-width: 600px;">
 			<h2>⚙️ Settings — @CurrentOrganization</h2>
 
@@ -3124,7 +3255,25 @@ else
 			   actively wrong, showing the first organisation whichever one you were looking at. *@
 			<div class="settings-form">
 				<div class="form-group"><label>Organization</label><input type="text" value="@CurrentOrganization" readonly /></div>
+				<div class="form-group">
+					<label>Clone folder</label>
+					<div class="settings-path-row">
+						<input type="text" value="@cloneFolder" readonly />
+						<button class="btn btn-sm"
+								@onclick="OpenOrganizationCloneFolder"
+								disabled="@(!cloneFolderExists)"
+								title="@(cloneFolderExists ? $"Open {cloneFolder}" : "Nothing cloned yet, so the folder does not exist")">
+							<i class="fas fa-folder-open"></i>&nbsp;Open
+						</button>
+					</div>
+				</div>
 			</div>
+
+			<p class="settings-hint">
+				Where the app keeps its clones of this organisation's repositories — its own folder, apart
+				from wherever you keep your own checkouts. A repository owned by a different account sits
+				under that account's name instead, since clones are filed by their owner on GitHub.
+			</p>
 
 			<p style="color: var(--text-secondary); font-size: 0.85rem;">
 				Settings that apply to every organisation — licence, copyright, clone location, IDE —
@@ -4526,9 +4675,10 @@ else
 			return $"Must be on 'main' branch (currently on '{_selectedRow.CurrentBranch ?? "unknown"}')";
 		}
 
-		if (_selectedRow.IsSyncedWithOrigin == false)
+		if (IsBlockedByOutOfSync)
 		{
-			return "Local branch is not in sync with origin — run Git Sync first";
+			// The same wording as every other step blocked by this, rather than a second phrasing of it.
+			return OutOfSyncBlockedTooltip;
 		}
 
 		return null;
@@ -4599,6 +4749,32 @@ else
 
 	// === Publish guard methods ===
 
+	/// <summary>
+	/// Whether the selected repository is known to be behind origin, which leaves Sync as the only step
+	/// worth offering.
+	/// </summary>
+	/// <remarks>
+	/// Everything else in the workflow reasons about the code in the clone: re-assessing reports on a tree
+	/// that has been superseded, a build and its tests describe superseded code, and a push has just been
+	/// refused for that reason. Offering them invites work whose conclusions cannot be trusted — so once
+	/// the push gate establishes the clone is behind, the toolbar narrows to the one action that resolves
+	/// it. Only a positive answer counts: an unknown or expired sync belief blocks nothing.
+	/// </remarks>
+	private bool IsBlockedByOutOfSync => _selectedRow?.IsSyncedWithOrigin == false;
+
+	private const string OutOfSyncBlockedTooltip =
+		"Origin has commits this clone does not — Sync first, or anything done here is based on code that has moved on";
+
+	/// <summary>
+	/// The tooltip for a step that needs a clone and a clone that is current, naming whichever is missing.
+	/// </summary>
+	private string WorkflowStepTooltip(string whenAvailable)
+		=> _selectedRow?.IsClonedLocally != true
+			? "Clone the repository first"
+			: IsBlockedByOutOfSync
+				? OutOfSyncBlockedTooltip
+				: whenAvailable;
+
 	private bool IsSyncEnabled()
 	{
 		if (_selectedRow is null || _isRunning)
@@ -4611,9 +4787,45 @@ else
 			return true;
 		}
 
-		// Nothing to sync when the working tree is clean AND we're in sync with origin.
-		return _selectedRow.IsWorkingTreeClean != true || _selectedRow.IsSyncedWithOrigin != true;
+		// Only whether we differ from origin. It used to also enable on a dirty working tree, which had
+		// it backwards: syncing is fetch, pull --rebase, push, and uncommitted changes are what make the
+		// rebase refuse to run — not something syncing puts right. So a repository showing both "Dirty"
+		// and "Synced" offered a button whose only likely outcome was a failed rebase.
+		return !IsRecentlyConfirmedInSync(_selectedRow);
 	}
+
+	/// <summary>
+	/// Whether this row was confirmed to match origin recently enough to still act on it.
+	/// </summary>
+	/// <remarks>
+	/// The age matters because being in sync is not a durable fact — origin can move a moment after the
+	/// check, and nothing tells the app when it does. Disabling Sync on the bare claim would eventually
+	/// strand someone with a button they cannot press and a pull they need, so the claim expires.
+	/// </remarks>
+	private static bool IsRecentlyConfirmedInSync(PackageDashboardRow row)
+		=> row.IsSyncedWithOrigin == true
+			&& row.SyncStatusCheckedAtUtc is { } checkedAt
+			&& DateTimeOffset.UtcNow - checkedAt < SyncStatusTrustedFor;
+
+	/// <summary>
+	/// How long a confirmed-in-sync answer is treated as still true. Long enough to cover working
+	/// through the toolbar on one repository, short enough that a stale answer does not block a pull.
+	/// </summary>
+	private static readonly TimeSpan SyncStatusTrustedFor = TimeSpan.FromMinutes(5);
+
+	/// <summary>
+	/// Dates the sync badge, so a claim about origin is not read as being about this moment.
+	/// </summary>
+	private string SyncBadgeTooltip(string state)
+		=> _selectedRow?.SyncStatusCheckedAtUtc is { } checkedAt
+			? $"{state}, as at {checkedAt:HH:mm:ss} UTC"
+			: state;
+
+	/// <summary>
+	/// The tooltip for a sync state that was true when last established but has not been rechecked since.
+	/// </summary>
+	private string UnconfirmedSyncBadgeTooltip
+		=> $"{SyncBadgeTooltip("Was in sync with origin")} — not confirmed since. Sync to check.";
 
 	private string GetSyncTooltip()
 	{
@@ -4632,17 +4844,22 @@ else
 			return "Clone and sync repository";
 		}
 
-		if (_selectedRow.IsWorkingTreeClean == true && _selectedRow.IsSyncedWithOrigin == true)
+		if (IsRecentlyConfirmedInSync(_selectedRow))
 		{
-			return "Already in sync with origin";
+			return $"Already in sync with origin, as at {_selectedRow.SyncStatusCheckedAtUtc:HH:mm:ss} UTC";
 		}
 
-		return "Fetch, pull --rebase, push";
+		// Sync is still the right button here, but saying what will get in the way beats letting the
+		// rebase explain it.
+		return _selectedRow.IsWorkingTreeClean == false
+			? "Fetch, pull --rebase, push — uncommitted changes may block the rebase"
+			: "Fetch, pull --rebase, push";
 	}
 
 	private bool IsPublishEnabled()
 	{
 		return _selectedRow is not null && !_isRunning && _selectedRow.IsClonedLocally
+			&& !IsBlockedByOutOfSync
 			&& _selectedRow.Status == PackageStatus.TestsPassed;
 	}
 
@@ -4657,6 +4874,11 @@ else
 		{
 			return "Clone the repository first";
 			}
+
+		if (IsBlockedByOutOfSync)
+		{
+			return OutOfSyncBlockedTooltip;
+		}
 
 		if (_selectedRow.Status != PackageStatus.TestsPassed)
 		{

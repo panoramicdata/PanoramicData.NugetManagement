@@ -67,6 +67,17 @@ public class PackageDashboardRow
 	public bool? IsSyncedWithOrigin { get; set; }
 
 	/// <summary>
+	/// When <see cref="IsSyncedWithOrigin"/> was last established, or null if it never has been.
+	/// </summary>
+	/// <remarks>
+	/// Establishing it costs a fetch, so it is a point-in-time answer that nothing keeps current: origin
+	/// can move the moment after. The age is what lets "we are in sync" disable the Sync button without
+	/// stranding anyone — past a short window the claim is treated as no longer worth trusting, and the
+	/// button becomes available again.
+	/// </remarks>
+	public DateTimeOffset? SyncStatusCheckedAtUtc { get; set; }
+
+	/// <summary>
 	/// The latest git tag on the local repo (e.g. "1.0.55").
 	/// </summary>
 	public string? LatestTag { get; set; }

@@ -294,6 +294,107 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
+	/// Counts the commits on <c>origin</c> that this checkout does not have, fetching first. Returns null
+	/// if that cannot be established.
+	/// </summary>
+	/// <remarks>
+	/// Deliberately only "behind", not <see cref="IsSyncedWithOriginAsync"/>'s "behind or ahead": having
+	/// local commits to push is the normal state at the point this matters, whereas missing commits means
+	/// whatever is about to be committed was decided against a repository that has since moved on.
+	/// </remarks>
+	public async Task<int?> CountCommitsBehindOriginAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
+		var (fetchExit, _) = await RunCommandAsync(path, "git", "fetch --prune", cancellationToken).ConfigureAwait(false);
+		if (fetchExit != 0)
+		{
+			return null;
+		}
+
+		var (branchExit, branchOutput) = await RunCommandAsync(path, "git", "rev-parse --abbrev-ref HEAD", cancellationToken).ConfigureAwait(false);
+		if (branchExit != 0)
+		{
+			return null;
+		}
+
+		var branch = branchOutput.Trim();
+		var (behindExit, behindOutput) = await RunCommandAsync(
+			path, "git", $"rev-list --count HEAD..origin/{branch}", cancellationToken).ConfigureAwait(false);
+
+		// A missing remote-tracking branch fails here, and is indistinguishable from a real error.
+		return behindExit == 0 && int.TryParse(behindOutput.Trim(), out var behind) ? behind : null;
+	}
+
+	/// <summary>
+	/// Throws away everything uncommitted in a clone: modifications to tracked files, and untracked files
+	/// and directories. Returns the <c>git status</c> lines that were discarded.
+	/// </summary>
+	/// <remarks>
+	/// Both halves are needed, because a remediation does not only edit files — it adds them (a
+	/// <c>xunit.runner.json</c>, a <c>global.json</c>), and <c>reset --hard</c> alone would leave those
+	/// behind to be swept into the next commit. Safe here only because this runs in a clone of the app's
+	/// own making, which is the reason those live somewhere separate from the user's checkouts.
+	/// </remarks>
+	public async Task<(bool Success, IReadOnlyList<string> Discarded)> DiscardLocalChangesAsync(
+		string repoIdentity,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		if (!Directory.Exists(path))
+		{
+			return (false, []);
+		}
+
+		// Captured first: afterwards there is nothing left to report.
+		var discarded = await GetWorkingTreeStatusPreviewAsync(repoIdentity, int.MaxValue, cancellationToken)
+			.ConfigureAwait(false);
+
+		var (resetExit, _) = await RunCommandAsync(path, "git", "reset --hard HEAD", cancellationToken).ConfigureAwait(false);
+		var (cleanExit, _) = await RunCommandAsync(path, "git", "clean -fd", cancellationToken).ConfigureAwait(false);
+
+		_logger.LogInformation("Discarded {Count} local change(s) in {Path}", discarded.Count, path);
+		return (resetExit == 0 && cleanExit == 0, discarded);
+	}
+
+	/// <summary>
+	/// Opens a folder in this machine's file manager. Returns false, with the reason, if it cannot be.
+	/// </summary>
+	/// <remarks>
+	/// Runs on the server, which is the user's own machine while the dashboard is run locally — the same
+	/// assumption "Open in IDE" already makes. <c>UseShellExecute</c> hands the path to the shell rather
+	/// than naming a file manager, so there is nothing platform-specific to get wrong.
+	/// </remarks>
+	public (bool Success, string Message) OpenFolder(string path)
+	{
+		if (!Directory.Exists(path))
+		{
+			return (false, $"{path} does not exist yet.");
+		}
+
+		try
+		{
+			using var process = Process.Start(new ProcessStartInfo
+			{
+				FileName = path,
+				UseShellExecute = true
+			});
+
+			_logger.LogInformation("Opened folder {Path} in the file manager", path);
+			return (true, path);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Could not open folder {Path}", path);
+			return (false, ex.Message);
+		}
+	}
+
+	/// <summary>
 	/// Checks if a repository is cloned locally.
 	/// </summary>
 	public bool IsClonedLocally(string repoIdentity)
