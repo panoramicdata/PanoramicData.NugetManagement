@@ -69,26 +69,36 @@ html, body {
     pointer-events: none;
 }
 
-/* Disabled toolbar buttons should read as dimmed versions of the enabled ones,
-   not hollow light-outlined ghosts. Without this, the disabled border falls back to
-   the light text colour and the fill disappears. .btn:disabled still fades to 0.4 opacity.
-   Workflow-step colours (done/failed/next) keep their !important borders. */
-/* Enabled workflow buttons get a clearly visible border so they read as buttons. */
+/* Fallback for any toolbar button without its own scheme: a visible border so it still reads as a
+   button. Every toolbar button now carries btn-primary, so in practice nothing matches this. */
 .main-toolbar .pdtoolbarbutton:not(.btn-primary):not(.btn-success) {
     border: 1px solid #ffffff;
     color: var(--text-primary);
 }
 
-/* Disabled toolbar buttons: obviously off, but still legibly a button — a brighter,
-   thicker border + clearly muted text + not-allowed cursor, and NO opacity fade
-   (opacity was what dimmed the border into invisibility). */
+/* Disabled toolbar buttons are a faded version of the enabled button rather than a differently
+   styled control: the fill and border are left alone and the whole thing is dimmed with opacity,
+   with the same dark text the enabled state uses.
+   An earlier version forced opacity: 1 with a dark fill and light text, because fading a button that
+   had no fill dimmed its border into invisibility. That no longer applies now every toolbar button
+   has a solid fill — the fill carries the shape, so the fade is safe and the light text (which read
+   as white-on-dark and looked like a different button entirely) is no longer needed. */
 .main-toolbar .pdtoolbarbutton:disabled,
 .main-toolbar .pdtoolbarbutton.disabled {
-    background: var(--bg-secondary);
-    border: 1px solid rgba(90, 107, 140, 0.45) !important;
-    color: var(--text-muted) !important;
-    opacity: 1;
+    /* The fill needs !important to beat Bootstrap's own .btn-primary:disabled, which is more specific
+       than this app's single-class .btn-primary override and otherwise shows its stock blue — leaving
+       a disabled button a faded *different* blue rather than a faded version of the enabled one. */
+    background: var(--accent) !important;
+    color: #000 !important;
+    opacity: 0.45;
     cursor: not-allowed;
+}
+
+/* Match the enabled border as well, but not where a workflow state owns it: a failed or next-up step
+   keeps its red or amber border even while the button is disabled, so the state stays visible. */
+.main-toolbar .pdtoolbarbutton:disabled:not(.toolbar-step-failed):not(.toolbar-step-next),
+.main-toolbar .pdtoolbarbutton.disabled:not(.toolbar-step-failed):not(.toolbar-step-next) {
+    border-color: var(--accent) !important;
 }
 
 .tree-node-dirty {
@@ -1424,6 +1434,10 @@ i + .breadcrumb-link-text {
 .nav-tree-scroll {
     flex: 1;
     overflow-y: auto;
+    /* Reserve the scrollbar's width permanently, so the tree does not jump left the moment it
+       becomes long enough to scroll. The gutter stays empty (no visible track or thumb) until
+       there is something to scroll. */
+    scrollbar-gutter: stable;
     padding: 0.25rem 0;
 }
 
@@ -1465,11 +1479,19 @@ i + .breadcrumb-link-text {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 1rem;
     height: 100%;
     color: var(--text-muted);
     font-size: 0.9rem;
+}
+
+/* Sit the prompt a quarter of the way down the pane rather than dead centre. Done with a flex spacer
+   because a percentage padding or margin would resolve against the pane's width, not its height.
+   The gap is subtracted so the quarter is measured to the icon, not to the gap above it. */
+.spa-placeholder::before {
+    content: "";
+    flex: 0 0 calc(25% - 1rem);
 }
 
 /* === Console Panel Actions === */
@@ -1790,6 +1812,16 @@ i + .breadcrumb-link-text {
     display: inline;
 }
 
+/* Dimmed and inert while a rediscovery is replacing the repository list: these nodes may be about
+   to disappear, so they should not invite a click. Re-assessment deliberately does not dim, since
+   the same repositories remain and their results stay worth opening. The state is stable for the
+   whole run — flipping it per completed repository made the tree flicker and the scrollbar jump. */
+.nav-node-label.rediscovering {
+    opacity: 0.4;
+    pointer-events: none;
+    cursor: default;
+}
+
 /* Gap between every tree node's icon and its label text (root gauge, cubes, category/rule icons). */
 .nav-node-label > i {
     margin-right: 4px;
@@ -1824,13 +1856,23 @@ i + .breadcrumb-link-text {
     display: none;
 }
 
-/* Container header nodes get distinct label colours to set them apart from repo nodes. */
-.nav-node-label:has(> i.fa-sitemap) {   /* Organisations — light green */
-    color: #a5d6a7;
-}
-
-.nav-node-label:has(> i.fa-cubes) {  /* Repositories — pink */
-    color: #f48fb1;
+/* Container header nodes (Organisations, Repositories, Issues, Package Updates) all share one colour
+   so none of them reads as a status: a per-container palette was tried and, in a tree whose whole
+   point is red/amber/green health, distinct hues looked like states rather than headings.
+   Deliberately --accent (the interface's blue) and not --info, which is the Info severity colour and
+   would reintroduce exactly that confusion.
+   The severity :not()s on fa-layer-group matter: the issue categories beneath Issues use the same
+   glyph, distinguished only by a severity class, and they are content rather than containers. */
+.nav-node-label:has(> i.fa-sitemap),
+.nav-node-label:has(> i.fa-cubes),
+.nav-node-label:has(> i.fa-layer-group:not(.text-danger):not(.text-warning):not(.text-info)),
+.nav-node-label:has(> i.fa-arrow-circle-up) {
+    /* Fallback for engines without color-mix. */
+    color: #47aad9;
+    /* The accent blue pulled 15% toward the page background: enough to stop the headings competing
+       with the RAG icons, without dimming them to the point of being hard to read (30% was too far).
+       Derived from --accent rather than hard-coded so it follows any palette change. */
+    color: color-mix(in srgb, var(--accent) 85%, var(--bg-primary));
 }
 
 /* Org (root) tree row: lay it out as a full-width flex row so its action buttons
@@ -1901,23 +1943,21 @@ i + .breadcrumb-link-text {
 }
 
 /* === Workflow Step Done Indicator === */
-.toolbar-step-done {
-    /* Completed step: keep it looking like a normal enabled button (bright text,
-       standard border) and mark completion with a check — NOT a green fill/outline,
-       which reads as a "primary action" and made done steps look the loudest. */
-    color: var(--text-primary) !important;
-}
+/* A completed step now looks exactly like any other enabled button — no colour change at all.
+   It previously forced bright text (var(--text-primary)) as its "done" marker, which worked when
+   these buttons had no fill: light text on a dark button read as complete. Once every toolbar button
+   gained a solid blue fill that became light-on-light — poor contrast, and the done steps were the
+   only ones in the row with different text, which looked like a rendering fault rather than a state.
+   Nothing is lost: the amber toolbar-step-next border marks where you are in the sequence, so every
+   step to its left is self-evidently done. */
 
 /* Sync/Re-assess are repeatable refresh actions, not one-shot steps, so there is no
    green "done" tick or green hover — it misread as active and fought the disabled look. */
 
-/* Publish is the only button that is both btn-success (green fill) and can gain
-   toolbar-step-done (green text). Without this override the green "done" text lands
-   on the green fill and the label vanishes — keep it white on the solid green. */
-.btn-success.toolbar-step-done {
-    color: #fff !important;
-}
-
+/* Publish is the only button that is both btn-success and can gain toolbar-step-done. The text
+   override that used to live here existed solely to undo toolbar-step-done's colour on the green
+   fill; that class no longer sets a colour, so btn-success's own white text stands unchallenged.
+   The hover rule stays: it stops a completed Publish brightening on hover as though still actionable. */
 .btn-success.toolbar-step-done:hover {
     background: var(--success);
 }
@@ -2182,6 +2222,78 @@ i + .breadcrumb-link-text {
     max-width: 640px;
 }
 
+.add-org-dialog {
+    max-width: 460px;
+}
+
+/* In-app replacement for confirm()/alert(). pre-line keeps any newlines in the message. */
+.app-dialog {
+    max-width: 520px;
+}
+
+.app-dialog-message {
+    margin: 0 0 1rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
+/* The organisation node's discovery indicator: a magnifier sweeping side to side, as if searching.
+   Deliberately not a spin — spinning is reserved for the assessment phase, which uses the recycle
+   icon so the tree matches whichever button started the run. inline-block is required for the
+   transform to apply to an inline <i>. */
+@keyframes nav-org-searching {
+    0%, 100% { transform: translateX(-2.5px); }
+    50%      { transform: translateX(2.5px); }
+}
+
+.nav-org-searching {
+    display: inline-block;
+    animation: nav-org-searching 0.9s ease-in-out infinite;
+}
+
+/* Separates the run-something actions (Rediscover, Re-assess) from the clone and settings pair. */
+.nav-org-action-btn.nav-org-action-group-end {
+    margin-right: 0.5rem;
+}
+
+/* Destructive organisation removal, deliberately set apart from the read-only settings above. */
+.settings-danger-zone {
+    margin-top: 2rem;
+    padding: 1rem;
+    border: 1px solid var(--danger, #dc3545);
+    border-radius: 4px;
+}
+
+.settings-danger-zone h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    color: var(--danger, #dc3545);
+}
+
+.settings-danger-zone p {
+    margin: 0 0 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.add-org-input {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    margin-bottom: 0.75rem;
+    background: var(--bg-input, var(--bg-secondary));
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.add-org-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 .clone-dialog-status {
     color: var(--text-secondary);
     font-size: 0.85rem;
@@ -2263,29 +2375,6 @@ i + .breadcrumb-link-text {
     background: rgba(128, 128, 128, 0.22);
 }
 
-/* GitHub API budget indicator: matches the git status badges in the breadcrumb bar. */
-.rate-limit-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.7rem;
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    font-weight: 600;
-    background: rgba(128, 128, 128, 0.14);
-    color: var(--text-muted);
-    border: 1px solid rgba(128, 128, 128, 0.3);
-    white-space: nowrap;
-}
-
-.rate-limit-chip.low {
-    background: rgba(255, 152, 0, 0.15);
-    color: var(--warning);
-    border-color: rgba(255, 152, 0, 0.4);
-}
-
-.rate-limit-chip.critical {
-    background: rgba(244, 67, 54, 0.15);
-    color: var(--error);
-    border-color: rgba(244, 67, 54, 0.45);
-}
+/* The GitHub API budget chip was removed: normal dashboard use never approaches the hourly limit, so
+   a permanent counter was noise. The budget is still checked before any action that would consume a
+   meaningful share of it — see ConfirmApiBudgetAsync — it just no longer shows a running total. */
