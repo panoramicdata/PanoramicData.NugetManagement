@@ -1857,6 +1857,11 @@ i + .breadcrumb-link-text {
 /* The whole node label (icon + text) wrapped so the tooltip covers the icon on hover. */
 .nav-node-label {
     display: inline;
+    /* Fades the dim on and off rather than flipping. Matches the reconnect modal's backdrop fade
+       (0.5s ease-in-out) so the two feel like the same app. Declared on the base rather than on
+       .rediscovering: a transition living only on the modifier disappears with the class, so the
+       return to full opacity would snap. */
+    transition: opacity 0.5s ease-in-out;
 }
 
 /* Dimmed and inert while a rediscovery is replacing the repository list: these nodes may be about

@@ -2897,11 +2897,18 @@ else
 				row.IsReassessing = true;
 			}
 
-			// Discovery is done: dimming lifts here and the per-repository spinners take over. This is
-			// the one tree rebuild mid-run; the tree then stays still until the assessment finishes.
-			_isDiscovering = false;
+			// Discovery is done: the per-repository spinners take over. This is the one tree rebuild
+			// mid-run; the tree then stays still until the assessment finishes.
+			//
+			// The rebuild happens while still dimmed, and the dim is lifted afterwards. Order matters:
+			// the rebuild replaces the node elements, so clearing the flag first would render the new
+			// ones already at full opacity with no previous value to animate from, and the dim would
+			// snap off instead of fading.
 			_progressMessage = "Assessing...";
 			await RefreshTableAsync();
+
+			_isDiscovering = false;
+			StateHasChanged();
 
 			await AssessInParallelAsync(assessable, async row =>
 			{
@@ -3271,12 +3278,18 @@ else
 				row.IsReassessing = true;
 			}
 
-			// Discovery is done: the new list is about to be displayed, so dimming lifts here and the
-			// per-repository spinners take over for the assessment phase. This is the one tree rebuild
-			// in the middle of the run; the tree then stays still until it finishes.
-			_isDiscovering = false;
+			// Discovery is done: the new list is displayed and the per-repository spinners take over for
+			// the assessment phase. This is the one tree rebuild in the middle of the run; the tree then
+			// stays still until it finishes.
+			//
+			// The rebuild happens while still dimmed, and the dim is lifted afterwards — see the note in
+			// RefreshAsync: clearing the flag first would rebuild the nodes already undimmed, leaving
+			// nothing for the fade to animate from.
 			_progressMessage = $"Assessing {organization}...";
 			await RefreshTableAsync();
+
+			_isDiscovering = false;
+			StateHasChanged();
 
 			AppendConsole($"▶ Rediscovering {organization}: {assessable.Count} repositories...");
 
