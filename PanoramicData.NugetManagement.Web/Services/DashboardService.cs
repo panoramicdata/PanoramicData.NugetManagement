@@ -919,28 +919,17 @@ public class DashboardService
 
 		var value = remoteOrFullName.Trim();
 
-		// git@github.com:owner/name.git
-		var colon = value.LastIndexOf(':');
-		if (value.StartsWith("git@", StringComparison.OrdinalIgnoreCase) && colon > 0)
+		var fromUrl = LocalRepoService.ParseRepoIdentity(value);
+		if (fromUrl is not null)
 		{
-			value = value[(colon + 1)..];
-		}
-		else if (value.Contains("://", StringComparison.Ordinal))
-		{
-			// https://github.com/owner/name.git
-			var host = value.IndexOf("github.com", StringComparison.OrdinalIgnoreCase);
-			value = host >= 0 ? value[(host + "github.com".Length)..].TrimStart('/', ':') : value;
+			return fromUrl.ToLowerInvariant();
 		}
 
-		if (value.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
-		{
-			value = value[..^4];
-		}
-
-		var segments = value.Trim('/').Split('/');
-		return segments.Length >= 2
-			? $"{segments[^2]}/{segments[^1]}".ToLowerInvariant()
-			: null;
+		// Not a URL. The two sides of the comparison are not the same shape: a clone's origin is a URL,
+		// but a row carries its repository as a bare owner/name — so that form has to be accepted here,
+		// or the guard rejects every row it is asked about and no fix is ever applied.
+		var segments = value.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+		return segments.Length == 2 ? $"{segments[0]}/{segments[1]}".ToLowerInvariant() : null;
 	}
 
 	/// <summary>

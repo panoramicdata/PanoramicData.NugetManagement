@@ -2522,6 +2522,68 @@ i + .breadcrumb-link-text {
     max-width: 520px;
 }
 
+/* The git-access notice. Wider than a confirm because it carries a command to copy and git's own
+   output, and its prose is written as markup rather than passed as one string — so pre-line, which
+   the plain dialog wants, would turn every source line break into a rendered one. */
+.git-access-dialog {
+    max-width: 620px;
+}
+
+.git-access-dialog .app-dialog-message {
+    white-space: normal;
+}
+
+.git-access-dialog .app-dialog-message.subtle {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.git-access-command {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-input, var(--bg-secondary));
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.git-access-command code {
+    flex: 1 1 auto;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+.git-access-command .btn-copy {
+    flex: 0 0 auto;
+}
+
+.git-access-detail {
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.git-access-detail summary {
+    cursor: pointer;
+    user-select: none;
+}
+
+.git-access-detail pre {
+    margin: 0.5rem 0 0;
+    padding: 0.5rem;
+    max-height: 8rem;
+    overflow: auto;
+    background: var(--bg-input, var(--bg-secondary));
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .app-dialog-message {
     margin: 0 0 1rem;
     color: var(--text-primary);

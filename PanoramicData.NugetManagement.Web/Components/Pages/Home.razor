@@ -529,6 +529,85 @@ else
 	</div>
 }
 
+@if (_gitAccessProblem is not null)
+{
+	@* Shown once on load, because every local action starts with a clone: finding out at the point of
+	   use means a wall of git errors instead of the one setting that resolves them. *@
+	<div class="modal-overlay">
+		<div class="modal-box app-dialog git-access-dialog">
+			<h3><i class="fas fa-triangle-exclamation"></i><span>&nbsp;git cannot reach GitHub</span></h3>
+
+			@if (_gitAccessProblem.Access == GitRemoteAccess.TlsTrustFailure)
+			{
+				<p class="app-dialog-message">
+					git will not trust the certificate it is being shown for <code>github.com</code>, so it
+					cannot clone, fetch or push. This machine trusts that certificate — your browser is fine
+					with it — but git uses its own certificate bundle and does not.
+				</p>
+
+				@if (_gitAccessProblem.SchannelWouldFix)
+				{
+					<p class="app-dialog-message">
+						Pointing git at the Windows certificate store fixes it. That has been tried on this
+						machine just now, and it worked. Run this once, in any terminal:
+					</p>
+
+					<div class="git-access-command">
+						<code>@GitSchannelCommand</code>
+						<button class="btn btn-sm btn-copy @(_gitAccessCommandCopied ? "btn-copied" : null)"
+								@onclick="CopyGitAccessCommandAsync"
+								title="Copy the command to the clipboard">
+							<i class="fas fa-copy"></i>
+							<span>&nbsp;@(_gitAccessCommandCopied ? "Copied" : "Copy")</span>
+						</button>
+					</div>
+
+					<p class="app-dialog-message subtle">
+						It changes nothing about which certificates are trusted — only which store git reads
+						them from — and it applies to all your git use, not just this app.
+					</p>
+				}
+				else
+				{
+					<p class="app-dialog-message">
+						The usual remedy — pointing git at the Windows certificate store — was tried just now
+						and did not work either, so the certificate is not trusted by this machine at all. Your
+						IT contact will have the certificate bundle to install; git can then be pointed at it
+						with <code>git config --global http.sslCAInfo &lt;path&gt;</code>.
+					</p>
+				}
+			}
+			else
+			{
+				<p class="app-dialog-message">
+					git could not reach <code>github.com</code>. Until it can, repositories cannot be cloned,
+					synced or pushed — assessment still works, since that goes through the GitHub API.
+				</p>
+			}
+
+			<details class="git-access-detail">
+				<summary>What git reported</summary>
+				<pre>@_gitAccessProblem.Detail</pre>
+			</details>
+
+			<div class="modal-actions">
+				<button class="btn" @onclick="DismissGitAccessDialog">Continue anyway</button>
+				<button class="btn btn-primary" @onclick="RecheckGitAccessAsync" disabled="@_isCheckingGitAccess">
+					@if (_isCheckingGitAccess)
+					{
+						<i class="fas fa-spinner fa-spin"></i>
+						<span>&nbsp;Checking...</span>
+					}
+					else
+					{
+						<span>Check again</span>
+					}
+				</button>
+			</div>
+		</div>
+	</div>
+}
+
 @if (_addOrgDialogOpen)
 {
 	<div class="modal-overlay" @onclick="CloseAddOrganizationDialog">
@@ -600,6 +679,15 @@ else
 				<div class="clone-dialog-controls">
 					<button class="btn btn-sm" @onclick="() => SetAllVisibleSelected(true)">All</button>
 					<button class="btn btn-sm" @onclick="() => SetAllVisibleSelected(false)">None</button>
+					@if (UserCodeRoot is not null)
+					{
+						<button class="btn btn-sm"
+								@onclick="SelectSeenLocally"
+								disabled="@(SeenLocallyCount == 0)"
+								title="@SeenLocallyTooltip">
+							Seen Locally@(SeenLocallyCount == 0 ? "" : $" ({SeenLocallyCount})")
+						</button>
+					}
 					<label class="clone-dialog-toggle">
 						<input type="checkbox" checked="@_hidePrivateRepositories" @onchange="e => _hidePrivateRepositories = (bool)(e.Value ?? false)" />
 						Hide private repositories
@@ -688,6 +776,15 @@ else
 	private string _addOrgName = string.Empty;
 	private string? _addOrgError;
 	private bool _isAddingOrg;
+	// The owner/name of every repository the user already has checked out in their own code directory.
+	// Read with the clone candidates, and used only to offer them as a selection.
+	private HashSet<string> _seenLocally = new(StringComparer.OrdinalIgnoreCase);
+	// git's access to GitHub, checked once on load. Null once resolved or dismissed.
+	private GitRemoteAccessResult? _gitAccessProblem;
+	private bool _isCheckingGitAccess;
+	private bool _gitAccessCommandCopied;
+	private static readonly string? UserCodeRoot = LocalRepoService.GetUserCodeRoot();
+	private const string GitSchannelCommand = "git config --global http.sslBackend schannel";
 	private CancellationTokenSource? _cloneAllCts;
 	private string _organizationName = string.Empty;
 	// The organisation the current selection belongs to. The tree can hold several, so the
@@ -802,6 +899,10 @@ else
 		// set from Cache.IsStale because the auto-refresh timer fired immediately, and leaving it set
 		// would spin the organisation node indefinitely with no run behind it.
 		NavDataProvider.IsLoading = false;
+
+		// Deliberately not awaited: it shells out to git and talks to the network, and the page has no
+		// reason to wait on it. The dialog appears when the answer arrives.
+		_ = CheckGitAccessAsync();
 
 
 		// If a PackageId was in the URL, select it
@@ -1431,6 +1532,10 @@ else
 		{
 			var repositories = await CreateGitHubClient().Repository.GetAllForOrg(organization);
 
+			// Read once, with the candidates: it costs a git call per directory and cannot change while
+			// the dialog is open.
+			_seenLocally = await FindSeenLocallyAsync(CancellationToken.None);
+
 			// Which repositories back a package the dashboard knows about.
 			var packageRepositories = _rows
 				.Where(r => r.RepositoryFullName is not null)
@@ -1463,6 +1568,69 @@ else
 	}
 
 	private void CloseCloneDialog() => _cloneDialogOpen = false;
+
+	// ── git's access to GitHub ──
+
+	/// <summary>
+	/// Probes whether git can reach GitHub, and raises the dialog if it cannot.
+	/// </summary>
+	/// <remarks>
+	/// Probed with a repository the app actually knows about rather than a fixed URL, so the test is of
+	/// the exact thing it would do. With nothing discovered yet there is nothing to clone either, so the
+	/// check is skipped rather than invented.
+	/// </remarks>
+	private async Task CheckGitAccessAsync()
+	{
+		var probeRepository = _rows.FirstOrDefault(r => r.RepositoryFullName is not null)?.RepositoryFullName;
+		if (probeRepository is null)
+		{
+			return;
+		}
+
+		_isCheckingGitAccess = true;
+
+		try
+		{
+			var result = await LocalRepo.CheckRemoteAccessAsync($"https://github.com/{probeRepository}.git");
+			_gitAccessProblem = result.Access == GitRemoteAccess.Ok ? null : result;
+		}
+		catch (Exception ex)
+		{
+			// A probe that cannot run must not take the page down with it.
+			Logger.LogWarning(ex, "Could not check git's access to GitHub");
+		}
+		finally
+		{
+			_isCheckingGitAccess = false;
+			await InvokeAsync(StateHasChanged);
+		}
+	}
+
+	private async Task RecheckGitAccessAsync()
+	{
+		_gitAccessCommandCopied = false;
+		await CheckGitAccessAsync();
+
+		if (_gitAccessProblem is null)
+		{
+			AppendConsole("✅ git can now reach GitHub.");
+		}
+	}
+
+	private void DismissGitAccessDialog() => _gitAccessProblem = null;
+
+	private async Task CopyGitAccessCommandAsync()
+	{
+		try
+		{
+			await JS.InvokeVoidAsync("navigator.clipboard.writeText", GitSchannelCommand);
+			_gitAccessCommandCopied = true;
+		}
+		catch (Exception ex)
+		{
+			Logger.LogWarning(ex, "Could not copy the git command to the clipboard");
+		}
+	}
 
 	private void OpenAddOrganizationDialog()
 	{
@@ -1596,6 +1764,66 @@ else
 	private void ToggleCloneCandidate(RepositoryCloneCandidate candidate)
 		=> candidate.Selected = !candidate.Selected;
 
+	/// <summary>
+	/// The listed candidates the user already has checked out somewhere in their own code directory.
+	/// </summary>
+	/// <remarks>
+	/// Drawn from the visible candidates, like its sibling buttons: All and None have always acted on
+	/// what is shown, and a count that promised more than the button selects — or a selection left behind
+	/// in the hidden rows after pressing None — would be worse than respecting the filter.
+	/// </remarks>
+	private List<RepositoryCloneCandidate> SeenLocallyCandidates
+		=> [.. VisibleCloneCandidates.Where(c => _seenLocally.Contains(c.FullName))];
+
+	private int SeenLocallyCount => SeenLocallyCandidates.Count;
+
+	private string SeenLocallyTooltip
+		=> SeenLocallyCount == 0
+			? $"None of the listed repositories are checked out in {UserCodeRoot}"
+			: $"Select the {SeenLocallyCount} listed repositor{(SeenLocallyCount == 1 ? "y" : "ies")} you already have in {UserCodeRoot} — a shortcut to the ones you work on. They are still cloned fresh from GitHub";
+
+	/// <summary>
+	/// Selects exactly the repositories the user already has, replacing the current selection: the point
+	/// of the button is to answer "which of these do I already have?", which adding to a selection would
+	/// obscure.
+	/// </summary>
+	private void SelectSeenLocally()
+	{
+		foreach (var candidate in VisibleCloneCandidates)
+		{
+			candidate.Selected = _seenLocally.Contains(candidate.FullName);
+		}
+	}
+
+	/// <summary>
+	/// The <c>owner/name</c> of every repository already checked out in the user's code directory.
+	/// </summary>
+	/// <remarks>
+	/// Taken from what each checkout's <c>origin</c> says it is, never from its folder name. Failure is
+	/// not fatal: without it the button has nothing to offer, which costs a convenience and nothing else.
+	/// </remarks>
+	private async Task<HashSet<string>> FindSeenLocallyAsync(CancellationToken cancellationToken)
+	{
+		if (UserCodeRoot is null)
+		{
+			return new(StringComparer.OrdinalIgnoreCase);
+		}
+
+		try
+		{
+			var found = await LocalRepo.FindLocalRepositoriesAsync(cancellationToken);
+			return found
+				.Select(f => f.RepoIdentity)
+				.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		}
+		catch (Exception ex)
+		{
+			Logger.LogWarning(ex, "Could not scan {Root} for existing checkouts", UserCodeRoot);
+			AppendConsole($"⚠️ Could not read {UserCodeRoot} to find which repositories you already have.");
+			return new(StringComparer.OrdinalIgnoreCase);
+		}
+	}
+
 	private void CancelCloneAll()
 	{
 		AppendConsole("⏹️ Stopping after the current repository...");
@@ -1639,6 +1867,9 @@ else
 				AppendConsole($"⬇️ {candidate.FullName}");
 				try
 				{
+					// Always fetched from GitHub, including for repositories the user already has: a
+					// checkout of theirs can be any distance behind, and a clone that starts out of date
+					// would then be assessed and fixed as if it were current.
 					var (success, output) = await LocalRepo.CloneAsync(
 						candidate.CloneUrl,
 						candidate.FullName,

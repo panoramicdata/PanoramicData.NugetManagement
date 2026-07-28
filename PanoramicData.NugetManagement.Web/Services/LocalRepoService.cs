@@ -84,6 +84,167 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
+	/// Gets the directory the user keeps their own clones in — the one this application's repository
+	/// sits in alongside them — or null when that cannot be established.
+	/// </summary>
+	/// <remarks>
+	/// The app never writes here. It is read to offer a shortcut: a repository already on this machine
+	/// can be copied into the app's own root instead of fetched again. See
+	/// <see cref="FindLocalRepositoriesAsync"/>.
+	/// </remarks>
+	public static string? GetUserCodeRoot()
+	{
+		var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+		while (dir is not null)
+		{
+			if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
+			{
+				return dir.Parent?.FullName;
+			}
+
+			dir = dir.Parent;
+		}
+
+		return null;
+	}
+
+	/// <summary>
+	/// Finds git checkouts directly inside the user's code directory, paired with the <c>owner/name</c>
+	/// their <c>origin</c> remote actually points at.
+	/// </summary>
+	/// <remarks>
+	/// Keyed on the remote rather than the folder name, because a folder can be named anything and the
+	/// caller is about to decide which organisation a checkout belongs to. Folders with no readable
+	/// origin are left out: there is nothing to match them against, and guessing from the name is how
+	/// the wrong repository gets written to. The app's own clone root is skipped so its copies are never
+	/// offered back to it as sources.
+	/// </remarks>
+	public async Task<IReadOnlyList<(string Path, string RepoIdentity)>> FindLocalRepositoriesAsync(
+		CancellationToken cancellationToken = default)
+	{
+		var codeRoot = GetUserCodeRoot();
+		if (codeRoot is null || !Directory.Exists(codeRoot))
+		{
+			return [];
+		}
+
+		var appReposRoot = GetReposRoot();
+		var found = new List<(string Path, string RepoIdentity)>();
+
+		foreach (var path in Directory.EnumerateDirectories(codeRoot))
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			if (!Directory.Exists(Path.Combine(path, ".git"))
+				|| path.StartsWith(appReposRoot, StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+
+			var (exitCode, output) = await RunCommandAsync(path, "git", "remote get-url origin", cancellationToken)
+				.ConfigureAwait(false);
+			if (exitCode != 0 || string.IsNullOrWhiteSpace(output))
+			{
+				continue;
+			}
+
+			var identity = ParseRepoIdentity(output.Trim());
+			if (identity is null)
+			{
+				_logger.LogDebug("Skipping {Path}: origin {Origin} is not a GitHub repository", path, output.Trim());
+				continue;
+			}
+
+			found.Add((path, identity));
+		}
+
+		_logger.LogInformation(
+			"Found {Count} GitHub checkout(s) in {Root}: {Identities}",
+			found.Count,
+			codeRoot,
+			string.Join(", ", found.Select(f => f.RepoIdentity)));
+
+		return found;
+	}
+
+	/// <summary>
+	/// Reduces a GitHub remote URL to <c>owner/name</c>, or null if it is not one. Handles the https and
+	/// ssh forms, with or without a trailing <c>.git</c>.
+	/// </summary>
+	/// <remarks>
+	/// The host has to be github.com, and that is the point rather than a detail. Without the check, an
+	/// <c>owner/name</c> is happily extracted from remotes that have nothing to do with GitHub — a
+	/// bitbucket.org URL under the same organisation name yields exactly the identity a GitHub repository
+	/// of that name would, and an Azure DevOps path yields a plausible-looking pair of its last two
+	/// segments. Both are present in real code directories. Since callers use the result to decide which
+	/// repository a directory holds, and then write to it, a confident wrong answer is the worst outcome.
+	/// </remarks>
+	public static string? ParseRepoIdentity(string remoteUrl)
+	{
+		const string GitHubHost = "github.com";
+
+		var value = remoteUrl.Trim();
+		string path;
+
+		var colon = value.IndexOf(':');
+		if (value.Contains("://", StringComparison.Ordinal))
+		{
+			// https://github.com/owner/name.git, and the ssh:// form of the same.
+			var authorityStart = value.IndexOf("://", StringComparison.Ordinal) + 3;
+			var pathStart = value.IndexOf('/', authorityStart);
+			if (pathStart < 0)
+			{
+				return null;
+			}
+
+			// Ignore any user@ prefix, and any :port suffix, before comparing the host.
+			var authority = value[authorityStart..pathStart];
+			var at = authority.LastIndexOf('@');
+			var host = at >= 0 ? authority[(at + 1)..] : authority;
+			var port = host.IndexOf(':');
+			if (port >= 0)
+			{
+				host = host[..port];
+			}
+
+			if (!string.Equals(host, GitHubHost, StringComparison.OrdinalIgnoreCase))
+			{
+				return null;
+			}
+
+			path = value[pathStart..];
+		}
+		else if (colon > 0)
+		{
+			// git@github.com:owner/name.git — everything before the first colon is user@host.
+			var authority = value[..colon];
+			var at = authority.LastIndexOf('@');
+			var host = at >= 0 ? authority[(at + 1)..] : authority;
+
+			if (!string.Equals(host, GitHubHost, StringComparison.OrdinalIgnoreCase))
+			{
+				return null;
+			}
+
+			path = value[(colon + 1)..];
+		}
+		else
+		{
+			return null;
+		}
+
+		if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+		{
+			path = path[..^4];
+		}
+
+		// Exactly owner/name: a longer path is not a GitHub repository URL, and silently taking its last
+		// two segments is how an Azure DevOps project path turns into a convincing identity.
+		var segments = path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+		return segments.Length == 2 ? $"{segments[0]}/{segments[1]}" : null;
+	}
+
+	/// <summary>
 	/// Gets the local path for a repository, given its <c>owner/name</c> identity.
 	/// </summary>
 	/// <remarks>
@@ -346,6 +507,61 @@ public partial class LocalRepoService
 
 		return behind == 0 && ahead == 0;
 	}
+
+	/// <summary>
+	/// Checks whether git can reach GitHub over https, and — when it cannot because the TLS chain is
+	/// not trusted — whether switching git to the Windows certificate store would fix it.
+	/// </summary>
+	/// <remarks>
+	/// Worth distinguishing, because a TLS trust failure is not a fault in this app or in the network:
+	/// it is git's bundled OpenSSL not knowing the certificate an intercepting proxy presents, while
+	/// every browser on the machine trusts it via the Windows store. The remedy is one setting, and the
+	/// only honest way to recommend it is to try it first — hence the second probe, which runs only
+	/// after the first has failed for that reason.
+	/// </remarks>
+	public async Task<GitRemoteAccessResult> CheckRemoteAccessAsync(
+		string probeUrl,
+		CancellationToken cancellationToken = default)
+	{
+		var workingDirectory = Directory.GetCurrentDirectory();
+
+		var (exitCode, output) = await RunCommandAsync(
+			workingDirectory, "git", $"ls-remote --quiet {probeUrl} HEAD", cancellationToken).ConfigureAwait(false);
+		if (exitCode == 0)
+		{
+			return new GitRemoteAccessResult(GitRemoteAccess.Ok, output, SchannelWouldFix: false);
+		}
+
+		if (!LooksLikeTlsTrustFailure(output))
+		{
+			_logger.LogWarning("git cannot reach {Url}: {Output}", probeUrl, output);
+			return new GitRemoteAccessResult(GitRemoteAccess.Unreachable, output, SchannelWouldFix: false);
+		}
+
+		var (schannelExitCode, _) = await RunCommandAsync(
+			workingDirectory,
+			"git",
+			$"-c http.sslBackend=schannel ls-remote --quiet {probeUrl} HEAD",
+			cancellationToken).ConfigureAwait(false);
+
+		_logger.LogWarning(
+			"git cannot verify the TLS chain to {Url}; the Windows certificate store {Verdict}.",
+			probeUrl,
+			schannelExitCode == 0 ? "would fix it" : "would not fix it either");
+
+		return new GitRemoteAccessResult(GitRemoteAccess.TlsTrustFailure, output, schannelExitCode == 0);
+	}
+
+	/// <summary>
+	/// Whether git's failure output is about not trusting the certificate chain, as opposed to the host
+	/// being unreachable or the repository not existing.
+	/// </summary>
+	private static bool LooksLikeTlsTrustFailure(string output) =>
+		output.Contains("unable to get local issuer certificate", StringComparison.OrdinalIgnoreCase)
+		|| output.Contains("SSL certificate problem", StringComparison.OrdinalIgnoreCase)
+		|| output.Contains("certificate verify failed", StringComparison.OrdinalIgnoreCase)
+		|| output.Contains("self-signed certificate", StringComparison.OrdinalIgnoreCase)
+		|| output.Contains("self signed certificate", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// Clones a repository from GitHub.
