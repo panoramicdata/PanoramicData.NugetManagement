@@ -41,9 +41,17 @@ else
 			<!-- Left: Navigation panel (logo at top, filter, tree below) -->
 				<PDSplitPanel Size="1" MinSize="240" CssClass="spa-panel spa-nav-panel">
 					<div class="nav-tree-container">
+						@* The brand doubles as "home", the usual convention. Only the text is the link: making the
+						   whole header a hit area tinted the entire cell on hover, which read as a selectable row
+						   rather than a link. *@
 						<div class="nav-brand-header">
 							<span class="brand-icon">📦</span>
-							<span class="brand-text">NuGet Governance</span>
+							<span class="brand-text nav-brand-link"
+								  role="button"
+								  tabindex="0"
+								  title="Back to the home page"
+								  @onclick="NavigateToDashboard"
+								  @onkeydown="OnBrandKeyDown">NuGet Governance</span>
 						</div>
 						<div class="nav-tree-filter">
 							<div class="input-group input-group-sm">
@@ -1743,6 +1751,16 @@ else
 
 		return await ConfirmAsync(
 			$"{action} will use about {estimatedCalls} of your {remaining} remaining GitHub API calls this hour. Continue?");
+	}
+
+	// The brand is a div rather than a button, so Enter and Space have to be wired up by hand for it
+	// to be usable from the keyboard.
+	private void OnBrandKeyDown(KeyboardEventArgs args)
+	{
+		if (args.Key is "Enter" or " ")
+		{
+			NavigateToDashboard();
+		}
 	}
 
 	private void NavigateToDashboard()
