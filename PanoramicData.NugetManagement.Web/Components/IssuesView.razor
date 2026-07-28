@@ -277,6 +277,33 @@
 	[Parameter]
 	public bool Embedded { get; set; }
 
+	/// <summary>
+	/// Restricts the view to one organisation. Null shows every organisation, which is what the
+	/// standalone /issues page does.
+	/// </summary>
+	[Parameter]
+	public string? Organization { get; set; }
+
+	/// <summary>
+	/// Narrows the view to a single category, so selecting a category in the navigation tree shows
+	/// just that category's rules and their affected repositories in this panel.
+	/// </summary>
+	[Parameter]
+	public AssessmentCategory? FocusCategory { get; set; }
+
+	/// <summary>
+	/// Narrows the view to a single rule. Combined with <see cref="FocusCategory"/> this reduces the
+	/// panel to one rule, its affected repositories and its bulk actions.
+	/// </summary>
+	[Parameter]
+	public string? FocusRuleId { get; set; }
+
+	// What the currently-loaded view was built for, so OnParametersSet only reloads on a real change.
+	private string? _loadedOrganization;
+	private AssessmentCategory? _loadedFocusCategory;
+	private string? _loadedFocusRuleId;
+	private bool _loaded;
+
 	private List<PackageDashboardRow> _rows = [];
 	private IssueCentricView? _view;
 	private IReadOnlyList<ActionVersionBump> _bumps = [];
@@ -296,6 +323,24 @@
 	{
 		LoadView();
 		Guard.StatusesChanged += OnGuardChanged;
+	}
+
+	/// <summary>
+	/// Rebuilds when the hosting shell changes which organisation, category or rule is in focus —
+	/// selecting a different node in the navigation tree re-parameterises this component rather than
+	/// recreating it, so OnInitialized alone would leave the old content on screen.
+	/// </summary>
+	protected override void OnParametersSet()
+	{
+		var changed = !_loaded
+			|| !string.Equals(_loadedOrganization, Organization, StringComparison.OrdinalIgnoreCase)
+			|| _loadedFocusCategory != FocusCategory
+			|| !string.Equals(_loadedFocusRuleId, FocusRuleId, StringComparison.OrdinalIgnoreCase);
+
+		if (changed)
+		{
+			LoadView();
+		}
 	}
 
 	private void OnGuardChanged() => _ = InvokeAsync(StateHasChanged);
@@ -345,11 +390,52 @@
 
 	public void Dispose() => Guard.StatusesChanged -= OnGuardChanged;
 
+	/// <summary>
+	/// Reduces the view to the focused category and/or rule. With the issue hierarchy now living in
+	/// the navigation sidebar, this panel shows the detail for whatever the sidebar selected — the
+	/// affected repositories and the bulk actions — rather than repeating the whole hierarchy.
+	/// </summary>
+	private IssueCentricView? NarrowToFocus(IssueCentricView? view)
+	{
+		if (view is null || (FocusCategory is null && string.IsNullOrEmpty(FocusRuleId)))
+		{
+			return view;
+		}
+
+		var categories = view.Categories
+			.Where(c => FocusCategory is null || c.Category == FocusCategory)
+			.Select(c => string.IsNullOrEmpty(FocusRuleId)
+				? c
+				: new IssueCategoryGroup
+				{
+					Category = c.Category,
+					IssueClasses = [.. c.IssueClasses
+						.Where(i => string.Equals(i.RuleId, FocusRuleId, StringComparison.OrdinalIgnoreCase))]
+				})
+			.Where(c => c.IssueClasses.Count > 0)
+			.ToList();
+
+		return new IssueCentricView { Categories = categories };
+	}
+
 	private void LoadView()
 	{
 		_rows = Cache.GetCachedRows() ?? [];
-		_view = Dashboard.BuildIssueCentricView(_rows);
+
+		// Restrict to the requested organisation. Rows cached before multi-organisation support carry
+		// no organisation at all; in that case filtering would empty the view, so it is skipped.
+		if (!string.IsNullOrEmpty(Organization) && _rows.Any(r => !string.IsNullOrEmpty(r.Organization)))
+		{
+			_rows = [.. _rows.Where(r => string.Equals(r.Organization, Organization, StringComparison.OrdinalIgnoreCase))];
+		}
+
+		_view = NarrowToFocus(Dashboard.BuildIssueCentricView(_rows));
 		_bumps = ActionVersionCatalog.Default.RecentBumps;
+
+		_loadedOrganization = Organization;
+		_loadedFocusCategory = FocusCategory;
+		_loadedFocusRuleId = FocusRuleId;
+		_loaded = true;
 
 		_treeProvider.View = _view;
 		_treeVersion++;
