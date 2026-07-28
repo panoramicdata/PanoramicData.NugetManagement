@@ -107,7 +107,11 @@ html, body {
     background: var(--accent) !important;
     color: #000 !important;
     opacity: 0.45;
-    cursor: not-allowed;
+    /* Not `not-allowed`: the OS draws that circle-and-slash cursor large and it cannot be sized from
+       CSS, so clicking Rediscover — which disables the button under the pointer — put a big "no entry"
+       symbol right where you were looking. The 0.45 fade already says the control is unavailable.
+       Every disabled control in the app uses `default` for the same reason. */
+    cursor: default;
 }
 
 /* Match the enabled border as well, but not where a workflow state owns it: a failed or next-up step
@@ -530,7 +534,7 @@ html, body {
 
 .btn:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+    cursor: default;
 }
 
 .btn-primary {
@@ -1342,7 +1346,7 @@ i + .breadcrumb-link-text {
 
 .btn-breadcrumb:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+    cursor: default;
 }
 
 .btn-breadcrumb-publish:hover:not(:disabled) {
@@ -1874,6 +1878,22 @@ i + .breadcrumb-link-text {
     cursor: default;
 }
 
+/* The expand/collapse toggle beside a dimmed row dims and goes inert with it. It was initially left
+   live, but a toggle that still responds next to an inert row reads as an oversight.
+   :has() is needed to reach it: the toggle is a sibling of the content div that holds the label, so
+   it cannot be selected from the label. This cannot leak to ancestor rows — a header holds only its
+   own label, since child rows live in a sibling .pdtreenode_child_content.
+   The transition sits on the base so the toggle fades back as well as forward, matching the label. */
+.nav-tree-scroll .pdtreenode_header > i {
+    transition: opacity 0.5s ease-in-out;
+}
+
+.nav-tree-scroll .pdtreenode_header:has(.nav-node-label.rediscovering) > i {
+    opacity: 0.4;
+    pointer-events: none;
+    cursor: default;
+}
+
 /* Gap between every tree node's icon and its label text (root gauge, cubes, category/rule icons). */
 .nav-node-label > i {
     margin-right: 4px;
@@ -1962,7 +1982,7 @@ i + .breadcrumb-link-text {
 
 .nav-org-action-btn:disabled {
     opacity: 0.45;
-    cursor: not-allowed;
+    cursor: default;
 }
 
 /* When the org row is selected, the muted cog blends into the blue highlight — make it
