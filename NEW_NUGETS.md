@@ -80,11 +80,19 @@ Pin the SDK and roll-forward behavior:
 ```json
 {
   "sdk": {
-    "version": "10.0.300",
+    "version": "10.0.400",
     "rollForward": "latestFeature"
+  },
+  "test": {
+    "runner": "Microsoft.Testing.Platform"
   }
 }
 ```
+
+The `test.runner` key is required, not optional: `xunit.v3` 4.x runs on Microsoft.Testing.Platform,
+which has no VSTest bridge on the .NET 10 SDK, so `dotnet test` fails outright without it. Neither
+`dotnet.config` nor the `TestingPlatformDotnetTestSupport` MSBuild property works — the SDK reads
+`global.json` alone. The value must be spelled exactly `Microsoft.Testing.Platform`.
 
 ## 3) `version.json` (NBGV)
 
@@ -136,9 +144,9 @@ Enable CPM and keep versions centralized:
 	</PropertyGroup>
 	<ItemGroup>
 		<PackageVersion Include="Nerdbank.GitVersioning" Version="3.9.50" />
-		<PackageVersion Include="xunit.v3" Version="3.2.2" />
-		<PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-		<PackageVersion Include="coverlet.collector" Version="10.0.1" />
+		<PackageVersion Include="xunit.v3" Version="4.0.0" />
+		<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+		<PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.10.0" />
 	</ItemGroup>
 </Project>
 ```
@@ -265,8 +273,23 @@ Weekly schedule is recommended.
 Use xUnit v3. Must include:
 - `Microsoft.NET.Test.Sdk`
 - `xunit.v3`
-- `xunit.runner.visualstudio`
-- `coverlet.collector`
+- `Microsoft.Testing.Extensions.CodeCoverage`
+
+Do not add `xunit.runner.visualstudio` (the VSTest adapter) or the coverlet packages: xunit.v3 runs
+on Microsoft.Testing.Platform, where the adapter is unnecessary and coverlet never loads. Coverlet
+fails quietly — `--collect:"XPlat Code Coverage"` reports `Zero tests ran` with exit code 5 rather
+than erroring — so a repository can look covered while collecting nothing.
+
+Collect coverage with:
+
+```
+dotnet test --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml
+```
+
+Coverage settings move from a coverlet `.runsettings.json` to a Microsoft code coverage XML file
+passed with `--coverage-settings`. Port any `ExcludeByAttribute` entries to an `Attributes`/`Exclude`
+block: the Microsoft collector includes generated code by default, so skipping them silently changes
+the reported figure.
 
 Recommended conventions:
 - keep tests deterministic

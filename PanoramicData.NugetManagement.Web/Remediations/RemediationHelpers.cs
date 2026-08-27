@@ -1008,5 +1008,124 @@ internal static class RemediationHelpers
 		}
 	}
 
+	/// <summary>
+	/// Removes a PackageVersion pin from Directory.Packages.props.
+	/// </summary>
+	public static void RemovePackageVersion(
+		string localPath,
+		string packageName,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		const string relativePath = "Directory.Packages.props";
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+			var toRemove = doc.Descendants("PackageVersion")
+				.Where(e => string.Equals(e.Attribute("Include")?.Value, packageName, StringComparison.OrdinalIgnoreCase))
+				.ToList();
+
+			if (toRemove.Count == 0)
+			{
+				return;
+			}
+
+			foreach (var element in toRemove)
+			{
+				// Remove the preceding whitespace/newline node too, for clean diffs
+				if (element.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
+				{
+					element.PreviousNode.Remove();
+				}
+
+				element.Remove();
+			}
+
+			doc.Save(fullPath);
+			applied.Add(relativePath);
+			onOutput?.Invoke($"✅ [{result.RuleId}] Removed <PackageVersion Include=\"{packageName}\" /> from {relativePath}");
+		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Sets a string property in a JSON file, addressed by a dotted path such as
+	/// <c>test.runner</c>, creating any intermediate objects. Existing properties are left alone.
+	/// </summary>
+	public static void EnsureJsonProperty(
+		string localPath,
+		string relativePath,
+		string propertyPath,
+		string propertyValue,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
+			return;
+		}
+
+		var segments = propertyPath.Split('.', StringSplitOptions.RemoveEmptyEntries);
+		if (segments.Length == 0)
+		{
+			return;
+		}
+
+		try
+		{
+			var json = File.ReadAllText(fullPath);
+			var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+			if (node is not JsonObject root)
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
+				return;
+			}
+
+			var target = root;
+			foreach (var segment in segments[..^1])
+			{
+				if (target.TryGetPropertyValue(segment, out var child) && child is JsonObject childObject)
+				{
+					target = childObject;
+					continue;
+				}
+
+				var created = new JsonObject();
+				target[segment] = created;
+				target = created;
+			}
+
+			var leaf = segments[^1];
+			if (target.TryGetPropertyValue(leaf, out var existing) && existing is JsonValue existingValue
+				&& existingValue.TryGetValue<string>(out var current) && current == propertyValue)
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already sets {propertyPath} to {propertyValue} — skipping.");
+				return;
+			}
+
+			target[leaf] = JsonValue.Create(propertyValue);
+
+			File.WriteAllText(fullPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+			applied.Add(relativePath);
+			onOutput?.Invoke($"✅ [{result.RuleId}] Set {propertyPath} to {propertyValue} in {relativePath}");
+		}
+		catch (JsonException ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
+		}
+	}
 }
 

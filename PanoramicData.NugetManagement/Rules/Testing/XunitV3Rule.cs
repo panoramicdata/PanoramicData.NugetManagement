@@ -46,13 +46,23 @@ public class XunitV3Rule : RuleBase
 			"xUnit v3 is not referenced. Legacy xUnit v2 may be in use.",
 			new RuleAdvisory
 			{
-				Summary = "Replace xunit/xunit.core/xunit.runner.visualstudio v2 references with xunit.v3 and xunit.runner.visualstudio v3.",
-				Detail = "xUnit v3 is not referenced in `Directory.Packages.props` or any test project. Replace legacy `xunit`/`xunit.core`/`xunit.runner.visualstudio` v2 references with `xunit.v3` and `xunit.runner.visualstudio` v3.",
+				Summary = $"Replace xunit/xunit.core/xunit.runner.visualstudio v2 references with xunit.v3 {Standards.XunitV3Version}.",
+				Detail = $"""
+					xUnit v3 is not referenced in `Directory.Packages.props` or any test project. Replace legacy
+					`xunit`/`xunit.core` v2 references with `xunit.v3` at `{Standards.XunitV3Version}`.
+
+					Drop `{Standards.VsTestAdapterPackage}` rather than upgrading it: it is the VSTest adapter, and
+					xunit.v3 runs on Microsoft.Testing.Platform, which does not use it. Removing it entirely leaves
+					tests discovered and run as before, in CI as well as locally.
+
+					xunit.v3 4.x depends on Microsoft.Testing.Platform 2.3 or later, which has no VSTest bridge on
+					the .NET 10 SDK, so `dotnet test` needs the `test.runner` opt-in in `global.json` — see TST-06.
+					""",
 				Data = new()
 				{
 					["remediation_type"] = "add_package_version",
 					["package_name"] = "xunit.v3",
-					["package_version"] = "3.2.2",
+					["package_version"] = Standards.XunitV3Version,
 					["file"] = "Directory.Packages.props"
 				}
 			}));

@@ -63,7 +63,8 @@ All projects target **.NET 10** (`net10.0`).
 
 - **Framework**: xUnit v3 (`xunit.v3`), with `Xunit.Microsoft.DependencyInjection` for DI in tests.
 - **Assertions**: AwesomeAssertions (fork of FluentAssertions).
-- **Coverage**: coverlet.collector.
+- **Coverage**: `Microsoft.Testing.Extensions.CodeCoverage`, collected with `dotnet test --coverage`. coverlet is a VSTest data collector and collects nothing under Microsoft.Testing.Platform.
+- **Runner**: `dotnet test` runs on Microsoft.Testing.Platform, opted into by `"test": { "runner": "Microsoft.Testing.Platform" }` in `global.json`.
 - **Test fixtures**: `PanoramicData.NugetManagement.Test/Fixtures/PanoramicData.NugetFailArmy/` contains a deliberately non-compliant repo fixture for rule validation.
 
 ## Build Guidance

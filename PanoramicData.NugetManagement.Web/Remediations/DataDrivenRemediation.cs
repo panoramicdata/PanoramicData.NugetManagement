@@ -33,7 +33,8 @@ public abstract class DataDrivenRemediation : IRemediation
 		{
 			return rt is "ensure_xml_property"
 						or "ensure_csproj_property"
-						or "ensure_coverlet_collector_setup"
+						or "ensure_code_coverage_setup"
+						or "ensure_json_property"
 						or "append_line"
 						or "prepend_line"
 						or "add_slnx_file_entries"
@@ -118,6 +119,15 @@ public abstract class DataDrivenRemediation : IRemediation
 							RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
 						}
 					}
+				}
+
+				break;
+
+			case "ensure_json_property":
+				if (data.TryGetValue("file", out var jpFile) && jpFile is string jpf &&
+					data["property_path"] is string jpPath && data["property_value"] is string jpValue)
+				{
+					RemediationHelpers.EnsureJsonProperty(localPath, jpf, jpPath, jpValue, result, applied, onOutput);
 				}
 
 				break;

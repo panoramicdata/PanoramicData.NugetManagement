@@ -13,7 +13,7 @@
     <!-- Main project dependencies -->
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Nerdbank.GitVersioning" Version="3.10.91" />
-    <PackageVersion Include="NuGet.Protocol" Version="7.6.0" />
+    <PackageVersion Include="NuGet.Protocol" Version="7.9.0" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="PanoramicData.Blazor" Version="10.0.185" />
     <PackageVersion Include="Refit" Version="14.0.1" />
@@ -21,9 +21,8 @@
          directly: it reaches us through Codacy.Api. -->
     <PackageVersion Include="Refit.HttpClientFactory" Version="14.0.1" />
     <!-- Test project dependencies -->
-    <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
+    <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="AwesomeAssertions.Analyzers" Version="9.0.8" />
-    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Codacy.Api" Version="3.0.22" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
@@ -32,9 +31,9 @@
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.10.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.0" />
     <PackageVersion Include="Xunit.Microsoft.DependencyInjection" Version="10.0.5" />
     <!-- Web project dependencies -->
     <PackageVersion Include="AspNet.Security.OAuth.GitHub" Version="10.0.0" />

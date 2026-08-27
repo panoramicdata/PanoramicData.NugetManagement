@@ -82,7 +82,14 @@ public class NuGetVersionChecker
 	{
 		try
 		{
+			// Nullable as of NuGet.Protocol 7.9.0: the source may not offer the resource at all.
 			var metadataResource = await _sourceRepository.GetResourceAsync<PackageMetadataResource>(cancellationToken).ConfigureAwait(false);
+			if (metadataResource is null)
+			{
+				_logger.LogWarning("NuGet source does not provide package metadata; cannot check {PackageId}", packageId);
+				return null;
+			}
+
 			var metadata = await metadataResource.GetMetadataAsync(
 				packageId,
 				includePrerelease: false,

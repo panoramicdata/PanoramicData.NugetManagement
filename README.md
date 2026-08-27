@@ -17,7 +17,7 @@ PanoramicData.NugetManagement connects to a GitHub organization, examines each r
 - **Target Framework** — Latest .NET version
 - **Build Quality** — TreatWarningsAsErrors, Nullable, ImplicitUsings
 - **Code Quality** — .editorconfig, file-scoped namespaces, Codacy, CodeQL
-- **Testing** — Test project existence, xUnit v3, coverlet
+- **Testing** — Test project existence, xUnit v3, Microsoft.Testing.Platform test runner, code coverage
 - **Serialization** — System.Text.Json preferred over Newtonsoft
 - **HTTP Clients** — Refit preferred
 - **Licensing** — MIT LICENSE, PackageLicenseExpression, Copyright

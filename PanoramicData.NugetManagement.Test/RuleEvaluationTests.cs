@@ -1872,27 +1872,27 @@ public class RuleEvaluationTests : TestWithOutput
 	// ── TST-04 ──────────────────────────────────────────────────────────
 
 	[Fact]
-	public async Task TST04_ShouldFail_WhenCoverletCollectorOnlyPinnedInDirectoryPackagesPropsWithCpm()
+	public async Task TST04_ShouldFail_WhenCoverageCollectorOnlyPinnedInDirectoryPackagesPropsWithCpm()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["Directory.Packages.props"] = "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"coverlet.collector\" Version=\"6.0.0\" /></ItemGroup></Project>",
+			["Directory.Packages.props"] = "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>",
 			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
 		result.Advisory.Should().NotBeNull();
-		result.Advisory!.Data["remediation_type"].Should().Be("ensure_coverlet_collector_setup");
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_code_coverage_setup");
 	}
 
 	[Fact]
-	public async Task TST04_ShouldPass_WhenCoverletCollectorPinnedAndReferencedWithCpm()
+	public async Task TST04_ShouldPass_WhenCoverageCollectorPinnedAndReferencedWithCpm()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["Directory.Packages.props"] = "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"coverlet.collector\" Version=\"6.0.0\" /></ItemGroup></Project>",
-			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"coverlet.collector\" /></ItemGroup></Project>"
+			["Directory.Packages.props"] = "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>",
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" /></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
@@ -1900,11 +1900,11 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
-	public async Task TST04_ShouldPass_WhenCoverletCollectorReferencedInTestProjectWithoutCpm()
+	public async Task TST04_ShouldPass_WhenCoverageCollectorReferencedInTestProjectWithoutCpm()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"coverlet.collector\" Version=\"6.0.0\" /></ItemGroup></Project>"
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
@@ -1912,17 +1912,149 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
-	public async Task TST04_ShouldFail_WhenCoverletCollectorMissing()
+	public async Task TST04_ShouldFail_WhenCoverageCollectorMissing()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["Directory.Packages.props"] = "<Project><ItemGroup></ItemGroup></Project>"
+			["Directory.Packages.props"] = "<Project><ItemGroup></ItemGroup></Project>",
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
 		result.Advisory.Should().NotBeNull();
-		result.Advisory!.Data["remediation_type"].Should().Be("ensure_coverlet_collector_setup");
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_code_coverage_setup");
+	}
+
+	[Fact]
+	public async Task TST04_ShouldFail_WhenCoverletIsStillPresentAlongsideTheCoverageCollector()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] =
+				"<Project><ItemGroup>"
+				+ "<PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" />"
+				+ "<PackageReference Include=\"coverlet.collector\" Version=\"10.0.1\" />"
+				+ "</ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("coverlet is a VSTest data collector and collects nothing under Microsoft.Testing.Platform");
+		result.Advisory!.Data["dead_packages"].Should().BeEquivalentTo(new[] { "coverlet.collector" });
+		result.Advisory!.Data["projects"].Should().BeEquivalentTo(new[] { "MyProject.Test/MyProject.Test.csproj" });
+	}
+
+	[Fact]
+	public async Task TST04_ShouldFail_WhenCoverletMsbuildIsOnlyPinnedInDirectoryPackagesProps()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"coverlet.msbuild\" Version=\"10.0.1\" /></ItemGroup></Project>",
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["dead_packages"].Should().BeEquivalentTo(new[] { "coverlet.msbuild" });
+	}
+
+	[Fact]
+	public async Task TST04_ShouldNotApply_WhenThereAreNoTestProjects()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject/MyProject.csproj"] = "<Project/>"
+		});
+
+		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeFalse();
+	}
+
+	// ── TST-06 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task TST06_ShouldPass_WhenGlobalJsonDeclaresTheMtpRunner()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" /></ItemGroup></Project>",
+			["global.json"] = """{"sdk":{"version":"10.0.400"},"test":{"runner":"Microsoft.Testing.Platform"}}"""
+		});
+
+		var result = await GetRule("TST-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task TST06_ShouldFail_WhenGlobalJsonHasNoTestRunner()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" /></ItemGroup></Project>",
+			["global.json"] = """{"sdk":{"version":"10.0.400","rollForward":"latestFeature"}}"""
+		});
+
+		var result = await GetRule("TST-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_json_property");
+		result.Advisory!.Data["property_path"].Should().Be("test.runner");
+		result.Advisory!.Data["property_value"].Should().Be("Microsoft.Testing.Platform");
+	}
+
+	[Fact]
+	public async Task TST06_ShouldFail_WhenTestRunnerUsesTheInternalIdentifier()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" /></ItemGroup></Project>",
+			["global.json"] = """{"test":{"runner":"MicrosoftTestingPlatform"}}"""
+		});
+
+		var result = await GetRule("TST-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("the SDK rejects 'MicrosoftTestingPlatform' at runtime");
+		result.Message.Should().Contain("MicrosoftTestingPlatform");
+	}
+
+	[Fact]
+	public async Task TST06_ShouldFail_WhenGlobalJsonIsMissing()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["expected_path"].Should().Be("global.json");
+		result.Advisory!.Data["template_content"].Should().BeOfType<string>()
+			.Which.Should().Contain("\"runner\": \"Microsoft.Testing.Platform\"");
+	}
+
+	[Fact]
+	public async Task TST06_ShouldNotApply_WhenThereAreNoTestProjects()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject/MyProject.csproj"] = "<Project/>"
+		});
+
+		var result = await GetRule("TST-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task TST06_ShouldNotApply_WhenTheRepositoryIsNotOnXunitV3()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit\" Version=\"2.9.3\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeFalse("a VSTest repository would find nothing to run under Microsoft.Testing.Platform");
 	}
 
 	// ── VER-02 ──────────────────────────────────────────────────────────

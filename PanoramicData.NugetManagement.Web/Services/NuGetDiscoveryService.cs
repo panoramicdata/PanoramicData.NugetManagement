@@ -36,7 +36,14 @@ public class NuGetDiscoveryService
 		_logger.LogInformation("Discovering NuGet packages for owner '{Owner}'...", owner);
 
 		var repository = NuGet.Protocol.Core.Types.Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
+		// Nullable as of NuGet.Protocol 7.9.0: the source may not offer the resource at all.
 		var searchResource = await repository.GetResourceAsync<PackageSearchResource>(cancellationToken).ConfigureAwait(false);
+		if (searchResource is null)
+		{
+			_logger.LogWarning("NuGet source does not provide package search; cannot discover packages for '{Owner}'.", owner);
+			return [];
+		}
+
 
 		var results = new List<NuGetPackageInfo>();
 		var skip = 0;
@@ -93,6 +100,12 @@ public class NuGetDiscoveryService
 		{
 			var repository = NuGet.Protocol.Core.Types.Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
 			var metadataResource = await repository.GetResourceAsync<PackageMetadataResource>(cancellationToken).ConfigureAwait(false);
+			if (metadataResource is null)
+			{
+				// Cannot verify, so assume still listed to avoid accidental removal.
+				return true;
+			}
+
 			var metadata = await metadataResource.GetMetadataAsync(
 				packageId,
 				includePrerelease: false,

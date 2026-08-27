@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
 namespace PanoramicData.NugetManagement.Models;
 
@@ -67,6 +67,47 @@ public static class Standards
 	/// The latest .NET version specifier for CI workflows.
 	/// </summary>
 	public const string LatestDotNetVersionSpecifier = "10.0.x";
+
+	/// <summary>
+	/// The <c>test.runner</c> value that opts <c>dotnet test</c> into the Microsoft.Testing.Platform
+	/// experience. Must be spelled exactly like this: the internal identifier
+	/// <c>MicrosoftTestingPlatform</c> parses but is rejected at runtime.
+	/// </summary>
+	public const string MtpTestRunnerName = "Microsoft.Testing.Platform";
+
+	/// <summary>
+	/// The expected xunit.v3 package version.
+	/// </summary>
+	public const string XunitV3Version = "4.0.0";
+
+	/// <summary>
+	/// The expected Microsoft.NET.Test.Sdk package version.
+	/// </summary>
+	public const string MicrosoftNetTestSdkVersion = "18.9.0";
+
+	/// <summary>
+	/// The expected code coverage collector package. The Microsoft.Testing.Platform replacement for
+	/// coverlet, which only functions as a VSTest data collector.
+	/// </summary>
+	public const string CodeCoveragePackage = "Microsoft.Testing.Extensions.CodeCoverage";
+
+	/// <summary>
+	/// The expected <see cref="CodeCoveragePackage"/> version. Shares a version line with
+	/// <see cref="MicrosoftNetTestSdkVersion"/>, though the two can be a release apart.
+	/// </summary>
+	public const string CodeCoverageVersion = "18.10.0";
+
+	/// <summary>
+	/// Coverlet packages that are inert under Microsoft.Testing.Platform: both hook the VSTest
+	/// target that no longer runs on the .NET 10 SDK, so their presence signals coverage config
+	/// that looks alive but collects nothing.
+	/// </summary>
+	public static readonly string[] DeadCoverletPackages = ["coverlet.collector", "coverlet.msbuild"];
+
+	/// <summary>
+	/// The VSTest adapter for xUnit, unnecessary under Microsoft.Testing.Platform.
+	/// </summary>
+	public const string VsTestAdapterPackage = "xunit.runner.visualstudio";
 
 	/// <summary>
 	/// The minimum acceptable actions/checkout major version. Repositories at or above this pass;
@@ -201,13 +242,17 @@ public static class Standards
 		""";
 
 	/// <summary>
-	/// The standard global.json content pinning the SDK version.
+	/// The standard global.json content pinning the SDK version and opting <c>dotnet test</c> into
+	/// the Microsoft.Testing.Platform runner.
 	/// </summary>
 	public static string GlobalJsonContent => $$"""
 		{
 		  "sdk": {
 			"version": "{{LatestDotNetSdkVersion}}",
 			"rollForward": "latestFeature"
+		  },
+		  "test": {
+			"runner": "{{MtpTestRunnerName}}"
 		  }
 		}
 		""";
