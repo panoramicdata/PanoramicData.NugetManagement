@@ -362,6 +362,18 @@
 	private void OnGuardChanged() => _ = InvokeAsync(StateHasChanged);
 
 	/// <summary>
+	/// Called as each repository's fix lands. Writes the freshly re-assessed row back to the cache and
+	/// rebuilds the view, so a rule stops listing repositories it has just been fixed in — while the
+	/// run is still going, rather than after it finishes.
+	/// </summary>
+	private void OnRepositoryFixed(PackageDashboardRow row)
+	{
+		Cache.UpsertRow(row);
+		LoadView();
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	/// <summary>
 	/// Orders sibling nodes by criticality. PDTree sorts children itself, falling back to comparing
 	/// node text, which would present the tree alphabetically and discard the severity ordering the
 	/// view builder already applied.
@@ -533,7 +545,7 @@
 			Title = $"Apply {rule.RuleId} & push — {repos.Count} repos",
 			DedupKey = $"apply-rule:{Organization}:{rule.RuleId}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyRuleAcrossReposAsync(RowsFor(repos), rule.RuleId, log, progress, ct)
+			Action = (log, progress, ct) => Dashboard.ApplyRuleAcrossReposAsync(RowsFor(repos), rule.RuleId, log, progress, OnRepositoryFixed, ct)
 		};
 	}
 
@@ -551,7 +563,7 @@
 			Title = $"Apply {cat.Category} fixes & push — {repos.Count} repos",
 			DedupKey = $"apply-category:{Organization}:{cat.Category}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyCategoryAcrossReposAsync(RowsFor(repos), cat.Category, log, progress, ct)
+			Action = (log, progress, ct) => Dashboard.ApplyCategoryAcrossReposAsync(RowsFor(repos), cat.Category, log, progress, OnRepositoryFixed, ct)
 		};
 	}
 
@@ -563,7 +575,7 @@
 			Title = $"Apply {ruleId} to {repoFullName}",
 			DedupKey = $"apply-rule:{Organization}:{ruleId}:{repoFullName}",
 			Repos = [repoFullName],
-			Action = (log, progress, ct) => Dashboard.ApplyRuleAcrossReposAsync(scoped, ruleId, log, progress, ct)
+			Action = (log, progress, ct) => Dashboard.ApplyRuleAcrossReposAsync(scoped, ruleId, log, progress, OnRepositoryFixed, ct)
 		};
 	}
 
@@ -581,7 +593,7 @@
 			Title = $"Fix everything & push — {repos.Count} repos",
 			DedupKey = $"fix-everything:{Organization}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyEverythingAcrossReposAsync(RowsFor(repos), log, progress, ct)
+			Action = (log, progress, ct) => Dashboard.ApplyEverythingAcrossReposAsync(RowsFor(repos), log, progress, OnRepositoryFixed, ct)
 		};
 	}
 

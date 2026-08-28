@@ -1193,6 +1193,7 @@ public class DashboardService
 		string ruleId,
 		Action<string>? onOutput = null,
 		IProgress<string>? onProgress = null,
+		Action<PackageDashboardRow>? onRepositoryFixed = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows.Where(r => RepoHasFailingRule(r, ruleId)).ToList();
@@ -1202,6 +1203,7 @@ public class DashboardService
 			$"chore: apply {ruleId} governance remediation",
 			onOutput,
 			onProgress,
+			onRepositoryFixed,
 			cancellationToken);
 	}
 
@@ -1213,6 +1215,7 @@ public class DashboardService
 		AssessmentCategory category,
 		Action<string>? onOutput = null,
 		IProgress<string>? onProgress = null,
+		Action<PackageDashboardRow>? onRepositoryFixed = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows.Where(r => RepoHasFailingCategory(r, category)).ToList();
@@ -1222,6 +1225,7 @@ public class DashboardService
 			$"chore: apply {category} governance remediations",
 			onOutput,
 			onProgress,
+			onRepositoryFixed,
 			cancellationToken);
 	}
 
@@ -1232,6 +1236,7 @@ public class DashboardService
 		IEnumerable<PackageDashboardRow> rows,
 		Action<string>? onOutput = null,
 		IProgress<string>? onProgress = null,
+		Action<PackageDashboardRow>? onRepositoryFixed = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows
@@ -1244,6 +1249,7 @@ public class DashboardService
 			"chore: apply governance remediations",
 			onOutput,
 			onProgress,
+			onRepositoryFixed,
 			cancellationToken);
 	}
 
@@ -1293,6 +1299,7 @@ public class DashboardService
 		string commitMessage,
 		Action<string>? onOutput,
 		IProgress<string>? onProgress,
+		Action<PackageDashboardRow>? onRepositoryFixed,
 		CancellationToken cancellationToken)
 	{
 		var outcome = new BulkApplyOutcome();
@@ -1365,6 +1372,12 @@ public class DashboardService
 
 				if (push.Success && row.RepositoryFullName is not null)
 				{
+					// Re-assessed now the fix has landed, so the row stops reporting an issue that no
+					// longer exists. Without this the issue tree still shows the failures a run has just
+					// fixed, because everything downstream reads the assessment taken before the change.
+					await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+					onRepositoryFixed?.Invoke(row);
+
 					// Verify the build in the background; auto-revert if our change broke it.
 					_regressionGuard.Enqueue(row.RepositoryFullName);
 					onOutput?.Invoke($"🛡️ Queued {row.RepositoryFullName} for build verification.");
