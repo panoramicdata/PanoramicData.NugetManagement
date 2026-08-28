@@ -131,8 +131,8 @@ else
 										{
 											<span class="nav-org-actions">
 												@* Run-something actions first, then a gap, then the clone and settings pair. *@
-												<button type="button" class="nav-org-action-btn" title="Rediscover this organisation's packages from NuGet, then assess them" disabled="@IsBulkOperationInFlight" @onclick="() => RediscoverOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-magnifying-glass"></i></button>
-												<button type="button" class="nav-org-action-btn nav-org-action-group-end" title="Re-assess every repository in this organisation, without re-reading the package list from NuGet" disabled="@IsBulkOperationInFlight" @onclick="() => ReassessOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-sync-alt"></i></button>
+												<button type="button" class="nav-org-action-btn" title="Rediscover this organisation's packages from NuGet, then assess them" @onclick="() => RediscoverOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-magnifying-glass"></i></button>
+												<button type="button" class="nav-org-action-btn nav-org-action-group-end" title="Re-assess every repository in this organisation, without re-reading the package list from NuGet" @onclick="() => ReassessOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-sync-alt"></i></button>
 												@if (_isCloningAll && _cloningOrganization == node.Data!.Organization)
 												{
 													<button type="button" class="nav-org-action-btn active" title="Stop cloning" @onclick="CancelCloneAll" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
@@ -367,7 +367,7 @@ else
 											 IconCssClass="fas fa-magnifying-glass"
 											 CssClass="btn-primary"
 											 IsVisible="@ShowBulkRunButtons"
-											 IsEnabled="@(!IsBulkOperationInFlight)"
+											 IsEnabled="true"
 											 ToolTip="@(_orgSelected
 												? $"Re-read {CurrentOrganization}'s package list from NuGet, then assess it. Use Re-assess Org to skip the NuGet lookup."
 												: "Re-read every organisation's package list from NuGet, then assess everything. Use Re-assess Orgs to skip the NuGet lookup.")"
@@ -401,7 +401,7 @@ else
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
 											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
-											 IsEnabled="@(!IsBulkOperationInFlight && !IsBlockedByOutOfSync)"
+											 IsEnabled="@(!IsBlockedByOutOfSync)"
 											 ToolTip="@(IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
 											 Click="OnToolbarClick" />
 
@@ -429,7 +429,7 @@ else
 											 IconCssClass="fas fa-hammer"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Build)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
+											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
 											 ToolTip="@WorkflowStepTooltip("Build the solution")"
 											 Click="OnToolbarClick" />
 
@@ -443,7 +443,7 @@ else
 											 IconCssClass="fas fa-flask"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Test)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
+											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
 											 ToolTip="@WorkflowStepTooltip("Run unit tests")"
 											 Click="OnToolbarClick" />
 
@@ -457,7 +457,7 @@ else
 											 IconCssClass="fas fa-cloud-upload-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(!_isRunning && _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
+											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
 											 ToolTip="@WorkflowStepTooltip("Commit changes, fetch, rebase and push to origin")"
 											 Click="OnToolbarClick" />
 
@@ -491,7 +491,7 @@ else
 									<span style="display:inline-flex" title="@(string.IsNullOrEmpty(CurrentLastPromptText) ? "No AI prompt generated yet" : "Copy the last generated AI prompt to clipboard")">
 										<button class="btn toolbar-action-btn @(CurrentAiClipboardCueStep.HasValue ? "toolbar-ai-ready" : "")"
 												@onclick="CopyPromptToClipboardAsync"
-												disabled="@(string.IsNullOrEmpty(CurrentLastPromptText) || _isRunning)">
+												disabled="@string.IsNullOrEmpty(CurrentLastPromptText)">
 											<i class="fas fa-copy"></i>
 										</button>
 									</span>
@@ -763,7 +763,7 @@ else
 
 			<div class="modal-actions">
 				<button class="btn btn-secondary" @onclick="CloseCloneDialog">Cancel</button>
-				<button class="btn btn-primary" disabled="@(SelectedCloneCount == 0)" @onclick="CloneSelectedRepositoriesAsync">
+				<button class="btn btn-primary" disabled="@(SelectedCloneCount == 0)" @onclick="CloneSelectedRepositories">
 					<i class="fas fa-cloud-arrow-down"></i> Clone @SelectedCloneCount repositor@(SelectedCloneCount == 1 ? "y" : "ies")
 				</button>
 			</div>
@@ -826,7 +826,6 @@ else
 	private bool _gitAccessCommandCopied;
 	private static readonly string? UserCodeRoot = LocalRepoService.GetUserCodeRoot();
 	private const string GitSchannelCommand = "git config --global http.sslBackend schannel";
-	private CancellationTokenSource? _cloneAllCts;
 	private string _organizationName = string.Empty;
 	// The organisation the current selection belongs to. The tree can hold several, so the
 	// breadcrumb, Settings and Issues must follow the selection rather than one global name.
@@ -877,9 +876,6 @@ else
 	private readonly Dictionary<string, NodeUiState> _nodeUiStateByKey = [];
 	private WorkflowStep? _lastFailedWorkflowStep;
 	private WorkflowStep? _activeWorkflowStep;
-	private CancellationTokenSource? _operationCts;
-	private PackageStatus? _statusBeforeOperation;
-	private string? _statusMessageBeforeOperation;
 
 	private NodeUiState CurrentNodeUiState => GetOrCreateNodeUiState(_selectedNodeKey);
 	private List<ConsoleLine> CurrentConsoleLines => CurrentNodeUiState.ConsoleLines;
@@ -992,7 +988,7 @@ else
 			// Stale or empty cache: rediscover everything. Done here rather than in OnInitializedAsync
 			// so the tree and the progress indicator are already painted — the run is then visibly
 			// under way instead of the page appearing to hang before it has drawn anything.
-			if (Cache.IsStale && !IsBulkOperationInFlight)
+			if (Cache.IsStale && !IsQueueBusy)
 			{
 				await RefreshAsync();
 			}
@@ -1202,6 +1198,10 @@ else
 	/// not overlap: they compete for the same GitHub budget and the same rows, and a clone completing
 	/// mid-assessment flips a repository from remote to local underneath the assessment that is
 	/// already reading it.
+	/// </summary>
+	/// <summary>
+	/// Whether a bulk run is under way. Display only, now that the queue decides what may start: it
+	/// drives the spinners and the dimming of nodes being rebuilt underneath the user.
 	/// </summary>
 	private bool IsBulkOperationInFlight => _isLoading || _isAssessing || _isCloningAll;
 
@@ -1432,28 +1432,6 @@ else
 		// A null busy organisation means the run covers every organisation.
 		return _busyOrganization is null
 			|| string.Equals(_busyOrganization, item.Organization, StringComparison.OrdinalIgnoreCase);
-	}
-
-	/// <summary>
-	/// Refuses to start <paramref name="action"/> while another bulk operation is running, naming what
-	/// is in the way. Returns true when the caller should abandon what it was about to do.
-	/// </summary>
-	private async Task<bool> BlockIfBulkOperationInFlightAsync(string action)
-	{
-		if (!IsBulkOperationInFlight)
-		{
-			return false;
-		}
-
-		var inProgress = _isCloningAll
-			? "a clone"
-			: _isAssessing
-				? "a re-assessment"
-				: "a package refresh";
-
-		await NotifyAsync($"{action} cannot start while {inProgress} is still running. Let it finish, or stop it first.");
-
-		return true;
 	}
 
 	/// <summary>
@@ -1689,11 +1667,6 @@ else
 
 	private async Task OpenCloneDialogAsync(string organization)
 	{
-		if (await BlockIfBulkOperationInFlightAsync("Cloning"))
-		{
-			return;
-		}
-
 		_cloneDialogOpen = true;
 		_cloneDialogOrganization = organization;
 		_isLoadingCloneCandidates = true;
@@ -1999,14 +1972,18 @@ else
 
 	private void CancelCloneAll()
 	{
-		AppendConsole("⏹️ Stopping after the current repository...");
-		_cloneAllCts?.Cancel();
+		var running = WorkQueue.Running;
+		if (running is not null && running.DedupKey.StartsWith("clone:", StringComparison.Ordinal))
+		{
+			AppendConsole("⏹️ Stopping after the current repository...");
+			WorkQueue.Cancel(running.Id);
+		}
 	}
 
 	/// <summary>
 	/// Clones the selected repositories, one at a time, reporting progress to the console.
 	/// </summary>
-	private async Task CloneSelectedRepositoriesAsync()
+	private void CloneSelectedRepositories()
 	{
 		var targets = _cloneCandidates.Where(c => c.Selected).ToList();
 		if (targets.Count == 0)
@@ -2014,13 +1991,24 @@ else
 			return;
 		}
 
+		var organization = _cloneDialogOrganization;
 		_cloneDialogOpen = false;
+		EnqueueWork(
+			$"Clone {targets.Count} repositories — {organization}",
+			organization,
+			$"clone:{organization}:{string.Join(',', targets.Select(t => t.FullName))}",
+			(progress, cancellationToken) => CloneSelectedRepositoriesCoreAsync(targets, organization, progress, cancellationToken));
+	}
+
+	private async Task CloneSelectedRepositoriesCoreAsync(
+		List<RepositoryCloneCandidate> targets,
+		string organization,
+		IProgress<string> progress,
+		CancellationToken token)
+	{
 		_isCloningAll = true;
-		_cloningOrganization = _cloneDialogOrganization;
+		_cloningOrganization = organization;
 		_consoleVisible = true;
-		_cloneAllCts?.Dispose();
-		_cloneAllCts = new CancellationTokenSource();
-		var token = _cloneAllCts.Token;
 
 		var reposRoot = LocalRepo.GetReposRoot();
 		var cloned = 0;
@@ -2030,6 +2018,7 @@ else
 
 		try
 		{
+			var index = 0;
 			foreach (var candidate in targets)
 			{
 				if (token.IsCancellationRequested)
@@ -2037,6 +2026,7 @@ else
 					break;
 				}
 
+				progress.Report($"repo {++index} of {targets.Count}");
 				AppendConsole($"⬇️ {candidate.FullName}");
 				try
 				{
@@ -2082,8 +2072,6 @@ else
 		{
 			_isCloningAll = false;
 			_cloningOrganization = string.Empty;
-			_cloneAllCts?.Dispose();
-			_cloneAllCts = null;
 			await ReloadTreePreservingExpansionAsync();
 			await InvokeAsync(StateHasChanged);
 		}
@@ -3036,7 +3024,7 @@ else
 												disabled="@(!IsFixEnabled())" title="@GetFixCategoryTooltip(group.Category)"><i class="fas fa-wrench"></i> Fix</button>
 								}
 								<button class="btn btn-sm" @onclick="() => ResolveCategoryAsync(group.Category)"
-											disabled="@(_isAssessing || _isRunning)" title="Generate AI prompt for @group.Category"><i class="fas fa-magic"></i> Prompt</button>
+											title="Generate AI prompt for @group.Category"><i class="fas fa-magic"></i> Prompt</button>
 								<button class="btn btn-sm" @onclick="() => ReassessCategoryAsync(group.Category)"
 											disabled="@_isAssessing" title="Re-assess this category"><i class="fas fa-sync-alt"></i></button>
 							</div>
@@ -3062,7 +3050,7 @@ else
 													else
 													{
 														<button class="btn btn-xs btn-prompt" @onclick="() => ResolveRuleAsync(result)"
-																	disabled="@(_isAssessing || _isRunning)" title="Copy AI prompt for this rule"><i class="fas fa-magic"></i> AI only</button>
+																	title="Copy AI prompt for this rule"><i class="fas fa-magic"></i> AI only</button>
 													}
 												</div>
 												<div class="issue-message">@result.Message</div>
@@ -3189,7 +3177,7 @@ else
 						else
 						{
 							<button class="btn btn-sm btn-prompt" @onclick="() => ResolveRuleAsync(result)"
-										disabled="@(_isAssessing || _isRunning)" title="Copy AI prompt for this rule"><i class="fas fa-magic"></i> AI only</button>
+										title="Copy AI prompt for this rule"><i class="fas fa-magic"></i> AI only</button>
 						}
 					}
 				</div>
@@ -3493,13 +3481,7 @@ else
 
 	private void OnAutoRefreshTimer(object? state)
 	{
-		_ = InvokeAsync(async () =>
-		{
-			if (!_isLoading && !_isAssessing && !_isRunning)
-			{
-				await RefreshAsync().ConfigureAwait(false);
-			}
-		});
+		_ = InvokeAsync(async () => await RefreshAsync().ConfigureAwait(false));
 	}
 
 	/// <summary>
@@ -3509,7 +3491,6 @@ else
 	private void ScheduleDoneClear()
 	{
 		_doneClearTimer?.Dispose();
-		_cloneAllCts?.Dispose();
 		_doneClearTimer = new System.Threading.Timer(
 			_ => InvokeAsync(() =>
 			{
@@ -3558,7 +3539,11 @@ else
 	/// and table/UI mutation is marshalled onto the renderer's synchronization context via InvokeAsync
 	/// so shared state is only ever touched from one context.
 	/// </summary>
-	private async Task AssessInParallelAsync(IReadOnlyList<PackageDashboardRow> assessable, Func<PackageDashboardRow, Task> assessOne)
+	private async Task AssessInParallelAsync(
+		IReadOnlyList<PackageDashboardRow> assessable,
+		Func<PackageDashboardRow, Task> assessOne,
+		IProgress<string>? progress = null,
+		CancellationToken cancellationToken = default)
 	{
 		const int maxConcurrency = 10;
 		using var gate = new SemaphoreSlim(maxConcurrency);
@@ -3566,9 +3551,16 @@ else
 
 		var tasks = assessable.Select(async row =>
 		{
-			await gate.WaitAsync();
+			await gate.WaitAsync(CancellationToken.None);
 			try
 			{
+				// Assessment writes nothing, so a stop needs no revert: the rows not yet reached are
+				// simply left as they were.
+				if (cancellationToken.IsCancellationRequested)
+				{
+					return;
+				}
+
 				await assessOne(row);
 			}
 			catch (Exception ex)
@@ -3581,6 +3573,7 @@ else
 				row.IsReassessing = false;
 				var n = Interlocked.Increment(ref completed);
 				_progressMessage = $"Assessing ({n}/{assessable.Count})...";
+				progress?.Report($"repo {n} of {assessable.Count}");
 
 				// Table and progress counter only. Rebuilding the navigation tree here — which is what
 				// RefreshTableAsync also does — tears down every node and re-expands them one by one,
@@ -3592,6 +3585,7 @@ else
 		});
 
 		await Task.WhenAll(tasks);
+		cancellationToken.ThrowIfCancellationRequested();
 	}
 
 	/// <summary>
@@ -3610,16 +3604,20 @@ else
 
 	private async Task RefreshAsync()
 	{
-		if (await BlockIfBulkOperationInFlightAsync("A package refresh"))
-		{
-			return;
-		}
-
 		if (!await ConfirmApiBudgetAsync("Refreshing the package list and re-assessing", EstimateRemoteAssessmentCost(_rows)))
 		{
 			return;
 		}
 
+		EnqueueWork(
+			"Refresh every organisation",
+			null,
+			"refresh:*",
+			RefreshCoreAsync);
+	}
+
+	private async Task RefreshCoreAsync(IProgress<string> progress, CancellationToken cancellationToken)
+	{
 		_isLoading = true;
 		_isDiscovering = true;
 		NavDataProvider.IsLoading = true;
@@ -3628,7 +3626,7 @@ else
 
 		try
 		{
-			var freshRows = await Dashboard.DiscoverPackagesAsync();
+			var freshRows = await Dashboard.DiscoverPackagesAsync(cancellationToken: cancellationToken);
 
 			var existingByPackageId = _rows
 				.Where(r => r.Assessment is not null)
@@ -3673,14 +3671,14 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row);
-					await Dashboard.RefreshGitStatusAsync(row);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
 				{
-					await Dashboard.AssessRepositoryAsync(row, github);
+					await Dashboard.AssessRepositoryAsync(row, github, cancellationToken);
 				}
-			});
+			}, progress, cancellationToken);
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
@@ -3808,60 +3806,6 @@ else
 		await RefreshTableAsync();
 	}
 
-	private CancellationToken BeginCancelableOperation(WorkflowStep step)
-	{
-		_operationCts?.Dispose();
-		_operationCts = new CancellationTokenSource();
-		_activeWorkflowStep = step;
-
-		if (_selectedRow is not null)
-		{
-			_statusBeforeOperation = _selectedRow.Status;
-			_statusMessageBeforeOperation = _selectedRow.StatusMessage;
-		}
-
-		return _operationCts.Token;
-	}
-
-	private async Task CancelCurrentOperationAsync()
-	{
-		if (_operationCts is null || _activeWorkflowStep is null)
-		{
-			return;
-		}
-
-		AppendConsole($"⏹️ Cancelling {GetWorkflowStepDisplayName(_activeWorkflowStep.Value).ToLowerInvariant()}...");
-		_operationCts.Cancel();
-		await InvokeAsync(StateHasChanged);
-	}
-
-	private void RestoreStatusAfterCancellation()
-	{
-		if (_selectedRow is null)
-		{
-			return;
-		}
-
-		if (_statusBeforeOperation.HasValue)
-		{
-			_selectedRow.Status = _statusBeforeOperation.Value;
-		}
-
-		if (_statusMessageBeforeOperation is not null)
-		{
-			_selectedRow.StatusMessage = _statusMessageBeforeOperation;
-		}
-	}
-
-	private void EndCancelableOperation()
-	{
-		_operationCts?.Dispose();
-		_operationCts = null;
-		_activeWorkflowStep = null;
-		_statusBeforeOperation = null;
-		_statusMessageBeforeOperation = null;
-	}
-
    private bool IsStepRunning(WorkflowStep step)
 		=> _activeWorkflowStep == step && (_isRunning || _isAssessing || _isLoading);
 
@@ -3977,11 +3921,6 @@ else
 	/// </summary>
 	private async Task RediscoverOrganizationAsync(string organization)
 	{
-		if (await BlockIfBulkOperationInFlightAsync("A rediscovery"))
-		{
-			return;
-		}
-
 		var existingForOrg = _rows
 			.Where(r => string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))
 			.ToList();
@@ -3993,6 +3932,19 @@ else
 			return;
 		}
 
+		EnqueueWork(
+			$"Rediscover {organization}",
+			organization,
+			$"rediscover:{organization}",
+			(progress, cancellationToken) => RediscoverOrganizationCoreAsync(organization, existingForOrg, progress, cancellationToken));
+	}
+
+	private async Task RediscoverOrganizationCoreAsync(
+		string organization,
+		List<PackageDashboardRow> existingForOrg,
+		IProgress<string> progress,
+		CancellationToken cancellationToken)
+	{
 		_isLoading = true;
 		_isDiscovering = true;
 		_busyOrganization = organization;
@@ -4001,7 +3953,7 @@ else
 
 		try
 		{
-			var freshRows = await Dashboard.DiscoverPackagesAsync(organization);
+			var freshRows = await Dashboard.DiscoverPackagesAsync(organization, cancellationToken);
 
 			// Carry over assessments we already have, so rediscovery does not throw away results for
 			// packages that have not changed.
@@ -4056,14 +4008,14 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row);
-					await Dashboard.RefreshGitStatusAsync(row);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
 				{
-					await Dashboard.AssessRepositoryAsync(row, github);
+					await Dashboard.AssessRepositoryAsync(row, github, cancellationToken);
 				}
-			});
+			}, progress, cancellationToken);
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
@@ -4100,11 +4052,6 @@ else
 	/// </summary>
 	private async Task ReassessOrganizationAsync(string? organization)
 	{
-		if (await BlockIfBulkOperationInFlightAsync("A re-assessment"))
-		{
-			return;
-		}
-
 		var assessable = _rows
 			.Where(r => r.RepositoryFullName is not null)
 			.Where(r => organization is null
@@ -4123,6 +4070,23 @@ else
 			return;
 		}
 
+		// Confirmation happens on the click; the run itself goes on the queue, because a dialog
+		// appearing when the item finally starts would block the queue on an answer nobody is
+		// waiting to give.
+		EnqueueWork(
+			$"Re-assess {organization ?? "every organisation"} — {assessable.Count} repos",
+			organization,
+			$"reassess:{organization ?? "*"}",
+			(progress, cancellationToken) => ReassessOrganizationCoreAsync(organization, assessable, scope, progress, cancellationToken));
+	}
+
+	private async Task ReassessOrganizationCoreAsync(
+		string? organization,
+		List<PackageDashboardRow> assessable,
+		string scope,
+		IProgress<string> progress,
+		CancellationToken cancellationToken)
+	{
 		_isAssessing = true;
 		_busyOrganization = organization;
 		AppendConsole($"▶ Re-assessing {assessable.Count} {scope}...");
@@ -4143,18 +4107,25 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row);
-					await Dashboard.RefreshGitStatusAsync(row);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
 				{
-					await Dashboard.AssessRepositoryAsync(row, github);
+					await Dashboard.AssessRepositoryAsync(row, github, cancellationToken);
 				}
-			});
+			}, progress, cancellationToken);
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
 			AppendConsole($"✅ Re-assessed {assessable.Count} repos.");
+		}
+		catch (OperationCanceledException)
+		{
+			// Whatever was assessed before the stop stands: the rows are simply as fresh as they got.
+			Cache.Update(_rows);
+			_lastRefreshUtc = Cache.LastRefreshUtc;
+			throw;
 		}
 		catch (Exception ex)
 		{
@@ -4238,6 +4209,16 @@ else
 			return;
 		}
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Fix {_selectedRow.PackageId}",
+			_selectedRow.Organization,
+			$"fix-all:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			(progress, cancellationToken) => FixAllCoreAsync(capturedRow, progress, cancellationToken));
+	}
+
+	private async Task FixAllCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	{
 		_isRunning = true;
 		ClearConsole();
 		AppendConsole("▶ Applying all auto-remediations...");
@@ -4245,13 +4226,13 @@ else
 
 		try
 		{
-			var applied = await Dashboard.ApplyRemediationsAsync(_selectedRow, line =>
+			var applied = await Dashboard.ApplyRemediationsAsync(row, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
 			});
 
-			await Dashboard.RefreshGitStatusAsync(_selectedRow);
+			await Dashboard.RefreshGitStatusAsync(row);
 			await PersistSelectedRowUpdateAsync();
 			AppendConsole($"✅ Applied {applied.Count} remediation(s)");
 
@@ -4259,11 +4240,11 @@ else
 			_isAssessing = true;
 			_progressMessage = "Re-assessing...";
 			StateHasChanged();
-			await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
+			await Dashboard.AssessLocalRepositoryAsync(row);
            await PersistSelectedRowUpdateAsync();
 
 			// Report remaining issues that have no auto-fix
-			var remaining = _selectedRow.Assessment?.RuleResults
+			var remaining = row.Assessment?.RuleResults
 				.Where(r => !r.Passed && !Dashboard.IsAutoRemediable(r))
 				.ToList() ?? [];
 			if (remaining.Count > 0)
@@ -4274,14 +4255,21 @@ else
 				}
 
 				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Preparing AI prompt for clipboard...");
-				var prompt = DashboardService.GenerateRemediationPromptForFailures(_selectedRow, remaining, includeInfo: false);
+				var prompt = DashboardService.GenerateRemediationPromptForFailures(row, remaining, includeInfo: false);
 				OpenInIde();
 				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Fix, "remaining remediation options");
 			}
-			else if (_selectedRow.TotalFailures == 0)
+			else if (row.TotalFailures == 0)
 			{
 				AppendConsole("🎉 No remaining issues — all rules pass.");
 			}
+		}
+		catch (OperationCanceledException)
+		{
+			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
+			// it was found rather than carrying half a remediation into the next commit.
+			await RevertPartAppliedFixAsync(row);
+			throw;
 		}
 		catch (Exception ex)
 		{
@@ -4314,6 +4302,16 @@ else
 			return;
 		}
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Fix {category} — {_selectedRow.PackageId}",
+			_selectedRow.Organization,
+			$"fix-category:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}:{category}",
+			(progress, cancellationToken) => FixCategoryCoreAsync(capturedRow, category, progress, cancellationToken));
+	}
+
+	private async Task FixCategoryCoreAsync(PackageDashboardRow row, AssessmentCategory category, IProgress<string> progress, CancellationToken cancellationToken)
+	{
 		_isRunning = true;
 		ClearConsole();
 		AppendConsole($"▶ Fixing {category}...");
@@ -4321,21 +4319,28 @@ else
 
 		try
 		{
-			var applied = await Dashboard.ApplyCategoryRemediationsAsync(_selectedRow, category, line =>
+			var applied = await Dashboard.ApplyCategoryRemediationsAsync(row, category, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
 			});
 
-			await Dashboard.RefreshGitStatusAsync(_selectedRow);
+			await Dashboard.RefreshGitStatusAsync(row);
 			await PersistSelectedRowUpdateAsync();
 			AppendConsole($"✅ Applied {applied.Count} remediation(s) for {category}");
 
 			_isAssessing = true;
 			_progressMessage = "Re-assessing...";
 			StateHasChanged();
-			await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
+			await Dashboard.AssessLocalRepositoryAsync(row);
            await PersistSelectedRowUpdateAsync();
+		}
+		catch (OperationCanceledException)
+		{
+			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
+			// it was found rather than carrying half a remediation into the next commit.
+			await RevertPartAppliedFixAsync(row);
+			throw;
 		}
 		catch (Exception ex)
 		{
@@ -4372,6 +4377,24 @@ else
 			return;
 		}
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Fix {result.RuleId} — {_selectedRow.PackageId}",
+			_selectedRow.Organization,
+			$"fix-rule:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}:{result.RuleId}",
+			(progress, cancellationToken) => FixSingleRuleCoreAsync(capturedRow, result, progress, cancellationToken));
+	}
+
+	private async Task FixSingleRuleCoreAsync(PackageDashboardRow row, RuleResult result, IProgress<string> progress, CancellationToken cancellationToken)
+	{
+		// Re-checked here rather than trusted from the click: the clone can be gone by the time the
+		// queue reaches this item.
+		if (row.LocalPath is null)
+		{
+			AppendConsole($"⏭️ {row.PackageId} is no longer cloned locally — skipping {result.RuleId}.");
+			return;
+		}
+
 		_isRunning = true;
 		ClearConsole();
 		AppendConsole($"▶ Fixing {result.RuleId}...");
@@ -4380,21 +4403,28 @@ else
 		try
 		{
 			var applied = new List<string>();
-			Dashboard.ApplySingleRemediationPublic(_selectedRow.LocalPath, result, applied, line =>
+			Dashboard.ApplySingleRemediationPublic(row.LocalPath, result, applied, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
 			});
 
-			await Dashboard.RefreshGitStatusAsync(_selectedRow);
+			await Dashboard.RefreshGitStatusAsync(row);
 			await PersistSelectedRowUpdateAsync();
 			AppendConsole(applied.Count > 0 ? $"✅ Fixed {result.RuleId}" : $"⚠️ Could not fix {result.RuleId}");
 
 			_isAssessing = true;
 			_progressMessage = "Re-assessing...";
 			StateHasChanged();
-			await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
+			await Dashboard.AssessLocalRepositoryAsync(row);
            await PersistSelectedRowUpdateAsync();
+		}
+		catch (OperationCanceledException)
+		{
+			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
+			// it was found rather than carrying half a remediation into the next commit.
+			await RevertPartAppliedFixAsync(row);
+			throw;
 		}
 		catch (Exception ex)
 		{
@@ -4420,6 +4450,16 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Build {_selectedRow.PackageId}",
+			_selectedRow.Organization,
+			$"build:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			(progress, cancellationToken) => BuildCoreAsync(capturedRow, progress, cancellationToken));
+	}
+
+	private async Task BuildCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	{
 		_isRunning = true;
 		ClearConsole();
 		AppendConsole("▶ Building...");
@@ -4427,13 +4467,13 @@ else
 
 		try
 		{
-			await Dashboard.BuildAsync(_selectedRow, line =>
+			await Dashboard.BuildAsync(row, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
-			});
+			}, cancellationToken);
 
-			if (_selectedRow.Status == PackageStatus.BuildSucceeded)
+			if (row.Status == PackageStatus.BuildSucceeded)
 			{
                 _lastFailedWorkflowStep = null;
 				_failedSteps.Remove(WorkflowStep.Build);
@@ -4448,7 +4488,7 @@ else
                 AppendConsole("❌ Build failed");
 				OpenInIde();
 				var prompt = DashboardService.GenerateConciseWorkflowFailurePrompt(
-					_selectedRow,
+					row,
 					"build",
 					CurrentConsoleLines.Select(line => line.Text));
 				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Build, "build failure");
@@ -4474,6 +4514,16 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Test {_selectedRow.PackageId}",
+			_selectedRow.Organization,
+			$"test:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			(progress, cancellationToken) => RunTestsCoreAsync(capturedRow, progress, cancellationToken));
+	}
+
+	private async Task RunTestsCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	{
 		_isRunning = true;
 		ClearConsole();
 		AppendConsole("▶ Running tests...");
@@ -4481,13 +4531,13 @@ else
 
 		try
 		{
-			await Dashboard.RunTestsAsync(_selectedRow, line =>
+			await Dashboard.RunTestsAsync(row, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
-			});
+			}, cancellationToken);
 
-			if (_selectedRow.Status == PackageStatus.TestsPassed)
+			if (row.Status == PackageStatus.TestsPassed)
 			{
              _lastFailedWorkflowStep = null;
 				_failedSteps.Remove(WorkflowStep.Test);
@@ -4502,7 +4552,7 @@ else
 				AppendConsole("❌ Tests failed");
 				OpenInIde();
 				var prompt = DashboardService.GenerateConciseWorkflowFailurePrompt(
-					_selectedRow,
+					row,
 					"test",
 					CurrentConsoleLines.Select(line => line.Text));
 				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Test, "test failure");
@@ -4528,6 +4578,16 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Git sync {_selectedRow.PackageId}",
+			_selectedRow.Organization,
+			$"sync:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			(progress, cancellationToken) => GitSyncCoreAsync(capturedRow, progress, cancellationToken));
+	}
+
+	private async Task GitSyncCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	{
 		_isRunning = true;
 		ClearConsole();
 		AppendConsole("▶ Git syncing...");
@@ -4535,18 +4595,18 @@ else
 
 		try
 		{
-			await Dashboard.GitSyncAsync(_selectedRow, line =>
+			await Dashboard.GitSyncAsync(row, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
-			});
+			}, cancellationToken);
 
-			AppendConsole(_selectedRow.Status == PackageStatus.GitSynced ? "✅ Git sync complete" : "❌ Git sync failed");
+			AppendConsole(row.Status == PackageStatus.GitSynced ? "✅ Git sync complete" : "❌ Git sync failed");
 			await PersistSelectedRowUpdateAsync();
 
-			if (_selectedRow.CurrentBranch is not null)
+			if (row.CurrentBranch is not null)
 			{
-				AppendConsole($"ℹ️ Branch: {_selectedRow.CurrentBranch} | Clean: {_selectedRow.IsWorkingTreeClean} | Synced: {_selectedRow.IsSyncedWithOrigin}");
+				AppendConsole($"ℹ️ Branch: {row.CurrentBranch} | Clean: {row.IsWorkingTreeClean} | Synced: {row.IsSyncedWithOrigin}");
 			}
 
 			await AppendDirtyWorkingTreePreviewAsync();
@@ -4592,6 +4652,16 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Publish {_selectedRow.PackageId}",
+			_selectedRow.Organization,
+			$"publish:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			(progress, cancellationToken) => RunPublishCoreAsync(capturedRow, progress, cancellationToken));
+	}
+
+	private async Task RunPublishCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	{
 		_isRunning = true;
 		ClearConsole();
 		AppendConsole("▶ Publishing...");
@@ -4599,13 +4669,13 @@ else
 
 		try
 		{
-			await Dashboard.RunPublishAsync(_selectedRow, line =>
+			await Dashboard.RunPublishAsync(row, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
-			});
+			}, cancellationToken);
 
-			AppendConsole(_selectedRow.Status == PackageStatus.Published ? "✅ Published" : "❌ Publish failed");
+			AppendConsole(row.Status == PackageStatus.Published ? "✅ Published" : "❌ Publish failed");
 		}
 		catch (Exception ex)
 		{
@@ -4727,7 +4797,7 @@ else
 
 	private bool IsFixEnabled()
 	{
-		if (_selectedRow is null || _isAssessing || _isRunning || !_selectedRow.IsClonedLocally)
+		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
 		{
 			return false;
 		}
@@ -4777,14 +4847,9 @@ else
 
 	private string GetFixAllTooltip()
 	{
-		if (_isAssessing)
+		if (IsQueueBusy)
 		{
-			return "Assessment in progress";
-		}
-
-		if (_isRunning)
-		{
-			return "Another operation is running";
+			return "Will be queued behind the work already running";
 		}
 
 		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
@@ -4807,9 +4872,9 @@ else
 
 	private string GetFixCategoryTooltip(AssessmentCategory category)
 	{
-		if (_isAssessing || _isRunning)
+		if (IsQueueBusy)
 		{
-			return "Please wait...";
+			return "Will be queued behind the work already running";
 		}
 
 		var allowMasterToMainFlow = category == AssessmentCategory.RepositoryHygiene && CanRunMasterToMainAutoFix();
@@ -4818,9 +4883,9 @@ else
 
 	private string GetFixSingleTooltip()
 	{
-		if (_isAssessing || _isRunning)
+		if (IsQueueBusy)
 		{
-			return "Please wait...";
+			return "Will be queued behind the work already running";
 		}
 
 		if (HasPendingMasterToMainRemediation())
@@ -4861,7 +4926,7 @@ else
 
 	private bool IsSyncEnabled()
 	{
-		if (_selectedRow is null || _isRunning)
+		if (_selectedRow is null)
 		{
 			return false;
 		}
@@ -4913,9 +4978,9 @@ else
 
 	private string GetSyncTooltip()
 	{
-		if (_isRunning)
+		if (IsQueueBusy)
 		{
-			return "Another operation is running";
+			return "Will be queued behind the work already running";
 		}
 
 		if (_selectedRow is null)
@@ -4942,7 +5007,7 @@ else
 
 	private bool IsPublishEnabled()
 	{
-		return _selectedRow is not null && !_isRunning && _selectedRow.IsClonedLocally
+		return _selectedRow is not null && _selectedRow.IsClonedLocally
 			&& !IsBlockedByOutOfSync
 			&& _selectedRow.Status == PackageStatus.TestsPassed;
 	}
@@ -4997,6 +5062,30 @@ else
 	}
 
 	// === Work queue ===
+
+	/// <summary>Whether anything is running or waiting, so a click now queues rather than starts.</summary>
+	private bool IsQueueBusy => WorkQueue.Items.Count > 0;
+
+	/// <summary>
+	/// Throws away whatever a stopped fix had written into a clone, and says how much went. Not
+	/// cancellable: this is the cleanup, and abandoning it half-way is the state it exists to prevent.
+	/// </summary>
+	private async Task RevertPartAppliedFixAsync(PackageDashboardRow row)
+	{
+		if (row.RepositoryFullName is null)
+		{
+			return;
+		}
+
+		var (success, discarded) = await LocalRepo.DiscardLocalChangesAsync(row.RepositoryFullName, CancellationToken.None);
+		AppendConsole(success
+			? discarded.Count == 0
+				? "↩️ Stopped before anything was written."
+				: $"↩️ Reverted {discarded.Count} change(s) written before the stop."
+			: "⚠️ Could not revert the part-applied changes — check the clone by hand.");
+
+		await Dashboard.RefreshGitStatusAsync(row, CancellationToken.None);
+	}
 
 	private static string QueueItemIcon(WorkItem item) => item.State switch
 	{
@@ -5737,6 +5826,16 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Commit & push {_selectedRow.PackageId}",
+			_selectedRow.Organization,
+			$"commit-push:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			(progress, cancellationToken) => CommitAndPushCoreAsync(capturedRow, progress, cancellationToken));
+	}
+
+	private async Task CommitAndPushCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	{
 		_isRunning = true;
 		ClearConsole();
 		AppendConsole("▶ Committing and pushing...");
@@ -5744,8 +5843,8 @@ else
 
 		try
 		{
-			var commitMessage = $"NuGet governance remediation for {_selectedRow.PackageId}";
-			var push = await Dashboard.CommitAndPushAsync(_selectedRow, commitMessage, line =>
+			var commitMessage = $"NuGet governance remediation for {row.PackageId}";
+			var push = await Dashboard.CommitAndPushAsync(row, commitMessage, line =>
 			{
 				AppendConsole(line);
 				InvokeAsync(StateHasChanged);
@@ -5757,9 +5856,9 @@ else
 				AppendConsole("✅ Changes committed and pushed");
 				await PersistSelectedRowUpdateAsync();
 
-				if (_selectedRow.CurrentBranch is not null)
+				if (row.CurrentBranch is not null)
 				{
-					AppendConsole($"ℹ️ Branch: {_selectedRow.CurrentBranch} | Clean: {_selectedRow.IsWorkingTreeClean} | Synced: {_selectedRow.IsSyncedWithOrigin}");
+					AppendConsole($"ℹ️ Branch: {row.CurrentBranch} | Clean: {row.IsWorkingTreeClean} | Synced: {row.IsSyncedWithOrigin}");
 				}
 			}
 			else
