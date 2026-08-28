@@ -1240,6 +1240,33 @@ public class DashboardService
 		return Task.FromResult(applied);
 	}
 
+	/// <summary>
+	/// Throws away everything a stopped run had written into a clone, and says what went. Never
+	/// cancellable: this is the cleanup, and abandoning it half-way is the state it exists to prevent.
+	/// </summary>
+	private async Task RevertUncommittedAsync(PackageDashboardRow row, string name, Action<string>? onOutput)
+	{
+		var identity = row.RepositoryFullName;
+		if (identity is null)
+		{
+			return;
+		}
+
+		var (success, discarded) = await _localRepo.DiscardLocalChangesAsync(identity, CancellationToken.None)
+			.ConfigureAwait(false);
+
+		if (!success)
+		{
+			onOutput?.Invoke($"⚠️ {name}: could not revert the part-applied changes — check the clone by hand.");
+			return;
+		}
+
+		// Announced rather than silent: a rollback the user cannot see is worse than none.
+		onOutput?.Invoke(discarded.Count == 0
+			? $"↩️ {name}: stopped before anything was written."
+			: $"↩️ {name}: reverted {discarded.Count} change(s) written before the stop.");
+	}
+
 	private async Task<BulkApplyOutcome> ApplyAcrossReposAsync(
 		List<PackageDashboardRow> affected,
 		Func<PackageDashboardRow, Task<List<string>>> applyFunc,
@@ -1255,6 +1282,10 @@ public class DashboardService
 			cancellationToken.ThrowIfCancellationRequested();
 			var name = row.RepositoryFullName ?? row.PackageId;
 			onOutput?.Invoke($"── {name} ──");
+
+			// Tracks the atomic boundary for this repository: everything before the commit can be
+			// undone, everything after it has left the machine.
+			var phase = RepoApplyPhase.NotStarted;
 
 			try
 			{
@@ -1275,7 +1306,9 @@ public class DashboardService
 				await GitSyncAsync(row, onOutput, cancellationToken).ConfigureAwait(false);
 				await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
 
+				phase = RepoApplyPhase.Applying;
 				var applied = await applyFunc(row).ConfigureAwait(false);
+				phase = applied.Count == 0 ? RepoApplyPhase.NotStarted : RepoApplyPhase.Applied;
 				if (applied.Count == 0)
 				{
 					outcome.Results.Add(new RepoApplyResult
@@ -1287,7 +1320,11 @@ public class DashboardService
 					continue;
 				}
 
-				var push = await CommitAndPushAsync(row, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
+				// Deliberately not cancellable: a push killed mid-ref-update is the one outcome that
+				// cannot be tidied up afterwards. Once it starts, it is allowed to resolve, and the
+				// stop is honoured at the top of the next repository.
+				var push = await CommitAndPushAsync(row, commitMessage, onOutput, CancellationToken.None).ConfigureAwait(false);
+				phase = push.Success ? RepoApplyPhase.Pushed : RepoApplyPhase.Applied;
 				outcome.Results.Add(new RepoApplyResult
 				{
 					RepositoryFullName = name,
@@ -1316,6 +1353,14 @@ public class DashboardService
 			}
 			catch (OperationCanceledException)
 			{
+				// Atomic per repository: work that never reached its commit is undone, so the clone is
+				// left as it was found rather than half-remediated.
+				if (BulkApplyCancellation.NeedsRevert(phase))
+				{
+					await RevertUncommittedAsync(row, name, onOutput).ConfigureAwait(false);
+				}
+
+				outcome.Results.Add(BulkApplyCancellation.Describe(name, phase));
 				throw;
 			}
 			catch (Exception ex)

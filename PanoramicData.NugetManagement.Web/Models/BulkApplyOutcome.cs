@@ -22,7 +22,14 @@ public enum RepoApplyStatus
 	Skipped,
 
 	/// <summary>The operation failed for this repository.</summary>
-	Failed
+	Failed,
+
+	/// <summary>
+	/// Stopped part-way through, before the commit, so the changes that had been written were undone.
+	/// Distinct from <see cref="Skipped"/>: this repository was being worked on, and is now back
+	/// exactly as it was found.
+	/// </summary>
+	Reverted
 }
 
 /// <summary>
@@ -59,4 +66,7 @@ public sealed class BulkApplyOutcome
 
 	/// <summary>The number of repositories left alone because writing to them was not safe.</summary>
 	public int SkippedCount => Results.Count(r => r.Status == RepoApplyStatus.Skipped);
+
+	/// <summary>The number of repositories whose part-applied changes were undone when the run stopped.</summary>
+	public int RevertedCount => Results.Count(r => r.Status == RepoApplyStatus.Reverted);
 }
