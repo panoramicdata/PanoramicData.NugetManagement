@@ -1178,6 +1178,7 @@ public class DashboardService
 		IEnumerable<PackageDashboardRow> rows,
 		string ruleId,
 		Action<string>? onOutput = null,
+		IProgress<string>? onProgress = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows.Where(r => RepoHasFailingRule(r, ruleId)).ToList();
@@ -1186,6 +1187,7 @@ public class DashboardService
 			row => ApplySingleRuleAsync(row, ruleId, onOutput),
 			$"chore: apply {ruleId} governance remediation",
 			onOutput,
+			onProgress,
 			cancellationToken);
 	}
 
@@ -1196,6 +1198,7 @@ public class DashboardService
 		IEnumerable<PackageDashboardRow> rows,
 		AssessmentCategory category,
 		Action<string>? onOutput = null,
+		IProgress<string>? onProgress = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows.Where(r => RepoHasFailingCategory(r, category)).ToList();
@@ -1204,6 +1207,7 @@ public class DashboardService
 			row => ApplyCategoryRemediationsAsync(row, category, onOutput, cancellationToken),
 			$"chore: apply {category} governance remediations",
 			onOutput,
+			onProgress,
 			cancellationToken);
 	}
 
@@ -1213,6 +1217,7 @@ public class DashboardService
 	public Task<BulkApplyOutcome> ApplyEverythingAcrossReposAsync(
 		IEnumerable<PackageDashboardRow> rows,
 		Action<string>? onOutput = null,
+		IProgress<string>? onProgress = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows
@@ -1224,6 +1229,7 @@ public class DashboardService
 			row => ApplyRemediationsAsync(row, onOutput, cancellationToken),
 			"chore: apply governance remediations",
 			onOutput,
+			onProgress,
 			cancellationToken);
 	}
 
@@ -1272,16 +1278,22 @@ public class DashboardService
 		Func<PackageDashboardRow, Task<List<string>>> applyFunc,
 		string commitMessage,
 		Action<string>? onOutput,
+		IProgress<string>? onProgress,
 		CancellationToken cancellationToken)
 	{
 		var outcome = new BulkApplyOutcome();
 		onOutput?.Invoke($"Applying across {affected.Count} repositor{(affected.Count == 1 ? "y" : "ies")}...");
 
+		var index = 0;
 		foreach (var row in affected)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 			var name = row.RepositoryFullName ?? row.PackageId;
 			onOutput?.Invoke($"── {name} ──");
+
+			// Two channels, deliberately: the console gets the narrative, the queue entry gets a count
+			// short enough to sit in the sidebar next to the title.
+			onProgress?.Report($"repo {++index} of {affected.Count}");
 
 			// Tracks the atomic boundary for this repository: everything before the commit can be
 			// undone, everything after it has left the machine.

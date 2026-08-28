@@ -2862,15 +2862,15 @@ else
 			case NavView.Issues:
 				@* Embedded so it drops its own page header. Organization is required: without it the
 				   component shows nothing rather than every organisation's repositories. *@
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" OnOutput="AppendIssuesOutput" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueRequestedWork" />
 				break;
 			case NavView.IssueCategoryDetail:
 				@* The hierarchy itself now lives in the sidebar; this panel shows the selected
 				   category's rules with their affected repositories and bulk actions. *@
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" OnOutput="AppendIssuesOutput" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueRequestedWork" />
 				break;
 			case NavView.IssueRuleDetail:
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" OnOutput="AppendIssuesOutput" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueRequestedWork" />
 				break;
 			default:
 				@RenderGettingStarted()
@@ -5062,6 +5062,13 @@ else
 			await SafeStateHasChangedAsync();
 		}
 	}
+
+	/// <summary>
+	/// Queues work a child component asked for. Its output goes to the console like everything else,
+	/// so a queued bulk run reads the same as one started from the toolbar.
+	/// </summary>
+	private void EnqueueRequestedWork(QueuedWork work)
+		=> EnqueueWork(work.Title, work.Organization, work.DedupKey, work.Run);
 
 	private void OnWorkQueueChanged() => _ = SafeStateHasChangedAsync();
 
