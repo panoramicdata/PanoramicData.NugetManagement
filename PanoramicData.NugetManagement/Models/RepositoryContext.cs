@@ -95,27 +95,49 @@ public class RepositoryContext
 		=> FindFiles(".csproj").Where(path => !IsTestProject(path));
 
 	/// <summary>
-	/// Returns the single primary project for this repository: the .csproj whose
-	/// filename (without extension) matches the repository name.
-	/// Returns null if no such project exists (e.g. the repo is an app, not a library).
+	/// Returns every project this repository publishes to NuGet.
 	/// </summary>
-	public string? FindPrimaryProjectFile()
-		=> FindNonTestProjectFiles()
-			.FirstOrDefault(path =>
-				string.Equals(
-					Path.GetFileNameWithoutExtension(path),
-					Name,
-					StringComparison.OrdinalIgnoreCase));
+	/// <remarks>
+	/// Resolved by what a project says about itself, not by what it is called. Matching a .csproj to
+	/// the repository name looked reasonable and was wrong in both directions: repositories whose
+	/// package project is named something else had every packaging rule silently skipped, while the
+	/// same repositories had their real package reported as an ancillary project that ought to be
+	/// non-packable. A repository may publish several packages, so this returns all of them.
+	/// </remarks>
+	public IEnumerable<string> FindPackableProjectFiles()
+		=> FindNonTestProjectFiles().Where(IsPackableProject);
 
 	/// <summary>
-	/// Returns all non-test projects that are NOT the primary project.
-	/// These are ancillary projects (tools, generators, etc.) that should not be published to NuGet.
+	/// Returns the non-test projects this repository does not publish: tools, samples, generators and
+	/// the like, which should be explicitly opted out of packaging.
 	/// </summary>
-	public IEnumerable<string> FindNonPrimaryNonTestProjectFiles()
+	public IEnumerable<string> FindNonPackableProjectFiles()
+		=> FindNonTestProjectFiles().Where(path => !IsPackableProject(path));
+
+	/// <summary>
+	/// Whether a project is one the repository publishes.
+	/// </summary>
+	/// <param name="projectPath">The relative project path.</param>
+	public bool IsPackableProject(string projectPath)
 	{
-		var primary = FindPrimaryProjectFile();
-		return FindNonTestProjectFiles()
-			.Where(path => !string.Equals(path, primary, StringComparison.OrdinalIgnoreCase));
+		var treatment = GetProjectConfig(projectPath)?.PackagingTreatment ?? ProjectTreatment.Auto;
+		if (treatment != ProjectTreatment.Auto)
+		{
+			return treatment == ProjectTreatment.Include;
+		}
+
+		var content = GetFileContent(projectPath);
+
+		// An explicit opt-out settles it, whatever else the project says.
+		if (MsBuildProperties.HasValue(content, "IsPackable", "false"))
+		{
+			return false;
+		}
+
+		return MsBuildProperties.Has(content, "PackageId")
+			|| MsBuildProperties.HasValue(content, "GeneratePackageOnBuild", "true")
+			|| MsBuildProperties.HasValue(content, "PackAsTool", "true")
+			|| MsBuildProperties.HasValue(content, "IsPackable", "true");
 	}
 
 	/// <summary>

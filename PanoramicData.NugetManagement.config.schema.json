@@ -43,6 +43,10 @@
 				"testingTreatment": {
 					"$ref": "#/$defs/projectTreatment"
 				},
+				"packagingTreatment": {
+					"$ref": "#/$defs/projectTreatment",
+					"description": "Whether this project is one the repository publishes to NuGet. Auto decides from the project file: PackageId, GeneratePackageOnBuild, PackAsTool or IsPackable=true mean published; IsPackable=false never does."
+				},
 				"defaultTestingLevel": {
 					"$ref": "#/$defs/projectTestingLevel"
 				},

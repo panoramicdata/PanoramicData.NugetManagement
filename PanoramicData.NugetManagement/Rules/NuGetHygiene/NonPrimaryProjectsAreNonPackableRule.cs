@@ -3,9 +3,9 @@ using PanoramicData.NugetManagement.Models;
 namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
-/// Checks that non-primary, non-test projects (tools, generators, etc.) are explicitly
-/// opted out of NuGet packaging via &lt;IsPackable&gt;false&lt;/IsPackable&gt;.
-/// Only the primary project (whose filename matches the repository name) should be published to NuGet.
+/// Checks that non-test projects the repository does not publish (tools, generators, samples) are
+/// explicitly opted out of NuGet packaging via &lt;IsPackable&gt;false&lt;/IsPackable&gt;, so that what
+/// is published is a decision rather than an accident of the SDK default.
 /// </summary>
 public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 {
@@ -29,7 +29,11 @@ public class NonPrimaryProjectsAreNonPackableRule : RuleBase
 			return Task.FromResult(Pass("Repository is not packable - skipping."));
 		}
 
-		var ancillary = context.FindNonPrimaryNonTestProjectFiles().ToList();
+		// Ancillary now means "not one of the projects this repository publishes", decided by what
+		// each project declares. Deriving it from the project name meant that in a repository whose
+		// package project is named something else, the package itself was reported here as an
+		// ancillary project that ought to be non-packable.
+		var ancillary = context.FindNonPackableProjectFiles().ToList();
 		if (ancillary.Count == 0)
 		{
 			return Task.FromResult(NotApplicable("No ancillary projects found - nothing to check."));

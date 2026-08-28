@@ -2,6 +2,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <!-- Declares that the repository publishes a package, so the packaging rules apply to it
+         and can then fail. Without this the fixture publishes nothing and they are skipped. -->
+    <IsPackable>true</IsPackable>
     <!-- ImplicitUsings deliberately absent so BLD-03 fails. -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <WarningLevel>0</WarningLevel>

@@ -22,29 +22,27 @@ public class PackageReadmeFileRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.Options.IsPackable)
+		var notApplicable = PackagingCheckApplies(context, out var projects);
+		if (notApplicable is not null)
 		{
-			return Task.FromResult(Pass("Repository is not packable — skipping."));
+			return Task.FromResult(notApplicable);
 		}
 
-		var csproj = context.FindPrimaryProjectFile();
-		if (csproj is null)
-		{
-			return Task.FromResult(Pass("No primary project found — skipping PackageReadmeFile check."));
-		}
+		var missing = projects
+			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "PackageReadmeFile"))
+			.ToList();
 
-		var content = context.GetFileContent(csproj);
-		if (!HasMsBuildProperty(content, "PackageReadmeFile"))
+		if (missing.Count > 0)
 		{
 			return Task.FromResult(Fail(
-				$"{csproj} does not set PackageReadmeFile.",
+				$"{string.Join(", ", missing)} do(es) not set PackageReadmeFile.",
 				new RuleAdvisory
 				{
 					Summary = "Add <PackageReadmeFile>README.md</PackageReadmeFile> and pack the README.md via <None Include>.",
-					Detail = $"The project `{csproj}` does not set `PackageReadmeFile`. Add `<PackageReadmeFile>README.md</PackageReadmeFile>` to a `<PropertyGroup>` and include `<None Include=\"..\\README.md\" Pack=\"true\" PackagePath=\"\\\"/>` in an `<ItemGroup>`.",
+					Detail = $"These published projects do not set `PackageReadmeFile`: {string.Join(", ", missing)}. Add `<PackageReadmeFile>README.md</PackageReadmeFile>` to a `<PropertyGroup>` and include `<None Include=\"..\\README.md\" Pack=\"true\" PackagePath=\"\\\"/>` in an `<ItemGroup>`.",
 					Data = new()
 					{
-						["file"] = csproj,
+						["projects"] = missing.ToArray(),
 						["remediation_type"] = "ensure_csproj_property",
 						["property_name"] = "PackageReadmeFile",
 						["property_value"] = "README.md"
@@ -52,6 +50,6 @@ public class PackageReadmeFileRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass("Primary project has PackageReadmeFile set."));
+		return Task.FromResult(Pass($"All {projects.Count} published project(s) have PackageReadmeFile set."));
 	}
 }

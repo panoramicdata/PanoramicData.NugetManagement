@@ -22,30 +22,32 @@ public class SnupkgGenerationRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.Options.IsPackable)
+		var notApplicable = PackagingCheckApplies(context, out var projects);
+		if (notApplicable is not null)
 		{
-			return Task.FromResult(Pass("Repository is not packable — skipping."));
+			return Task.FromResult(notApplicable);
 		}
 
-		var csproj = context.FindPrimaryProjectFile();
-		if (csproj is null)
-		{
-			return Task.FromResult(Pass("No primary project found — skipping snupkg check."));
-		}
+		var missing = projects
+			.Where(csproj =>
+			{
+				var content = context.GetFileContent(csproj);
+				return !HasMsBuildProperty(content, "IncludeSymbols", "true")
+					|| !HasMsBuildProperty(content, "SymbolPackageFormat", "snupkg");
+			})
+			.ToList();
 
-		var content = context.GetFileContent(csproj);
-		if (!HasMsBuildProperty(content, "IncludeSymbols", "true") ||
-			!HasMsBuildProperty(content, "SymbolPackageFormat", "snupkg"))
+		if (missing.Count > 0)
 		{
 			return Task.FromResult(Fail(
-				$"{csproj} does not enable snupkg generation.",
+				$"{string.Join(", ", missing)} do(es) not enable snupkg generation.",
 				new RuleAdvisory
 				{
 					Summary = "Add <IncludeSymbols>true</IncludeSymbols> and <SymbolPackageFormat>snupkg</SymbolPackageFormat> to the .csproj.",
-					Detail = $"The project `{csproj}` does not enable snupkg symbol package generation. Add both `<IncludeSymbols>true</IncludeSymbols>` and `<SymbolPackageFormat>snupkg</SymbolPackageFormat>` to a `<PropertyGroup>`.",
+					Detail = $"These published projects do not enable snupkg symbol package generation: {string.Join(", ", missing)}. Add both `<IncludeSymbols>true</IncludeSymbols>` and `<SymbolPackageFormat>snupkg</SymbolPackageFormat>` to a `<PropertyGroup>`.",
 					Data = new()
 					{
-						["file"] = csproj,
+						["projects"] = missing.ToArray(),
 						["remediation_type"] = "ensure_csproj_property",
 						["property_name"] = "IncludeSymbols",
 						["property_value"] = "true"
@@ -53,6 +55,6 @@ public class SnupkgGenerationRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass("Primary project has snupkg generation enabled."));
+		return Task.FromResult(Pass($"All {projects.Count} published project(s) have snupkg generation enabled."));
 	}
 }

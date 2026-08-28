@@ -25,7 +25,10 @@ public class FailArmyTests : TestWithOutput
 	/// Rules that report themselves as not applicable are excluded automatically via
 	/// <see cref="RuleResult.IsApplicable"/>, so they need no entry here.
 	/// </summary>
-	private static readonly string[] _unfailableRuleIds = ["PKG-06", "CI-10"];
+	// PKG-10 joins these because it is the precondition for the packaging rules rather than one of
+	// them: the fixture has to declare that it publishes something before those rules apply at all,
+	// and declaring it is exactly what PKG-10 asks for.
+	private static readonly string[] _unfailableRuleIds = ["PKG-06", "CI-10", "PKG-10"];
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="FailArmyTests"/> class.

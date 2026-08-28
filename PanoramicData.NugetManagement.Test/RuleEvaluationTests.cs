@@ -1153,7 +1153,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("LIC-02").EvaluateAsync(context, CancellationToken.None);
@@ -1222,7 +1222,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("PKG-01").EvaluateAsync(context, CancellationToken.None);
@@ -1248,7 +1248,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageId>test-repo</PackageId></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("PKG-02").EvaluateAsync(context, CancellationToken.None);
@@ -1274,7 +1274,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("PKG-03").EvaluateAsync(context, CancellationToken.None);
@@ -1431,7 +1431,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("META-01").EvaluateAsync(context, CancellationToken.None);
@@ -1457,7 +1457,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("META-02").EvaluateAsync(context, CancellationToken.None);
@@ -1509,7 +1509,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("META-04").EvaluateAsync(context, CancellationToken.None);

@@ -68,6 +68,18 @@ public sealed class NugetManagementProjectConfig
 	public ProjectTreatment TestingTreatment { get; set; } = ProjectTreatment.Auto;
 
 	/// <summary>
+	/// Controls whether this project is treated as one the repository publishes to NuGet.
+	/// </summary>
+	/// <remarks>
+	/// <see cref="ProjectTreatment.Auto"/> decides from the project file itself: a project is
+	/// published when it declares <c>PackageId</c>, <c>GeneratePackageOnBuild</c>, <c>PackAsTool</c>
+	/// or <c>IsPackable=true</c>, and never when it declares <c>IsPackable=false</c>. Nominate one
+	/// explicitly when a repository publishes a project that says none of those — otherwise the
+	/// packaging rules have nothing to check and PKG-10 will say so.
+	/// </remarks>
+	public ProjectTreatment PackagingTreatment { get; set; } = ProjectTreatment.Auto;
+
+	/// <summary>
 	/// Default testing level for this project.
 	/// </summary>
 	public ProjectTestingLevel DefaultTestingLevel { get; set; } = ProjectTestingLevel.Auto;

@@ -22,29 +22,27 @@ public class RepositoryUrlSetRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.Options.IsPackable)
+		var notApplicable = PackagingCheckApplies(context, out var projects);
+		if (notApplicable is not null)
 		{
-			return Task.FromResult(Pass("Repository is not packable — skipping."));
+			return Task.FromResult(notApplicable);
 		}
 
-		var csproj = context.FindPrimaryProjectFile();
-		if (csproj is null)
-		{
-			return Task.FromResult(Pass("No primary project found — skipping RepositoryUrl check."));
-		}
+		var missing = projects
+			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "RepositoryUrl"))
+			.ToList();
 
-		var content = context.GetFileContent(csproj);
-		if (!HasMsBuildProperty(content, "RepositoryUrl"))
+		if (missing.Count > 0)
 		{
 			return Task.FromResult(Fail(
-				$"{csproj} does not have RepositoryUrl set.",
+				$"{string.Join(", ", missing)} do(es) not have RepositoryUrl set.",
 				new RuleAdvisory
 				{
 					Summary = "Add <RepositoryUrl>https://github.com/org/repo</RepositoryUrl> to the .csproj.",
-					Detail = $"The project `{csproj}` does not have `<RepositoryUrl>` set. Add `<RepositoryUrl>https://github.com/org/repo</RepositoryUrl>` to a `<PropertyGroup>`.",
+					Detail = $"These published projects do not have `<RepositoryUrl>` set: {string.Join(", ", missing)}. Add `<RepositoryUrl>https://github.com/org/repo</RepositoryUrl>` to a `<PropertyGroup>`.",
 					Data = new()
 					{
-						["file"] = csproj,
+						["projects"] = missing.ToArray(),
 						["remediation_type"] = "ensure_csproj_property",
 						["property_name"] = "RepositoryUrl",
 						["property_value"] = $"https://github.com/{context.FullName}"
@@ -52,6 +50,6 @@ public class RepositoryUrlSetRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass("Primary project has RepositoryUrl set."));
+		return Task.FromResult(Pass($"All {projects.Count} published project(s) have RepositoryUrl set."));
 	}
 }

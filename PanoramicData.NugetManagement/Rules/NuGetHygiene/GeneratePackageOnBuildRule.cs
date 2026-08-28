@@ -22,29 +22,27 @@ public class GeneratePackageOnBuildRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.Options.IsPackable)
+		var notApplicable = PackagingCheckApplies(context, out var projects);
+		if (notApplicable is not null)
 		{
-			return Task.FromResult(Pass("Repository is not packable — skipping."));
+			return Task.FromResult(notApplicable);
 		}
 
-		var csproj = context.FindPrimaryProjectFile();
-		if (csproj is null)
-		{
-			return Task.FromResult(Pass("No primary project found — skipping GeneratePackageOnBuild check."));
-		}
+		var missing = projects
+			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "GeneratePackageOnBuild", "true"))
+			.ToList();
 
-		var content = context.GetFileContent(csproj);
-		if (!HasMsBuildProperty(content, "GeneratePackageOnBuild", "true"))
+		if (missing.Count > 0)
 		{
 			return Task.FromResult(Fail(
-				$"{csproj} does not enable GeneratePackageOnBuild.",
+				$"{string.Join(", ", missing)} do(es) not enable GeneratePackageOnBuild.",
 				new RuleAdvisory
 				{
 					Summary = "Add <GeneratePackageOnBuild>true</GeneratePackageOnBuild> to the .csproj.",
-					Detail = $"The project `{csproj}` does not enable `GeneratePackageOnBuild`. Add `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>` to a `<PropertyGroup>`.",
+					Detail = $"These published projects do not enable `GeneratePackageOnBuild`: {string.Join(", ", missing)}. Add `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>` to a `<PropertyGroup>`.",
 					Data = new()
 					{
-						["file"] = csproj,
+						["projects"] = missing.ToArray(),
 						["remediation_type"] = "ensure_csproj_property",
 						["property_name"] = "GeneratePackageOnBuild",
 						["property_value"] = "true"
@@ -52,6 +50,6 @@ public class GeneratePackageOnBuildRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass("Primary project has GeneratePackageOnBuild enabled."));
+		return Task.FromResult(Pass($"All {projects.Count} published project(s) have GeneratePackageOnBuild enabled."));
 	}
 }

@@ -22,32 +22,30 @@ public class PackageLicenseExpressionRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.Options.IsPackable)
+		var notApplicable = PackagingCheckApplies(context, out var projects);
+		if (notApplicable is not null)
 		{
-			return Task.FromResult(Pass("Repository is not packable — skipping."));
+			return Task.FromResult(notApplicable);
 		}
 
 		var expected = context.Options.ExpectedLicense;
 		var expectedTag = $"<PackageLicenseExpression>{expected}</PackageLicenseExpression>";
 
-		var csproj = context.FindPrimaryProjectFile();
-		if (csproj is null)
-		{
-			return Task.FromResult(Pass("No primary project found — skipping PackageLicenseExpression check."));
-		}
+		var missing = projects
+			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "PackageLicenseExpression", expected))
+			.ToList();
 
-		var content = context.GetFileContent(csproj);
-		if (!HasMsBuildProperty(content, "PackageLicenseExpression", expected))
+		if (missing.Count > 0)
 		{
 			return Task.FromResult(Fail(
-				$"{csproj}: PackageLicenseExpression does not match expected \"{expected}\".",
+				$"{string.Join(", ", missing)}: PackageLicenseExpression does not match expected \"{expected}\".",
 				new RuleAdvisory
 				{
 					Summary = $"Add {expectedTag} to the .csproj.",
-					Detail = $"The project `{csproj}` does not have `PackageLicenseExpression` set to `{expected}`. Add `{expectedTag}` to the project file.",
+					Detail = $"These published projects do not have `PackageLicenseExpression` set to `{expected}`: {string.Join(", ", missing)}. Add `{expectedTag}` to the project file.",
 					Data = new()
 					{
-						["file"] = csproj,
+						["projects"] = missing.ToArray(),
 						["expected_license"] = expected,
 						["remediation_type"] = "ensure_csproj_property",
 						["property_name"] = "PackageLicenseExpression",
@@ -56,6 +54,6 @@ public class PackageLicenseExpressionRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass($"Primary project has PackageLicenseExpression = \"{expected}\"."));
+		return Task.FromResult(Pass($"All {projects.Count} published project(s) have PackageLicenseExpression = \"{expected}\"."));
 	}
 }

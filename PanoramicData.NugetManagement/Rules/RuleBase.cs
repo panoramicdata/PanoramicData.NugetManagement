@@ -98,6 +98,33 @@ public abstract class RuleBase : IRule
 	};
 
 	/// <summary>
+	/// The projects a packaging rule should check, or the result to return instead when there are
+	/// none to check.
+	/// </summary>
+	/// <param name="context">The repository being assessed.</param>
+	/// <param name="packableProjects">Every project the repository publishes.</param>
+	/// <returns>
+	/// Null when there is work to do, or the result the caller should return: a pass for a repository
+	/// that publishes nothing, and not-applicable when no project declares itself published — that
+	/// case is PKG-10's to report, and reporting it as a pass here is what hid it.
+	/// </returns>
+	protected RuleResult? PackagingCheckApplies(RepositoryContext context, out List<string> packableProjects)
+	{
+		packableProjects = [];
+
+		if (!context.Options.IsPackable)
+		{
+			return Pass("Repository is not packable — skipping.");
+		}
+
+		packableProjects = [.. context.FindPackableProjectFiles()];
+
+		return packableProjects.Count == 0
+			? NotApplicable("No project declares itself published to NuGet — see PKG-10.")
+			: null;
+	}
+
+	/// <summary>
 	/// Checks whether a file content contains a specific string.
 	/// </summary>
 	/// <param name="content">The file content to search.</param>
@@ -168,24 +195,7 @@ public abstract class RuleBase : IRule
 	/// content could not be parsed as XML.
 	/// </summary>
 	private static List<string>? TryGetMsBuildPropertyValues(string? xml, string propertyName)
-	{
-		if (string.IsNullOrWhiteSpace(xml))
-		{
-			return [];
-		}
-
-		try
-		{
-			return [.. XDocument.Parse(xml)
-				.Descendants()
-				.Where(element => string.Equals(element.Name.LocalName, propertyName, StringComparison.OrdinalIgnoreCase))
-				.Select(element => element.Value.Trim())];
-		}
-		catch (XmlException)
-		{
-			return null;
-		}
-	}
+		=> MsBuildProperties.TryGetValues(xml, propertyName);
 
 	/// <summary>
 	/// The MSBuild elements that declare a NuGet package dependency.

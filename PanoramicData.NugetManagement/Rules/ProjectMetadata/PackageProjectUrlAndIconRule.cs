@@ -22,32 +22,31 @@ public class PackageProjectUrlAndIconRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.Options.IsPackable)
+		var notApplicable = PackagingCheckApplies(context, out var projects);
+		if (notApplicable is not null)
 		{
-			return Task.FromResult(Pass("Repository is not packable — skipping."));
+			return Task.FromResult(notApplicable);
 		}
 
-		var csproj = context.FindPrimaryProjectFile();
-		if (csproj is null)
-		{
-			return Task.FromResult(Pass("No primary project found — skipping PackageProjectUrl/PackageIcon check."));
-		}
-
-		var content = context.GetFileContent(csproj);
 		var issues = new List<string>();
 
-		if (!HasMsBuildProperty(content, "PackageProjectUrl"))
+		foreach (var csproj in projects)
 		{
-			issues.Add($"{csproj}: missing PackageProjectUrl");
-		}
+			var content = context.GetFileContent(csproj);
 
-		if (!HasMsBuildProperty(content, "PackageIcon"))
-		{
-			issues.Add($"{csproj}: missing PackageIcon");
+			if (!HasMsBuildProperty(content, "PackageProjectUrl"))
+			{
+				issues.Add($"{csproj}: missing PackageProjectUrl");
+			}
+
+			if (!HasMsBuildProperty(content, "PackageIcon"))
+			{
+				issues.Add($"{csproj}: missing PackageIcon");
+			}
 		}
 
 		return Task.FromResult(issues.Count == 0
-			? Pass("Primary project has PackageProjectUrl and PackageIcon set.")
+			? Pass($"All {projects.Count} published project(s) have PackageProjectUrl and PackageIcon set.")
 			: Fail(
 				string.Join("; ", issues),
 				new RuleAdvisory
