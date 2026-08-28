@@ -2148,7 +2148,9 @@ public class RuleEvaluationTests : TestWithOutput
 		var result = await GetRule("VER-03").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
 		result.Advisory.Should().NotBeNull();
-		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+		// Sets sdk.version rather than rewriting the file: a whole-file replacement discarded whatever
+		// else the repository kept in global.json.
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_json_property");
 	}
 
 	private static IRule GetRule(string ruleId)

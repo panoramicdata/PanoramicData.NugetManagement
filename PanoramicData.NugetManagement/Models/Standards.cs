@@ -242,20 +242,35 @@ public static class Standards
 		""";
 
 	/// <summary>
-	/// The standard global.json content pinning the SDK version and opting <c>dotnet test</c> into
-	/// the Microsoft.Testing.Platform runner.
+	/// The standard global.json content pinning the SDK version, and opting <c>dotnet test</c> into
+	/// the Microsoft.Testing.Platform runner when — and only when — the repository can run on it.
 	/// </summary>
-	public static string GlobalJsonContent => $$"""
-		{
-		  "sdk": {
-			"version": "{{LatestDotNetSdkVersion}}",
-			"rollForward": "latestFeature"
-		  },
-		  "test": {
-			"runner": "{{MtpTestRunnerName}}"
-		  }
-		}
-		""";
+	/// <param name="includeTestRunner">
+	/// True for a repository on xunit.v3, which needs the opt-in to run its tests at all on the .NET
+	/// 10 SDK. False otherwise: a repository still on xunit v2 and VSTest cannot satisfy the opt-in,
+	/// and handing it one leaves `dotnet test` unable to run anything.
+	/// </param>
+	public static string GetGlobalJsonContent(bool includeTestRunner)
+		=> includeTestRunner
+			? $$"""
+				{
+				  "sdk": {
+					"version": "{{LatestDotNetSdkVersion}}",
+					"rollForward": "latestFeature"
+				  },
+				  "test": {
+					"runner": "{{MtpTestRunnerName}}"
+				  }
+				}
+				"""
+			: $$"""
+				{
+				  "sdk": {
+					"version": "{{LatestDotNetSdkVersion}}",
+					"rollForward": "latestFeature"
+				  }
+				}
+				""";
 
 	/// <summary>
 	/// The standard version.json content for Nerdbank.GitVersioning.

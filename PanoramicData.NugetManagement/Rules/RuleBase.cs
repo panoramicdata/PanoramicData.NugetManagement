@@ -98,6 +98,16 @@ public abstract class RuleBase : IRule
 	};
 
 	/// <summary>
+	/// Whether this repository's tests run on Microsoft.Testing.Platform, which is what makes the
+	/// <c>test.runner</c> opt-in in global.json correct for it — and harmful for anything else.
+	/// </summary>
+	/// <param name="context">The repository being assessed.</param>
+	protected static bool UsesMicrosoftTestingPlatform(RepositoryContext context)
+		=> ReferencesPackage(context.GetFileContent("Directory.Packages.props"), "xunit.v3", includeVariants: true)
+			|| context.FindTestProjectFiles()
+				.Any(testProject => ReferencesPackageDirectly(context.GetFileContent(testProject), "xunit.v3", includeVariants: true));
+
+	/// <summary>
 	/// The projects a packaging rule should check, or the result to return instead when there are
 	/// none to check.
 	/// </summary>

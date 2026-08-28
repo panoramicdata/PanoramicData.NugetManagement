@@ -35,6 +35,7 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "ensure_csproj_property"
 						or "ensure_code_coverage_setup"
 						or "ensure_json_property"
+						or "remove_json_property"
 						or "append_line"
 						or "prepend_line"
 						or "add_slnx_file_entries"
@@ -119,6 +120,15 @@ public abstract class DataDrivenRemediation : IRemediation
 							RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
 						}
 					}
+				}
+
+				break;
+
+			case "remove_json_property":
+				if (data.TryGetValue("file", out var rjFile) && rjFile is string rjf &&
+					data["property_path"] is string rjPath)
+				{
+					RemediationHelpers.RemoveJsonProperty(localPath, rjf, rjPath, result, applied, onOutput);
 				}
 
 				break;

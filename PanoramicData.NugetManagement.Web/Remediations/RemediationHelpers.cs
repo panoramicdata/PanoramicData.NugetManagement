@@ -1059,6 +1059,66 @@ internal static class RemediationHelpers
 	}
 
 	/// <summary>
+	/// Removes a property from a JSON file, addressed by a dotted path such as <c>test.runner</c>.
+	/// Does nothing when the property is already absent.
+	/// </summary>
+	public static void RemoveJsonProperty(
+		string localPath,
+		string relativePath,
+		string propertyPath,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			return;
+		}
+
+		var segments = propertyPath.Split('.', StringSplitOptions.RemoveEmptyEntries);
+		if (segments.Length == 0)
+		{
+			return;
+		}
+
+		try
+		{
+			var json = File.ReadAllText(fullPath);
+			var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+			if (node is not JsonObject root)
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
+				return;
+			}
+
+			var target = root;
+			foreach (var segment in segments[..^1])
+			{
+				if (!target.TryGetPropertyValue(segment, out var child) || child is not JsonObject childObject)
+				{
+					return;
+				}
+
+				target = childObject;
+			}
+
+			if (!target.Remove(segments[^1]))
+			{
+				return;
+			}
+
+			File.WriteAllText(fullPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+			applied.Add(relativePath);
+			onOutput?.Invoke($"✅ [{result.RuleId}] Removed {propertyPath} from {relativePath}");
+		}
+		catch (JsonException ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
+		}
+	}
+
+	/// <summary>
 	/// Sets a string property in a JSON file, addressed by a dotted path such as
 	/// <c>test.runner</c>, creating any intermediate objects. Existing properties are left alone.
 	/// </summary>
