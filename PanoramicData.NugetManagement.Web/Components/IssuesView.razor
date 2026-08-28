@@ -179,17 +179,6 @@
 			</PDTree>
 		</div>
 	}
-
-	@if (_log.Count > 0)
-	{
-		<div class="console">
-			<div class="console-head">
-				<span><i class="fas fa-terminal"></i> Output</span>
-				<button class="btn btn-xs btn-secondary" @onclick="() => _log.Clear()">Clear</button>
-			</div>
-			<pre>@string.Join("\n", _log)</pre>
-		</div>
-	}
 </div>
 
 @if (_confirm is not null)
@@ -265,9 +254,6 @@
 	.sev-Warning { background: #b45309; color: #fff; }
 	.sev-Info { background: #374151; color: #fff; }
 	.btn-xs { font-size: .72rem; padding: .1rem .4rem; }
-	.console { margin-top: 1rem; border: 1px solid var(--bs-border-color, #333); border-radius: 6px; }
-	.console-head { display: flex; justify-content: space-between; padding: .3rem .6rem; background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); }
-	.console pre { margin: 0; padding: .6rem; max-height: 320px; overflow: auto; font-size: .8rem; white-space: pre-wrap; }
 	.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 1050; }
 	.modal-box { background: var(--bs-body-bg, #1e1e1e); color: var(--bs-body-color, #eee); border: 1px solid var(--bs-border-color, #444); border-radius: 8px; padding: 1.2rem 1.4rem; max-width: 560px; width: 90%; max-height: 80vh; overflow: auto; }
 	.repo-list { max-height: 240px; overflow: auto; font-family: monospace; font-size: .85rem; }
@@ -312,6 +298,15 @@
 	[Parameter]
 	public string? FocusRuleId { get; set; }
 
+	/// <summary>
+	/// Where this component's progress and error lines go. The host owns the console — the one at the
+	/// bottom of the dashboard — so output from a bulk run lands alongside every other operation's
+	/// rather than in a second console of our own.
+	/// </summary>
+	[Parameter]
+	[EditorRequired]
+	public EventCallback<string> OnOutput { get; set; }
+
 	// What the currently-loaded view was built for, so OnParametersSet only reloads on a real change.
 	private string? _loadedOrganization;
 	private AssessmentCategory? _loadedFocusCategory;
@@ -325,7 +320,6 @@
 	// is the tree's @key: bumping it rebuilds the tree when the underlying view changes.
 	private readonly IssueTreeDataProvider _treeProvider = new();
 	private int _treeVersion;
-	private readonly List<string> _log = [];
 	private bool _busy;
 	private PendingConfirm? _confirm;
 	private readonly HashSet<string> _selectedRepos = new(StringComparer.OrdinalIgnoreCase);
@@ -592,7 +586,6 @@
 		}
 
 		_busy = true;
-		_log.Clear();
 		try
 		{
 			var outcome = await pending.Action(Append, CancellationToken.None);
@@ -609,11 +602,9 @@
 		}
 	}
 
-	private void Append(string line)
-	{
-		_log.Add(line);
-		_ = InvokeAsync(StateHasChanged);
-	}
+	// A bulk run reports from a background task, so the hop through InvokeAsync puts the callback
+	// back on the renderer's context before the host touches its own state.
+	private void Append(string line) => _ = InvokeAsync(() => OnOutput.InvokeAsync(line));
 
 	// ── Combined / per-repo AI prompt copy ──
 

@@ -2830,15 +2830,15 @@ else
 			case NavView.Issues:
 				@* Embedded so it drops its own page header. Organization is required: without it the
 				   component shows nothing rather than every organisation's repositories. *@
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" OnOutput="AppendIssuesOutput" />
 				break;
 			case NavView.IssueCategoryDetail:
 				@* The hierarchy itself now lives in the sidebar; this panel shows the selected
 				   category's rules with their affected repositories and bulk actions. *@
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" OnOutput="AppendIssuesOutput" />
 				break;
 			case NavView.IssueRuleDetail:
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" OnOutput="AppendIssuesOutput" />
 				break;
 			default:
 				@RenderGettingStarted()
@@ -4951,6 +4951,17 @@ else
 		}
 
 		return state;
+	}
+
+	/// <summary>
+	/// Routes IssuesView's output into the console at the bottom of the screen, opening it if it is
+	/// hidden: a bulk run pushes to several repositories, and its progress is the one thing the user
+	/// needs to see while it happens.
+	/// </summary>
+	private void AppendIssuesOutput(string line)
+	{
+		_consoleVisible = true;
+		AppendConsole(line);
 	}
 
 	private void AppendConsole(string line) { CurrentConsoleLines.Add(new ConsoleLine(line, GetConsoleLineClass(line))); _consoleScrollPending = true; }

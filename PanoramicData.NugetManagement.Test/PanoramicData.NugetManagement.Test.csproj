@@ -27,6 +27,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\PanoramicData.NugetManagement\PanoramicData.NugetManagement.csproj" />
+		<ProjectReference Include="..\PanoramicData.NugetManagement.Web\PanoramicData.NugetManagement.Web.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
