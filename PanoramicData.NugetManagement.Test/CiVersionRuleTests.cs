@@ -36,8 +36,8 @@ public class CiVersionRuleTests(ITestOutputHelper output) : TestWithOutput(outpu
 		$"jobs:\n  build:\n    steps:\n    - uses: actions/setup-dotnet@{version}\n      with:\n        dotnet-version: 10.0.x\n";
 
 	[Theory]
-	[InlineData("v6")] // exactly the floor
-	[InlineData("v7")] // AHEAD of the floor — must still pass, not be flagged as wrong
+	[InlineData("v7")] // exactly the floor
+	[InlineData("v8")] // AHEAD of the floor — must still pass, not be flagged as wrong
 	[InlineData("v10")]
 	public async Task CI05_Passes_AtOrAboveFloor(string version)
 	{
@@ -48,6 +48,7 @@ public class CiVersionRuleTests(ITestOutputHelper output) : TestWithOutput(outpu
 	[Theory]
 	[InlineData("v3")]
 	[InlineData("v5")]
+	[InlineData("v6")] // was the floor until actions/checkout v7
 	public async Task CI05_Fails_BelowFloor(string version)
 	{
 		var result = await Rule("CI-05").EvaluateAsync(Ctx(Checkout(version)), TestContext.Current.CancellationToken);
@@ -56,8 +57,8 @@ public class CiVersionRuleTests(ITestOutputHelper output) : TestWithOutput(outpu
 	}
 
 	[Theory]
-	[InlineData("v5")]
-	[InlineData("v6")] // ahead
+	[InlineData("v6")]
+	[InlineData("v7")] // ahead
 	public async Task CI06_Passes_AtOrAboveFloor(string version)
 	{
 		var result = await Rule("CI-06").EvaluateAsync(Ctx(SetupDotnet(version)), TestContext.Current.CancellationToken);
@@ -67,7 +68,7 @@ public class CiVersionRuleTests(ITestOutputHelper output) : TestWithOutput(outpu
 	[Fact]
 	public async Task CI06_Fails_BelowFloor()
 	{
-		var result = await Rule("CI-06").EvaluateAsync(Ctx(SetupDotnet("v4")), TestContext.Current.CancellationToken);
+		var result = await Rule("CI-06").EvaluateAsync(Ctx(SetupDotnet("v5")), TestContext.Current.CancellationToken);
 		result.Passed.Should().BeFalse();
 	}
 

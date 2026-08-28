@@ -11,7 +11,7 @@ public static class Standards
 	/// <summary>
 	/// The fallback SDK version used when detection fails.
 	/// </summary>
-	private const string _fallbackDotNetSdkVersion = "10.0.201";
+	private const string _fallbackDotNetSdkVersion = "10.0.400";
 
 	/// <summary>
 	/// The latest .NET target framework moniker.
@@ -113,12 +113,12 @@ public static class Standards
 	/// The minimum acceptable actions/checkout major version. Repositories at or above this pass;
 	/// the value is derived from the highest version in use across the organization's repositories.
 	/// </summary>
-	public const string LatestActionsCheckoutVersion = "v6";
+	public const string LatestActionsCheckoutVersion = "v7";
 
 	/// <summary>
 	/// The minimum acceptable actions/setup-dotnet major version (repositories at or above this pass).
 	/// </summary>
-	public const string LatestActionsSetupDotnetVersion = "v5";
+	public const string LatestActionsSetupDotnetVersion = "v6";
 
 	/// <summary>
 	/// The minimum acceptable actions/upload-artifact major version.
@@ -300,7 +300,7 @@ public static class Standards
 
 			steps:
 			- name: Checkout repository
-			  uses: actions/checkout@v6
+			  uses: actions/checkout@v7
 
 			- name: Initialize CodeQL
 			  uses: github/codeql-action/init@v3
@@ -357,12 +357,12 @@ public static class Standards
 			runs-on: ubuntu-latest
 			steps:
 			- name: Checkout
-			  uses: actions/checkout@v6
+			  uses: actions/checkout@v7
 			  with:
 				fetch-depth: 0
 
 			- name: Setup .NET
-			  uses: actions/setup-dotnet@v5
+			  uses: actions/setup-dotnet@v6
 			  with:
 				dotnet-version: 10.0.x
 
@@ -403,12 +403,12 @@ public static class Standards
 				"    runs-on: ubuntu-latest",
 				"    steps:",
 				"    - name: Checkout",
-				"      uses: actions/checkout@v6",
+				"      uses: actions/checkout@v7",
 				"      with:",
 				"        fetch-depth: 0",
 				string.Empty,
 				"    - name: Setup .NET",
-				"      uses: actions/setup-dotnet@v5",
+				"      uses: actions/setup-dotnet@v6",
 				"      with:",
 				"        dotnet-version: 10.0.x",
 				string.Empty,
@@ -441,7 +441,7 @@ public static class Standards
 				"        path: ./artifacts",
 				string.Empty,
 				"    - name: Setup .NET",
-				"      uses: actions/setup-dotnet@v5",
+				"      uses: actions/setup-dotnet@v6",
 				"      with:",
 				"        dotnet-version: 10.0.x",
 				string.Empty,
