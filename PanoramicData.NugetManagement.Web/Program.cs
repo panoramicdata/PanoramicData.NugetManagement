@@ -26,6 +26,7 @@ builder.Services.AddSingleton<LocalFileSystemDataProvider>();
 builder.Services.AddSingleton<PackageDashboardDataProvider>();
 builder.Services.AddSingleton<NavTreeDataProvider>();
 builder.Services.AddSingleton<RegressionGuardService>();
+builder.Services.AddSingleton<WorkQueueService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RegressionGuardService>());
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<NuGetUpdateService>();

@@ -18,6 +18,7 @@
 @inject LocalFileSystemDataProvider FileSystemDataProvider
 @inject LocalRepoService LocalRepo
 @inject NuGetUpdateService NuGetUpdates
+@inject WorkQueueService WorkQueue
 @implements IDisposable
 
 <PageTitle>NuGet Governance</PageTitle>
@@ -146,6 +147,36 @@ else
 									</NodeTemplate>
 								</PDTree>
 						</div>
+						@if (WorkQueue.Items.Count > 0)
+						{
+							@* Hidden entirely when idle: an empty panel would cost the tree height for nothing. *@
+							<div class="nav-queue">
+								<div class="nav-queue-head">
+									<i class="fas fa-list-check"></i>
+									<span>Work queue</span>
+									<span class="nav-queue-count">@WorkQueue.Items.Count</span>
+								</div>
+								@foreach (var item in WorkQueue.Items)
+								{
+									<div class="nav-queue-item @(item.State == WorkItemState.Running || item.State == WorkItemState.Cancelling ? "running" : null)" @key="item.Id">
+										<i class="fas @QueueItemIcon(item) nav-queue-icon"></i>
+										<span class="nav-queue-title" title="@item.Title">@item.Title</span>
+										@if (item.Progress is { Length: > 0 } progress)
+										{
+											<span class="nav-queue-progress">@progress</span>
+										}
+										@if (item.State == WorkItemState.Running)
+										{
+											<button type="button" class="nav-queue-btn" title="Stop, reverting anything half-applied" @onclick="() => WorkQueue.Cancel(item.Id)"><i class="fas fa-stop"></i></button>
+										}
+										else if (item.State == WorkItemState.Pending)
+										{
+											<button type="button" class="nav-queue-btn" title="Remove from the queue" @onclick="() => WorkQueue.Remove(item.Id)"><i class="fas fa-xmark"></i></button>
+										}
+									</div>
+								}
+							</div>
+						}
 						<div class="nav-footer">
 							<a href="/ci-template" class="nav-footer-link">
 								<i class="fas fa-file-code"></i> CI Workflow Template
@@ -881,6 +912,7 @@ else
 		}
 
 		_isAuthenticated = true;
+		WorkQueue.Changed += OnWorkQueueChanged;
 		_userName = httpContext.User.Identity.Name ?? "User";
 		_organizationName = SettingsOptions.Value.NuGetOrganization;
 		_accessToken = await httpContext.GetTokenAsync("access_token");
@@ -4964,6 +4996,91 @@ else
 		AppendConsole(line);
 	}
 
+	// === Work queue ===
+
+	private static string QueueItemIcon(WorkItem item) => item.State switch
+	{
+		WorkItemState.Running => "fa-circle-notch fa-spin",
+		WorkItemState.Cancelling => "fa-rotate-left fa-spin",
+		_ => "fa-clock"
+	};
+
+	/// <summary>
+	/// Puts an operation on the application-wide queue and starts the pump. Nothing runs immediately:
+	/// if something else is in flight — in this tab or another — the item waits its turn in the panel
+	/// under the navigation tree.
+	/// </summary>
+	private void EnqueueWork(
+		string title,
+		string? organization,
+		string dedupKey,
+		Func<IProgress<string>, CancellationToken, Task> run)
+	{
+		var item = WorkQueue.Enqueue(title, organization, dedupKey, this, run);
+		if (item is null)
+		{
+			// Folded into an identical pending item. Said out loud, because a button that appears to do
+			// nothing is worse than one that queues a second pass.
+			AppendConsole($"↩️ {title} is already queued.");
+			return;
+		}
+
+		AppendConsole(WorkQueue.Running is null ? $"▶️ {title}" : $"⏳ Queued: {title}");
+		_ = PumpQueueAsync();
+	}
+
+	/// <summary>
+	/// Runs whatever this circuit owns at the head of the queue, one item at a time, until the head is
+	/// something it cannot run. Re-entrant by design: a call while an item is executing claims nothing
+	/// and returns, which is what makes the queue single-flight.
+	/// </summary>
+	private async Task PumpQueueAsync()
+	{
+		while (WorkQueue.TryDequeueForExecution(this, out var item))
+		{
+			Exception? error = null;
+			try
+			{
+				var progress = new Progress<string>(line => WorkQueue.ReportProgress(item, line));
+				await item.Run(progress, WorkQueue.Token(item.Id) ?? CancellationToken.None);
+			}
+			catch (OperationCanceledException ex)
+			{
+				error = ex;
+				AppendConsole($"⏹️ Stopped: {item.Title}");
+			}
+			catch (Exception ex)
+			{
+				error = ex;
+				AppendConsole($"⛔ {item.Title}: {ex.Message}");
+			}
+			finally
+			{
+				WorkQueue.Complete(item, error);
+			}
+
+			await SafeStateHasChangedAsync();
+		}
+	}
+
+	private void OnWorkQueueChanged() => _ = SafeStateHasChangedAsync();
+
+	/// <summary>
+	/// Re-renders, tolerating the circuit having gone away. Queued work outlives its component for as
+	/// long as it takes to unwind, and must not fail while doing so.
+	/// </summary>
+	private async Task SafeStateHasChangedAsync()
+	{
+		try
+		{
+			await InvokeAsync(StateHasChanged);
+		}
+		catch (ObjectDisposedException)
+		{
+			// The circuit has gone; there is nothing left to render.
+		}
+	}
+
 	private void AppendConsole(string line) { CurrentConsoleLines.Add(new ConsoleLine(line, GetConsoleLineClass(line))); _consoleScrollPending = true; }
 	private void ClearConsole() { CurrentConsoleLines.Clear(); CurrentLastPromptText = null; CurrentCopyFeedback = false; CurrentConsoleCopyFeedback = false; }
 
@@ -5667,6 +5784,11 @@ else
 
 	public void Dispose()
 	{
+		// This circuit executes its own queued work, so it cannot leave any behind: pending items are
+		// dropped and a running one is cancelled, which reverts whatever it had half-applied. The
+		// running task itself outlives the component long enough to unwind and report completion.
+		WorkQueue.Changed -= OnWorkQueueChanged;
+		WorkQueue.RemoveOwnedBy(this);
 		_autoRefreshTimer?.Dispose();
 		_treeFilterDebounce?.Dispose();
 		_doneClearTimer?.Dispose();

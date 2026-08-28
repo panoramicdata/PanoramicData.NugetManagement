@@ -1837,6 +1837,86 @@ i + .breadcrumb-link-text {
 }
 
 /* === Nav Footer === */
+/* === Work Queue (sidebar) === */
+/* Sits between the tree and the footer, and is rendered only when there is work outstanding. */
+.nav-queue {
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    max-height: 30vh;
+    overflow-y: auto;
+}
+
+.nav-queue-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+}
+
+.nav-queue-count {
+    margin-left: auto;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.nav-queue-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.nav-queue-item.running {
+    color: var(--text-primary);
+}
+
+.nav-queue-icon {
+    width: 0.9rem;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.nav-queue-item.running .nav-queue-icon {
+    color: var(--accent);
+}
+
+/* The title is the part that gives, so progress and the stop button never wrap out of reach. */
+.nav-queue-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-queue-progress {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.nav-queue-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0 0.15rem;
+    flex-shrink: 0;
+}
+
+.nav-queue-btn:hover {
+    color: var(--text-primary);
+}
+
 .nav-footer {
     padding: 0.4rem 0.5rem;
     border-top: 1px solid var(--border);
