@@ -420,3 +420,6 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Claude Code worktrees: isolated checkouts, never part of the repository.
+.claude/worktrees/
