@@ -69,12 +69,38 @@ public class MtpTestRunnerRule : RuleBase
 		// Only xunit.v3 repositories run on Microsoft.Testing.Platform. Declaring the runner in a
 		// repository still on VSTest would leave dotnet test finding nothing to run, so the rule
 		// waits for TST-02 to be satisfied first.
-		var usesXunitV3 = ReferencesPackage(context.GetFileContent("Directory.Packages.props"), "xunit.v3", includeVariants: true)
-			|| testProjects.Any(tp => ReferencesPackageDirectly(context.GetFileContent(tp), "xunit.v3", includeVariants: true));
-
-		if (!usesXunitV3)
+		if (!UsesMicrosoftTestingPlatform(context))
 		{
-			return Task.FromResult(NotApplicable("No xunit.v3 reference found; the Microsoft.Testing.Platform opt-in does not apply."));
+			// Not merely inapplicable: an opt-in on a VSTest repository actively stops dotnet test
+			// finding anything to run. Governance remediation put these there, and this takes them
+			// back out.
+			var strandedRunner = ReadTestRunner(context.GetFileContent("global.json") ?? string.Empty);
+			return Task.FromResult(strandedRunner is null
+				? NotApplicable("No xunit.v3 reference found; the Microsoft.Testing.Platform opt-in does not apply.")
+				: Fail(
+					$"global.json declares test.runner '{strandedRunner}', but this repository's tests do not run on Microsoft.Testing.Platform, so dotnet test can find nothing to run.",
+					new RuleAdvisory
+					{
+						Summary = "Remove the test.runner opt-in, or migrate the tests to xunit.v3.",
+						Detail = """
+							The `test.runner` key tells `dotnet test` to use Microsoft.Testing.Platform. This
+							repository's tests do not run on it — they are still xunit v2 on VSTest — so the
+							opt-in leaves `dotnet test` with nothing it can execute.
+
+							Either remove the key, or migrate the test project to `xunit.v3`, after which the
+							opt-in becomes required rather than harmful (see TST-02).
+
+							If a governance remediation added this, removing it is the fix: the SDK pin and the
+							test runner are separate decisions, and only the first belongs to every repository.
+							""",
+						Data = new()
+						{
+							["remediation_type"] = "remove_json_property",
+							["file"] = "global.json",
+							["property_path"] = "test",
+							["current_value"] = strandedRunner
+						}
+					}));
 		}
 
 		var content = context.GetFileContent("global.json");
@@ -89,7 +115,7 @@ public class MtpTestRunnerRule : RuleBase
 					Data = new()
 					{
 						["expected_path"] = "global.json",
-						["template_content"] = Standards.GlobalJsonContent,
+						["template_content"] = Standards.GetGlobalJsonContent(includeTestRunner: true),
 						["test_runner"] = Standards.MtpTestRunnerName
 					}
 				}));

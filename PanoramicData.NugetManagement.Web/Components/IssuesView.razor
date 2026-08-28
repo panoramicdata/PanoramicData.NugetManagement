@@ -481,10 +481,20 @@
 	private List<PackageDashboardRow> SelectedRows()
 		=> [.. _rows.Where(r => r.RepositoryFullName is not null && _selectedRepos.Contains(r.RepositoryFullName))];
 
+	/// <summary>
+	/// The rows for a computed target set, in the order the run will visit them. The count the user
+	/// approved and the repositories the run touches come from the same list.
+	/// </summary>
+	private List<PackageDashboardRow> RowsFor(IReadOnlyList<string> repositoryFullNames)
+	{
+		var targets = repositoryFullNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		return [.. _rows.Where(r => r.RepositoryFullName is not null && targets.Contains(r.RepositoryFullName))];
+	}
+
 	private bool IsRepoSelected(string? name) => name is not null && _selectedRepos.Contains(name);
 
 	private int SelectedAffected(IssueClassGroup rule)
-		=> rule.Instances.Count(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName));
+		=> BulkApplyScope.ForRule(rule, _selectedRepos).Count;
 
 	private void ToggleRepo(string name)
 	{
@@ -511,10 +521,7 @@
 
 	private void ConfirmApplyRule(IssueClassGroup rule)
 	{
-		var repos = rule.Instances
-			.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName))
-			.Select(i => i.RepositoryFullName)
-			.ToList();
+		var repos = BulkApplyScope.ForRule(rule, _selectedRepos);
 		if (repos.Count == 0)
 		{
 			Append($"No selected repositories are affected by {rule.RuleId}.");
@@ -526,16 +533,13 @@
 			Title = $"Apply {rule.RuleId} & push — {repos.Count} repos",
 			DedupKey = $"apply-rule:{Organization}:{rule.RuleId}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyRuleAcrossReposAsync(SelectedRows(), rule.RuleId, log, progress, ct)
+			Action = (log, progress, ct) => Dashboard.ApplyRuleAcrossReposAsync(RowsFor(repos), rule.RuleId, log, progress, ct)
 		};
 	}
 
 	private void ConfirmApplyCategory(IssueCategoryGroup cat)
 	{
-		var repos = cat.IssueClasses
-			.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName)).Select(i => i.RepositoryFullName))
-			.Distinct(StringComparer.OrdinalIgnoreCase)
-			.ToList();
+		var repos = BulkApplyScope.ForCategory(cat, _selectedRepos);
 		if (repos.Count == 0)
 		{
 			Append($"No selected repositories are affected by auto-fixable {cat.Category} rules.");
@@ -547,7 +551,7 @@
 			Title = $"Apply {cat.Category} fixes & push — {repos.Count} repos",
 			DedupKey = $"apply-category:{Organization}:{cat.Category}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyCategoryAcrossReposAsync(SelectedRows(), cat.Category, log, progress, ct)
+			Action = (log, progress, ct) => Dashboard.ApplyCategoryAcrossReposAsync(RowsFor(repos), cat.Category, log, progress, ct)
 		};
 	}
 
@@ -565,12 +569,7 @@
 
 	private void ConfirmFixEverything()
 	{
-		var repos = _view is null
-			? []
-			: _view.AllIssueClasses
-				.SelectMany(r => r.Instances.Where(i => i.IsAutoRemediable && _selectedRepos.Contains(i.RepositoryFullName)).Select(i => i.RepositoryFullName))
-				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.ToList();
+		IReadOnlyList<string> repos = _view is null ? [] : BulkApplyScope.ForEverything(_view, _selectedRepos);
 		if (repos.Count == 0)
 		{
 			Append("No selected repositories have auto-fixable issues.");
@@ -582,7 +581,7 @@
 			Title = $"Fix everything & push — {repos.Count} repos",
 			DedupKey = $"fix-everything:{Organization}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyEverythingAcrossReposAsync(SelectedRows(), log, progress, ct)
+			Action = (log, progress, ct) => Dashboard.ApplyEverythingAcrossReposAsync(RowsFor(repos), log, progress, ct)
 		};
 	}
 
@@ -663,7 +662,7 @@
 
 		/// <summary>Identifies a request that would repeat one already waiting in the queue.</summary>
 		public required string DedupKey { get; init; }
-		public required List<string> Repos { get; init; }
+		public required IReadOnlyList<string> Repos { get; init; }
 		public required Func<Action<string>, IProgress<string>, CancellationToken, Task<BulkApplyOutcome>> Action { get; init; }
 	}
 }

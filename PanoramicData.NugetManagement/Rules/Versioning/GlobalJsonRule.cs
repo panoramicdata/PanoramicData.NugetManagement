@@ -22,6 +22,11 @@ public class GlobalJsonRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
+		// The opt-in belongs only to repositories that can run on Microsoft.Testing.Platform. Handing
+		// it to one still on xunit v2 and VSTest leaves `dotnet test` unable to run anything, which is
+		// what this rule did to several repositories before the condition was added.
+		var includeTestRunner = UsesMicrosoftTestingPlatform(context);
+
 		var content = context.GetFileContent("global.json");
 		if (content is null)
 		{
@@ -35,7 +40,7 @@ public class GlobalJsonRule : RuleBase
 					{
 						["expected_path"] = "global.json",
 						["latest_sdk"] = Standards.LatestDotNetSdkVersion,
-						["template_content"] = Standards.GlobalJsonContent
+						["template_content"] = Standards.GetGlobalJsonContent(includeTestRunner)
 					}
 				}));
 		}
@@ -52,8 +57,12 @@ public class GlobalJsonRule : RuleBase
 					{
 						["file"] = "global.json",
 						["latest_sdk"] = Standards.LatestDotNetSdkVersion,
-						["remediation_type"] = "replace_file_content",
-						["new_content"] = Standards.GlobalJsonContent
+						// Sets the one property rather than rewriting the file. Replacing it wholesale
+						// discarded whatever else the repository kept there — msbuild-sdks, a test runner
+						// it had already configured — none of which this rule has an opinion on.
+						["remediation_type"] = "ensure_json_property",
+						["property_path"] = "sdk.version",
+						["property_value"] = Standards.LatestDotNetSdkVersion
 					}
 				}));
 	}
