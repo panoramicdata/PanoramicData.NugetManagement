@@ -758,8 +758,10 @@ public class RuleEvaluationTests : TestWithOutput
 	// ── CI-09 ───────────────────────────────────────────────────────────
 
 	[Fact]
-	public async Task CI09_ShouldPass_WhenPublishPs1MatchesStandard()
+	public async Task CI09_ShouldFail_WhenPublishPs1StopsAtTheTagPush()
 	{
+		// The shape every repository had before this: it pushes a tag and reports success, whether or
+		// not the run it triggered ever published a package.
 		var ps1 = """
 			$status = git status --porcelain
 			$branch = git rev-parse --abbrev-ref HEAD
@@ -768,6 +770,34 @@ public class RuleEvaluationTests : TestWithOutput
 			$exists = git tag -l $version
 			git tag $version
 			git push origin $version
+			Write-Host "Tag $version pushed. CI will publish the package."
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = ps1
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("pushing a tag is not evidence that a package was published");
+		result.Advisory!.Data["missing_snippets"].Should().BeOfType<string[]>()
+			.Which.Should().Contain("gh run watch");
+	}
+
+	[Fact]
+	public async Task CI09_ShouldPass_WhenPublishPs1MatchesStandard()
+	{
+		var ps1 = """
+			param([switch]$SkipPublishVerification)
+			$status = git status --porcelain
+			$branch = git rev-parse --abbrev-ref HEAD
+			git fetch origin main --quiet
+			gh auth status
+			$buildOutput = dotnet build proj.csproj -t:GetBuildVersion --getProperty:NuGetPackageVersion
+			$exists = git tag -l $version
+			git tag $version
+			git push origin $version
+			gh run watch $runId --repo $repoFullName --exit-status --interval 20
 			""";
 
 		var context = CreateContext(new Dictionary<string, string>

@@ -49,6 +49,18 @@ public class RepositoryContext
 	public NugetManagementRepositoryConfig? RepositoryConfig { get; init; }
 
 	/// <summary>
+	/// The newest version tag on the repository, or null when it is unknown — the repository is not
+	/// cloned locally, or has never been tagged.
+	/// </summary>
+	public string? LatestTag { get; init; }
+
+	/// <summary>
+	/// The newest version of this repository's package on nuget.org, or null when nothing has been
+	/// published or the feed could not be reached.
+	/// </summary>
+	public string? LatestPublishedVersion { get; init; }
+
+	/// <summary>
 	/// Gets the content of a file, or null if not fetched.
 	/// </summary>
 	/// <param name="path">The relative file path.</param>

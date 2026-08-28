@@ -65,12 +65,16 @@ public class LocalRepositoryContextBuilder
 	/// <param name="defaultBranch">The default branch name (used for context only).</param>
 	/// <param name="currentBranch">The currently checked out local branch when known.</param>
 	/// <returns>A fully populated <see cref="RepositoryContext"/>.</returns>
+	/// <param name="latestTag">The newest version tag, when known, for CI-11.</param>
+	/// <param name="latestPublishedVersion">The newest version on nuget.org, when known, for CI-11.</param>
 	public RepositoryContext Build(
 		string localPath,
 		string repositoryFullName,
 		RepoOptions options,
 		string defaultBranch = "main",
-		string? currentBranch = null)
+		string? currentBranch = null,
+		string? latestTag = null,
+		string? latestPublishedVersion = null)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]
@@ -92,7 +96,9 @@ public class LocalRepositoryContextBuilder
 			Options = options,
 			FilePaths = filePaths,
 			FileContents = fileContents,
-			RepositoryConfig = repositoryConfig
+			RepositoryConfig = repositoryConfig,
+			LatestTag = latestTag,
+			LatestPublishedVersion = latestPublishedVersion
 		};
 	}
 

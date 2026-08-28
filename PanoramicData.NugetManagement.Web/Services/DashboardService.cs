@@ -349,6 +349,11 @@ public class DashboardService
 			if (!string.IsNullOrWhiteSpace(repoIdentity))
 			{
 				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+
+				// Read here rather than relying on a git-status refresh having happened: CI-11 compares
+				// this with what is on nuget.org, and without it the rule has nothing to say. A local
+				// `git describe` on a clone we already have is cheap.
+				row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			}
 
 			var detectedDefaultBranch = !string.IsNullOrWhiteSpace(repoIdentity)
@@ -375,7 +380,16 @@ public class DashboardService
 
 			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 			var localBuilder = new LocalRepositoryContextBuilder(loggerFactory.CreateLogger<LocalRepositoryContextBuilder>());
-			var context = localBuilder.Build(row.LocalPath, row.RepositoryFullName, repoOptions, defaultBranch, row.CurrentBranch);
+			// The release facts the dashboard already knows, handed to the rules so CI-11 can compare
+			// what was tagged with what was actually published.
+			var context = localBuilder.Build(
+				row.LocalPath,
+				row.RepositoryFullName,
+				repoOptions,
+				defaultBranch,
+				row.CurrentBranch,
+				row.LatestTag,
+				row.LatestVersion);
 
 			var rules = RuleRegistry.Rules;
 			var results = new List<RuleResult>();

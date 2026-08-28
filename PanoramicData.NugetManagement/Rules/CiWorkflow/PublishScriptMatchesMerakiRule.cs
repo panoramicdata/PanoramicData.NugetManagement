@@ -35,7 +35,7 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 				new RuleAdvisory
 				{
 					Summary = "Add standard Publish.ps1 matching the Meraki.Api tagging-and-trigger pattern",
-					Detail = "Copy the standard Publish.ps1 from Meraki.Api. It should check for a clean tree, verify the main branch, resolve the version via the Nerdbank.GitVersioning MSBuild target (`dotnet build -t:GetBuildVersion`), create a tag, and push the tag.",
+					Detail = "Copy the standard Publish.ps1 from Meraki.Api. It should check for a clean tree, verify the main branch, resolve the version via the Nerdbank.GitVersioning MSBuild target (`dotnet build -t:GetBuildVersion`), create and push the tag, and then wait for the release run and fail if it did not publish.",
 					Data = new()
 					{
 						["expected_path"] = "Publish.ps1",
@@ -73,7 +73,16 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 			"--getProperty:NuGetPackageVersion",
 			"git tag -l $version",
 			"git tag $version",
-			"git push origin $version"
+			"git push origin $version",
+
+			// Pushing the tag is not evidence that a package was published. A script that stops there
+			// reports success whether the release run succeeded, failed or was refused outright — which
+			// is how nine repositories in the estate drifted up to 24 versions behind their newest tag,
+			// several of them for months. See CI-11, which catches the ones that already have.
+			"SkipPublishVerification",
+			"gh auth status",
+			"gh run watch",
+			"--exit-status"
 		};
 
 		var missing = requiredSnippets
@@ -87,7 +96,7 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 				new RuleAdvisory
 				{
 					Summary = "Update Publish.ps1 to match the standard Meraki.Api tagging-and-trigger pattern",
-					Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: clean tree check, branch check, MSBuild version resolution (`-t:GetBuildVersion --getProperty:NuGetPackageVersion`), tag creation, and tag push.",
+					Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: clean tree check, branch check, MSBuild version resolution (`-t:GetBuildVersion --getProperty:NuGetPackageVersion`), tag creation, tag push — and then verification that the release actually published: a `gh auth status` pre-flight before anything is pushed, `gh run watch --exit-status` on the run the tag triggered, and a `-SkipPublishVerification` switch for anyone who opts out deliberately.",
 					Data = new()
 					{
 						["remediation_type"] = "replace_file_content",
