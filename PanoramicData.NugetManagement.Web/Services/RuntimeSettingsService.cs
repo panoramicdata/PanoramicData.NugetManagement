@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Options;
 using PanoramicData.NugetManagement.Web.Models;
 
@@ -27,17 +27,41 @@ public class RuntimeSettingsService
 	/// Initializes a new instance of the <see cref="RuntimeSettingsService"/> class.
 	/// </summary>
 	public RuntimeSettingsService(IOptions<AppSettings> appSettings, ILogger<RuntimeSettingsService> logger)
+		: this(appSettings, logger, DefaultSettingsPath())
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="RuntimeSettingsService"/> class against a specific
+	/// settings file.
+	/// </summary>
+	/// <remarks>
+	/// Where the settings live is a parameter rather than a fact of the machine. It has to be: on
+	/// Windows <see cref="Environment.GetFolderPath(Environment.SpecialFolder)"/> asks the Known Folder
+	/// API and pays no attention to the <c>LOCALAPPDATA</c> variable, so redirecting it is not something
+	/// a caller can do from the outside — and a test that believed otherwise was reading and writing the
+	/// developer's own settings.
+	/// </remarks>
+	public RuntimeSettingsService(
+		IOptions<AppSettings> appSettings,
+		ILogger<RuntimeSettingsService> logger,
+		string settingsPath)
 	{
 		_appSettings = appSettings.Value;
 		_configuredLocalReposRoot = _appSettings.LocalReposRoot;
 		_logger = logger;
-		_settingsPath = Path.Combine(
-			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-			"PanoramicData.NugetManagement",
-			"runtime-settings.json");
+		_settingsPath = settingsPath;
 
 		_runtimeSettings = LoadFromDisk();
 	}
+
+	/// <summary>
+	/// The settings file's location under the user's local application data.
+	/// </summary>
+	public static string DefaultSettingsPath() => Path.Combine(
+		Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+		"PanoramicData.NugetManagement",
+		"runtime-settings.json");
 
 	/// <summary>
 	/// Gets the effective LocalReposRoot: runtime override first, then AppSettings, then null.

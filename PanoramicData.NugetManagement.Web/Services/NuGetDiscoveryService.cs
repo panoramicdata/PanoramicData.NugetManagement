@@ -89,8 +89,73 @@ public class NuGetDiscoveryService
 			}
 		}
 
-		_logger.LogInformation("Found {Count} packages for owner '{Owner}'.", results.Count, owner);
-		return [.. results.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase)];
+		// Retired packages are not part of the estate. The search API includes unlisted packages in its
+		// answer and offers no field saying which, so each one is asked.
+		var listed = await KeepListedAsync(results, package => package.PackageId, IsPackageListedAsync, cancellationToken)
+			.ConfigureAwait(false);
+
+		if (listed.Count < results.Count)
+		{
+			_logger.LogInformation(
+				"Ignored {Count} unlisted package(s) for owner '{Owner}': {Packages}",
+				results.Count - listed.Count,
+				owner,
+				string.Join(", ", results.Select(p => p.PackageId).Except(listed.Select(p => p.PackageId))));
+		}
+
+		_logger.LogInformation("Found {Count} packages for owner '{Owner}'.", listed.Count, owner);
+		return [.. listed.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase)];
+	}
+
+	/// <summary>
+	/// How many listing checks run at once. nuget.org is a shared resource, and a hundred simultaneous
+	/// connections is not a reasonable way to ask it a hundred questions.
+	/// </summary>
+	public const int MaxConcurrentListingChecks = 8;
+
+	/// <summary>
+	/// Keeps only the packages still listed on NuGet, in the order they arrived.
+	/// </summary>
+	/// <remarks>
+	/// The search API answers <c>owner:</c> with unlisted packages included and offers no field saying
+	/// so, which is why this costs a call per package rather than being read off the search result.
+	/// Retired packages arrived in the estate and were judged as though somebody still had to act on
+	/// them: PanoramicData.OData.V3.Client and V4.Client, unlisted and superseded by
+	/// PanoramicData.OData.Client, were two of them.
+	///
+	/// A check that throws keeps its package. Failing open matters more than the tidiness: an estate
+	/// that empties itself because nuget.org was briefly unreachable is far worse than one carrying a
+	/// package that has been retired.
+	/// </remarks>
+	public static async Task<List<T>> KeepListedAsync<T>(
+		IReadOnlyList<T> packages,
+		Func<T, string> packageId,
+		Func<string, CancellationToken, Task<bool>> isListed,
+		CancellationToken cancellationToken)
+	{
+		using var concurrency = new SemaphoreSlim(MaxConcurrentListingChecks);
+
+		var listed = await Task.WhenAll(packages.Select(async package =>
+		{
+			await concurrency.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+			try
+			{
+				return await isListed(packageId(package), cancellationToken).ConfigureAwait(false);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				return true;
+			}
+			finally
+			{
+				concurrency.Release();
+			}
+		})).ConfigureAwait(false);
+
+		// Indexed rather than filtered as the results arrive, so the order the caller gave survives the
+		// concurrency.
+		return [.. packages.Where((_, index) => listed[index])];
 	}
 
 	/// <summary>

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Services;
@@ -77,14 +77,16 @@ public class RepositoryExclusionTests(ITestOutputHelper output) : TestWithOutput
 
 	private RuntimeSettingsService CreateService()
 	{
-		// The service persists to LocalApplicationData; point that at a directory of this test's own so
-		// the developer's real settings are neither read nor written.
+		// A settings file of this test's own, so the developer's real settings are neither read nor
+		// written. Redirecting LOCALAPPDATA does not achieve that: on Windows GetFolderPath asks the
+		// Known Folder API and ignores the variable entirely, so these tests were persisting exclusions
+		// into the developer's own runtime-settings.json.
 		Directory.CreateDirectory(_settingsDirectory);
-		Environment.SetEnvironmentVariable("LOCALAPPDATA", _settingsDirectory);
 
 		return new RuntimeSettingsService(
 			Options.Create(new AppSettings { NuGetOrganization = "panoramicdata" }),
-			NullLogger<RuntimeSettingsService>.Instance);
+			NullLogger<RuntimeSettingsService>.Instance,
+			Path.Combine(_settingsDirectory, "runtime-settings.json"));
 	}
 
 	/// <inheritdoc />
