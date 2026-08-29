@@ -1,4 +1,4 @@
-using System.Xml;
+﻿using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Extensions.Options;
 using NuGet.Common;
@@ -148,19 +148,16 @@ public class NuGetDiscoveryService
 			metadata.Identity.Version.ToNormalizedString(),
 			cancellationToken).ConfigureAwait(false);
 
-		if (IsGitHubUrl(declared))
+		var declaredRepository = GitHubRepositoryUrl.Normalize(declared);
+		if (declaredRepository is not null)
 		{
-			return declared;
+			return declaredRepository;
 		}
 
 		// No declaration to go on: fall back to the project link, which is right more often than not
 		// and is all there was before.
-		var projectUrl = metadata.ProjectUrl?.ToString();
-		return IsGitHubUrl(projectUrl) ? projectUrl : null;
+		return GitHubRepositoryUrl.Normalize(metadata.ProjectUrl?.ToString());
 	}
-
-	private static bool IsGitHubUrl(string? url)
-		=> url is not null && url.Contains("github.com", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// Reads the <c>repository</c> URL from a package's nuspec, or null when it declares none.
@@ -191,39 +188,9 @@ public class NuGetDiscoveryService
 		}
 	}
 
-	private static string? ExtractRepoOwner(string? repoUrl)
-	{
-		if (repoUrl is null)
-		{
-			return null;
-		}
+	private static string? ExtractRepoOwner(string? repoUrl) => GitHubRepositoryUrl.Owner(repoUrl);
 
-		// Extract owner from https://github.com/owner/repo
-		var uri = new Uri(repoUrl);
-		var segments = uri.AbsolutePath.Trim('/').Split('/');
-		return segments.Length >= 1 && !string.IsNullOrEmpty(segments[0]) ? segments[0] : null;
-	}
-
-	private static string? ExtractRepoName(string? repoUrl)
-	{
-		if (repoUrl is null)
-		{
-			return null;
-		}
-
-		// Extract repo name from https://github.com/owner/repo, stripping any trailing ".git"
-		var uri = new Uri(repoUrl);
-		var segments = uri.AbsolutePath.Trim('/').Split('/');
-		if (segments.Length < 2)
-		{
-			return null;
-		}
-
-		var name = segments[1];
-		return name.EndsWith(".git", StringComparison.OrdinalIgnoreCase)
-			? name[..^4]
-			: name;
-	}
+	private static string? ExtractRepoName(string? repoUrl) => GitHubRepositoryUrl.Name(repoUrl);
 }
 
 /// <summary>
