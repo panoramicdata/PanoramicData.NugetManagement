@@ -61,6 +61,17 @@ public class RepositoryContext
 	public string? LatestPublishedVersion { get; init; }
 
 	/// <summary>
+	/// Measured line coverage as a percentage, or null when this repository's tests have not been run
+	/// with coverage collection.
+	/// </summary>
+	public double? LineCoveragePercent { get; init; }
+
+	/// <summary>
+	/// Measured branch coverage as a percentage, or null when it has not been measured.
+	/// </summary>
+	public double? BranchCoveragePercent { get; init; }
+
+	/// <summary>
 	/// Gets the content of a file, or null if not fetched.
 	/// </summary>
 	/// <param name="path">The relative file path.</param>
