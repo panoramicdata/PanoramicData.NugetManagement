@@ -1,6 +1,4 @@
-﻿using System.Xml;
-using System.Xml.Linq;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using NuGet.Common;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
@@ -14,14 +12,22 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public class NuGetDiscoveryService
 {
 	private readonly AppSettings _settings;
+	private readonly NuspecRepositoryResolver _resolver;
 	private readonly ILogger<NuGetDiscoveryService> _logger;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NuGetDiscoveryService"/> class.
 	/// </summary>
-	public NuGetDiscoveryService(IOptions<AppSettings> settings, ILogger<NuGetDiscoveryService> logger)
+	/// <param name="settings">The application settings.</param>
+	/// <param name="resolver">Reads each package's declared repository from its nuspec.</param>
+	/// <param name="logger">The logger.</param>
+	public NuGetDiscoveryService(
+		IOptions<AppSettings> settings,
+		NuspecRepositoryResolver resolver,
+		ILogger<NuGetDiscoveryService> logger)
 	{
 		_settings = settings.Value;
+		_resolver = resolver;
 		_logger = logger;
 	}
 
@@ -67,19 +73,41 @@ public class NuGetDiscoveryService
 				break;
 			}
 
-			foreach (var result in batch)
-			{
-				var repoUrl = await ResolveRepositoryUrlAsync(result, cancellationToken).ConfigureAwait(false);
-				results.Add(new NuGetPackageInfo
+			// One small request per package. Sequentially that is a hundred-odd round trips in series;
+			// throttled at eight it is a few seconds, and the throttle is what keeps a burst from
+			// looking like an attack to the source.
+			var resolved = new NuGetPackageInfo[batch.Count];
+
+			await Parallel.ForEachAsync(
+				Enumerable.Range(0, batch.Count),
+				new ParallelOptions
 				{
-					PackageId = result.Identity.Id,
-					LatestVersion = result.Identity.Version.ToNormalizedString(),
-					Organization = owner,
-					RepositoryUrl = repoUrl,
-					RepositoryOwner = ExtractRepoOwner(repoUrl),
-					RepositoryName = ExtractRepoName(repoUrl)
-				});
-			}
+					MaxDegreeOfParallelism = 8,
+					CancellationToken = cancellationToken
+				},
+				async (index, token) =>
+				{
+					var result = batch[index];
+					var resolution = await _resolver.ResolveAsync(
+						result.Identity.Id,
+						result.Identity.Version.ToNormalizedString(),
+						result.ProjectUrl?.ToString(),
+						token).ConfigureAwait(false);
+
+					resolved[index] = new NuGetPackageInfo
+					{
+						PackageId = result.Identity.Id,
+						LatestVersion = result.Identity.Version.ToNormalizedString(),
+						Organization = owner,
+						RepositoryUrl = resolution.RepositoryUrl,
+						RepositoryOwner = GitHubRepositoryUrl.Owner(resolution.RepositoryUrl),
+						RepositoryName = GitHubRepositoryUrl.Name(resolution.RepositoryUrl),
+						ResolutionOutcome = resolution.Outcome,
+						ResolutionError = resolution.Error
+					};
+				}).ConfigureAwait(false);
+
+			results.AddRange(resolved);
 
 			skip += take;
 
@@ -87,6 +115,20 @@ public class NuGetDiscoveryService
 			{
 				break;
 			}
+		}
+
+		var unresolved = results
+			.Where(p => p.ResolutionOutcome is RepositoryResolutionOutcome.LookupFailed)
+			.Select(p => p.PackageId)
+			.ToList();
+
+		if (unresolved.Count > 0)
+		{
+			_logger.LogWarning(
+				"Could not read the nuspec for {Count} package(s) of '{Owner}': {Packages}. Their repositories are unchanged from the last successful discovery; rediscover to try again.",
+				unresolved.Count,
+				owner,
+				string.Join(", ", unresolved));
 		}
 
 		_logger.LogInformation("Found {Count} packages for owner '{Owner}'.", results.Count, owner);
@@ -125,72 +167,6 @@ public class NuGetDiscoveryService
 			return true;
 		}
 	}
-
-	/// <summary>
-	/// Where a package's source actually lives.
-	/// </summary>
-	/// <remarks>
-	/// The nuspec's <c>repository</c> element first, because that is the publisher saying where the
-	/// source is. <c>projectUrl</c> is a documentation link and need not be the source at all: it is
-	/// how PanoramicData.EPPlus — whose nuspec correctly declares
-	/// <c>panoramicdata/PanoramicData.EPPlus</c> — was governed as <c>rimland/EPPlus</c>, the upstream
-	/// it was forked from, for seven remediation runs.
-	///
-	/// The search API does not carry repository metadata, so the nuspec is fetched directly. One small
-	/// request per package, during discovery only.
-	/// </remarks>
-	private async Task<string?> ResolveRepositoryUrlAsync(
-		IPackageSearchMetadata metadata,
-		CancellationToken cancellationToken)
-	{
-		var declared = await ReadRepositoryUrlFromNuspecAsync(
-			metadata.Identity.Id,
-			metadata.Identity.Version.ToNormalizedString(),
-			cancellationToken).ConfigureAwait(false);
-
-		var declaredRepository = GitHubRepositoryUrl.Normalize(declared);
-		if (declaredRepository is not null)
-		{
-			return declaredRepository;
-		}
-
-		// No declaration to go on: fall back to the project link, which is right more often than not
-		// and is all there was before.
-		return GitHubRepositoryUrl.Normalize(metadata.ProjectUrl?.ToString());
-	}
-
-	/// <summary>
-	/// Reads the <c>repository</c> URL from a package's nuspec, or null when it declares none.
-	/// </summary>
-	private async Task<string?> ReadRepositoryUrlFromNuspecAsync(
-		string packageId,
-		string version,
-		CancellationToken cancellationToken)
-	{
-		var id = packageId.ToLowerInvariant();
-		var url = $"https://api.nuget.org/v3-flatcontainer/{id}/{version.ToLowerInvariant()}/{id}.nuspec";
-
-		try
-		{
-			using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-			var nuspec = await client.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
-
-			return XDocument.Parse(nuspec)
-				.Descendants()
-				.FirstOrDefault(element => string.Equals(element.Name.LocalName, "repository", StringComparison.OrdinalIgnoreCase))
-				?.Attribute("url")?.Value;
-		}
-		catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or XmlException)
-		{
-			// Not fatal: the caller falls back to the project link, exactly as before.
-			_logger.LogDebug(ex, "Could not read the nuspec for {PackageId} {Version}", packageId, version);
-			return null;
-		}
-	}
-
-	private static string? ExtractRepoOwner(string? repoUrl) => GitHubRepositoryUrl.Owner(repoUrl);
-
-	private static string? ExtractRepoName(string? repoUrl) => GitHubRepositoryUrl.Name(repoUrl);
 }
 
 /// <summary>
@@ -232,4 +208,16 @@ public class NuGetPackageInfo
 	/// The repository name extracted from the URL (with any trailing ".git" removed).
 	/// </summary>
 	public string? RepositoryName { get; init; }
+
+	/// <summary>
+	/// What came of resolving <see cref="RepositoryUrl"/>. A package with no repository is only
+	/// ungoverned for a stated reason when this says the nuspec was actually read.
+	/// </summary>
+	public RepositoryResolutionOutcome ResolutionOutcome { get; init; } = RepositoryResolutionOutcome.NotDeclared;
+
+	/// <summary>
+	/// Why resolution failed, when <see cref="ResolutionOutcome"/> is
+	/// <see cref="RepositoryResolutionOutcome.LookupFailed"/>.
+	/// </summary>
+	public string? ResolutionError { get; init; }
 }

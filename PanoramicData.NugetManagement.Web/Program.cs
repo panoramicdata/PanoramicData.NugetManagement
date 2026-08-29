@@ -18,6 +18,15 @@ builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSet
 builder.Services.AddPanoramicDataBlazor();
 
 // Register services
+// A pooled handler rather than a client per package: discovery makes a hundred-odd nuspec requests
+// in a burst, and a fresh HttpClient each time leaks a socket per package. Named rather than typed,
+// because the resolver is consumed by a singleton and a typed client is registered transient.
+builder.Services.AddHttpClient(NuspecRepositoryResolver.HttpClientName, client =>
+{
+	client.Timeout = TimeSpan.FromSeconds(15);
+	client.DefaultRequestHeaders.UserAgent.ParseAdd("PanoramicData.NugetManagement");
+});
+builder.Services.AddSingleton<NuspecRepositoryResolver>();
 builder.Services.AddSingleton<NuGetDiscoveryService>();
 builder.Services.AddSingleton<LocalRepoService>();
 builder.Services.AddSingleton<DashboardCacheService>();
