@@ -14,12 +14,14 @@ public class PublishGateTests(ITestOutputHelper output) : TestWithOutput(output)
 	private static RepositoryDashboardRow Row(
 		PackageStatus status,
 		bool isClonedLocally = true,
-		bool? isSyncedWithOrigin = true) => new()
+		bool? isSyncedWithOrigin = true,
+		bool? isWorkingTreeClean = true) => new()
 		{
 			RepositoryFullName = "panoramicdata/Athonet.Api",
 			Status = status,
 			IsClonedLocally = isClonedLocally,
-			IsSyncedWithOrigin = isSyncedWithOrigin
+			IsSyncedWithOrigin = isSyncedWithOrigin,
+			IsWorkingTreeClean = isWorkingTreeClean
 		};
 
 	[Fact]
@@ -67,6 +69,40 @@ public class PublishGateTests(ITestOutputHelper output) : TestWithOutput(output)
 	[Fact]
 	public void IsEnabled_SyncStateUnknown_DoesNotBlock()
 		=> PublishGate.IsEnabled(Row(PackageStatus.TestsPassed, isSyncedWithOrigin: null), allowWithoutTests: false)
+			.Should().BeTrue();
+
+	/// <summary>
+	/// Uncommitted changes block whatever else is true. Publishing from a dirty tree ships a package
+	/// built from code nobody else can see: the tag it is published against does not contain what was
+	/// built, and nothing on origin reproduces it.
+	/// </summary>
+	[Fact]
+	public void IsEnabled_DirtyWorkingTree_IsBlockedWhicheverWayTheSettingIsSet()
+	{
+		PublishGate.IsEnabled(Row(PackageStatus.TestsPassed, isWorkingTreeClean: false), allowWithoutTests: false)
+			.Should().BeFalse();
+		PublishGate.IsEnabled(Row(PackageStatus.TestsPassed, isWorkingTreeClean: false), allowWithoutTests: true)
+			.Should().BeFalse();
+	}
+
+	[Fact]
+	public void IsEnabled_DirtyWorkingTreeAndTestsWaived_IsBlocked()
+		=> PublishGate.IsEnabled(Row(PackageStatus.BuildSucceeded, isWorkingTreeClean: false), allowWithoutTests: true)
+			.Should().BeFalse();
+
+	/// <summary>
+	/// An unestablished working-tree state is not evidence of uncommitted changes, so — as with the
+	/// sync state — it blocks nothing. Otherwise a row whose git status has not been read yet would
+	/// show a dead Publish button with nothing to explain it.
+	/// </summary>
+	[Fact]
+	public void IsEnabled_WorkingTreeStateUnknown_DoesNotBlock()
+		=> PublishGate.IsEnabled(Row(PackageStatus.TestsPassed, isWorkingTreeClean: null), allowWithoutTests: false)
+			.Should().BeTrue();
+
+	[Fact]
+	public void IsEnabled_CleanWorkingTree_StillPublishes()
+		=> PublishGate.IsEnabled(Row(PackageStatus.TestsPassed, isWorkingTreeClean: true), allowWithoutTests: false)
 			.Should().BeTrue();
 
 	[Fact]

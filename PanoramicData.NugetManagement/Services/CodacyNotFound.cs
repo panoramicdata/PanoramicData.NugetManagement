@@ -1,5 +1,6 @@
 using System.Net;
 using Codacy.Api.Exceptions;
+using Refit;
 
 namespace PanoramicData.NugetManagement.Services;
 
@@ -8,10 +9,11 @@ namespace PanoramicData.NugetManagement.Services;
 /// client hands it back in.
 /// </summary>
 /// <remarks>
-/// Codacy.Api defines <see cref="CodacyNotFoundException"/>, but its Refit-generated calls do not
-/// throw it: a 404 arrives as a plain <see cref="HttpRequestException"/> carrying the status code.
-/// Catching only the named exception left the untracked case reported as "failed to reach Codacy",
-/// which sends the reader to check a token that is working perfectly.
+/// Codacy.Api defines <see cref="CodacyNotFoundException"/>, but its Refit-generated calls never
+/// throw it: a 404 arrives as a <see cref="ApiException"/>, which derives from Refit's own base
+/// rather than from <see cref="HttpRequestException"/>. Catching only the named exception left an
+/// untracked repository reported as "failed to reach Codacy", which sends the reader off to check a
+/// token that is working perfectly.
 /// </remarks>
 internal static class CodacyNotFound
 {
@@ -22,6 +24,7 @@ internal static class CodacyNotFound
 	{
 		CodacyNotFoundException => true,
 		CodacyApiException codacy => codacy.StatusCode == HttpStatusCode.NotFound,
+		ApiException refit => refit.StatusCode == HttpStatusCode.NotFound,
 		HttpRequestException http => http.StatusCode == HttpStatusCode.NotFound,
 		_ => false
 	};

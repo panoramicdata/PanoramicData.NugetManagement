@@ -5355,6 +5355,12 @@ else
 			return "Clone the repository first";
 		}
 
+		if (_selectedRow.IsWorkingTreeClean == false)
+		{
+			return "Commit and push first — the working tree has uncommitted changes, "
+				+ "so the published package would not match anything on origin";
+		}
+
 		if (IsBlockedByOutOfSync)
 		{
 			return OutOfSyncBlockedTooltip;

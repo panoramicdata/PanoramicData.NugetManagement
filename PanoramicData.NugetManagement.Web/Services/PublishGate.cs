@@ -7,8 +7,8 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// </summary>
 /// <remarks>
 /// Publishing is the one step in the workflow that cannot be taken back: a version pushed to NuGet
-/// stays pushed. So the gate is deliberately narrow — the repository has to be cloned, level with
-/// origin, and carrying a status that says the code in the clone was actually exercised.
+/// stays pushed. So the gate is deliberately narrow — the repository has to be cloned, committed,
+/// level with origin, and carrying a status that says the code in the clone was actually exercised.
 /// <para>
 /// The estate-wide "allow publish without running tests" setting waives exactly one of those
 /// requirements: that the exercising was a test run rather than a build. It does not waive the
@@ -29,8 +29,15 @@ public static class PublishGate
 	public static bool IsEnabled(RepositoryDashboardRow? row, bool allowWithoutTests)
 		=> row is not null
 			&& row.IsClonedLocally
-			// Only a positive answer blocks: an unknown or expired sync belief is not evidence that
-			// the clone is behind, and every other step in the toolbar reads it the same way.
+			// Uncommitted changes mean the package would be built from code that exists on this machine
+			// and nowhere else: the tag it is published against would not contain what was built, and
+			// nothing on origin would reproduce it. Committing is what makes a publish accountable.
+			&& row.IsWorkingTreeClean != false
+			// Being ahead of origin counts as out of sync too, so committed-but-unpushed work is caught
+			// here rather than needing a clause of its own.
+			//
+			// Only a positive answer blocks, for both facts: an unknown or expired belief is not
+			// evidence of anything, and every other step in the toolbar reads them the same way.
 			&& row.IsSyncedWithOrigin != false
 			&& (row.Status == PackageStatus.TestsPassed
 				|| (allowWithoutTests && row.Status == PackageStatus.BuildSucceeded));
