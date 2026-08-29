@@ -13,7 +13,7 @@ PanoramicData.NugetManagement connects to a GitHub organization, examines each r
 - **CI/CD** — CI workflow structure, checkout depth, action versions
 - **Versioning** — Nerdbank.GitVersioning, global.json SDK pinning
 - **Central Package Management** — CPM enabled, no inline versions
-- **NuGet Hygiene** — snupkg symbols, GeneratePackageOnBuild, PackageReadmeFile
+- **NuGet Hygiene** — snupkg symbols, GeneratePackageOnBuild, PackageReadmeFile, no deprecated dependencies, deprecated packages' repositories archived
 - **Target Framework** — Latest .NET version
 - **Build Quality** — TreatWarningsAsErrors, Nullable, ImplicitUsings
 - **Code Quality** — .editorconfig, file-scoped namespaces, Codacy, CodeQL

@@ -15,5 +15,7 @@
     <PackageReference Include="RestSharp" Version="110.2.0" />
     <!-- Directly referenced rather than inherited, so PKG-08 fails. -->
     <PackageReference Include="Roslynator.Analyzers" Version="4.12.4" />
+    <!-- Deprecated on nuget.org (every version, reason "Legacy"), so PKG-12 fails. -->
+    <PackageReference Include="DotNetZip" Version="1.16.0" />
   </ItemGroup>
 </Project>

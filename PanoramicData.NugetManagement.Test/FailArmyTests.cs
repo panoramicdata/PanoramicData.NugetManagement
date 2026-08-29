@@ -17,6 +17,13 @@ public class FailArmyTests : TestWithOutput
 	/// <list type="bullet">
 	/// <item>PKG-06 depends on live nuget.org state — whether a newer minor version exists today.</item>
 	/// <item>
+	/// PKG-11 would need the fixture's own published package to be deprecated on nuget.org, which
+	/// requires it to declare a PackageId naming a real deprecated package. META-01 requires the
+	/// opposite — that no PackageId is declared — so the two cannot both fail against one fixture.
+	/// Without a PackageId the rule falls back to the project file name, and no package is published
+	/// under "PanoramicData.NugetFailArmy". Covered instead by DeprecatedPackageRuleTests.
+	/// </item>
+	/// <item>
 	/// CI-10 requires a committed nuget-key.txt, but that filename is gitignored by this repository
 	/// (by design, since committing one is exactly what the rule forbids), so the fixture can never
 	/// contain it.
@@ -28,7 +35,7 @@ public class FailArmyTests : TestWithOutput
 	// PKG-10 joins these because it is the precondition for the packaging rules rather than one of
 	// them: the fixture has to declare that it publishes something before those rules apply at all,
 	// and declaring it is exactly what PKG-10 asks for.
-	private static readonly string[] _unfailableRuleIds = ["PKG-06", "CI-10", "PKG-10"];
+	private static readonly string[] _unfailableRuleIds = ["PKG-06", "CI-10", "PKG-10", "PKG-11"];
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="FailArmyTests"/> class.

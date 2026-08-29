@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
 
@@ -44,7 +43,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase
 	/// <inheritdoc />
 	public override async Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var packageReferences = GetPackageVersionReferences(context);
+		var packageReferences = PackageReferenceScanner.Scan(context);
 		if (packageReferences.Count == 0)
 		{
 			return Pass("No explicit NuGet package versions were found to evaluate.");
@@ -98,98 +97,6 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase
 
 	private static string SerializeFinding(PackageVersionFinding finding)
 		=> string.Join('|', finding.FilePath, finding.PackageId, finding.VersionKind, finding.CurrentVersion, finding.LatestVersion);
-
-	private static List<PackageVersionReference> GetPackageVersionReferences(RepositoryContext context)
-	{
-		var references = new List<PackageVersionReference>();
-
-		AddPackageVersionReferences(context.GetFileContent("Directory.Packages.props"), "Directory.Packages.props", references);
-
-		foreach (var projectPath in context.FindFiles(".csproj"))
-		{
-			AddPackageReferenceVersions(context.GetFileContent(projectPath), projectPath, references);
-		}
-
-		return references;
-	}
-
-	private static void AddPackageVersionReferences(string? content, string filePath, List<PackageVersionReference> references)
-	{
-		if (string.IsNullOrWhiteSpace(content))
-		{
-			return;
-		}
-
-		try
-		{
-			var doc = XDocument.Parse(content);
-			foreach (var packageVersion in doc.Descendants("PackageVersion"))
-			{
-				var packageId = packageVersion.Attribute("Include")?.Value ?? packageVersion.Attribute("Update")?.Value;
-				if (string.IsNullOrWhiteSpace(packageId))
-				{
-					continue;
-				}
-
-				var versionAttribute = packageVersion.Attribute("Version")?.Value;
-				var versionElement = packageVersion.Element("Version")?.Value;
-				var currentVersion = versionAttribute ?? versionElement;
-				if (string.IsNullOrWhiteSpace(currentVersion))
-				{
-					continue;
-				}
-
-				references.Add(new PackageVersionReference(
-					filePath,
-					packageId,
-					currentVersion,
-					versionAttribute is not null ? "PackageVersionAttribute" : "PackageVersionElement"));
-			}
-		}
-		catch
-		{
-		}
-	}
-
-	private static void AddPackageReferenceVersions(string? content, string filePath, List<PackageVersionReference> references)
-	{
-		if (string.IsNullOrWhiteSpace(content))
-		{
-			return;
-		}
-
-		try
-		{
-			var doc = XDocument.Parse(content);
-			foreach (var packageReference in doc.Descendants("PackageReference"))
-			{
-				var packageId = packageReference.Attribute("Include")?.Value ?? packageReference.Attribute("Update")?.Value;
-				if (string.IsNullOrWhiteSpace(packageId))
-				{
-					continue;
-				}
-
-				var versionAttribute = packageReference.Attribute("Version")?.Value;
-				var versionElement = packageReference.Element("Version")?.Value;
-				var currentVersion = versionAttribute ?? versionElement;
-				if (string.IsNullOrWhiteSpace(currentVersion))
-				{
-					continue;
-				}
-
-				references.Add(new PackageVersionReference(
-					filePath,
-					packageId,
-					currentVersion,
-					versionAttribute is not null ? "PackageReferenceAttribute" : "PackageReferenceElement"));
-			}
-		}
-		catch
-		{
-		}
-	}
-
-	private sealed record PackageVersionReference(string FilePath, string PackageId, string CurrentVersion, string VersionKind);
 
 	private sealed record PackageVersionFinding(string FilePath, string PackageId, string VersionKind, string CurrentVersion, string LatestVersion);
 }
