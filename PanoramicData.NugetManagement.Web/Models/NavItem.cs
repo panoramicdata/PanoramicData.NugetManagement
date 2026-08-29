@@ -79,6 +79,14 @@ public class NavItem
 	public int IssueCount { get; init; }
 
 	/// <summary>
+	/// The rolled-up health of this subtree: the worst status of everything beneath it, with Unknown
+	/// counting as the worst of all. Set on the branch nodes (Organisations, each organisation, its
+	/// Repositories and its Issues), which colour their glyph from it. Null where the node's icon is
+	/// resolved some other way, such as a package node reading live row state.
+	/// </summary>
+	public PackageHealthStatus? HealthStatus { get; init; }
+
+	/// <summary>
 	/// Whether this subtree has any errors (not just warnings).
 	/// </summary>
 	public bool HasErrors { get; init; }

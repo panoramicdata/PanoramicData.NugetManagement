@@ -5168,13 +5168,29 @@ else
 		return $"\n• Local clone, {sync}{dirty}";
 	}
 
+	/// <summary>
+	/// Explains a branch node's rolled-up colour, so a grey heading above red and green children reads
+	/// as "something below has not been assessed" rather than as a rendering glitch.
+	/// </summary>
+	private static string GetRolledUpHealthSuffix(NavItem item) => item.HealthStatus switch
+	{
+		PackageHealthStatus.Unknown => "\n• grey = worst below is unknown: something here has not been assessed",
+		PackageHealthStatus.Pending => "\n• grey = assessment in progress below",
+		PackageHealthStatus.Error => "\n• red = worst below is an error",
+		PackageHealthStatus.Warning => "\n• amber = worst below is a warning",
+		PackageHealthStatus.Info => "\n• blue = informational findings below",
+		PackageHealthStatus.Success => "\n• green = everything below is compliant",
+		_ => string.Empty
+	};
+
 	private string GetNavItemTooltip(NavItem item)
 	{
 		switch (item.View)
 		{
 			case NavView.Home:
 				var assessed = _rows.Count(r => r.Assessment is not null);
-				return $"Dashboard — {_rows.Count} packages ({assessed} assessed, {item.IssueCount} issues)";
+				return $"Dashboard — {_rows.Count} packages ({assessed} assessed, {item.IssueCount} issues)"
+					+ GetRolledUpHealthSuffix(item);
 
 			case NavView.PackageDetail:
 				var row = _rows.FirstOrDefault(r => r.PackageId == item.PackageId);
@@ -5233,7 +5249,7 @@ else
 					: $"{item.Text} — informational";
 
 			default:
-				return item.Text;
+				return item.Text + GetRolledUpHealthSuffix(item);
 		}
 	}
 
