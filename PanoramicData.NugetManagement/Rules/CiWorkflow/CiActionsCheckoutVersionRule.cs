@@ -47,22 +47,38 @@ public class CiActionsCheckoutVersionRule : RuleBase
 			Services.ActionVersionCatalog.Default.Observe("actions/checkout", used.Value, Standards.LatestActionsCheckoutVersion, context.FullName);
 		}
 
-		return Task.FromResult(meetsFloor
-			? Pass($"CI uses actions/checkout@v{used} (at or above {floor}).")
-			: Fail(
-				used is null
-					? "CI does not use actions/checkout."
-					: $"CI uses actions/checkout@v{used}; expected {floor} or later.",
-				new RuleAdvisory
-				{
-					Summary = $"Update actions/checkout to {floor} or later",
-					Detail = $"Update the checkout step to `uses: actions/checkout@{floor}` (or a later major version).",
-					Data = new()
-					{
-						["workflow_file"] = ciWorkflowPath,
-						["minimum_version"] = floor,
-						["found_version"] = used is null ? "none" : $"v{used}"
-					}
-				}));
+		if (meetsFloor)
+		{
+			return Task.FromResult(Pass($"CI uses actions/checkout@v{used} (at or above {floor})."));
+		}
+
+		var data = new Dictionary<string, object>
+		{
+			["workflow_file"] = ciWorkflowPath,
+			["minimum_version"] = floor,
+			["found_version"] = used is null ? "none" : $"v{used}"
+		};
+
+		// Bumping a version already written in the file is a rewrite of text this rule has located and
+		// understood, so it needs no judgement. Adding a checkout step that is absent altogether does,
+		// and is left to the AI: where it belongs in the job is not something this rule knows.
+		if (used is not null)
+		{
+			data["remediation_type"] = "replace_regex_in_file";
+			data["file"] = ciWorkflowPath;
+			data["patterns"] = new[] { @"(actions/checkout@)v\d+(\.\d+)*" };
+			data["replacements"] = new[] { $"${{1}}{floor}" };
+		}
+
+		return Task.FromResult(Fail(
+			used is null
+				? "CI does not use actions/checkout."
+				: $"CI uses actions/checkout@v{used}; expected {floor} or later.",
+			new RuleAdvisory
+			{
+				Summary = $"Update actions/checkout to {floor} or later",
+				Detail = $"Update the checkout step to `uses: actions/checkout@{floor}` (or a later major version).",
+				Data = data
+			}));
 	}
 }

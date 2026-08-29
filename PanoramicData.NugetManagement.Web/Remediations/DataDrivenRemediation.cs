@@ -35,6 +35,8 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "ensure_csproj_property"
 						or "ensure_code_coverage_setup"
 						or "ensure_json_property"
+						or "ensure_checkout_fetch_depth"
+						or "replace_regex_in_file"
 						or "remove_json_property"
 						or "append_line"
 						or "prepend_line"
@@ -134,10 +136,40 @@ public abstract class DataDrivenRemediation : IRemediation
 				break;
 
 			case "ensure_json_property":
-				if (data.TryGetValue("file", out var jpFile) && jpFile is string jpf &&
-					data["property_path"] is string jpPath && data["property_value"] is string jpValue)
+				if (data.TryGetValue("property_path", out var jpPathObj) && jpPathObj is string jpPath &&
+					data.TryGetValue("property_value", out var jpValueObj) && jpValueObj is string jpValue)
 				{
-					RemediationHelpers.EnsureJsonProperty(localPath, jpf, jpPath, jpValue, result, applied, onOutput);
+					var createContent = data.TryGetValue("create_content", out var ccObj) && ccObj is string cc ? cc : null;
+					var valueKind = data.TryGetValue("value_kind", out var vkObj) && vkObj is string vk ? vk : "string";
+
+					foreach (var jsonPath in ReadStrings(data, "file", "files"))
+					{
+						RemediationHelpers.EnsureJsonProperty(
+							localPath, jsonPath, jpPath, jpValue, result, applied, onOutput, createContent, valueKind);
+					}
+				}
+
+				break;
+
+			case "ensure_checkout_fetch_depth":
+				if (data.TryGetValue("file", out var fdFile) && fdFile is string fdf)
+				{
+					RemediationHelpers.EnsureCheckoutFetchDepth(localPath, fdf, result, applied, onOutput);
+				}
+
+				break;
+
+			case "replace_regex_in_file":
+				if (data.TryGetValue("file", out var rrFile) && rrFile is string rrf)
+				{
+					RemediationHelpers.ReplaceRegexInFile(
+						localPath,
+						rrf,
+						ReadStrings(data, "patterns"),
+						ReadStrings(data, "replacements"),
+						result,
+						applied,
+						onOutput);
 				}
 
 				break;
@@ -293,5 +325,36 @@ public abstract class DataDrivenRemediation : IRemediation
 
 				break;
 		}
+	}
+
+	/// <summary>
+	/// Reads the strings held under the first of <paramref name="keys"/> that is present, accepting a
+	/// single string, a string array, or the object array advisory data becomes once it has been
+	/// round-tripped through JSON.
+	/// </summary>
+	/// <param name="data">The advisory data.</param>
+	/// <param name="keys">The keys to try, in order.</param>
+	/// <returns>The strings found, or an empty array.</returns>
+	protected static string[] ReadStrings(Dictionary<string, object> data, params string[] keys)
+	{
+		foreach (var key in keys)
+		{
+			if (!data.TryGetValue(key, out var value))
+			{
+				continue;
+			}
+
+			switch (value)
+			{
+				case string single:
+					return [single];
+				case string[] strings:
+					return strings;
+				case IEnumerable<object> objects:
+					return [.. objects.OfType<string>()];
+			}
+		}
+
+		return [];
 	}
 }

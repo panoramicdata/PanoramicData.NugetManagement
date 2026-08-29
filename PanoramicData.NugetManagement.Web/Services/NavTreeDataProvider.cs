@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using PanoramicData.Blazor;
 using PanoramicData.Blazor.Models;
@@ -52,6 +52,18 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// selectable, because selecting it shows the estate overview.
 	/// </summary>
 	public const string OrganisationsKey = "organisations";
+
+	/// <summary>
+	/// Whether a node is one of the tree's container headings — Organisations, Repositories and
+	/// Issues. They share a heading colour rather than a status colour, so the template marks them
+	/// for the stylesheet. Keyed off the node key rather than the glyph: the issue categories under
+	/// Issues use the same glyph as Issues itself, and telling them apart by the severity class on
+	/// the icon fails whenever the container carries one too.
+	/// </summary>
+	public static bool IsContainerNode(NavItem item)
+		=> item.Key == OrganisationsKey
+			|| item.Key.StartsWith("repos:", StringComparison.Ordinal)
+			|| item.Key.StartsWith("issues:", StringComparison.Ordinal);
 
 	/// <summary>
 	/// Gets or sets an optional regex used to filter package nodes by name.

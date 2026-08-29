@@ -1,4 +1,4 @@
-@page "/"
+﻿@page "/"
 @page "/{PackageId?}"
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.Extensions.Options
@@ -96,7 +96,7 @@ else
 									NodeCollapsed="OnNavNodeCollapsed"
 									Ready="OnNavTreeReady">
 									<NodeTemplate Context="node">
-										<span class="nav-node-label @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+										<span class="nav-node-label @(node.Data is not null && NavTreeDataProvider.IsContainerNode(node.Data) ? "nav-node-container" : null) @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
 											<i class="@GetNodeIconCss(node.Data)"></i>@node.Data?.Text
 										</span>
 										@if (ShouldSpinOrgNode(node.Data))

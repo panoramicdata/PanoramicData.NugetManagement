@@ -1,4 +1,4 @@
-/* === NuGet Governance Dark Theme === */
+﻿/* === NuGet Governance Dark Theme === */
 :root {
     --bg-primary: #1a1a2e;
     --bg-secondary: #16213e;
@@ -2272,11 +2272,10 @@ i + .breadcrumb-link-text {
    point is red/amber/green health, distinct hues looked like states rather than headings.
    Deliberately --accent (the interface's blue) and not --info, which is the Info severity colour and
    would reintroduce exactly that confusion.
-   The severity :not()s on fa-layer-group matter: the issue categories beneath Issues use the same
-   glyph, distinguished only by a severity class, and they are content rather than containers. */
-.nav-node-label:has(> i.fa-sitemap),
-.nav-node-label:has(> i.fa-cubes),
-.nav-node-label:has(> i.fa-layer-group:not(.text-danger):not(.text-warning):not(.text-info)) {
+   The class comes from the node template rather than from the glyph: the issue categories beneath
+   Issues use the same glyph as Issues itself, and telling the two apart by the severity class on the
+   icon broke as soon as the Issues container could carry one too. */
+.nav-node-container {
     /* Fallback for engines without color-mix. */
     color: #47aad9;
     /* The accent blue pulled 15% toward the page background: enough to stop the headings competing

@@ -36,15 +36,28 @@ public class CiCheckoutFetchDepthRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Contains(content, "fetch-depth: 0")
-			? Pass("CI checkout uses fetch-depth: 0.")
-			: Fail(
-				"CI checkout does not use fetch-depth: 0, which is required for Nerdbank.GitVersioning.",
-				new RuleAdvisory
-				{
-					Summary = "Set `fetch-depth: 0` on actions/checkout for NBGV version calculation",
-					Detail = "Add `with: fetch-depth: 0` to the `actions/checkout` step in the CI workflow. This is required for Nerdbank.GitVersioning to calculate the correct version.",
-					Data = new() { ["workflow_file"] = ciWorkflowPath }
-				}));
+		if (Contains(content, "fetch-depth: 0"))
+		{
+			return Task.FromResult(Pass("CI checkout uses fetch-depth: 0."));
+		}
+
+		var data = new Dictionary<string, object> { ["workflow_file"] = ciWorkflowPath };
+
+		// Setting the key on a checkout step that is already there is mechanical. Adding the step
+		// itself is not — where it belongs in the job is a judgement — so that is left to the AI.
+		if (Contains(content, "actions/checkout@"))
+		{
+			data["remediation_type"] = "ensure_checkout_fetch_depth";
+			data["file"] = ciWorkflowPath;
+		}
+
+		return Task.FromResult(Fail(
+			"CI checkout does not use fetch-depth: 0, which is required for Nerdbank.GitVersioning.",
+			new RuleAdvisory
+			{
+				Summary = "Set `fetch-depth: 0` on actions/checkout for NBGV version calculation",
+				Detail = "Add `with: fetch-depth: 0` to the `actions/checkout` step in the CI workflow. This is required for Nerdbank.GitVersioning to calculate the correct version.",
+				Data = data
+			}));
 	}
 }

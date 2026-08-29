@@ -32,6 +32,7 @@ public class FailSkipsRule : RuleBase
 		}
 
 		var missingOrInvalid = new List<string>();
+		var runnerConfigsToFix = new List<string>();
 
 		foreach (var projectFile in testProjects)
 		{
@@ -46,12 +47,24 @@ public class FailSkipsRule : RuleBase
 			if (string.IsNullOrWhiteSpace(content))
 			{
 				missingOrInvalid.Add($"{projectFile}: xunit.runner.json not found");
+				runnerConfigsToFix.Add(runnerConfigPath);
 				continue;
 			}
 
-			if (!TryReadFailSkips(content, out var failSkips) || !failSkips)
+			var declared = TryReadFailSkips(content, out var failSkips);
+			if (declared && failSkips)
 			{
-				missingOrInvalid.Add($"{projectFile}: failSkips is not set to true");
+				continue;
+			}
+
+			missingOrInvalid.Add($"{projectFile}: failSkips is not set to true");
+
+			// An explicit `false` is a decision somebody made — an integration suite that skips when
+			// credentials are absent, say. Flipping it silently is not a fix, so only a config that
+			// never mentions failSkips at all is filled in automatically.
+			if (!declared && IsJsonObject(content))
+			{
+				runnerConfigsToFix.Add(runnerConfigPath);
 			}
 		}
 
@@ -79,13 +92,62 @@ public class FailSkipsRule : RuleBase
 					For integration test projects where skipping is intentional (for example when credentials are absent),
 					set `failSkips: false` explicitly and document the reason in a comment or README.
 					""",
-				Data = new()
-				{
-					["remediation_type"] = "add_file",
-					["file"] = "xunit.runner.json",
-					["content"] = """{"$schema":"https://xunit.net/schema/current/xunit.runner.schema.json","failSkips":true}"""
-				}
+				Data = BuildData(runnerConfigsToFix, missingOrInvalid.Count)
 			}));
+	}
+
+	/// <summary>
+	/// The config to write where a test project has none.
+	/// </summary>
+	private const string _runnerConfigTemplate =
+		"""
+		{
+		  "$schema": "https://xunit.net/schema/current/xunit.runner.schema.json",
+		  "failSkips": true
+		}
+		""";
+
+	/// <summary>
+	/// Builds the advisory data, attaching a remediation payload only when every offending config can
+	/// be fixed without overruling a choice the repository made deliberately. A payload that fixed
+	/// some of them would report success while leaving the rule failing.
+	/// </summary>
+	/// <param name="runnerConfigsToFix">The xunit.runner.json paths that can be written automatically.</param>
+	/// <param name="offendingCount">How many test projects violate the rule.</param>
+	private static Dictionary<string, object> BuildData(List<string> runnerConfigsToFix, int offendingCount)
+	{
+		var data = new Dictionary<string, object>
+		{
+			["runner_configs"] = runnerConfigsToFix.ToArray()
+		};
+
+		if (runnerConfigsToFix.Count == offendingCount)
+		{
+			data["remediation_type"] = "ensure_json_property";
+			data["files"] = runnerConfigsToFix.ToArray();
+			data["property_path"] = "failSkips";
+			data["property_value"] = "true";
+			data["value_kind"] = "bool";
+			data["create_content"] = _runnerConfigTemplate;
+		}
+
+		return data;
+	}
+
+	/// <summary>
+	/// Whether the content parses as a JSON object, and so can have a property added to it.
+	/// </summary>
+	private static bool IsJsonObject(string json)
+	{
+		try
+		{
+			using var doc = JsonDocument.Parse(json);
+			return doc.RootElement.ValueKind == JsonValueKind.Object;
+		}
+		catch (JsonException)
+		{
+			return false;
+		}
 	}
 
 	private static bool TryReadFailSkips(string json, out bool failSkips)

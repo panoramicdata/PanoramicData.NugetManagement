@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using PanoramicData.NugetManagement.Models;
 
@@ -9,7 +10,7 @@ namespace PanoramicData.NugetManagement.Web.Remediations;
 /// <summary>
 /// Shared helper methods used by multiple remediation implementations.
 /// </summary>
-internal static class RemediationHelpers
+internal static partial class RemediationHelpers
 {
 	/// <summary>
 	/// Creates a file from a template, creating directories as needed.
@@ -1119,9 +1120,24 @@ internal static class RemediationHelpers
 	}
 
 	/// <summary>
-	/// Sets a string property in a JSON file, addressed by a dotted path such as
-	/// <c>test.runner</c>, creating any intermediate objects. Existing properties are left alone.
+	/// Sets a property in a JSON file, addressed by a dotted path such as <c>test.runner</c>,
+	/// creating any intermediate objects.
 	/// </summary>
+	/// <param name="localPath">The root path of the cloned repository.</param>
+	/// <param name="relativePath">The JSON file, relative to the repository root.</param>
+	/// <param name="propertyPath">The dotted path of the property to set.</param>
+	/// <param name="propertyValue">The value to set, as text.</param>
+	/// <param name="result">The failed rule result being remediated.</param>
+	/// <param name="applied">List to append successfully modified file paths to.</param>
+	/// <param name="onOutput">Optional callback for progress messages.</param>
+	/// <param name="createContent">
+	/// When supplied, the content to write if the file does not exist. Without it a missing file is
+	/// left alone: a rule that only knows the property cannot invent the rest of the document.
+	/// </param>
+	/// <param name="valueKind">
+	/// How to write <paramref name="propertyValue"/>: <c>string</c> (the default), <c>bool</c> or
+	/// <c>number</c>. Writing <c>"true"</c> where a schema wants <c>true</c> is not a fix.
+	/// </param>
 	public static void EnsureJsonProperty(
 		string localPath,
 		string relativePath,
@@ -1129,13 +1145,23 @@ internal static class RemediationHelpers
 		string propertyValue,
 		RuleResult result,
 		List<string> applied,
-		Action<string>? onOutput)
+		Action<string>? onOutput,
+		string? createContent = null,
+		string valueKind = "string")
 	{
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
-			return;
+			if (createContent is null)
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
+				return;
+			}
+
+			EnsureDirectory(fullPath);
+			File.WriteAllText(fullPath, createContent);
+			applied.Add(relativePath);
+			onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath}");
 		}
 
 		var segments = propertyPath.Split('.', StringSplitOptions.RemoveEmptyEntries);
@@ -1170,16 +1196,20 @@ internal static class RemediationHelpers
 
 			var leaf = segments[^1];
 			if (target.TryGetPropertyValue(leaf, out var existing) && existing is JsonValue existingValue
-				&& existingValue.TryGetValue<string>(out var current) && current == propertyValue)
+				&& string.Equals(existingValue.ToJsonString().Trim('"'), propertyValue, StringComparison.Ordinal))
 			{
 				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already sets {propertyPath} to {propertyValue} — skipping.");
 				return;
 			}
 
-			target[leaf] = JsonValue.Create(propertyValue);
+			target[leaf] = CreateJsonValue(propertyValue, valueKind);
 
 			File.WriteAllText(fullPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-			applied.Add(relativePath);
+			if (!applied.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
+			{
+				applied.Add(relativePath);
+			}
+
 			onOutput?.Invoke($"✅ [{result.RuleId}] Set {propertyPath} to {propertyValue} in {relativePath}");
 		}
 		catch (JsonException ex)
@@ -1187,5 +1217,229 @@ internal static class RemediationHelpers
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
 		}
 	}
+
+	/// <summary>
+	/// Builds the JSON value to write for a property, honouring the kind the schema expects.
+	/// </summary>
+	private static JsonNode? CreateJsonValue(string propertyValue, string valueKind)
+		=> valueKind switch
+		{
+			"bool" => JsonValue.Create(bool.Parse(propertyValue)),
+			"number" => JsonValue.Create(decimal.Parse(propertyValue, System.Globalization.CultureInfo.InvariantCulture)),
+			_ => JsonValue.Create(propertyValue)
+		};
+
+	/// <summary>
+	/// Applies regular-expression substitutions to a text file. Used where the edit is a rewrite of
+	/// text the rule already located and understands — bumping a pinned action version, for example
+	/// — rather than a structural change to the document.
+	/// </summary>
+	/// <param name="localPath">The root path of the cloned repository.</param>
+	/// <param name="relativePath">The file to edit, relative to the repository root.</param>
+	/// <param name="patterns">The regular expressions to match.</param>
+	/// <param name="replacements">
+	/// The replacement text for each pattern, positionally paired with <paramref name="patterns"/>.
+	/// </param>
+	/// <param name="result">The failed rule result being remediated.</param>
+	/// <param name="applied">List to append successfully modified file paths to.</param>
+	/// <param name="onOutput">Optional callback for progress messages.</param>
+	public static void ReplaceRegexInFile(
+		string localPath,
+		string relativePath,
+		string[] patterns,
+		string[] replacements,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		if (patterns.Length != replacements.Length)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] {patterns.Length} pattern(s) but {replacements.Length} replacement(s) — skipping.");
+			return;
+		}
+
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot edit.");
+			return;
+		}
+
+		var original = File.ReadAllText(fullPath);
+		var content = original;
+
+		for (var i = 0; i < patterns.Length; i++)
+		{
+			try
+			{
+				content = Regex.Replace(content, patterns[i], replacements[i], RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2));
+			}
+			catch (RegexParseException ex)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Invalid pattern '{patterns[i]}': {ex.Message}");
+				return;
+			}
+			catch (RegexMatchTimeoutException)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Pattern '{patterns[i]}' timed out against {relativePath}.");
+				return;
+			}
+		}
+
+		if (content == original)
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] Nothing to change in {relativePath} — skipping.");
+			return;
+		}
+
+		File.WriteAllText(fullPath, content);
+		applied.Add(relativePath);
+		onOutput?.Invoke($"✅ [{result.RuleId}] Updated {relativePath}");
+	}
+
+	/// <summary>
+	/// Sets <c>fetch-depth: 0</c> on every <c>actions/checkout</c> step in a workflow, adding a
+	/// <c>with:</c> block where the step has none. Nerdbank.GitVersioning needs the full history, and
+	/// a shallow clone silently produces a wrong version rather than failing.
+	/// </summary>
+	/// <param name="localPath">The root path of the cloned repository.</param>
+	/// <param name="relativePath">The workflow file, relative to the repository root.</param>
+	/// <param name="result">The failed rule result being remediated.</param>
+	/// <param name="applied">List to append successfully modified file paths to.</param>
+	/// <param name="onOutput">Optional callback for progress messages.</param>
+	public static void EnsureCheckoutFetchDepth(
+		string localPath,
+		string relativePath,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set fetch-depth.");
+			return;
+		}
+
+		var original = File.ReadAllText(fullPath);
+		var newline = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+		var lines = original.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').ToList();
+
+		var changed = false;
+
+		// Walk backwards so the line indices of steps not yet visited stay valid as lines are inserted.
+		for (var i = lines.Count - 1; i >= 0; i--)
+		{
+			var match = CheckoutUsesLine().Match(lines[i]);
+			if (!match.Success)
+			{
+				continue;
+			}
+
+			// The indent of the step's keys: for "- uses: ..." that is the column of "uses", so the
+			// "with:" we add lines up with it rather than with the dash.
+			var keyIndent = match.Groups["lead"].Value.Length + match.Groups["dash"].Value.Length;
+			changed |= SetFetchDepthForStep(lines, i, keyIndent);
+		}
+
+		if (!changed)
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] No actions/checkout step to change in {relativePath} — skipping.");
+			return;
+		}
+
+		File.WriteAllText(fullPath, string.Join(newline, lines));
+		applied.Add(relativePath);
+		onOutput?.Invoke($"✅ [{result.RuleId}] Set fetch-depth: 0 on actions/checkout in {relativePath}");
+	}
+
+	/// <summary>
+	/// Sets <c>fetch-depth: 0</c> on the single checkout step whose <c>uses:</c> line is at
+	/// <paramref name="usesLineIndex"/>, mutating <paramref name="lines"/> in place.
+	/// </summary>
+	/// <returns>True if any line was changed or inserted.</returns>
+	private static bool SetFetchDepthForStep(List<string> lines, int usesLineIndex, int keyIndent)
+	{
+		// The step runs until a line that is neither blank nor indented past the step's keys.
+		var end = usesLineIndex + 1;
+		while (end < lines.Count && (lines[end].Trim().Length == 0 || IndentOf(lines[end]) >= keyIndent))
+		{
+			// A sibling list item at the step's own indent starts the next step.
+			if (IndentOf(lines[end]) == keyIndent && lines[end].TrimStart().StartsWith('-'))
+			{
+				break;
+			}
+
+			end++;
+		}
+
+		var withIndex = -1;
+		for (var i = usesLineIndex + 1; i < end; i++)
+		{
+			if (IndentOf(lines[i]) == keyIndent && lines[i].Trim() == "with:")
+			{
+				withIndex = i;
+				break;
+			}
+		}
+
+		if (withIndex < 0)
+		{
+			lines.Insert(usesLineIndex + 1, $"{new string(' ', keyIndent)}with:");
+			lines.Insert(usesLineIndex + 2, $"{new string(' ', keyIndent + 2)}fetch-depth: 0");
+			return true;
+		}
+
+		// Reuse whatever indent the existing "with:" entries already use.
+		var entryIndent = keyIndent + 2;
+		for (var i = withIndex + 1; i < end; i++)
+		{
+			if (lines[i].Trim().Length == 0)
+			{
+				continue;
+			}
+
+			if (IndentOf(lines[i]) <= keyIndent)
+			{
+				break;
+			}
+
+			entryIndent = IndentOf(lines[i]);
+			break;
+		}
+
+		for (var i = withIndex + 1; i < end; i++)
+		{
+			if (IndentOf(lines[i]) <= keyIndent && lines[i].Trim().Length > 0)
+			{
+				break;
+			}
+
+			var existing = FetchDepthLine().Match(lines[i]);
+			if (!existing.Success)
+			{
+				continue;
+			}
+
+			if (existing.Groups["value"].Value == "0")
+			{
+				return false;
+			}
+
+			lines[i] = $"{new string(' ', IndentOf(lines[i]))}fetch-depth: 0";
+			return true;
+		}
+
+		lines.Insert(withIndex + 1, $"{new string(' ', entryIndent)}fetch-depth: 0");
+		return true;
+	}
+
+	private static int IndentOf(string line) => line.Length - line.TrimStart(' ').Length;
+
+	[GeneratedRegex(@"^(?<lead>\s*)(?<dash>-\s+)?uses:\s*actions/checkout@", RegexOptions.IgnoreCase)]
+	private static partial Regex CheckoutUsesLine();
+
+	[GeneratedRegex(@"^\s*fetch-depth:\s*(?<value>\S+)\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex FetchDepthLine();
 }
 
