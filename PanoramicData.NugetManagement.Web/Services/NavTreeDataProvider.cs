@@ -247,16 +247,25 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			return null;
 		}
 
-		var totalIssues = visibleRows?.Sum(r => r.TotalFailures) ?? 0;
-		var hasAnyErrors = visibleRows?.Any(r => r.TotalCriticals > 0 || r.TotalErrors > 0) == true;
-		var hasAnyWarnings = visibleRows?.Any(r => r.TotalWarnings > 0) == true;
+		// Excluding a repository is a decision that it does not count, so it takes no part in any
+		// figure or colour above it. It stays in visibleRows, and so stays in the tree dimmed, because
+		// a repository that vanished when excluded could never be brought back. Note that IsGoverned
+		// answers a different question — whether the nuspec names one of our organisations — and says
+		// nothing about what we chose to exclude.
+		var countedRows = visibleRows?
+			.Where(r => !_runtimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
+			.ToList();
 
-		var reposStatus = NavHealthRollup.ForRepositories(visibleRows);
+		var totalIssues = countedRows?.Sum(r => r.TotalFailures) ?? 0;
+		var hasAnyErrors = countedRows?.Any(r => r.TotalCriticals > 0 || r.TotalErrors > 0) == true;
+		var hasAnyWarnings = countedRows?.Any(r => r.TotalWarnings > 0) == true;
+
+		var reposStatus = NavHealthRollup.ForRepositories(countedRows);
 
 		// The Issues branch is built before the organisation node it hangs off, because that node is
 		// coloured by the worst of the two branches and NavItem is immutable once created.
 		var issuesItems = new List<NavItem>();
-		var issuesStatus = AddIssueHierarchy(issuesItems, organization, issuesKey, orgKey, visibleRows);
+		var issuesStatus = AddIssueHierarchy(issuesItems, organization, issuesKey, orgKey, countedRows);
 
 		var orgStatus = NavHealthRollup.Worst(reposStatus, issuesStatus);
 
@@ -342,6 +351,22 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// publishes four — appeared four times, and the same findings were reported and remediated once
 	/// per package.
 	/// </remarks>
+	/// <summary>
+	/// The health a package's version-versus-tag comparison deserves.
+	/// </summary>
+	/// <remarks>
+	/// Three states, because <see cref="PublishedPackage.MatchesTag"/> has three: in step is green,
+	/// disagreeing is amber, and a missing version or tag is genuinely unknown and stays grey. Folding
+	/// the first and the last together — which is what a plain "is it out of step?" boolean does — is
+	/// what made a package sitting exactly at the tag look unassessed.
+	/// </remarks>
+	private static PackageHealthStatus PackageTagStatus(bool? matchesTag) => matchesTag switch
+	{
+		true => PackageHealthStatus.Success,
+		false => PackageHealthStatus.Warning,
+		_ => PackageHealthStatus.Unknown
+	};
+
 	private void AddRepositoryNodes(
 		List<NavItem> items,
 		string organization,
@@ -386,12 +411,19 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 			var packagesKey = PackagesKey(row.RepositoryFullName);
 
+			// The branch takes the worst of its packages rather than a fixed grey. It was hardcoded to
+			// text-muted, so it read as "something here is unknown" on every repository, including ones
+			// where every package was known to be exactly at the tag.
+			var packagesStatus = NavHealthRollup.Worst(
+				row.Packages.Select(package => PackageTagStatus(package.MatchesTag(row.LatestTag))));
+
 			items.Add(new NavItem
 			{
 				Key = packagesKey,
 				Text = $"Packages ({row.Packages.Count})",
 				ParentKey = repoKey,
-				IconCss = "fas fa-box text-muted",
+				IconCss = NavHealthRollup.Icon("fas fa-box", packagesStatus),
+				HealthStatus = packagesStatus,
 				View = NavView.None,
 				Organization = organization,
 				RepositoryFullName = row.RepositoryFullName,
@@ -402,7 +434,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 			foreach (var package in row.Packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))
 			{
-				var outOfStep = package.MatchesTag(row.LatestTag) == false;
+				var packageStatus = PackageTagStatus(package.MatchesTag(row.LatestTag));
 
 				items.Add(new NavItem
 				{
@@ -411,9 +443,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 						? package.PackageId
 						: $"{package.PackageId}  {package.LatestVersion}",
 					ParentKey = packagesKey,
-					// Amber where the published version and the repository's tag disagree: what is on
-					// nuget.org is not the source the tag points at.
-					IconCss = outOfStep ? "fas fa-cube text-warning" : "fas fa-cube text-muted",
+					IconCss = NavHealthRollup.Icon("fas fa-cube", packageStatus),
+					HealthStatus = packageStatus,
 					View = NavView.PackageDetail,
 					Organization = organization,
 					RepositoryFullName = row.RepositoryFullName,

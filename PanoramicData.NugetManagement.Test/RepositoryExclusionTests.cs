@@ -75,6 +75,33 @@ public class RepositoryExclusionTests(ITestOutputHelper output) : TestWithOutput
 		service.IsRepositoryExcluded(null).Should().BeFalse();
 	}
 
+	[Fact]
+	public void ExcludingShouldSurviveARestart()
+	{
+		// The decision is only worth making if it outlives the process. ExcludingShouldBeRemembered
+		// uses a single service and so only proves the in-memory set was updated; the exclusion has to
+		// reach the settings file and come back on the next run to be worth anything.
+		CreateService().SetRepositoryExcluded("datahint-eu/vizor-echarts", true);
+
+		var afterRestart = CreateService();
+
+		afterRestart.IsRepositoryExcluded("datahint-eu/vizor-echarts").Should().BeTrue();
+		afterRestart.ExcludedRepositories.Should().Contain("datahint-eu/vizor-echarts");
+	}
+
+	[Fact]
+	public void SavingAnotherSettingShouldNotDiscardExclusions()
+	{
+		// Every setter writes the whole file, so a snapshot that forgets a field loses it on the next
+		// unrelated save as well as on its own.
+		var service = CreateService();
+		service.SetRepositoryExcluded("datahint-eu/vizor-echarts", true);
+
+		service.SetIncludeInfoInAiPrompt(true);
+
+		CreateService().IsRepositoryExcluded("datahint-eu/vizor-echarts").Should().BeTrue();
+	}
+
 	private RuntimeSettingsService CreateService()
 	{
 		// A settings file of this test's own, so the developer's real settings are neither read nor

@@ -371,12 +371,17 @@ public class RuntimeSettingsService
 			RuntimeSettings snapshot;
 			lock (_lock)
 			{
+				// Every property of RuntimeSettings must be copied here. This snapshot is what gets
+				// written, so a property left out is not merely stale on disk — it is erased, and erased
+				// by every unrelated setter too, since they all save the whole file. ExcludedRepositories
+				// was missing, so excluding a repository appeared to work and was gone by the next run.
 				snapshot = new RuntimeSettings
 				{
 					LocalReposRoot = _runtimeSettings.LocalReposRoot,
 					PreferredIdeId = _runtimeSettings.PreferredIdeId,
 					IncludeInfoInAiPrompt = _runtimeSettings.IncludeInfoInAiPrompt,
-					Organizations = [.. _runtimeSettings.Organizations]
+					Organizations = [.. _runtimeSettings.Organizations],
+					ExcludedRepositories = [.. _runtimeSettings.ExcludedRepositories]
 				};
 			}
 

@@ -2936,7 +2936,13 @@ else
 				   them. Home keeps the guidance it always had. *@
 				@RenderDashboardView()
 				break;
+			case NavView.RepositoryDetail:
 			case NavView.PackageDetail:
+				@* Both show the same thing — the rules a repository is failing. The rules evaluate a
+				   repository, not a package, so a repository node and the package node beneath it have
+				   the same findings to show. Without the RepositoryDetail case the switch fell to its
+				   default and showed the getting-started placeholder, so selecting a repository looked
+				   like selecting nothing at all. *@
 				@RenderPackageDetailView()
 				break;
 			case NavView.CategoryDetail:
