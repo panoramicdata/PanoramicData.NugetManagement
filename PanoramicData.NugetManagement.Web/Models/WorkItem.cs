@@ -43,6 +43,18 @@ public sealed class WorkItem
 	public string? Organization { get; init; }
 
 	/// <summary>
+	/// The repository this work acts on, as "org/repo", or null when it spans more than one. What the
+	/// toolbar gates against: work on one repository never closes another repository's buttons.
+	/// </summary>
+	public string? RepositoryFullName { get; init; }
+
+	/// <summary>
+	/// The workflow step this work performs, or null for work that is not a step on the toolbar.
+	/// Queueing a step closes it and everything downstream — see <see cref="Services.WorkflowGate"/>.
+	/// </summary>
+	public WorkflowStep? Step { get; init; }
+
+	/// <summary>
 	/// Identifies work that would repeat what is already queued. A second enqueue with the same key
 	/// is folded into the pending item rather than queued again.
 	/// </summary>

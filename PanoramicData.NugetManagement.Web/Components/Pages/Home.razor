@@ -4301,7 +4301,9 @@ else
 			$"Fix {_selectedRow.PackageId}",
 			_selectedRow.Organization,
 			$"fix-all:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
-			(progress, cancellationToken) => FixAllCoreAsync(capturedRow, progress, cancellationToken));
+			(progress, cancellationToken) => FixAllCoreAsync(capturedRow, progress, cancellationToken),
+			WorkflowStep.Fix,
+			_selectedRow.RepositoryFullName);
 	}
 
 	private async Task FixAllCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
@@ -4542,7 +4544,9 @@ else
 			$"Build {_selectedRow.PackageId}",
 			_selectedRow.Organization,
 			$"build:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
-			(progress, cancellationToken) => BuildCoreAsync(capturedRow, progress, cancellationToken));
+			(progress, cancellationToken) => BuildCoreAsync(capturedRow, progress, cancellationToken),
+			WorkflowStep.Build,
+			_selectedRow.RepositoryFullName);
 	}
 
 	private async Task BuildCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
@@ -4606,7 +4610,9 @@ else
 			$"Test {_selectedRow.PackageId}",
 			_selectedRow.Organization,
 			$"test:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
-			(progress, cancellationToken) => RunTestsCoreAsync(capturedRow, progress, cancellationToken));
+			(progress, cancellationToken) => RunTestsCoreAsync(capturedRow, progress, cancellationToken),
+			WorkflowStep.Test,
+			_selectedRow.RepositoryFullName);
 	}
 
 	private async Task RunTestsCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
@@ -4670,7 +4676,9 @@ else
 			$"Git sync {_selectedRow.PackageId}",
 			_selectedRow.Organization,
 			$"sync:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
-			(progress, cancellationToken) => GitSyncCoreAsync(capturedRow, progress, cancellationToken));
+			(progress, cancellationToken) => GitSyncCoreAsync(capturedRow, progress, cancellationToken),
+			WorkflowStep.GitSync,
+			_selectedRow.RepositoryFullName);
 	}
 
 	private async Task GitSyncCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
@@ -4744,7 +4752,9 @@ else
 			$"Publish {_selectedRow.PackageId}",
 			_selectedRow.Organization,
 			$"publish:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
-			(progress, cancellationToken) => RunPublishCoreAsync(capturedRow, progress, cancellationToken));
+			(progress, cancellationToken) => RunPublishCoreAsync(capturedRow, progress, cancellationToken),
+			WorkflowStep.Publish,
+			_selectedRow.RepositoryFullName);
 	}
 
 	private async Task RunPublishCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
@@ -5200,9 +5210,11 @@ else
 		string title,
 		string? organization,
 		string dedupKey,
-		Func<IProgress<string>, CancellationToken, Task> run)
+		Func<IProgress<string>, CancellationToken, Task> run,
+		WorkflowStep? step = null,
+		string? repositoryFullName = null)
 	{
-		var item = WorkQueue.Enqueue(title, organization, dedupKey, this, run);
+		var item = WorkQueue.Enqueue(title, organization, dedupKey, this, run, step, repositoryFullName);
 		if (item is null)
 		{
 			// Folded into an identical pending item. Said out loud, because a button that appears to do
@@ -5268,7 +5280,7 @@ else
 				_rows = Cache.GetCachedRows() ?? _rows;
 				await ReloadTreePreservingExpansionAsync();
 			}
-		});
+		}, work.Step, work.RepositoryFullName);
 
 	private void OnWorkQueueChanged() => _ = SafeStateHasChangedAsync();
 
@@ -6059,7 +6071,9 @@ else
 			$"Commit & push {_selectedRow.PackageId}",
 			_selectedRow.Organization,
 			$"commit-push:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
-			(progress, cancellationToken) => CommitAndPushCoreAsync(capturedRow, progress, cancellationToken));
+			(progress, cancellationToken) => CommitAndPushCoreAsync(capturedRow, progress, cancellationToken),
+			WorkflowStep.CommitAndPush,
+			_selectedRow.RepositoryFullName);
 	}
 
 	private async Task CommitAndPushCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
@@ -6130,18 +6144,6 @@ else
 	}
 
 	// === Workflow step indicators ===
-
-	private enum WorkflowStep
-	{
-		GitSync,
-		Reassess,
-		Fix,
-		FixWithAi,
-		Build,
-		Test,
-		CommitAndPush,
-		Publish
-	}
 
 	private bool IsStepDone(WorkflowStep step)
 	{

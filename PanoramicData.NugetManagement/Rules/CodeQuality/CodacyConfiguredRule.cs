@@ -115,8 +115,7 @@ public class CodacyConfiguredRule : RuleBase
 					_codacyMaximumPageSize,
 					cancellationToken).ConfigureAwait(false);
 
-				levels.AddRange(page.Data
-					.Select(file => TryParseCodacyLevel(file.GradeLetter, out var level) ? level : CodacyLevel.F));
+				levels.AddRange(CollectGradedLevels(page.Data.Select(file => file.GradeLetter)));
 
 				cursor = page.Pagination?.Cursor;
 			}
@@ -203,15 +202,37 @@ public class CodacyConfiguredRule : RuleBase
 		return readme is not null && Contains(readme, "codacy");
 	}
 
-	private static bool TryParseCodacyLevel(string? gradeLetter, out CodacyLevel level)
+	/// <summary>
+	/// Turns a page of Codacy grade letters into the levels the gate should judge, dropping the files
+	/// Codacy never graded.
+	/// </summary>
+	/// <remarks>
+	/// Codacy's file listing returns every file on the branch, not just the
+	/// analysed ones, and Codacy only grades what it analyses: markdown, JSON, images and the solution
+	/// file come back with no grade letter at all. Folding that absence into <see cref="CodacyLevel.F"/>
+	/// made the worst file in every repository an F, so CQ-03 failed repositories that had zero issues
+	/// and told them to fix a grade they never had.
+	/// </remarks>
+	internal static List<CodacyLevel> CollectGradedLevels(IEnumerable<string?> gradeLetters)
 	{
-		level = CodacyLevel.F;
-		if (string.IsNullOrWhiteSpace(gradeLetter))
+		var levels = new List<CodacyLevel>();
+
+		foreach (var gradeLetter in gradeLetters)
 		{
-			return false;
+			// No letter means "not analysed", which is not a grade and must not become one.
+			if (string.IsNullOrWhiteSpace(gradeLetter))
+			{
+				continue;
+			}
+
+			// A letter we cannot parse is a grade we do not understand rather than a good one, so it
+			// stays conservative and the gate errs towards failing rather than towards silence.
+			levels.Add(Enum.TryParse<CodacyLevel>(gradeLetter.Trim(), ignoreCase: true, out var level)
+				? level
+				: CodacyLevel.F);
 		}
 
-		return Enum.TryParse(gradeLetter.Trim(), ignoreCase: true, out level);
+		return levels;
 	}
 
 	private static int GetLevelRank(CodacyLevel level)

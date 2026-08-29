@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -21,6 +21,11 @@
 		<PackageTags>NuGet;Management;GitHub;Assessment;BestPractices;PanoramicData</PackageTags>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- The test project exercises internal helpers that are not part of the package's API. -->
+		<InternalsVisibleTo Include="PanoramicData.NugetManagement.Test" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Codacy.Api" />
