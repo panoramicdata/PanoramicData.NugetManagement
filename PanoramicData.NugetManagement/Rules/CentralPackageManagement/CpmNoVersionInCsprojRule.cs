@@ -5,6 +5,12 @@ namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
 /// Checks that .csproj files do not have Version= attributes on PackageReference elements.
+/// <para>
+/// Projects that opt out of central package management are excluded. CPM is resolved per
+/// directory, not per repository: a project whose nearest <c>Directory.Packages.props</c> sets
+/// <c>ManagePackageVersionsCentrally</c> to <c>false</c> gets its versions from the inline
+/// attributes and nowhere else, so removing them leaves it unable to restore (NU1015).
+/// </para>
 /// </summary>
 public partial class CpmNoVersionInCsprojRule : RuleBase
 {
@@ -37,10 +43,19 @@ public partial class CpmNoVersionInCsprojRule : RuleBase
 			}
 
 			// Check for PackageReference with Version= attribute (but not PackageVersion which is correct)
-			if (PackageReferenceVersionPattern().IsMatch(content))
+			if (!PackageReferenceVersionPattern().IsMatch(content))
 			{
-				violations.Add(csproj);
+				continue;
 			}
+
+			// An inline version is only a violation where CPM actually governs the project. Under an
+			// opt-out it is the sole source of the version, and removing it breaks restore.
+			if (OptsOutOfCentralPackageManagement(context, csproj))
+			{
+				continue;
+			}
+
+			violations.Add(csproj);
 		}
 
 		return Task.FromResult(violations.Count == 0
@@ -57,5 +72,42 @@ public partial class CpmNoVersionInCsprojRule : RuleBase
 						["projects"] = violations.ToArray()
 					}
 				}));
+	}
+
+	/// <summary>
+	/// Whether a project sits under an explicit central package management opt-out, resolved the way
+	/// MSBuild resolves the property: the nearest <c>Directory.Packages.props</c> at or above the
+	/// project's own directory decides, and nearer wins.
+	/// </summary>
+	/// <remarks>
+	/// Only an explicit <c>false</c> exempts a project. A repository with no
+	/// <c>Directory.Packages.props</c> at all is left to CPM-01, which is the rule that asks for one.
+	/// </remarks>
+	private static bool OptsOutOfCentralPackageManagement(RepositoryContext context, string csprojPath)
+	{
+		var directory = csprojPath.Replace(@"\", "/");
+		var lastSeparator = directory.LastIndexOf('/');
+		directory = lastSeparator < 0 ? string.Empty : directory[..lastSeparator];
+
+		while (true)
+		{
+			var candidate = directory.Length == 0
+				? "Directory.Packages.props"
+				: $"{directory}/Directory.Packages.props";
+
+			var props = context.GetFileContent(candidate);
+			if (props is not null)
+			{
+				return HasMsBuildProperty(props, "ManagePackageVersionsCentrally", "false");
+			}
+
+			if (directory.Length == 0)
+			{
+				return false;
+			}
+
+			var separator = directory.LastIndexOf('/');
+			directory = separator < 0 ? string.Empty : directory[..separator];
+		}
 	}
 }

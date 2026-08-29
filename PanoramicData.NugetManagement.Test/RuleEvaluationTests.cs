@@ -2121,7 +2121,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["global.json"] = $"{{\"sdk\":{{\"version\":\"{Standards.LatestDotNetSdkVersion}\",\"rollForward\":\"latestFeature\"}}}}"
+			["global.json"] = $"{{\"sdk\":{{\"version\":\"{Standards.DotNetSdkPinVersion}\",\"rollForward\":\"latestMinor\"}}}}"
 		});
 
 		var result = await GetRule("VER-03").EvaluateAsync(context, CancellationToken.None);
@@ -2142,7 +2142,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["global.json"] = "{\"sdk\":{\"version\":\"10.0.100\",\"rollForward\":\"latestFeature\"}}"
+			["global.json"] = "{\"sdk\":{\"version\":\"9.0.100\",\"rollForward\":\"latestFeature\"}}"
 		});
 
 		var result = await GetRule("VER-03").EvaluateAsync(context, CancellationToken.None);

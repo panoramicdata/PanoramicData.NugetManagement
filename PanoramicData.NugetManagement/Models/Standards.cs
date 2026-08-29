@@ -25,6 +25,26 @@ public static class Standards
 	public static string LatestDotNetSdkVersion => field ??= DetectLatestSdkVersion();
 
 	/// <summary>
+	/// The SDK version to pin in <c>global.json</c>: the feature-band floor for the target major
+	/// version, for example <c>10.0.100</c>.
+	/// </summary>
+	/// <remarks>
+	/// Deliberately NOT <see cref="LatestDotNetSdkVersion"/>. That is whatever the machine running
+	/// this tool happens to have installed, and pinning it makes one machine's install list a build
+	/// requirement for everyone else: a repository pinned to a 4xx band cannot run any dotnet command
+	/// on a machine whose newest band is 3xx, because rollForward never rolls down. The floor plus
+	/// <c>latestMinor</c> expresses "a .NET N SDK", which is what the pin is actually for.
+	/// </remarks>
+	public static string DotNetSdkPinVersion
+	{
+		get
+		{
+			var parts = LatestDotNetSdkVersion.Split('.');
+			return parts.Length >= 2 ? $"{parts[0]}.{parts[1]}.100" : LatestDotNetSdkVersion;
+		}
+	}
+
+	/// <summary>
 	/// Detects the latest installed .NET SDK version by running <c>dotnet --list-sdks</c>
 	/// and selecting the highest version that matches the current major version (10).
 	/// </summary>
@@ -255,8 +275,8 @@ public static class Standards
 			? $$"""
 				{
 				  "sdk": {
-					"version": "{{LatestDotNetSdkVersion}}",
-					"rollForward": "latestFeature"
+					"version": "{{DotNetSdkPinVersion}}",
+					"rollForward": "latestMinor"
 				  },
 				  "test": {
 					"runner": "{{MtpTestRunnerName}}"
@@ -266,8 +286,8 @@ public static class Standards
 			: $$"""
 				{
 				  "sdk": {
-					"version": "{{LatestDotNetSdkVersion}}",
-					"rollForward": "latestFeature"
+					"version": "{{DotNetSdkPinVersion}}",
+					"rollForward": "latestMinor"
 				  }
 				}
 				""";
