@@ -92,6 +92,23 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		// next refresh.
 		var fallbackOrganization = organizations.Count > 0 ? organizations[0] : _configuredOrganizationName;
 
+		// The organisations are built first because the Organisations node is coloured by the worst of
+		// them, and NavItem is immutable once created.
+		var orgItems = new List<NavItem>();
+		var orgStatuses = new List<PackageHealthStatus>();
+
+		for (var orgIndex = 0; orgIndex < organizations.Count; orgIndex++)
+		{
+			var orgStatus = AddOrganizationNodes(orgItems, organizations[orgIndex], orgIndex, rows, fallbackOrganization);
+
+			if (orgStatus is not null)
+			{
+				orgStatuses.Add(orgStatus.Value);
+			}
+		}
+
+		var estateStatus = NavHealthRollup.Worst(orgStatuses);
+
 		var items = new List<NavItem>
 		{
 			// Selecting Organisations shows the estate overview: it is the one node whose scope is every
@@ -100,25 +117,25 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			{
 				Key = OrganisationsKey,
 				Text = "Organisations",
-				IconCss = "fas fa-sitemap",
+				IconCss = NavHealthRollup.Icon("fas fa-sitemap", estateStatus),
 				View = NavView.Dashboard,
-				IsLeaf = false
+				IsLeaf = false,
+				HealthStatus = estateStatus
 			}
 		};
 
-		for (var orgIndex = 0; orgIndex < organizations.Count; orgIndex++)
-		{
-			AddOrganizationNodes(items, organizations[orgIndex], orgIndex, rows, fallbackOrganization);
-		}
+		items.AddRange(orgItems);
 
 		return DeduplicateKeys(items);
 	}
 
 	/// <summary>
 	/// Adds one organisation's whole subtree: the organisation node, its Repositories branch (with
-	/// packages, categories and failing rules) and its Issues branch.
+	/// packages, categories and failing rules) and its Issues branch. Returns the organisation's rolled-up
+	/// health so the Organisations node above can take the worst of them, or null when the organisation
+	/// was filtered out entirely.
 	/// </summary>
-	private void AddOrganizationNodes(
+	private PackageHealthStatus? AddOrganizationNodes(
 		List<NavItem> items,
 		string organization,
 		int orgIndex,
@@ -142,19 +159,28 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		var isFiltering = FilterRegex is not null || LocalOnly;
 		if (isFiltering && (visibleRows is null || visibleRows.Count == 0))
 		{
-			return;
+			return null;
 		}
 
 		var totalIssues = visibleRows?.Sum(r => r.TotalFailures) ?? 0;
 		var hasAnyErrors = visibleRows?.Any(r => r.TotalCriticals > 0 || r.TotalErrors > 0) == true;
 		var hasAnyWarnings = visibleRows?.Any(r => r.TotalWarnings > 0) == true;
 
+		var reposStatus = NavHealthRollup.ForRepositories(visibleRows);
+
+		// The Issues branch is built before the organisation node it hangs off, because that node is
+		// coloured by the worst of the two branches and NavItem is immutable once created.
+		var issuesItems = new List<NavItem>();
+		var issuesStatus = AddIssueHierarchy(issuesItems, organization, issuesKey, orgKey, visibleRows);
+
+		var orgStatus = NavHealthRollup.Worst(reposStatus, issuesStatus);
+
 		items.Add(new NavItem
 		{
 			Key = orgKey,
 			Text = organization,
 			ParentKey = OrganisationsKey,
-			IconCss = "fas fa-people-group",
+			IconCss = NavHealthRollup.Icon("fas fa-people-group", orgStatus),
 			View = NavView.Home,
 			Organization = organization,
 			IsLeaf = false,
@@ -162,6 +188,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			IssueCount = totalIssues,
 			HasErrors = hasAnyErrors,
 			HasWarnings = hasAnyWarnings,
+			HealthStatus = orgStatus,
 			IsBusy = IsLoading
 		});
 
@@ -170,14 +197,15 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			Key = reposKey,
 			Text = "Repositories",
 			ParentKey = orgKey,
-			IconCss = "fas fa-cubes",
+			IconCss = NavHealthRollup.Icon("fas fa-cubes", reposStatus),
 			View = NavView.Home,
 			Organization = organization,
 			IsLeaf = false,
-			SortOrder = 0
+			SortOrder = 0,
+			HealthStatus = reposStatus
 		});
 
-		AddIssueHierarchy(items, organization, issuesKey, orgKey, visibleRows);
+		items.AddRange(issuesItems);
 
 		AddPackageNodes(items, organization, reposKey, visibleRows);
 
@@ -195,6 +223,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				IsLeaf = true
 			});
 		}
+
+		return orgStatus;
 	}
 
 	/// <summary>
@@ -297,7 +327,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// affected repositories and the bulk actions belong in the centre panel, which has room for
 	/// per-repository checkboxes.
 	/// </summary>
-	private static void AddIssueHierarchy(
+	/// <returns>
+	/// The rolled-up health of the branch: the worst severity across its categories, or grey while any
+	/// repository is unassessed, since the issues of an unassessed repository are not in here yet.
+	/// </returns>
+	private static PackageHealthStatus AddIssueHierarchy(
 		List<NavItem> items,
 		string organization,
 		string issuesKey,
@@ -318,17 +352,20 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		var categories = view?.Categories ?? [];
 
+		var issuesStatus = NavHealthRollup.ForIssues(visibleRows, categories.Select(c => c.Severity));
+
 		items.Add(new NavItem
 		{
 			Key = issuesKey,
 			Text = "Issues",
 			ParentKey = orgKey,
-			IconCss = "fas fa-layer-group",
+			IconCss = NavHealthRollup.Icon("fas fa-layer-group", issuesStatus),
 			View = NavView.Issues,
 			Organization = organization,
 			IsLeaf = categories.Count == 0,
 			SortOrder = 1,
-			IssueCount = categories.Sum(c => c.IssueClasses.Sum(i => i.AffectedRepositoryCount))
+			IssueCount = categories.Sum(c => c.IssueClasses.Sum(i => i.AffectedRepositoryCount)),
+			HealthStatus = issuesStatus
 		});
 
 		for (var categoryIndex = 0; categoryIndex < categories.Count; categoryIndex++)
@@ -376,6 +413,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				});
 			}
 		}
+
+		return issuesStatus;
 	}
 
 	/// <summary>
