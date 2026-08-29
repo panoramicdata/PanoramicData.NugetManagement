@@ -144,12 +144,15 @@ public class CodacyConfiguredRule : RuleBase
 		}
 		catch (Exception ex)
 		{
-			// If the Codacy API is unreachable or returns 404, fall back to
-			// checking for local evidence of Codacy integration (config files
-			// or a Codacy badge in the README).
+			// An unreachable API leaves the quality gate unknown, not met. Local evidence — a
+			// .codacy.yml, or a badge in the README — says somebody once set Codacy up. It says nothing
+			// about the code's quality today, and reporting it as a pass hid a token that could not see
+			// a single repository: 69 repositories showed green, every one on the strength of a badge,
+			// so the split between pass and fail was by README content rather than by Codacy.
 			if (HasLocalCodacyEvidence(context))
 			{
-				return Pass($"Codacy API unavailable ({ex.Message}), but local Codacy configuration found.");
+				return NotApplicable(
+					$"Codacy is configured locally, but the quality gate could not be evaluated: {ex.Message}");
 			}
 
 			return Fail(
