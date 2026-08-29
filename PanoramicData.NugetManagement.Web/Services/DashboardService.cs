@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Options;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
-using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Remediations;
@@ -1350,6 +1349,30 @@ public class DashboardService
 						Status = RepoApplyStatus.NothingToDo,
 						Message = "No changes to apply after sync."
 					});
+					continue;
+				}
+
+				// Verify before pushing. The regression guard can only revert *after* a push, which
+				// leaves a live branch broken in the meantime - and it cannot attribute the breakage
+				// at all when a remediation has broken the toolchain, because the control build fails
+				// too. Building here makes a bad remediation cost a skipped repository instead.
+				onOutput?.Invoke($"🔎 Verifying {name} builds before pushing...");
+				var preflight = await _localRepo.BuildWithRestoreAsync(name, onOutput, cancellationToken).ConfigureAwait(false);
+				if (!preflight.Success)
+				{
+					// Same principle as the cancellation path: work that never reached a commit is
+					// undone, so the clone is left as it was found rather than half-remediated.
+					await RevertUncommittedAsync(row, name, onOutput).ConfigureAwait(false);
+					phase = RepoApplyPhase.NotStarted;
+					outcome.Results.Add(new RepoApplyResult
+					{
+						RepositoryFullName = name,
+						// A refusal is a skip, not a failure: nothing was left behind.
+						Status = RepoApplyStatus.Skipped,
+						Message = "Not pushed: the repository does not build after applying the remediation. "
+							+ "The change was reverted locally. This is a bug in the remediation."
+					});
+					onOutput?.Invoke($"⛔ {name}: does not build after applying - not pushed, change reverted.");
 					continue;
 				}
 

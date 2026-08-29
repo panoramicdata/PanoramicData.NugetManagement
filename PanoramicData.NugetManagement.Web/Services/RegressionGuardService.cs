@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
 
@@ -97,8 +95,19 @@ public sealed class RegressionGuardService(
 		var parentBuild = await localRepo.BuildAtCommitAsync(repositoryFullName, lastGoodRef, null, cancellationToken).ConfigureAwait(false);
 		if (!parentBuild.Success)
 		{
-			SetStatus(repositoryFullName, GuardState.BuildFailingNotOurs,
-				$"Build is failing, but it was already broken before our {ourCount} commit(s) — left in place for investigation.");
+			// The control build failing does NOT prove the breakage predates us. It is equally
+			// consistent with the toolchain being unavailable, or with a remediation that broke the
+			// build at every commit - pinning global.json to an uninstalled SDK fails HEAD and the
+			// control commit identically. Treating that as exoneration disables the guard exactly
+			// when the damage is worst, so it is reported as inconclusive and left visible.
+			logger.LogWarning(
+				"Regression guard: {Repo} is failing and the control build at {LastGood} also failed; "
+				+ "cannot attribute. Our {Count} commit(s) remain in place and need a human look.",
+				repositoryFullName, lastGoodRef, ourCount);
+			SetStatus(repositoryFullName, GuardState.VerificationInconclusive,
+				$"Build is failing and the control build at {lastGoodRef} also failed, so it could not be "
+				+ $"established whether our {ourCount} commit(s) caused it. They are still in place. "
+				+ "Check the toolchain on this host before assuming the breakage predates them.");
 			return;
 		}
 
