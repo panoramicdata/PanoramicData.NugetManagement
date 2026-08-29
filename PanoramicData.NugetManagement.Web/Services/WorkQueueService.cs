@@ -61,12 +61,16 @@ public sealed class WorkQueueService
 	/// <param name="dedupKey">Identifies work that would repeat what is already pending.</param>
 	/// <param name="ownerId">The component that will execute the item.</param>
 	/// <param name="run">The work itself.</param>
+	/// <param name="step">The workflow step this work performs, or null when it is not one.</param>
+	/// <param name="repositoryFullName">The repository the work acts on, or null when it spans several.</param>
 	public WorkItem? Enqueue(
 		string title,
 		string? organization,
 		string dedupKey,
 		object ownerId,
-		Func<IProgress<string>, CancellationToken, Task> run)
+		Func<IProgress<string>, CancellationToken, Task> run,
+		WorkflowStep? step = null,
+		string? repositoryFullName = null)
 	{
 		WorkItem item;
 
@@ -87,6 +91,8 @@ public sealed class WorkQueueService
 				Organization = organization,
 				DedupKey = dedupKey,
 				OwnerId = ownerId,
+				Step = step,
+				RepositoryFullName = repositoryFullName,
 				Run = run
 			};
 

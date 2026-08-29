@@ -1,4 +1,4 @@
-using Codacy.Api;
+﻿using Codacy.Api;
 using Codacy.Api.Models;
 using PanoramicData.NugetManagement.Models;
 
@@ -20,6 +20,11 @@ public class CodacyConfiguredRule : RuleBase
 
 	/// <inheritdoc />
 	public override AssessmentSeverity Severity => AssessmentSeverity.Warning;
+
+	/// <summary>
+	/// The largest page Codacy's file listing accepts. Anything above this is a 400.
+	/// </summary>
+	private const int _codacyMaximumPageSize = 100;
 
 	/// <inheritdoc />
 	public override async Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
@@ -90,21 +95,31 @@ public class CodacyConfiguredRule : RuleBase
 
 			var issueCount = overview?.Data?.Counts?.Levels?.Sum(level => level.Total) ?? 0;
 
-			var files = await client.Repositories.ListFilesAsync(
-				Provider.Github,
-				organizationName,
-				repositoryName,
-				context.DefaultBranch,
-				null,
-				null,
-				null,
-				null,
-				500,
-				cancellationToken).ConfigureAwait(false);
+			var levels = new List<CodacyLevel>();
+			string? cursor = null;
 
-			var levels = files.Data
-				.Select(file => TryParseCodacyLevel(file.GradeLetter, out var level) ? level : CodacyLevel.F)
-				.ToList();
+			// Codacy rejects a page size above 100, so the worst file in a large repository is only
+			// reachable by paging. Asking for 500 in one go returned 400, and the whole gate fell into
+			// the catch below and reported itself unevaluated.
+			do
+			{
+				var page = await client.Repositories.ListFilesAsync(
+					Provider.Github,
+					organizationName,
+					repositoryName,
+					context.DefaultBranch,
+					null,
+					null,
+					null,
+					cursor,
+					_codacyMaximumPageSize,
+					cancellationToken).ConfigureAwait(false);
+
+				levels.AddRange(CollectGradedLevels(page.Data.Select(file => file.GradeLetter)));
+
+				cursor = page.Pagination?.Cursor;
+			}
+			while (!string.IsNullOrEmpty(cursor));
 
 			if (levels.Count == 0)
 			{
@@ -144,12 +159,15 @@ public class CodacyConfiguredRule : RuleBase
 		}
 		catch (Exception ex)
 		{
-			// If the Codacy API is unreachable or returns 404, fall back to
-			// checking for local evidence of Codacy integration (config files
-			// or a Codacy badge in the README).
+			// An unreachable API leaves the quality gate unknown, not met. Local evidence — a
+			// .codacy.yml, or a badge in the README — says somebody once set Codacy up. It says nothing
+			// about the code's quality today, and reporting it as a pass hid a token that could not see
+			// a single repository: 69 repositories showed green, every one on the strength of a badge,
+			// so the split between pass and fail was by README content rather than by Codacy.
 			if (HasLocalCodacyEvidence(context))
 			{
-				return Pass($"Codacy API unavailable ({ex.Message}), but local Codacy configuration found.");
+				return NotApplicable(
+					$"Codacy is configured locally, but the quality gate could not be evaluated: {ex.Message}");
 			}
 
 			return Fail(
@@ -184,15 +202,37 @@ public class CodacyConfiguredRule : RuleBase
 		return readme is not null && Contains(readme, "codacy");
 	}
 
-	private static bool TryParseCodacyLevel(string? gradeLetter, out CodacyLevel level)
+	/// <summary>
+	/// Turns a page of Codacy grade letters into the levels the gate should judge, dropping the files
+	/// Codacy never graded.
+	/// </summary>
+	/// <remarks>
+	/// Codacy's file listing returns every file on the branch, not just the
+	/// analysed ones, and Codacy only grades what it analyses: markdown, JSON, images and the solution
+	/// file come back with no grade letter at all. Folding that absence into <see cref="CodacyLevel.F"/>
+	/// made the worst file in every repository an F, so CQ-03 failed repositories that had zero issues
+	/// and told them to fix a grade they never had.
+	/// </remarks>
+	internal static List<CodacyLevel> CollectGradedLevels(IEnumerable<string?> gradeLetters)
 	{
-		level = CodacyLevel.F;
-		if (string.IsNullOrWhiteSpace(gradeLetter))
+		var levels = new List<CodacyLevel>();
+
+		foreach (var gradeLetter in gradeLetters)
 		{
-			return false;
+			// No letter means "not analysed", which is not a grade and must not become one.
+			if (string.IsNullOrWhiteSpace(gradeLetter))
+			{
+				continue;
+			}
+
+			// A letter we cannot parse is a grade we do not understand rather than a good one, so it
+			// stays conservative and the gate errs towards failing rather than towards silence.
+			levels.Add(Enum.TryParse<CodacyLevel>(gradeLetter.Trim(), ignoreCase: true, out var level)
+				? level
+				: CodacyLevel.F);
 		}
 
-		return Enum.TryParse(gradeLetter.Trim(), ignoreCase: true, out level);
+		return levels;
 	}
 
 	private static int GetLevelRank(CodacyLevel level)

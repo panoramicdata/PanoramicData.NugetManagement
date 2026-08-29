@@ -3,14 +3,14 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- Lets a PackageVersion below pin a transitive dependency without adding an unused direct
-         PackageReference. Needed to keep Refit.HttpClientFactory 10.1.6 (and the Refit 10.1.6 it
-         drags in) out of the restore graph: those are signed with an author certificate that has
-         since been revoked, which fails signature verification during CI restore. They arrive via
-         Codacy.Api. -->
+         PackageReference. Kept so Refit.HttpClientFactory stays pinned to a version whose signature
+         still verifies: 10.1.6 is signed with an author certificate that has since been revoked,
+         which fails signature verification during CI restore. -->
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
     <!-- Main project dependencies -->
+    <PackageVersion Include="Codacy.Api" Version="3.0.42" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Nerdbank.GitVersioning" Version="3.10.94" />
     <PackageVersion Include="NuGet.Protocol" Version="7.9.0" />
@@ -23,7 +23,6 @@
     <!-- Test project dependencies -->
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="AwesomeAssertions.Analyzers" Version="9.0.8" />
-    <PackageVersion Include="Codacy.Api" Version="3.0.42" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.11" />

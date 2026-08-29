@@ -108,17 +108,11 @@ public class IdeDetectionService
 			localPath,
 			targetPath);
 
-		var psi = new ProcessStartInfo
-		{
-			FileName = ide.ExecutablePath,
-			Arguments = $"\"{targetPath}\"",
-			UseShellExecute = true
-		};
-
-		Process? process;
+		DetachedProcess? process;
 		try
 		{
-			process = Process.Start(psi);
+			// Detached, so the IDE - and any AI session running inside it - survives this app stopping or crashing.
+			process = DetachedProcessLauncher.Start(ide.ExecutablePath, targetPath, localPath, _logger);
 		}
 		catch (Exception ex)
 		{
@@ -133,13 +127,13 @@ public class IdeDetectionService
 
 		if (process is null)
 		{
-			_logger.LogWarning("OpenInIde Process.Start returned null for IdeId={IdeId} at {ExecutablePath}", ide.Id, ide.ExecutablePath);
+			_logger.LogWarning("OpenInIde could not start a process for IdeId={IdeId} at {ExecutablePath}", ide.Id, ide.ExecutablePath);
 			return IdeLaunchResult.Failed(
 				ide.Id,
 				ide.DisplayName,
 				ide.ExecutablePath,
 				targetPath,
-				"Process.Start returned null.");
+				"The IDE process could not be started.");
 		}
 
 		_logger.LogInformation("OpenInIde process launched: IdeId={IdeId}, PID={Pid}", ide.Id, process.Id);
@@ -279,6 +273,9 @@ public class IdeDetectionService
 				result = result with { DiagnosticMessage = $"Foreground check failed: {ex.Message}" };
 			}
 		}
+
+		// Releases this app's handle on the IDE; it does not terminate it.
+		process.Dispose();
 
 		return result;
 	}

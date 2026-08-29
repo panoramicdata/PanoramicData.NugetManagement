@@ -12,6 +12,12 @@ public sealed class QueuedWork
 	/// <summary>The organisation the work is scoped to, or null when it spans every organisation.</summary>
 	public string? Organization { get; init; }
 
+	/// <summary>The repository the work acts on, as "org/repo", or null when it spans more than one.</summary>
+	public string? RepositoryFullName { get; init; }
+
+	/// <summary>The workflow step the work performs, or null when it is not a step on the toolbar.</summary>
+	public WorkflowStep? Step { get; init; }
+
 	/// <summary>Identifies a request that would repeat one already waiting in the queue.</summary>
 	public required string DedupKey { get; init; }
 

@@ -41,9 +41,10 @@ public class DashboardCacheService
 	/// stopped them being produced, and went on offering actions against somebody else's repository.
 	///
 	/// 1: repositories outside the configured organisations are no longer governed.
-	/// 2: the row is the repository, not the package, and ungoverned packages are held separately.
+	/// 2: packages unlisted on NuGet are no longer discovered.
+	/// 3: the row is the repository, not the package, and ungoverned packages are held separately.
 	/// </remarks>
-	public const int DiscoveryVersion = 2;
+	public const int DiscoveryVersion = 3;
 
 	/// <summary>
 	/// Initializes the cache service and loads any persisted state from disk.
