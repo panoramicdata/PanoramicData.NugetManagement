@@ -20,6 +20,13 @@ public enum GuardState
 	/// <summary>Build is failing, but not because of our change (pre-existing) — left untouched.</summary>
 	BuildFailingNotOurs,
 
+	/// <summary>
+	/// The build is failing and we could not establish whether our change caused it, because the
+	/// control build at the last-good commit also failed. Treated as suspicious, not exonerating:
+	/// a remediation that breaks the toolchain fails both builds identically.
+	/// </summary>
+	VerificationInconclusive,
+
 	/// <summary>An error occurred while verifying or rolling back.</summary>
 	Error
 }
