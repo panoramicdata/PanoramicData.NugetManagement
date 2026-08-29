@@ -37,7 +37,7 @@ public class MtpTestRunnerRule : RuleBase
 
 		```json
 		{
-		  "sdk": { "version": "10.0.400", "rollForward": "latestFeature" },
+		  "sdk": { "version": "10.0.400", "rollForward": "latestMinor" },
 		  "test": { "runner": "Microsoft.Testing.Platform" }
 		}
 		```
