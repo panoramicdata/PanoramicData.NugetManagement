@@ -13,6 +13,13 @@ public class PackagingRuleScopeTests(ITestOutputHelper output) : TestWithOutput(
 	private const string _publishedButBare =
 		"<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>";
 
+	private const string _toolProject =
+		"<Project><PropertyGroup><PackageId>Acme.Tool</PackageId><PackAsTool>true</PackAsTool>"
+		+ "<ToolCommandName>acme</ToolCommandName><OutputType>Exe</OutputType></PropertyGroup></Project>";
+
+	private const string _ordinaryPackage =
+		"<Project><PropertyGroup><PackageId>Acme.Lib</PackageId></PropertyGroup></Project>";
+
 	private const string _sampleApp =
 		"<Project><PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup></Project>";
 
@@ -139,6 +146,54 @@ public class PackagingRuleScopeTests(ITestOutputHelper output) : TestWithOutput(
 		var result = await GetRule("PKG-10").EvaluateAsync(context, CancellationToken.None);
 
 		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task PKG02_ShouldNotDemandGeneratePackageOnBuild_OfAToolProject()
+	{
+		// Issue 71: a tool project is packed via publish. GeneratePackageOnBuild makes packing run
+		// during Build, before that publish output exists, so dotnet pack fails with MSB3030 and
+		// produces no package at all. IsPackableProject counts PackAsTool as evidence a project is
+		// published, so without this exclusion the rule pulls tool projects in and then breaks them.
+		var context = CreateContext("Acme.Tool", new Dictionary<string, string>
+		{
+			["Acme.Tool/Acme.Tool.csproj"] = _toolProject
+		});
+
+		var result = await GetRule("PKG-02").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeTrue("a tool project must not be told to enable GeneratePackageOnBuild");
+	}
+
+	[Fact]
+	public async Task PKG02_ShouldStillDemandGeneratePackageOnBuild_OfAnOrdinaryPackageProject()
+	{
+		// Guards the exclusion above against over-reaching.
+		var context = CreateContext("Acme.Lib", new Dictionary<string, string>
+		{
+			["Acme.Lib/Acme.Lib.csproj"] = _ordinaryPackage
+		});
+
+		var result = await GetRule("PKG-02").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("Acme.Lib");
+	}
+
+	[Fact]
+	public async Task PKG02_ShouldFlagOnlyTheNonToolProject_InAMixedRepository()
+	{
+		var context = CreateContext("Acme.Suite", new Dictionary<string, string>
+		{
+			["Tool/Acme.Tool.csproj"] = _toolProject,
+			["Lib/Acme.Lib.csproj"] = _ordinaryPackage
+		});
+
+		var result = await GetRule("PKG-02").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("Acme.Lib.csproj");
+		result.Message.Should().NotContain("Acme.Tool.csproj");
 	}
 
 	private static IRule GetRule(string ruleId)
