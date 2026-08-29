@@ -17,6 +17,12 @@ builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSet
 // Register PanoramicData.Blazor required services
 builder.Services.AddPanoramicDataBlazor();
 
+// Everything the app logs goes to stdout as before and, in addition, to the console panel in the UI.
+// One ILogger, two destinations: work no longer has to narrate itself twice to be visible in both.
+builder.Services.AddSingleton<UiConsoleLogSink>();
+builder.Services.AddSingleton<ILoggerProvider>(sp =>
+	new UiConsoleLoggerProvider(sp.GetRequiredService<UiConsoleLogSink>()));
+
 // Register services
 builder.Services.AddSingleton<NuGetDiscoveryService>();
 builder.Services.AddSingleton<LocalRepoService>();
