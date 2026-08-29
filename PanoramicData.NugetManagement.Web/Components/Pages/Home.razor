@@ -18,6 +18,7 @@
 @inject LocalFileSystemDataProvider FileSystemDataProvider
 @inject LocalRepoService LocalRepo
 @inject WorkQueueService WorkQueue
+@inject RegressionGuardService RegressionGuard
 @implements IDisposable
 
 <PageTitle>NuGet Governance</PageTitle>
@@ -96,9 +97,27 @@ else
 									NodeCollapsed="OnNavNodeCollapsed"
 									Ready="OnNavTreeReady">
 									<NodeTemplate Context="node">
-										<span class="nav-node-label @(node.Data is not null && NavTreeDataProvider.IsContainerNode(node.Data) ? "nav-node-container" : null) @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+										<span class="nav-node-label @(node.Data is not null && NavTreeDataProvider.IsContainerNode(node.Data) ? "nav-node-container" : null) @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null) @(node.Data?.IsExcluded == true ? "nav-node-excluded" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
 											<i class="@GetNodeIconCss(node.Data)"></i>@node.Data?.Text
 										</span>
+										@if (node.Data?.GuardStateNeedingAttention is { } guardState)
+										{
+											<i class="fas @GuardMarkerIcon(guardState) nav-guard-marker" title="@GuardMarkerTooltip(guardState)"></i>
+										}
+										@if (node.Data?.RepositoryFullName is { Length: > 0 } repositoryFullName)
+										{
+											<span class="nav-org-actions">
+												<button type="button" class="nav-org-action-btn" title="@(node.Data.IsExcluded ? "Bring this repository back into governance" : "Exclude this repository from governance")" @onclick="() => ToggleRepositoryExcludedAsync(repositoryFullName, node.Data.IsExcluded)" @onclick:stopPropagation @onmousedown:stopPropagation>
+													<i class="fas @(node.Data.IsExcluded ? "fa-eye" : "fa-eye-slash")"></i>
+												</button>
+											</span>
+										}
+										@if (AffectedRepoCountFor(node.Data) is { } affected)
+										{
+											@* Without this, seven repositories and one look identical: the node is orange
+											   either way, so a run that fixed six of them appears to have done nothing. *@
+											<span class="nav-node-count" title="@affected affected repositor@(affected == 1 ? "y" : "ies")">@affected</span>
+										}
 										@if (ShouldSpinOrgNode(node.Data))
 										{
 											@* The only progress indicator in the tree, and it mirrors whichever button
@@ -901,6 +920,7 @@ else
 
 		_isAuthenticated = true;
 		WorkQueue.Changed += OnWorkQueueChanged;
+		RegressionGuard.StatusesChanged += OnGuardStatusesChanged;
 		_userName = httpContext.User.Identity.Name ?? "User";
 		_organizationName = SettingsOptions.Value.NuGetOrganization;
 		_accessToken = await httpContext.GetTokenAsync("access_token");
@@ -3530,7 +3550,10 @@ else
 			Cache.SetRows(_rows);
 
 			var github = CreateGitHubClient();
-			var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
+			var assessable = _rows
+				.Where(r => r.RepositoryFullName is not null)
+				.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
+				.ToList();
 
 			// Mark them pending before the tree is rebuilt, so the new list appears already showing a
 			// spinner per repository.
@@ -3939,6 +3962,7 @@ else
 	{
 		var assessable = _rows
 			.Where(r => r.RepositoryFullName is not null)
+			.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
 			.Where(r => organization is null
 				|| string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))
 			.ToList();
@@ -5071,6 +5095,111 @@ else
 	private void OnWorkQueueChanged() => _ = SafeStateHasChangedAsync();
 
 	/// <summary>
+	/// The number of repositories an issue-hierarchy node covers, or null for nodes where a count
+	/// would mean nothing — an organisation, a package, the container nodes.
+	/// </summary>
+	private static int? AffectedRepoCountFor(NavItem? item)
+		=> item?.AffectedRepoCount > 0
+			&& item.View is NavView.IssueCategoryDetail or NavView.IssueRuleDetail
+				? item.AffectedRepoCount
+				: null;
+
+	/// <summary>
+	/// Excludes a repository from governance, or brings it back. Persisted immediately, because it is
+	/// a decision about the estate rather than a filter for this session — an excluded repository is
+	/// not assessed, not listed under any issue class, and not reachable by a bulk action.
+	/// </summary>
+	private async Task ToggleRepositoryExcludedAsync(string repositoryFullName, bool currentlyExcluded)
+	{
+		RuntimeSettings.SetRepositoryExcluded(repositoryFullName, !currentlyExcluded);
+		AppendConsole(currentlyExcluded
+			? $"👁️ {repositoryFullName} is governed again."
+			: $"🚫 {repositoryFullName} is excluded from governance.");
+
+		await ReloadTreePreservingExpansionAsync();
+	}
+
+	// === Build guard ===
+
+	/// <summary>What the guard last told us about each repository, so only changes are narrated.</summary>
+	private readonly Dictionary<string, GuardState> _reportedGuardStates = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Narrates guard activity to the console as it happens, and rebuilds the tree when a repository
+	/// has been reverted.
+	/// </summary>
+	/// <remarks>
+	/// The guard is an event stream — queued, building, verified — and events belong in the console.
+	/// A revert is the exception: it means work the user did has been taken away, which must still be
+	/// visible after the console has scrolled, so that one state also marks the repository's node.
+	/// </remarks>
+	private void OnGuardStatusesChanged() => _ = InvokeAsync(async () =>
+	{
+		try
+		{
+			var reverted = false;
+
+			foreach (var status in RegressionGuard.Statuses)
+			{
+				if (_reportedGuardStates.TryGetValue(status.RepositoryFullName, out var reported)
+					&& reported == status.State)
+				{
+					continue;
+				}
+
+				_reportedGuardStates[status.RepositoryFullName] = status.State;
+				reverted |= status.State == GuardState.RegressionReverted;
+
+				var line = status.State switch
+				{
+					GuardState.Verified => $"🛡️ {status.RepositoryFullName}: build verified after our change.",
+					GuardState.RegressionReverted => $"↩️ {status.RepositoryFullName}: our change broke the build and has been reverted.",
+					GuardState.BuildFailingNotOurs => $"⚠️ {status.RepositoryFullName}: build was already failing before our change.",
+					GuardState.Error => $"⚠️ {status.RepositoryFullName}: the guard could not verify the build — {status.Message}",
+					_ => null
+				};
+
+				if (line is not null)
+				{
+					AppendConsole(line);
+				}
+			}
+
+			// Only a revert changes what the tree shows, and rebuilding it is not free.
+			if (reverted)
+			{
+				await ReloadTreePreservingExpansionAsync();
+			}
+			else
+			{
+				await SafeStateHasChangedAsync();
+			}
+		}
+		catch (ObjectDisposedException)
+		{
+			// The circuit has gone; nothing left to render.
+		}
+	});
+
+	/// <summary>
+	/// The icon for a guard state worth showing. Only states needing someone reach here — a verified
+	/// repository shows nothing, because a wall of green is what hides the rows that matter.
+	/// </summary>
+	private static string GuardMarkerIcon(GuardState state) => state switch
+	{
+		GuardState.RegressionReverted => "fa-rotate-left",
+		GuardState.BuildFailingNotOurs => "fa-triangle-exclamation",
+		_ => "fa-circle-exclamation"
+	};
+
+	private static string GuardMarkerTooltip(GuardState state) => state switch
+	{
+		GuardState.RegressionReverted => "Our change broke the build and was reverted",
+		GuardState.BuildFailingNotOurs => "This repository's build was already failing",
+		_ => "The build guard could not verify this repository"
+	};
+
+	/// <summary>
 	/// Re-renders, tolerating the circuit having gone away. Queued work outlives its component for as
 	/// long as it takes to unwind, and must not fail while doing so.
 	/// </summary>
@@ -5812,6 +5941,7 @@ else
 		// dropped and a running one is cancelled, which reverts whatever it had half-applied. The
 		// running task itself outlives the component long enough to unwind and report completion.
 		WorkQueue.Changed -= OnWorkQueueChanged;
+		RegressionGuard.StatusesChanged -= OnGuardStatusesChanged;
 		WorkQueue.RemoveOwnedBy(this);
 		_autoRefreshTimer?.Dispose();
 		_treeFilterDebounce?.Dispose();

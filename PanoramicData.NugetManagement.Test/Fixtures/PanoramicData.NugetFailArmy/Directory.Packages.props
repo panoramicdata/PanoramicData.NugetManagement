@@ -1,5 +1,8 @@
 <Project>
 	<ItemGroup>
 		<PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
+		<!-- The paid-licence assertion library rather than the free fork, so TST-08 has something to
+		     fail on: the fixture is meant to violate every rule it can. -->
+		<PackageVersion Include="FluentAssertions" Version="8.10.0" />
 	</ItemGroup>
 </Project>

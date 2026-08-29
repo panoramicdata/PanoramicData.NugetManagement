@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Microsoft.Extensions.FileSystemGlobbing;
 using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Web.Remediations;
@@ -1057,6 +1058,84 @@ internal static partial class RemediationHelpers
 		{
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Applies an ordered list of regular-expression replacements across every file matching the
+	/// given globs.
+	/// </summary>
+	/// <remarks>
+	/// The patterns are applied in order, to each file in turn, because order can be load-bearing:
+	/// renaming FluentAssertions before FluentAssertions.Analyzers would rename the analyzer package
+	/// by accident and leave its version pin pointing at nothing.
+	/// </remarks>
+	/// <param name="localPath">The repository root.</param>
+	/// <param name="globs">Glob patterns, relative to the root, e.g. <c>**/*.cs</c>.</param>
+	/// <param name="patterns">Regular expressions, applied in order.</param>
+	/// <param name="replacements">Replacements, one per pattern.</param>
+	/// <param name="result">The rule result being remediated.</param>
+	/// <param name="applied">Collects the files changed.</param>
+	/// <param name="onOutput">Progress reporting.</param>
+	public static void ReplaceRegexInFiles(
+		string localPath,
+		string[] globs,
+		string[] patterns,
+		string[] replacements,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		if (patterns.Length != replacements.Length)
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {patterns.Length} pattern(s) but {replacements.Length} replacement(s) — skipping.");
+			return;
+		}
+
+		var root = ResolvePath(localPath, ".");
+		if (!Directory.Exists(root))
+		{
+			return;
+		}
+
+		var matcher = new Matcher();
+		matcher.AddIncludePatterns(globs);
+		// Never rewrite build output or a clone's own git database.
+		matcher.AddExcludePatterns(["**/bin/**", "**/obj/**", "**/.git/**"]);
+
+		var matches = matcher.GetResultsInFullPath(root).ToList();
+		var changedCount = 0;
+
+		foreach (var file in matches)
+		{
+			try
+			{
+				var original = File.ReadAllText(file);
+				var updated = original;
+
+				for (var i = 0; i < patterns.Length; i++)
+				{
+					updated = Regex.Replace(updated, patterns[i], replacements[i]);
+				}
+
+				if (updated == original)
+				{
+					continue;
+				}
+
+				File.WriteAllText(file, updated);
+				var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+				applied.Add(relative);
+				changedCount++;
+			}
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or RegexParseException)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to rewrite {file}: {ex.Message}");
+			}
+		}
+
+		onOutput?.Invoke(changedCount == 0
+			? $"⏭️ [{result.RuleId}] Nothing matched the patterns — no files changed."
+			: $"✅ [{result.RuleId}] Rewrote {changedCount} file(s).");
 	}
 
 	/// <summary>

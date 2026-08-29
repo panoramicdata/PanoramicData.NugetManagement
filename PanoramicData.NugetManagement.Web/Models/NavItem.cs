@@ -40,6 +40,26 @@ public class NavItem
 	public string Organization { get; init; } = string.Empty;
 
 	/// <summary>
+	/// Whether this repository has been excluded from governance.
+	/// </summary>
+	public bool IsExcluded { get; init; }
+
+	/// <summary>
+	/// The repository this node represents, for repository-level nodes.
+	/// </summary>
+	public string? RepositoryFullName { get; init; }
+
+	/// <summary>
+	/// The build-guard state for this repository, when it is one the user should look at:
+	/// a reverted regression, a guard error, or a build that was already failing.
+	/// </summary>
+	/// <remarks>
+	/// Deliberately null for Verified, Queued and Building. Verified is the expected outcome, and a
+	/// hundred green ticks are exactly what hides the two rows that need someone.
+	/// </remarks>
+	public GuardState? GuardStateNeedingAttention { get; init; }
+
+	/// <summary>
 	/// Optional associated package ID for package-level nodes.
 	/// </summary>
 	public string? PackageId { get; init; }

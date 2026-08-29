@@ -39,6 +39,7 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "ensure_checkout_fetch_depth"
 						or "replace_regex_in_file"
 						or "remove_json_property"
+						or "replace_regex_in_files"
 						or "append_line"
 						or "prepend_line"
 						or "add_slnx_file_entries"
@@ -123,6 +124,17 @@ public abstract class DataDrivenRemediation : IRemediation
 							RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
 						}
 					}
+				}
+
+				break;
+
+			case "replace_regex_in_files":
+				if (data["globs"] is string[] rrGlobs
+					&& data["patterns"] is string[] rrPatterns
+					&& data["replacements"] is string[] rrReplacements)
+				{
+					RemediationHelpers.ReplaceRegexInFiles(
+						localPath, rrGlobs, rrPatterns, rrReplacements, result, applied, onOutput);
 				}
 
 				break;

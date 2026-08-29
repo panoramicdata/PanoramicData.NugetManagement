@@ -179,6 +179,76 @@ public class RuntimeSettingsService
 	}
 
 	/// <summary>
+	/// Whether a repository has been excluded from governance.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public bool IsRepositoryExcluded(string? repositoryFullName)
+	{
+		if (string.IsNullOrWhiteSpace(repositoryFullName))
+		{
+			return false;
+		}
+
+		lock (_lock)
+		{
+			return _runtimeSettings.ExcludedRepositories
+				.Contains(repositoryFullName, StringComparer.OrdinalIgnoreCase);
+		}
+	}
+
+	/// <summary>
+	/// Every excluded repository, for callers that need the whole set at once.
+	/// </summary>
+	public IReadOnlySet<string> ExcludedRepositories
+	{
+		get
+		{
+			lock (_lock)
+			{
+				return _runtimeSettings.ExcludedRepositories.ToHashSet(StringComparer.OrdinalIgnoreCase);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Excludes a repository from governance, or brings it back, and persists the decision.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="excluded">True to exclude it; false to govern it again.</param>
+	public void SetRepositoryExcluded(string repositoryFullName, bool excluded)
+	{
+		var trimmed = repositoryFullName?.Trim();
+		if (string.IsNullOrEmpty(trimmed))
+		{
+			return;
+		}
+
+		lock (_lock)
+		{
+			var existing = _runtimeSettings.ExcludedRepositories
+				.FindIndex(name => string.Equals(name, trimmed, StringComparison.OrdinalIgnoreCase));
+
+			if (excluded && existing < 0)
+			{
+				_runtimeSettings.ExcludedRepositories.Add(trimmed);
+			}
+			else if (!excluded && existing >= 0)
+			{
+				_runtimeSettings.ExcludedRepositories.RemoveAt(existing);
+			}
+			else
+			{
+				return;
+			}
+		}
+
+		SaveToDisk();
+		_logger.LogInformation(
+			excluded ? "Excluded {Repository} from governance." : "Brought {Repository} back into governance.",
+			trimmed);
+	}
+
+	/// <summary>
 	/// Removes an organisation and persists the list. Returns false when the organisation is not
 	/// present, or when it is the only one left — at least one organisation must remain, otherwise
 	/// the list would fall back to the configured organisation and the removal would appear to
@@ -324,4 +394,15 @@ public class RuntimeSettings
 	/// Defaults to false.
 	/// </summary>
 	public bool IncludeInfoInAiPrompt { get; set; }
+
+	/// <summary>
+	/// Repositories excluded from governance, by full name.
+	/// </summary>
+	/// <remarks>
+	/// Held here rather than in each repository's own config file, because the decision is ours about
+	/// our estate rather than a fact about the repository — and because the repositories most in need
+	/// of exclusion are the ones we cannot commit to. A package can declare a repository belonging to
+	/// somebody else; that is exactly when governance must be told to leave it alone.
+	/// </remarks>
+	public List<string> ExcludedRepositories { get; set; } = [];
 }

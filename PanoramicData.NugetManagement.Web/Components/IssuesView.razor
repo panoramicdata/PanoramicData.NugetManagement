@@ -2,7 +2,7 @@
 @using PanoramicData.NugetManagement.Services
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
-@inject RegressionGuardService Guard
+@inject RuntimeSettingsService RuntimeSettings
 @inject IJSRuntime JS
 
 
@@ -26,36 +26,6 @@
 	</header>
 	}
 
-	@if (_allRepoNames.Count > 0)
-	{
-		<div class="repo-filter">
-			<div class="node-row cat-row">
-				<button class="expander" @onclick="() => _showRepoFilter = !_showRepoFilter">
-					<i class="fas @(_showRepoFilter ? "fa-chevron-down" : "fa-chevron-right")"></i>
-				</button>
-				<i class="fas fa-filter"></i>
-				<strong>Repositories</strong>
-				<span class="muted">@_selectedRepos.Count of @_allRepoNames.Count selected — actions apply to selected repositories only</span>
-				<span class="actions">
-					<button class="btn btn-xs btn-secondary" @onclick="SelectAllRepos">All</button>
-					<button class="btn btn-xs btn-secondary" @onclick="SelectNoRepos">None</button>
-				</span>
-			</div>
-			@if (_showRepoFilter)
-			{
-				<div class="repo-checklist">
-					@foreach (var name in _allRepoNames)
-					{
-						<label class="repo-check">
-							<input type="checkbox" checked="@_selectedRepos.Contains(name)" @onchange="() => ToggleRepo(name)" />
-							<span>@name</span>
-						</label>
-					}
-				</div>
-			}
-		</div>
-	}
-
 	@if (_bumps.Count > 0)
 	{
 		<div class="baseline-banner">
@@ -64,21 +34,6 @@
 				<strong>Standard version baseline updated</strong> from an observed repository — commit <code>action-versions.json</code> to roll this out to everyone:
 				@string.Join(", ", _bumps.Select(b => $"{b.Action} {b.From}→{b.To}"))
 			</span>
-		</div>
-	}
-
-	@if (Guard.Statuses.Count > 0)
-	{
-		<div class="guard-panel">
-			<div class="guard-head"><i class="fas fa-shield-halved"></i> Build guard — repositories we changed are built in the background; regressions we caused are auto-reverted</div>
-			@foreach (var s in Guard.Statuses)
-			{
-				<div class="node-row guard-row">
-					<span class="guard-badge guard-@s.State">@s.State</span>
-					<span class="repo-name">@s.RepositoryFullName</span>
-					<span class="muted repo-msg">@s.Message</span>
-				</div>
-			}
 		</div>
 	}
 
@@ -155,8 +110,15 @@
 					else if (node.Data is { Kind: IssueNodeKind.Repository, Instance: not null } repoItem)
 					{
 						var inst = repoItem.Instance!;
-						<span class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected")">
-							<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
+						<span class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected") @(_fixedInThisRun.Contains(inst.RepositoryFullName) ? "repo-fixed" : null)">
+							@if (_fixedInThisRun.Contains(inst.RepositoryFullName))
+							{
+								<i class="fas fa-check repo-fixed-tick" title="Fixed and pushed in this run"></i>
+							}
+							else
+							{
+								<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
+							}
 							<span class="repo-name">@inst.RepositoryFullName</span>
 							@if (repoItem.DisambiguatingPackageId is { Length: > 0 } packageId)
 							{
@@ -220,19 +182,10 @@
 	.summary { font-weight: 600; margin: .5rem auto 1rem; }
 	.repo-package { font-size: .75rem; padding: 0 .35rem; border-radius: 3px; background: rgba(128,128,128,.18); color: var(--bs-secondary-color, #aaa); }
 	.baseline-banner { display: flex; gap: .6rem; align-items: center; background: #1f3a2e; border: 1px solid #2e7d32; color: #d7f5df; padding: .6rem .8rem; border-radius: 6px; margin: .5rem auto 1rem; font-size: .9rem; }
-	.guard-panel { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem auto 1rem; overflow: hidden; }
-	.guard-head { padding: .4rem .6rem; background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); font-weight: 600; font-size: .85rem; }
-	.guard-row { border-top: 1px solid var(--bs-border-color, #2a2a2a); font-size: .85rem; }
-	.guard-badge { font-size: .68rem; text-transform: uppercase; font-weight: 700; padding: .1rem .4rem; border-radius: 3px; color: #fff; white-space: nowrap; }
-	.guard-Queued, .guard-Building { background: #374151; }
-	.guard-Verified { background: #2e7d32; }
-	.guard-RegressionReverted { background: #b45309; }
-	.guard-BuildFailingNotOurs { background: #6b7280; }
-	.guard-Error { background: #b91c1c; }
-	.repo-filter { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: 1.5rem auto 1rem; overflow: hidden; }
-	.repo-checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .1rem .8rem; padding: .5rem .8rem; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--bs-border-color, #2a2a2a); }
-	.repo-check { display: flex; gap: .4rem; align-items: center; font-family: monospace; font-size: .82rem; cursor: pointer; }
-	.repo-deselected { opacity: .4; }
+	/* Fixed in this run: ticked and dimmed rather than removed, because the row goes on its own
+	   once the re-assessment confirms the issue has gone. */
+	.repo-fixed { opacity: .55; }
+	.repo-fixed-tick { color: #2e7d32; width: .6rem; font-size: .7rem; }
 	.empty { padding: 2rem 0; }
 	.cat-node { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
 	.node-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; }
@@ -330,15 +283,15 @@
 	private readonly IssueTreeDataProvider _treeProvider = new();
 	private int _treeVersion;
 	private PendingConfirm? _confirm;
-	private readonly HashSet<string> _selectedRepos = new(StringComparer.OrdinalIgnoreCase);
-	private readonly HashSet<string> _knownRepos = new(StringComparer.OrdinalIgnoreCase);
-	private List<string> _allRepoNames = [];
-	private bool _showRepoFilter;
+	/// <summary>The repositories this view covers: everything not excluded on the Repositories tree.</summary>
+	private HashSet<string> _inScope = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>Repositories this view has seen a fix pushed for, so rows can show progress mid-run.</summary>
+	private readonly HashSet<string> _fixedInThisRun = new(StringComparer.OrdinalIgnoreCase);
 
 	protected override void OnInitialized()
 	{
 		LoadView();
-		Guard.StatusesChanged += OnGuardChanged;
 	}
 
 	/// <summary>
@@ -359,8 +312,6 @@
 		}
 	}
 
-	private void OnGuardChanged() => _ = InvokeAsync(StateHasChanged);
-
 	/// <summary>
 	/// Called as each repository's fix lands. Writes the freshly re-assessed row back to the cache and
 	/// rebuilds the view, so a rule stops listing repositories it has just been fixed in — while the
@@ -368,10 +319,18 @@
 	/// </summary>
 	private void OnRepositoryFixed(PackageDashboardRow row)
 	{
+		if (row.RepositoryFullName is not null)
+		{
+			// Ticked rather than removed: the row goes on its own once the re-assessment says the issue
+			// has gone, and a tick is honest in the meantime — pushed, not yet proven by the guard.
+			_fixedInThisRun.Add(row.RepositoryFullName);
+		}
+
 		Cache.UpsertRow(row);
 		LoadView();
 		_ = InvokeAsync(StateHasChanged);
 	}
+
 
 	/// <summary>
 	/// Orders sibling nodes by criticality. PDTree sorts children itself, falling back to comparing
@@ -416,7 +375,11 @@
 		_ = InvokeAsync(StateHasChanged);
 	}
 
-	public void Dispose() => Guard.StatusesChanged -= OnGuardChanged;
+	public void Dispose()
+	{
+		// Nothing to unsubscribe from: build-guard status is per repository, so it belongs on the
+		// Repositories tree rather than above every issue class (#66).
+	}
 
 	/// <summary>
 	/// Reduces the view to the focused category and/or rule. With the issue hierarchy now living in
@@ -460,6 +423,10 @@
 			? []
 			: [.. _rows.Where(r => string.Equals(r.Organization, Organization, StringComparison.OrdinalIgnoreCase))];
 
+		// Excluded repositories leave here, which keeps them out of the issue classes, the counts on
+		// the buttons and every bulk action — one decision, taken on the Repositories tree.
+		_rows = [.. _rows.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))];
+
 		_view = NarrowToFocus(Dashboard.BuildIssueCentricView(_rows));
 		_bumps = ActionVersionCatalog.Default.RecentBumps;
 
@@ -471,27 +438,16 @@
 		_treeProvider.View = _view;
 		_treeVersion++;
 
-		_allRepoNames = [.. _rows
+		// Everything still here is in scope: excluded repositories left when the rows were filtered,
+		// so there is one notion of "included" rather than a second, transient one to re-tick each
+		// session.
+		_inScope = [.. _rows
 			.Where(r => r.RepositoryFullName is not null)
-			.Select(r => r.RepositoryFullName!)
-			.Distinct(StringComparer.OrdinalIgnoreCase)
-			.OrderBy(r => r, StringComparer.OrdinalIgnoreCase)];
-
-		// Default all repos selected; newly-seen repos default to selected; user de-selections are
-		// preserved across reloads; repos that disappear are dropped.
-		foreach (var name in _allRepoNames)
-		{
-			if (_knownRepos.Add(name))
-			{
-				_selectedRepos.Add(name);
-			}
-		}
-
-		_selectedRepos.RemoveWhere(r => !_knownRepos.Contains(r) || !_allRepoNames.Contains(r, StringComparer.OrdinalIgnoreCase));
+			.Select(r => r.RepositoryFullName!)];
 	}
 
 	private List<PackageDashboardRow> SelectedRows()
-		=> [.. _rows.Where(r => r.RepositoryFullName is not null && _selectedRepos.Contains(r.RepositoryFullName))];
+		=> [.. _rows.Where(r => r.RepositoryFullName is not null && _inScope.Contains(r.RepositoryFullName))];
 
 	/// <summary>
 	/// The rows for a computed target set, in the order the run will visit them. The count the user
@@ -503,28 +459,10 @@
 		return [.. _rows.Where(r => r.RepositoryFullName is not null && targets.Contains(r.RepositoryFullName))];
 	}
 
-	private bool IsRepoSelected(string? name) => name is not null && _selectedRepos.Contains(name);
+	private bool IsRepoSelected(string? name) => name is not null && _inScope.Contains(name);
 
 	private int SelectedAffected(IssueClassGroup rule)
-		=> BulkApplyScope.ForRule(rule, _selectedRepos).Count;
-
-	private void ToggleRepo(string name)
-	{
-		if (!_selectedRepos.Add(name))
-		{
-			_selectedRepos.Remove(name);
-		}
-	}
-
-	private void SelectAllRepos()
-	{
-		foreach (var name in _allRepoNames)
-		{
-			_selectedRepos.Add(name);
-		}
-	}
-
-	private void SelectNoRepos() => _selectedRepos.Clear();
+		=> BulkApplyScope.ForRule(rule, _inScope).Count;
 
 	private static string Truncate(string value, int max)
 		=> string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..max] + "…";
@@ -533,7 +471,7 @@
 
 	private void ConfirmApplyRule(IssueClassGroup rule)
 	{
-		var repos = BulkApplyScope.ForRule(rule, _selectedRepos);
+		var repos = BulkApplyScope.ForRule(rule, _inScope);
 		if (repos.Count == 0)
 		{
 			Append($"No selected repositories are affected by {rule.RuleId}.");
@@ -551,7 +489,7 @@
 
 	private void ConfirmApplyCategory(IssueCategoryGroup cat)
 	{
-		var repos = BulkApplyScope.ForCategory(cat, _selectedRepos);
+		var repos = BulkApplyScope.ForCategory(cat, _inScope);
 		if (repos.Count == 0)
 		{
 			Append($"No selected repositories are affected by auto-fixable {cat.Category} rules.");
@@ -581,7 +519,7 @@
 
 	private void ConfirmFixEverything()
 	{
-		IReadOnlyList<string> repos = _view is null ? [] : BulkApplyScope.ForEverything(_view, _selectedRepos);
+		IReadOnlyList<string> repos = _view is null ? [] : BulkApplyScope.ForEverything(_view, _inScope);
 		if (repos.Count == 0)
 		{
 			Append("No selected repositories have auto-fixable issues.");
