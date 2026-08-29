@@ -1,4 +1,4 @@
-# Design
+﻿# Design
 
 How work is started, serialised, shown and stopped in the dashboard — what the code does today,
 what we are building next, and where it is meant to end up.
@@ -18,7 +18,7 @@ and is documented by its own rule classes.
 | `Home.razor` | Circuit (component) | Owns the whole dashboard shell: navigation tree, toolbar, console, and **the implementations of nearly every long-running operation** (`RefreshAsync`, `ReassessOrganizationAsync`, `FixAllAsync`, `BuildAsync`, `RunTestsAsync`, `CommitAndPushAsync`, `CloneSelectedRepositoriesAsync`, …). ~5,800 lines. |
 | `IssuesView.razor` | Circuit (component) | The issue-centric view and its bulk actions: *Fix everything*, *Apply & push to N repos*, *Apply here*. Delegates execution to `DashboardService`. |
 | `DashboardService` | **Scoped** (per circuit) | The operations themselves: assess, git sync, apply remediations, commit and push, and the `ApplyAcrossReposAsync` bulk loop. Every method already accepts a `CancellationToken`. |
-| `DashboardCacheService` | Singleton | The shared row cache, persisted to JSON on disk. How results reach other circuits at all. |
+| `DashboardCacheService` | Singleton | The shared row cache, persisted to JSON on disk. How results reach other circuits at all. Stamped with a discovery version, so rows the current rules would not produce are discarded rather than shown (§1.5). |
 | `LocalRepoService` | Singleton | Git and process execution: clone, sync, commit, push, `DiscardLocalChangesAsync`, `RevertRangeAndPushAsync`. |
 | `RegressionGuardService` | Singleton `BackgroundService` | Builds each repository we pushed to, and reverts our commit if we broke it. Channel + worker + `StatusesChanged` event. |
 
@@ -86,6 +86,34 @@ Worth keeping, because the target design builds on it:
 - **Revert already exists.** `DiscardLocalChangesAsync` throws away uncommitted work
   (`reset --hard` *and* `clean -fd`, because remediations add files as well as edit them), and
   `RevertRangeAndPushAsync` reverses commits that have already been pushed.
+
+### 1.5 What is governed, and when the cache is thrown away
+
+Two facts decide what any of the machinery above is allowed to touch, and both are easy to get
+wrong.
+
+**The estate is discovered from NuGet, and the repository is derived from metadata.** The population
+is every package matching `owner:<org>` on nuget.org; each package's repository comes from its
+nuspec — `<repository>` first, `projectUrl` only as a fallback. GitHub is never enumerated, and the
+file system answers only "is this cloned". Those two facts answer different questions: `owner:` is
+who owns the *package*. A repackage is ours to publish and somebody else's to host, and until
+`GovernanceScope` existed the derived location was taken on trust — so `Vizor.ECharts.Net80`, whose
+nuspec correctly declares `datahint-eu/vizor-echarts`, had that repository cloned into the app's
+clone root and assessed against our rules.
+
+`GovernanceScope.ReasonNotGoverned` is the single gate: a row is governed only when its repository
+owner is one of the configured organisations. Everything else is stamped `IsGoverned = false` with a
+reason, stripped of its clone facts and its assessment, and accounted for in the tree's
+*Not governed* branch — visible, so a package cannot leave the estate unexplained, but counted in
+nothing and acted on by nothing. Nothing guesses a better repository: a package whose nuspec names
+the wrong one is fixed by publishing a corrected nuspec.
+
+**Changing a rule means bumping `DashboardCacheService.DiscoveryVersion`.** The cache outlives the
+rules that produced it. A cache stamped with any other version is discarded on load, so the screen
+is rebuilt rather than showing rows the current rules would never have produced. Skipping the bump
+is not a stale display but a live hazard: the rows that governed `rimland/EPPlus` survived the fix
+that stopped them being produced, and went on offering build, commit and push against somebody
+else's repository.
 
 ---
 

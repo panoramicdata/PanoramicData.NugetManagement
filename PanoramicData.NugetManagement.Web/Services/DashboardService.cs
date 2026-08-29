@@ -179,59 +179,6 @@ public class DashboardService
 	}
 
 	/// <summary>
-	/// Clones a repository locally.
-	/// </summary>
-	public async Task CloneRepositoryAsync(
-		PackageDashboardRow row,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
-	{
-		if (row.RepositoryUrl is null)
-		{
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = "No repository URL available.";
-			return;
-		}
-
-		var repoIdentity = RepoIdentity(row);
-		if (repoIdentity is null)
-		{
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = "Cannot determine repo name from URL.";
-			return;
-		}
-
-		var cloneUrl = BuildCloneUrl(row);
-		if (cloneUrl is null)
-		{
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = "No repository known for this package.";
-			onOutput?.Invoke($"❌ {row.PackageId}: no repository is known for this package, so there is nothing to clone.");
-			return;
-		}
-
-		row.Status = PackageStatus.Cloning;
-		row.StatusMessage = "Cloning...";
-
-		var (success, output) = await _localRepo.CloneAsync(cloneUrl, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
-
-		if (success)
-		{
-			row.IsClonedLocally = true;
-			row.LocalPath = _localRepo.GetLocalPath(repoIdentity);
-			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
-			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
-			row.Status = PackageStatus.NotAssessed;
-			row.StatusMessage = "Cloned successfully.";
-		}
-		else
-		{
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = $"Clone failed: {output}";
-		}
-	}
-
-	/// <summary>
 	/// Assesses a single repository against all governance rules using GitHub API.
 	/// </summary>
 	public async Task AssessRepositoryAsync(
