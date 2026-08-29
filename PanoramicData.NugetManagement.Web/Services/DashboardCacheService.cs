@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using PanoramicData.NugetManagement.Web.Models;
 
@@ -30,18 +30,51 @@ public class DashboardCacheService
 	public static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
 
 	/// <summary>
+	/// Which understanding of governance produced the rows in the cache file.
+	/// </summary>
+	/// <remarks>
+	/// Bump this whenever a change alters what discovery would produce for the same estate — a new rule,
+	/// a changed rule, a change to which repositories are governed at all. A cache stamped with anything
+	/// else is discarded on load, so the screen is rebuilt rather than showing rows the current rules
+	/// would never have produced. Without it, the rows that governed rimland/EPPlus survived the fix that
+	/// stopped them being produced, and went on offering actions against somebody else's repository.
+	///
+	/// 1: repositories outside the configured organisations are no longer governed.
+	/// </remarks>
+	public const int DiscoveryVersion = 1;
+
+	/// <summary>
 	/// Initializes the cache service and loads any persisted state from disk.
 	/// </summary>
 	public DashboardCacheService(ILogger<DashboardCacheService> logger)
+		: this(logger, DefaultCachePath())
+	{
+	}
+
+	/// <summary>
+	/// Initializes the cache service against a specific cache file, and loads any state it holds.
+	/// </summary>
+	/// <remarks>
+	/// Where the cache lives is a parameter rather than a fact of the machine. It has to be: on Windows
+	/// <see cref="Environment.GetFolderPath(Environment.SpecialFolder)"/> asks the Known Folder API and
+	/// pays no attention to the <c>LOCALAPPDATA</c> variable, so redirecting it is not something a caller
+	/// can do from the outside.
+	/// </remarks>
+	public DashboardCacheService(ILogger<DashboardCacheService> logger, string cachePath)
 	{
 		_logger = logger;
-		_cachePath = Path.Combine(
-			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-			"PanoramicData.NugetManagement",
-			"dashboard-cache.json");
+		_cachePath = cachePath;
 
 		LoadFromDisk();
 	}
+
+	/// <summary>
+	/// The cache file's location under the user's local application data.
+	/// </summary>
+	public static string DefaultCachePath() => Path.Combine(
+		Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+		"PanoramicData.NugetManagement",
+		"dashboard-cache.json");
 
 	/// <summary>
 	/// Gets the cached dashboard rows, or null if no cache exists.
@@ -213,6 +246,7 @@ public class DashboardCacheService
 
 			var envelope = new CacheEnvelope
 			{
+				DiscoveryVersion = DiscoveryVersion,
 				LastRefreshUtc = ts,
 				Rows = rows
 			};
@@ -250,6 +284,15 @@ public class DashboardCacheService
 				return;
 			}
 
+			if (envelope.DiscoveryVersion != DiscoveryVersion)
+			{
+				_logger.LogInformation(
+					"Discarding the dashboard cache: it was written by discovery version {Found}, and this is version {Current}. Rediscovery will rebuild it.",
+					envelope.DiscoveryVersion,
+					DiscoveryVersion);
+				return;
+			}
+
 			lock (_lock)
 			{
 				_cachedRows = envelope.Rows;
@@ -272,6 +315,12 @@ public class DashboardCacheService
 	/// </summary>
 	private sealed class CacheEnvelope
 	{
+		/// <summary>
+		/// Which <see cref="DashboardCacheService.DiscoveryVersion"/> wrote this file. Absent in files
+		/// written before versioning existed, which deserialize as zero and are therefore discarded.
+		/// </summary>
+		public int DiscoveryVersion { get; set; }
+
 		public DateTimeOffset LastRefreshUtc { get; set; }
 		public List<PackageDashboardRow> Rows { get; set; } = [];
 	}

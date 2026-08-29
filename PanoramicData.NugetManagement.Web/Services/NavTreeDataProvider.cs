@@ -50,6 +50,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <summary>Builds the key for an organisation's "Issues" branch.</summary>
 	public static string IssuesKey(string organization) => $"issues:{organization}";
 
+	/// <summary>Builds the key for an organisation's "Not governed" branch.</summary>
+	public static string NotGovernedKey(string organization) => $"notgoverned:{organization}";
+
 	/// <summary>
 	/// The key of the always-expanded top-level container. Unlike the other container nodes it is
 	/// selectable, because selecting it shows the estate overview.
@@ -165,7 +168,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			.Where(r => BelongsToOrganization(r, organization, fallbackOrganization))
 			.ToList();
 
-		var visibleRows = ApplyFilters(orgRows);
+		// Packages whose repository is not ours are held apart from the estate entirely: they are not
+		// assessed, so they have no health to roll up and no rules to answer for. They are accounted
+		// for in their own branch rather than dropped, so a package cannot leave the tree unexplained.
+		var ungovernedRows = ApplyFilters(orgRows?.Where(r => !r.IsGoverned).ToList());
+		var visibleRows = ApplyFilters(orgRows?.Where(r => r.IsGoverned).ToList());
 
 		// While a filter is active, an organisation with nothing matching is omitted entirely rather
 		// than left as an empty branch to open and find nothing in. Only while filtering: an
@@ -223,6 +230,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		items.AddRange(issuesItems);
 
 		AddPackageNodes(items, organization, reposKey, visibleRows);
+		AddNotGovernedNodes(items, organization, orgKey, ungovernedRows);
 
 		// While loading, show a placeholder under Repositories if no repos are available yet.
 		if (IsLoading && (visibleRows is null || visibleRows.Count == 0))
@@ -464,6 +472,55 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <summary>
 	/// Applies the package-name regex and locally-cloned filters.
 	/// </summary>
+	/// <summary>
+	/// Adds the branch accounting for packages whose declared repository is not ours to govern.
+	/// </summary>
+	/// <remarks>
+	/// Absent when there is nothing to report, so the tree gains a node only where there is something
+	/// to do about it. The children are leaves and carry no view: there is nothing to act on, and the
+	/// reason on each names the repository declared, which is the nuspec that needs correcting.
+	/// </remarks>
+	private static void AddNotGovernedNodes(
+		List<NavItem> items,
+		string organization,
+		string orgKey,
+		List<PackageDashboardRow>? rows)
+	{
+		if (rows is null || rows.Count == 0)
+		{
+			return;
+		}
+
+		var notGovernedKey = NotGovernedKey(organization);
+
+		items.Add(new NavItem
+		{
+			Key = notGovernedKey,
+			Text = $"Not governed ({rows.Count})",
+			ParentKey = orgKey,
+			IconCss = "fas fa-circle-question",
+			View = NavView.None,
+			Organization = organization,
+			IsLeaf = false,
+			SortOrder = 2
+		});
+
+		foreach (var row in rows.OrderBy(r => r.PackageId, StringComparer.OrdinalIgnoreCase))
+		{
+			items.Add(new NavItem
+			{
+				Key = $"notgoverned:{organization}:{row.PackageId}",
+				Text = $"{row.PackageId} — {row.NotGovernedReason}",
+				ParentKey = notGovernedKey,
+				IconCss = "fas fa-circle-question",
+				View = NavView.None,
+				Organization = organization,
+				PackageId = row.PackageId,
+				IsLeaf = true
+			});
+		}
+	}
+
 	private List<PackageDashboardRow>? ApplyFilters(List<PackageDashboardRow>? rows)
 	{
 		if (rows is null)

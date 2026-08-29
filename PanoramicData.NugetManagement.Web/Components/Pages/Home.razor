@@ -2701,7 +2701,7 @@ else
 
 		_topIssueClasses =
 		[
-			.. Dashboard.BuildIssueCentricView(_rows).AllIssueClasses
+			.. Dashboard.BuildIssueCentricView([.. _rows.Where(r => r.IsGoverned)]).AllIssueClasses
 				.OrderByDescending(i => i.AffectedRepositoryCount)
 				.ThenBy(i => i.RuleId, StringComparer.OrdinalIgnoreCase)
 				.Take(take)
@@ -3398,8 +3398,100 @@ else
 					</span>
 				</div>
 			</div>
+
+			<h3 class="settings-section">Stray clones</h3>
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				Clone folders belonging to no organisation you manage. A package can declare a repository
+				somebody else owns — a repackage names the upstream it was built from — and until that was
+				checked, those repositories were cloned here and assessed as though they were ours. They are
+				never deleted automatically: they are real checkouts and may hold work.
+			</p>
+			@{ var strayClones = StrayClones; }
+			@if (strayClones.Count == 0)
+			{
+				<p style="color: var(--text-secondary); font-size: 0.85rem;">
+					<i class="fas fa-check" style="color: var(--success);"></i>&nbsp;Every clone belongs to an organisation you manage.
+				</p>
+			}
+			else
+			{
+				<div class="settings-form">
+					@foreach (var stray in strayClones)
+					{
+						<div class="form-group">
+							<div class="settings-path-row">
+								<input type="text" value="@stray.Path" readonly />
+								<button class="btn btn-sm btn-danger"
+										@onclick="() => DeleteStrayCloneAsync(stray)"
+										title="@($"Delete {stray.Path} and everything in it")">
+									<i class="fas fa-trash"></i>&nbsp;Delete
+								</button>
+							</div>
+							<span class="settings-hint">
+								@stray.Owner — @string.Join(", ", stray.RepositoryNames)
+							</span>
+						</div>
+					}
+				</div>
+			}
 		</div>
 	};
+
+	/// <summary>
+	/// Clone folders in the clone root that belong to no organisation under management.
+	/// </summary>
+	/// <remarks>
+	/// Read on render rather than held in a field: the list changes when a clone is deleted, when the
+	/// clone root is changed, and when an organisation is added or removed, and a field would have to
+	/// be invalidated by each of those. Scanning one directory is cheap enough not to bother.
+	/// </remarks>
+	private IReadOnlyList<StrayClone> StrayClones
+		=> StrayCloneScanner.FindStrayClones(LocalRepo.GetReposRoot(), RuntimeSettings.Organizations);
+
+	/// <summary>
+	/// Deletes a stray clone folder, once the user has confirmed it.
+	/// </summary>
+	private async Task DeleteStrayCloneAsync(StrayClone stray)
+	{
+		var confirmed = await ConfirmAsync(
+			$"Delete {stray.Path} and everything in it? It holds {stray.RepositoryNames.Count} checkout(s) of repositories belonging to {stray.Owner}, and any uncommitted work in them goes too.");
+
+		if (!confirmed)
+		{
+			return;
+		}
+
+		try
+		{
+			// Git marks objects read-only, and Directory.Delete refuses those, so the attributes are
+			// cleared first. Without this, deleting any clone fails on its .git folder alone.
+			ClearReadOnlyAttributes(stray.Path);
+			Directory.Delete(stray.Path, recursive: true);
+			AppendConsole($"Deleted stray clone folder {stray.Path}");
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			AppendConsole($"Could not delete {stray.Path}: {ex.Message}");
+			await NotifyAsync($"Could not delete {stray.Path}. {ex.Message}");
+		}
+
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Clears the read-only attribute from a directory and everything beneath it.
+	/// </summary>
+	private static void ClearReadOnlyAttributes(string path)
+	{
+		foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+		{
+			var attributes = File.GetAttributes(file);
+			if (attributes.HasFlag(FileAttributes.ReadOnly))
+			{
+				File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+			}
+		}
+	}
 
 	private RenderFragment RenderSettingsView() => __builder =>
 	{
@@ -3635,6 +3727,7 @@ else
 
 			var github = CreateGitHubClient();
 			var assessable = _rows
+				.Where(r => r.IsGoverned)
 				.Where(r => r.RepositoryFullName is not null)
 				.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
 				.ToList();
@@ -3972,7 +4065,7 @@ else
 			Cache.SetRows(_rows);
 
 			var github = CreateGitHubClient();
-			var assessable = freshRows.Where(r => r.RepositoryFullName is not null).ToList();
+			var assessable = freshRows.Where(r => r.IsGoverned && r.RepositoryFullName is not null).ToList();
 
 			// Mark them pending before the tree is rebuilt, so the new list appears already showing a
 			// spinner per repository.
@@ -4045,6 +4138,7 @@ else
 	private async Task ReassessOrganizationAsync(string? organization)
 	{
 		var assessable = _rows
+			.Where(r => r.IsGoverned)
 			.Where(r => r.RepositoryFullName is not null)
 			.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
 			.Where(r => organization is null
@@ -5421,8 +5515,11 @@ else
 		switch (item.View)
 		{
 			case NavView.Home:
-				var assessed = _rows.Count(r => r.Assessment is not null);
-				return $"Dashboard — {_rows.Count} packages ({assessed} assessed, {item.IssueCount} issues)"
+				// Only what is governed is counted: the rest are accounted for in their own branch, and
+				// counting them here would say the estate holds packages that nothing assesses.
+				var governedRows = _rows.Where(r => r.IsGoverned).ToList();
+				var assessed = governedRows.Count(r => r.Assessment is not null);
+				return $"Dashboard — {governedRows.Count} packages ({assessed} assessed, {item.IssueCount} issues)"
 					+ GetRolledUpHealthSuffix(item);
 
 			case NavView.PackageDetail:

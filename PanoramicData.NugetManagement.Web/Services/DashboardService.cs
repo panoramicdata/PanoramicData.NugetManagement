@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
@@ -71,6 +71,10 @@ public class DashboardService
 
 		var rows = new List<PackageDashboardRow>();
 
+		// Every organisation under management, not merely the one being discovered: refreshing one
+		// organisation must not decide that another's repositories belong to somebody else.
+		var governed = _runtimeSettings.Organizations;
+
 		foreach (var pkg in packages)
 		{
 			// Local paths are keyed on the full owner/name identity, not the bare repository name.
@@ -92,7 +96,12 @@ public class DashboardService
 				Status = isCloned ? PackageStatus.NotAssessed : PackageStatus.NotCloned
 			};
 
-			if (isCloned && repoIdentity is not null)
+			// Whether this repository is ours at all is decided before anything is read from disk on the
+			// strength of it: NuGet's owner: search says who owns the package, never who owns the
+			// repository behind it.
+			GovernanceScope.Apply(row, governed);
+
+			if (row.IsGoverned && isCloned && repoIdentity is not null)
 			{
 				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 				row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
@@ -121,10 +130,17 @@ public class DashboardService
 	{
 		var changed = 0;
 
+		var governed = _runtimeSettings.Organizations;
+
 		foreach (var row in rows)
 		{
+			// Rules change, and a cached row can predate the ones in force. Re-judging here means a
+			// repository that stopped being ours cannot keep its clone facts — and so its buttons —
+			// merely by having been governed when the cache was written.
+			GovernanceScope.Apply(row, governed);
+
 			var repoIdentity = RepoIdentity(row);
-			if (repoIdentity is null)
+			if (repoIdentity is null || !row.IsGoverned)
 			{
 				continue;
 			}
