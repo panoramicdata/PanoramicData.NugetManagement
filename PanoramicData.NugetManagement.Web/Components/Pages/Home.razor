@@ -104,6 +104,12 @@ else
 										{
 											<i class="fas @GuardMarkerIcon(guardState) nav-guard-marker" title="@GuardMarkerTooltip(guardState)"></i>
 										}
+										@if (AffectedRepoCountFor(node.Data) is { } affected)
+										{
+											@* Without this, seven repositories and one look identical: the node is orange
+											   either way, so a run that fixed six of them appears to have done nothing. *@
+											<span class="nav-node-count" title="@affected affected repositor@(affected == 1 ? "y" : "ies")">@affected</span>
+										}
 										@if (ShouldSpinOrgNode(node.Data))
 										{
 											@* The only progress indicator in the tree, and it mirrors whichever button
@@ -5075,6 +5081,16 @@ else
 		});
 
 	private void OnWorkQueueChanged() => _ = SafeStateHasChangedAsync();
+
+	/// <summary>
+	/// The number of repositories an issue-hierarchy node covers, or null for nodes where a count
+	/// would mean nothing — an organisation, a package, the container nodes.
+	/// </summary>
+	private static int? AffectedRepoCountFor(NavItem? item)
+		=> item?.AffectedRepoCount > 0
+			&& item.View is NavView.IssueCategoryDetail or NavView.IssueRuleDetail
+				? item.AffectedRepoCount
+				: null;
 
 	// === Build guard ===
 

@@ -1837,6 +1837,20 @@ i + .breadcrumb-link-text {
 }
 
 /* === Nav Footer === */
+/* === Issue node counts === */
+/* The number of repositories still affected, so a run that fixed six of seven looks different from
+   one that fixed none. */
+.nav-node-count {
+    margin-left: 0.4rem;
+    padding: 0 0.3rem;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: rgba(128, 128, 128, 0.18);
+    flex-shrink: 0;
+}
+
 /* === Build guard marker (repository nodes) === */
 /* Only states needing someone are rendered at all, so this is always worth the eye it draws. */
 .nav-guard-marker {

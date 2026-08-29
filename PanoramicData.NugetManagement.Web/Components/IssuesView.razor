@@ -139,8 +139,15 @@
 					else if (node.Data is { Kind: IssueNodeKind.Repository, Instance: not null } repoItem)
 					{
 						var inst = repoItem.Instance!;
-						<span class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected")">
-							<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
+						<span class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected") @(_fixedInThisRun.Contains(inst.RepositoryFullName) ? "repo-fixed" : null)">
+							@if (_fixedInThisRun.Contains(inst.RepositoryFullName))
+							{
+								<i class="fas fa-check repo-fixed-tick" title="Fixed and pushed in this run"></i>
+							}
+							else
+							{
+								<span class="repo-dot @(inst.IsAutoRemediable ? "fixable" : "manual")"></span>
+							}
 							<span class="repo-name">@inst.RepositoryFullName</span>
 							@if (repoItem.DisambiguatingPackageId is { Length: > 0 } packageId)
 							{
@@ -208,6 +215,10 @@
 	.repo-checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .1rem .8rem; padding: .5rem .8rem; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--bs-border-color, #2a2a2a); }
 	.repo-check { display: flex; gap: .4rem; align-items: center; font-family: monospace; font-size: .82rem; cursor: pointer; }
 	.repo-deselected { opacity: .4; }
+	/* Fixed in this run: ticked and dimmed rather than removed, because the row goes on its own
+	   once the re-assessment confirms the issue has gone. */
+	.repo-fixed { opacity: .55; }
+	.repo-fixed-tick { color: #2e7d32; width: .6rem; font-size: .7rem; }
 	.empty { padding: 2rem 0; }
 	.cat-node { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
 	.node-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; }
@@ -310,6 +321,9 @@
 	private List<string> _allRepoNames = [];
 	private bool _showRepoFilter;
 
+	/// <summary>Repositories this view has seen a fix pushed for, so rows can show progress mid-run.</summary>
+	private readonly HashSet<string> _fixedInThisRun = new(StringComparer.OrdinalIgnoreCase);
+
 	protected override void OnInitialized()
 	{
 		LoadView();
@@ -340,10 +354,18 @@
 	/// </summary>
 	private void OnRepositoryFixed(PackageDashboardRow row)
 	{
+		if (row.RepositoryFullName is not null)
+		{
+			// Ticked rather than removed: the row goes on its own once the re-assessment says the issue
+			// has gone, and a tick is honest in the meantime — pushed, not yet proven by the guard.
+			_fixedInThisRun.Add(row.RepositoryFullName);
+		}
+
 		Cache.UpsertRow(row);
 		LoadView();
 		_ = InvokeAsync(StateHasChanged);
 	}
+
 
 	/// <summary>
 	/// Orders sibling nodes by criticality. PDTree sorts children itself, falling back to comparing
