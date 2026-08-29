@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Models;
+﻿using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 
@@ -2148,9 +2148,12 @@ public class RuleEvaluationTests : TestWithOutput
 		var result = await GetRule("VER-03").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
 		result.Advisory.Should().NotBeNull();
-		// Sets sdk.version rather than rewriting the file: a whole-file replacement discarded whatever
-		// else the repository kept in global.json.
-		result.Advisory!.Data["remediation_type"].Should().Be("ensure_json_property");
+		// Sets the offending properties rather than rewriting the file: a whole-file replacement
+		// discarded whatever else the repository kept in global.json. This fixture is wrong twice over
+		// — 9.0.100 is below the floor, and latestFeature cannot cross feature bands.
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_json_properties");
+		result.Advisory!.Data["properties"].Should().BeOfType<Dictionary<string, string>>()
+			.Which.Keys.Should().BeEquivalentTo(["sdk.version", "sdk.rollForward"]);
 	}
 
 	private static IRule GetRule(string ruleId)

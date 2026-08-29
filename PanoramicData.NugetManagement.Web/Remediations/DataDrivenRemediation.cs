@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Models;
+﻿using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Web.Remediations;
 
@@ -35,6 +35,7 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "ensure_csproj_property"
 						or "ensure_code_coverage_setup"
 						or "ensure_json_property"
+						or "ensure_json_properties"
 						or "ensure_checkout_fetch_depth"
 						or "replace_regex_in_file"
 						or "remove_json_property"
@@ -170,6 +171,21 @@ public abstract class DataDrivenRemediation : IRemediation
 						result,
 						applied,
 						onOutput);
+				}
+
+				break;
+
+			case "ensure_json_properties":
+				// The plural form: a rule that can fail on more than one property sets only the ones that
+				// are actually wrong, leaving the rest of the file — and any already-conformant value —
+				// untouched.
+				if (data.TryGetValue("file", out var jpsFile) && jpsFile is string jpsf &&
+					data["properties"] is Dictionary<string, string> jpsProperties)
+				{
+					foreach (var (jpsPath, jpsValue) in jpsProperties)
+					{
+						RemediationHelpers.EnsureJsonProperty(localPath, jpsf, jpsPath, jpsValue, result, applied, onOutput);
+					}
 				}
 
 				break;

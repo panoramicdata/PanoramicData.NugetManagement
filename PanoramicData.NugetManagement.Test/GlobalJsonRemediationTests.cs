@@ -1,6 +1,7 @@
-using PanoramicData.NugetManagement.Models;
+﻿using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
+using PanoramicData.NugetManagement.Web.Remediations.Versioning;
 
 namespace PanoramicData.NugetManagement.Test;
 
@@ -54,9 +55,121 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
 
 		result.Passed.Should().BeFalse();
-		result.Advisory!.Data["remediation_type"].Should().Be("ensure_json_property");
-		result.Advisory!.Data["property_path"].Should().Be("sdk.version");
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_json_properties");
+		Properties(result).Should().ContainKey("sdk.version");
 		result.Advisory!.Data.Should().NotContainKey("new_content");
+	}
+
+	[Fact]
+	public async Task VER03_ShouldPass_WhenPinnedAheadOfTheFloor()
+	{
+		// The pin is a floor. A repository already on a later feature band is not less conformant than
+		// one on the floor, and telling it to move down is nonsense — rollForward never rolls down.
+		var context = CreateContext(
+			testProject: _xunitV3,
+			globalJson: """{"sdk":{"version":"10.0.400","rollForward":"latestMinor"}}""");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeTrue("10.0.400 is above the 10.0.100 floor");
+	}
+
+	[Fact]
+	public async Task VER03_ShouldFail_WhenRollForwardIsMissing()
+	{
+		// Without rollForward the default is latestPatch, which cannot leave the pinned feature band:
+		// a repository floored at 10.0.100 then refuses to build on a machine whose only SDK is 10.0.400.
+		var context = CreateContext(
+			testProject: _xunitV3,
+			globalJson: "{\"sdk\":{\"version\":\"" + Standards.DotNetSdkPinVersion + "\"}}");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		Properties(result).Should().ContainKey("sdk.rollForward");
+	}
+
+	[Fact]
+	public async Task VER03_ShouldFail_WhenRollForwardIsDisabled()
+	{
+		var context = CreateContext(
+			testProject: _xunitV3,
+			globalJson: "{\"sdk\":{\"version\":\"" + Standards.DotNetSdkPinVersion + "\",\"rollForward\":\"disable\"}}");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse("disable pins the build to one exact SDK build");
+	}
+
+	[Theory]
+	[InlineData("patch")]
+	[InlineData("feature")]
+	[InlineData("latestPatch")]
+	[InlineData("latestFeature")]
+	public async Task VER03_ShouldFail_WhenRollForwardCannotCrossFeatureBands(string rollForward)
+	{
+		var context = CreateContext(
+			testProject: _xunitV3,
+			globalJson: "{\"sdk\":{\"version\":\"" + Standards.DotNetSdkPinVersion + "\",\"rollForward\":\"" + rollForward + "\"}}");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse($"{rollForward} cannot reach an SDK in a higher feature band");
+	}
+
+	[Theory]
+	[InlineData("latestMinor")]
+	[InlineData("latestMajor")]
+	[InlineData("minor")]
+	[InlineData("major")]
+	public async Task VER03_ShouldPass_ForEveryBandCrossingRollForward(string rollForward)
+	{
+		var context = CreateContext(
+			testProject: _xunitV3,
+			globalJson: "{\"sdk\":{\"version\":\"" + Standards.DotNetSdkPinVersion + "\",\"rollForward\":\"" + rollForward + "\"}}");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeTrue($"{rollForward} can reach any SDK in the major");
+	}
+
+	[Fact]
+	public async Task VER03_ShouldRemediateOnlyWhatIsWrong()
+	{
+		// A repository already above the floor should keep its version: only the missing rollForward
+		// is added. Rewriting the version would move it down a band for no reason.
+		var context = CreateContext(
+			testProject: _xunitV3,
+			globalJson: """{"sdk":{"version":"10.0.400"}}""");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		Properties(result).Should().ContainKey("sdk.rollForward");
+		Properties(result).Should().NotContainKey("sdk.version", "10.0.400 is already above the floor");
+	}
+
+	[Fact]
+	public async Task VER03_ShouldFail_WhenTheSdkVersionIsMissingEntirely()
+	{
+		var context = CreateContext(
+			testProject: _xunitV3,
+			globalJson: """{"sdk":{"rollForward":"latestMinor"}}""");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		Properties(result).Should().ContainKey("sdk.version");
+	}
+
+	[Fact]
+	public async Task VER03_ShouldFail_WhenGlobalJsonIsNotValidJson()
+	{
+		var context = CreateContext(testProject: _xunitV3, globalJson: "{ not json");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
 	}
 
 	[Fact]
@@ -84,20 +197,6 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 		result.IsApplicable.Should().BeFalse();
 	}
 
-	[Fact]
-	public void VER03_ShouldPinTheFeatureBandFloor_NotTheMachinesNewestSdk()
-	{
-		// Issue 76: LatestDotNetSdkVersion is whatever the machine running this tool has installed.
-		// Pinning it makes one machine's install list a build requirement for every other machine,
-		// because rollForward never rolls down.
-		// Asserted on shape, not on a comparison with the detected SDK: on a machine whose newest
-		// band happens to be the floor the two legitimately coincide, and a test that fails there
-		// would be coupled to the host's install list - the very fault this fixes.
-		Standards.DotNetSdkPinVersion.Should().EndWith(".100");
-		Standards.DotNetSdkPinVersion.Should().StartWith(
-			string.Join('.', Standards.LatestDotNetSdkVersion.Split('.').Take(2)) + ".");
-	}
-
 	[Theory]
 	[InlineData(true)]
 	[InlineData(false)]
@@ -121,6 +220,40 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 
 		result.Passed.Should().BeTrue();
 	}
+
+	[Fact]
+	public async Task VER03_Remediation_ShouldAddOnlyTheMissingProperty()
+	{
+		// End-to-end: the advisory now carries more than one property, and applying it must leave the
+		// rest of the file — and a version already above the floor — exactly as it was.
+		const string globalJson = """{"sdk":{"version":"10.0.400"},"msbuild-sdks":{"Contoso.Build":"1.2.3"}}""";
+		var directory = Path.Combine(Path.GetTempPath(), "ver03-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+
+		try
+		{
+			File.WriteAllText(Path.Combine(directory, "global.json"), globalJson);
+			var result = await Rule("VER-03").EvaluateAsync(
+				CreateContext(testProject: _xunitV3, globalJson: globalJson),
+				CancellationToken.None);
+
+			var remediation = new GlobalJsonRemediation();
+			remediation.CanRemediate(result).Should().BeTrue();
+			remediation.Apply(directory, result, [], null);
+
+			var updated = File.ReadAllText(Path.Combine(directory, "global.json"));
+			updated.Should().Contain(Standards.SdkRollForward);
+			updated.Should().Contain("10.0.400", "a version above the floor must not be moved down");
+			updated.Should().Contain("Contoso.Build", "the rule has no opinion on the rest of the file");
+		}
+		finally
+		{
+			Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	private static Dictionary<string, string> Properties(RuleResult result)
+		=> result.Advisory!.Data["properties"].Should().BeOfType<Dictionary<string, string>>().Subject;
 
 	private static IRule Rule(string ruleId) => RuleRegistry.Rules.First(r => r.RuleId == ruleId);
 

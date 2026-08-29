@@ -1,11 +1,13 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using PanoramicData.Blazor.Extensions;
+using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Components;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Remediations;
 using PanoramicData.NugetManagement.Web.Services;
+using Refit;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -93,6 +95,16 @@ var app = builder.Build();
 // first clone. Without this, a freshly configured root is a path that is named everywhere and present
 // nowhere — including on the settings page that offers to open it.
 app.Services.GetRequiredService<LocalRepoService>().EnsureReposRootExists();
+
+// Fetch the .NET channel Microsoft currently supports before serving, so assessments measure against
+// the published standard rather than the offline fallback — and never against whatever SDKs happen to
+// be installed on this machine, which is what this replaced. A failed fetch is not fatal.
+using (var releaseIndexClient = new HttpClient { BaseAddress = DotNetReleaseCatalog.BaseAddress, Timeout = TimeSpan.FromSeconds(10) })
+{
+	await DotNetReleaseCatalog.Default.RefreshAsync(
+		RestService.For<IDotNetReleaseIndexApi>(releaseIndexClient),
+		CancellationToken.None).ConfigureAwait(false);
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

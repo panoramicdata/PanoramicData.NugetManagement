@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+﻿using PanoramicData.NugetManagement.Services;
 
 namespace PanoramicData.NugetManagement.Models;
 
@@ -9,84 +9,40 @@ namespace PanoramicData.NugetManagement.Models;
 public static class Standards
 {
 	/// <summary>
-	/// The fallback SDK version used when detection fails.
+	/// The .NET channel every version constant below is derived from: the newest channel Microsoft
+	/// still supports, fetched from the published release index.
 	/// </summary>
-	private const string _fallbackDotNetSdkVersion = "10.0.400";
+	private static DotNetChannelStandard Channel => DotNetReleaseCatalog.Default.Current;
 
 	/// <summary>
-	/// The latest .NET target framework moniker.
+	/// The latest .NET target framework moniker, for example <c>net10.0</c>.
 	/// </summary>
-	public const string LatestTargetFramework = "net10.0";
+	public static string LatestTargetFramework => Channel.TargetFramework;
 
 	/// <summary>
-	/// The latest installed .NET SDK version for global.json, detected via <c>dotnet --list-sdks</c>.
-	/// Falls back to <see cref="_fallbackDotNetSdkVersion"/> if detection fails.
-	/// </summary>
-	public static string LatestDotNetSdkVersion => field ??= DetectLatestSdkVersion();
-
-	/// <summary>
-	/// The SDK version to pin in <c>global.json</c>: the feature-band floor for the target major
-	/// version, for example <c>10.0.100</c>.
+	/// The SDK version to pin in <c>global.json</c>: the feature-band floor for the supported
+	/// channel, for example <c>10.0.100</c>.
 	/// </summary>
 	/// <remarks>
-	/// Deliberately NOT <see cref="LatestDotNetSdkVersion"/>. That is whatever the machine running
-	/// this tool happens to have installed, and pinning it makes one machine's install list a build
-	/// requirement for everyone else: a repository pinned to a 4xx band cannot run any dotnet command
-	/// on a machine whose newest band is 3xx, because rollForward never rolls down. The floor plus
-	/// <c>latestMinor</c> expresses "a .NET N SDK", which is what the pin is actually for.
+	/// Deliberately the floor rather than the channel's newest SDK. <c>rollForward</c> never rolls
+	/// down, so pinning <c>10.0.400</c> makes a 4xx install a build requirement for everyone: a
+	/// machine whose newest band is 3xx cannot run any dotnet command. Nor is security a reason to
+	/// pin higher — Microsoft services every live feature band in the same release, so <c>10.0.111</c>
+	/// carries the same fixes as <c>10.0.400</c>. What the pin needs alongside it is a band-crossing
+	/// <c>rollForward</c>, which is what VER-03 checks.
 	/// </remarks>
-	public static string DotNetSdkPinVersion
-	{
-		get
-		{
-			var parts = LatestDotNetSdkVersion.Split('.');
-			return parts.Length >= 2 ? $"{parts[0]}.{parts[1]}.100" : LatestDotNetSdkVersion;
-		}
-	}
+	public static string DotNetSdkPinVersion => Channel.SdkPinVersion;
 
 	/// <summary>
-	/// Detects the latest installed .NET SDK version by running <c>dotnet --list-sdks</c>
-	/// and selecting the highest version that matches the current major version (10).
+	/// The latest .NET version specifier for CI workflows, for example <c>10.0.x</c>.
 	/// </summary>
-	private static string DetectLatestSdkVersion()
-	{
-		try
-		{
-			using var process = new Process();
-			process.StartInfo = new ProcessStartInfo
-			{
-				FileName = "dotnet",
-				Arguments = "--list-sdks",
-				RedirectStandardOutput = true,
-				UseShellExecute = false,
-				CreateNoWindow = true
-			};
-			process.Start();
-			var output = process.StandardOutput.ReadToEnd();
-			process.WaitForExit(5000);
-
-			// Parse lines like "10.0.201 [C:\Program Files\dotnet\sdk]"
-			// and pick the highest version matching the current major version prefix.
-			var majorPrefix = LatestTargetFramework.Replace("net", "").Split('.')[0] + ".";
-			var best = output
-				.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-				.Select(line => line.Split(' ', 2)[0])
-				.Where(v => v.StartsWith(majorPrefix, StringComparison.Ordinal) && !v.Contains('-'))
-				.OrderByDescending(v => v, StringComparer.Ordinal)
-				.FirstOrDefault();
-
-			return best ?? _fallbackDotNetSdkVersion;
-		}
-		catch
-		{
-			return _fallbackDotNetSdkVersion;
-		}
-	}
+	public static string LatestDotNetVersionSpecifier => Channel.VersionSpecifier;
 
 	/// <summary>
-	/// The latest .NET version specifier for CI workflows.
+	/// The <c>rollForward</c> value the standard global.json uses. Band-crossing, so the pinned
+	/// version acts as a floor meaning "a .NET N SDK" rather than tying the build to one feature band.
 	/// </summary>
-	public const string LatestDotNetVersionSpecifier = "10.0.x";
+	public const string SdkRollForward = "latestMinor";
 
 	/// <summary>
 	/// The <c>test.runner</c> value that opts <c>dotnet test</c> into the Microsoft.Testing.Platform
@@ -276,7 +232,7 @@ public static class Standards
 				{
 				  "sdk": {
 					"version": "{{DotNetSdkPinVersion}}",
-					"rollForward": "latestMinor"
+					"rollForward": "{{SdkRollForward}}"
 				  },
 				  "test": {
 					"runner": "{{MtpTestRunnerName}}"
@@ -287,7 +243,7 @@ public static class Standards
 				{
 				  "sdk": {
 					"version": "{{DotNetSdkPinVersion}}",
-					"rollForward": "latestMinor"
+					"rollForward": "{{SdkRollForward}}"
 				  }
 				}
 				""";
