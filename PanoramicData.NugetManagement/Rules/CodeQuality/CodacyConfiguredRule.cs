@@ -1,4 +1,4 @@
-using Codacy.Api;
+﻿using Codacy.Api;
 using Codacy.Api.Models;
 using PanoramicData.NugetManagement.Models;
 
@@ -20,6 +20,11 @@ public class CodacyConfiguredRule : RuleBase
 
 	/// <inheritdoc />
 	public override AssessmentSeverity Severity => AssessmentSeverity.Warning;
+
+	/// <summary>
+	/// The largest page Codacy's file listing accepts. Anything above this is a 400.
+	/// </summary>
+	private const int _codacyMaximumPageSize = 100;
 
 	/// <inheritdoc />
 	public override async Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
@@ -90,21 +95,32 @@ public class CodacyConfiguredRule : RuleBase
 
 			var issueCount = overview?.Data?.Counts?.Levels?.Sum(level => level.Total) ?? 0;
 
-			var files = await client.Repositories.ListFilesAsync(
-				Provider.Github,
-				organizationName,
-				repositoryName,
-				context.DefaultBranch,
-				null,
-				null,
-				null,
-				null,
-				500,
-				cancellationToken).ConfigureAwait(false);
+			var levels = new List<CodacyLevel>();
+			string? cursor = null;
 
-			var levels = files.Data
-				.Select(file => TryParseCodacyLevel(file.GradeLetter, out var level) ? level : CodacyLevel.F)
-				.ToList();
+			// Codacy rejects a page size above 100, so the worst file in a large repository is only
+			// reachable by paging. Asking for 500 in one go returned 400, and the whole gate fell into
+			// the catch below and reported itself unevaluated.
+			do
+			{
+				var page = await client.Repositories.ListFilesAsync(
+					Provider.Github,
+					organizationName,
+					repositoryName,
+					context.DefaultBranch,
+					null,
+					null,
+					null,
+					cursor,
+					_codacyMaximumPageSize,
+					cancellationToken).ConfigureAwait(false);
+
+				levels.AddRange(page.Data
+					.Select(file => TryParseCodacyLevel(file.GradeLetter, out var level) ? level : CodacyLevel.F));
+
+				cursor = page.Pagination?.Cursor;
+			}
+			while (!string.IsNullOrEmpty(cursor));
 
 			if (levels.Count == 0)
 			{
