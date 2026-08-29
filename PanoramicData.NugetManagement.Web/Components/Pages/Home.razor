@@ -19,6 +19,7 @@
 @inject LocalRepoService LocalRepo
 @inject WorkQueueService WorkQueue
 @inject RegressionGuardService RegressionGuard
+@inject UiConsoleLogSink LogSink
 @implements IDisposable
 
 <PageTitle>NuGet Governance</PageTitle>
@@ -408,8 +409,8 @@ else
 											 IconCssClass="fas fa-arrows-rotate"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.GitSync)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@IsSyncEnabled()"
-											 ToolTip="@GetSyncTooltip()"
+											 IsEnabled="@(IsSyncEnabled() && !IsStepQueueBlocked(WorkflowStep.GitSync))"
+											 ToolTip="@GatedTooltip(WorkflowStep.GitSync, GetSyncTooltip())"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -422,8 +423,8 @@ else
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
 											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
-											 IsEnabled="@(!IsBlockedByOutOfSync)"
-											 ToolTip="@(IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
+											 IsEnabled="@(!IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Reassess))"
+											 ToolTip="@GatedTooltip(WorkflowStep.Reassess, IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -437,7 +438,7 @@ else
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Fix)"
 											 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
 											 IsEnabled="@IsFixEnabled()"
-											 ToolTip="@GetFixAllTooltip()"
+											 ToolTip="@GatedTooltip(WorkflowStep.Fix, GetFixAllTooltip())"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -450,8 +451,8 @@ else
 											 IconCssClass="fas fa-hammer"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Build)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
-											 ToolTip="@WorkflowStepTooltip("Build the solution")"
+											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Build))"
+											 ToolTip="@GatedTooltip(WorkflowStep.Build, WorkflowStepTooltip("Build the solution"))"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -464,8 +465,8 @@ else
 											 IconCssClass="fas fa-flask"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Test)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
-											 ToolTip="@WorkflowStepTooltip("Run unit tests")"
+											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Test))"
+											 ToolTip="@GatedTooltip(WorkflowStep.Test, WorkflowStepTooltip("Run unit tests"))"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -478,8 +479,8 @@ else
 											 IconCssClass="fas fa-cloud-upload-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
 											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync)"
-											 ToolTip="@WorkflowStepTooltip("Commit changes, fetch, rebase and push to origin")"
+											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.CommitAndPush))"
+											 ToolTip="@GatedTooltip(WorkflowStep.CommitAndPush, WorkflowStepTooltip("Commit changes, fetch, rebase and push to origin"))"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -492,8 +493,8 @@ else
 										 IconCssClass="fas fa-rocket"
 										 CssClass="@GetPublishCssClass()"
 										 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-										 IsEnabled="@IsPublishEnabled()"
-										 ToolTip="@GetPublishTooltip()"
+										 IsEnabled="@(IsPublishEnabled() && !IsStepQueueBlocked(WorkflowStep.Publish))"
+										 ToolTip="@GatedTooltip(WorkflowStep.Publish, GetPublishTooltip())"
 										 Click="OnToolbarClick" />
 
 							<PDToolbarPlaceholder ShiftRight="true">
@@ -906,14 +907,21 @@ else
 	// === Console state ===
 	private bool _consoleVisible = true;
 	private bool _consoleScrollPending;
+	private int _consoleRenderQueued;
+	// The console each queued item's output belongs to, captured when it was enqueued.
+	private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _consoleNodeKeyByWorkItemId = new();
 	private ElementReference _consoleElement;
 	private string _selectedNodeKey = "root";
-	private readonly Dictionary<string, NodeUiState> _nodeUiStateByKey = [];
+	// Concurrent because log lines are appended from the assessment tasks, which may reach a node the
+	// renderer has not created yet.
+	private readonly System.Collections.Concurrent.ConcurrentDictionary<string, NodeUiState> _nodeUiStateByKey = new();
 	private WorkflowStep? _lastFailedWorkflowStep;
 	private WorkflowStep? _activeWorkflowStep;
 
 	private NodeUiState CurrentNodeUiState => GetOrCreateNodeUiState(_selectedNodeKey);
-	private List<ConsoleLine> CurrentConsoleLines => CurrentNodeUiState.ConsoleLines;
+	// A snapshot, not the live buffer: log lines arrive from the parallel assessment tasks on
+	// whatever thread produced them, so nothing outside NodeUiState may enumerate the list directly.
+	private ConsoleLine[] CurrentConsoleLines => CurrentNodeUiState.ConsoleSnapshot();
 	private string? CurrentLastPromptText { get => CurrentNodeUiState.LastPromptText; set => CurrentNodeUiState.LastPromptText = value; }
 	private bool CurrentCopyFeedback { get => CurrentNodeUiState.CopyFeedback; set => CurrentNodeUiState.CopyFeedback = value; }
 	private bool CurrentConsoleCopyFeedback { get => CurrentNodeUiState.ConsoleCopyFeedback; set => CurrentNodeUiState.ConsoleCopyFeedback = value; }
@@ -945,6 +953,7 @@ else
 		_isAuthenticated = true;
 		WorkQueue.Changed += OnWorkQueueChanged;
 		RegressionGuard.StatusesChanged += OnGuardStatusesChanged;
+		LogSink.LineWritten += OnLogLineWritten;
 		_userName = httpContext.User.Identity.Name ?? "User";
 		_organizationName = SettingsOptions.Value.NuGetOrganization;
 		_accessToken = await httpContext.GetTokenAsync("access_token");
@@ -2966,7 +2975,7 @@ else
 		<div class="console-panel-header">
 			<span><i class="fas fa-terminal"></i> Console</span>
 			<div class="console-panel-actions">
-				@if (CurrentConsoleLines.Count > 0)
+				@if (CurrentConsoleLines.Length > 0)
 				{
 					<button class="btn btn-sm btn-copy @(CurrentConsoleCopyFeedback ? "btn-copied" : "")" @onclick="CopyConsoleToClipboardAsync" title="Copy console output to clipboard">
 						@if (CurrentConsoleCopyFeedback)
@@ -2992,20 +3001,20 @@ else
 							}
 						</button>
 				}
-				@if (CurrentConsoleLines.Count > 0)
+				@if (CurrentConsoleLines.Length > 0)
 				{
 					<button class="btn btn-sm btn-icon" @onclick="ClearConsole" title="Clear console"><i class="fas fa-trash"></i></button>
 				}
 			</div>
 		</div>
 		<div class="detail-console-output" @ref="_consoleElement">
-			@if (CurrentConsoleLines.Count == 0)
+			@if (CurrentConsoleLines.Length == 0)
 			{
 				<span class="console-placeholder">Actions and output will appear here...</span>
 			}
 			else
 			{
-				@foreach (var line in CurrentConsoleLines.ToArray())
+				@foreach (var line in CurrentConsoleLines)
 				{
 					<div class="@line.CssClass">@line.Text</div>
 				}
@@ -3097,14 +3106,14 @@ else
 			{
 				<div class="detail-empty">
 					<p>No assessment data available.</p>
-					<button class="btn btn-primary" @onclick="ReassessAllAsync" disabled="@_isAssessing"><i class="fas fa-sync-alt"></i> Assess Now</button>
+					<button class="btn btn-primary" @onclick="ReassessAllAsync" disabled="@(_isAssessing || IsStepQueueBlocked(WorkflowStep.Reassess))"><i class="fas fa-sync-alt"></i> Assess Now</button>
 				</div>
 			}
 			else if (row.TotalFailures == 0)
 			{
 				<div class="detail-empty detail-pass">
 					<p>✅ All @row.Assessment.RuleResults.Count rules pass!</p>
-						<button class="btn" @onclick="ReassessAllAsync" disabled="@_isAssessing"><i class="fas fa-sync-alt"></i> Re-assess</button>
+						<button class="btn" @onclick="ReassessAllAsync" disabled="@(_isAssessing || IsStepQueueBlocked(WorkflowStep.Reassess))"><i class="fas fa-sync-alt"></i> Re-assess</button>
 				</div>
 			}
 			else
@@ -3127,7 +3136,7 @@ else
 								<button class="btn btn-sm" @onclick="() => ResolveCategoryAsync(group.Category)"
 											title="Generate AI prompt for @group.Category"><i class="fas fa-magic"></i> Prompt</button>
 								<button class="btn btn-sm" @onclick="() => ReassessCategoryAsync(group.Category)"
-											disabled="@_isAssessing" title="Re-assess this category"><i class="fas fa-sync-alt"></i></button>
+											disabled="@(_isAssessing || IsStepQueueBlocked(WorkflowStep.Reassess))" title="Re-assess this category"><i class="fas fa-sync-alt"></i></button>
 							</div>
 						</div>
 						@foreach (var result in group.Failures)
@@ -3199,7 +3208,7 @@ else
 										disabled="@(!IsFixEnabled())" title="@GetFixCategoryTooltip(cat)"><i class="fas fa-wrench"></i> Fix</button>
 						}
 						<button class="btn btn-sm" @onclick="() => ReassessCategoryAsync(cat)"
-									disabled="@_isAssessing" title="Re-assess"><i class="fas fa-sync-alt"></i></button>
+									disabled="@(_isAssessing || IsStepQueueBlocked(WorkflowStep.Reassess))" title="Re-assess"><i class="fas fa-sync-alt"></i></button>
 					</div>
 				</div>
 				@if (failures.Count == 0)
@@ -3718,6 +3727,7 @@ else
 
 		try
 		{
+			AppendConsole("▶ Discovering packages...");
 			var freshRows = await Dashboard.DiscoverPackagesAsync(cancellationToken: cancellationToken);
 
 			ReportUnreadNuspecs();
@@ -3760,6 +3770,7 @@ else
 			// ones already at full opacity with no previous value to animate from, and the dim would
 			// snap off instead of fading.
 			_progressMessage = "Assessing...";
+			AppendConsole($"▶ Assessing {assessable.Count} repositories...");
 			await RefreshTableAsync();
 
 			_isDiscovering = false;
@@ -3780,6 +3791,7 @@ else
 
 			Cache.Update(_rows);
 			_lastRefreshUtc = Cache.LastRefreshUtc;
+			AppendConsole($"✅ Refreshed {_rows.Count} packages, assessed {assessable.Count} repositories.");
 			// Keep the final count message but append " Done" and persist it for a couple of
 			// seconds instead of the indicator vanishing the instant it hits 100%.
 			_progressMessage += " Done";
@@ -3893,19 +3905,60 @@ else
 			return;
 		}
 
-		var rowIndex = _rows.FindIndex(r => string.Equals(r.RepositoryFullName, _selectedRow.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
+		await PersistRowUpdateAsync(_selectedRow);
+	}
+
+	/// <summary>
+	/// Writes a row's newly assessed state back to the table and the cache. Takes the row explicitly
+	/// because queued work outlives the selection that started it — by the time it runs, the user may
+	/// be looking at something else.
+	/// </summary>
+	private async Task PersistRowUpdateAsync(RepositoryDashboardRow row)
+	{
+		var rowIndex = _rows.FindIndex(r => string.Equals(r.RepositoryFullName, row.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
 		if (rowIndex >= 0)
 		{
-			_rows[rowIndex] = _selectedRow;
+			_rows[rowIndex] = row;
 		}
 
-		Cache.UpsertRow(_selectedRow);
+		Cache.UpsertRow(row);
 		_lastRefreshUtc = Cache.LastRefreshUtc;
 		await RefreshTableAsync();
 	}
 
    private bool IsStepRunning(WorkflowStep step)
 		=> _activeWorkflowStep == step && (_isRunning || _isAssessing || _isLoading);
+
+	/// <summary>
+	/// The earliest workflow step queued or running for the selected repository, or null when nothing
+	/// is outstanding for it. Read live from the queue rather than cached, so work started in another
+	/// browser tab closes the buttons here too.
+	/// </summary>
+	private WorkflowStep? FirstQueuedStep
+		=> WorkflowGate.FirstBlockedStep(WorkQueue.Items, _selectedRow?.RepositoryFullName);
+
+	/// <summary>
+	/// Whether a toolbar step is closed because it, or something before it, is queued for this
+	/// repository. Everything downstream of queued work is guesswork until that work has run.
+	/// </summary>
+	private bool IsStepQueueBlocked(WorkflowStep step) => WorkflowGate.IsBlocked(step, FirstQueuedStep);
+
+	/// <summary>
+	/// The tooltip for a step, replaced by the reason it is greyed out when it is. A disabled button
+	/// with its usual tooltip tells the user nothing about why they cannot press it.
+	/// </summary>
+	private string GatedTooltip(WorkflowStep step, string defaultToolTip)
+	{
+		if (FirstQueuedStep is not { } blocking || !WorkflowGate.IsBlocked(step, blocking))
+		{
+			return defaultToolTip;
+		}
+
+		var name = GetWorkflowStepDisplayName(blocking);
+		return step == blocking
+			? $"{name} is already queued for this repository"
+			: $"Waiting for {name} to finish — it may change what this step would do";
+	}
 
 	private static string GetWorkflowStepDisplayName(WorkflowStep step) => step switch
 	{
@@ -3951,52 +4004,103 @@ else
 			? $"{GetWorkflowStepDisplayName(step)} is running — click Cancel to stop"
 			: defaultToolTip;
 
-	private async Task ReassessAllAsync()
+	/// <summary>
+	/// Re-assesses the selected repository. Queued like every other toolbar step, so that it takes its
+	/// turn behind whatever is already in flight and closes the steps downstream of it while it waits.
+	/// </summary>
+	private Task ReassessAllAsync()
 	{
 		if (_selectedRow is null)
 		{
-			return;
+			return Task.CompletedTask;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
+		var capturedRow = _selectedRow;
+		EnqueueWork(
+			$"Re-assess {_selectedRow.RepositoryName}",
+			_selectedRow.Organization,
+			$"reassess:{_selectedRow.RepositoryFullName}",
+			(_, cancellationToken) => ReassessAllCoreAsync(capturedRow, cancellationToken),
+			WorkflowStep.Reassess,
+			_selectedRow.RepositoryFullName);
+
+		return Task.CompletedTask;
+	}
+
+	private async Task ReassessAllCoreAsync(RepositoryDashboardRow row, CancellationToken cancellationToken)
+	{
 		_isAssessing = true;
-		_progressMessage = $"Checking NuGet listing for {_selectedRow.RepositoryFullName}...";
+		_progressMessage = $"Checking NuGet listing for {row.RepositoryFullName}...";
 		StateHasChanged();
 
 		try
 		{
-			// Check whether the package is still listed on NuGet
-			var isListed = await Dashboard.IsPackageListedAsync(_selectedRow.RepositoryFullName);
-			if (!isListed)
+			cancellationToken.ThrowIfCancellationRequested();
+
+			// A repository leaves the estate only when every package it publishes has been retired.
+			// Dropping it because one of four was unlisted would take the other three with it.
+			var listed = new List<string>();
+			foreach (var package in row.Packages)
 			{
-				AppendConsole($"⚠️ {_selectedRow.RepositoryFullName} is no longer listed on NuGet — removing from cache.");
-				_rows.RemoveAll(r => string.Equals(r.RepositoryFullName, _selectedRow.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
-				Cache.RemoveRow(_selectedRow.RepositoryFullName);
-				_selectedRow = null;
-				_selectedPackageId = null;
-				_currentView = NavView.Home;
+				if (await Dashboard.IsPackageListedAsync(package.PackageId))
+				{
+					listed.Add(package.PackageId);
+				}
+			}
+
+			if (listed.Count == 0)
+			{
+				AppendConsole($"⚠️ {row.RepositoryFullName} publishes nothing still listed on NuGet — removing from cache.");
+				_rows.RemoveAll(r => string.Equals(r.RepositoryFullName, row.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
+				Cache.RemoveRow(row.RepositoryFullName);
+
+				// Only clear the selection if it is this row: the user may have moved on while this
+				// waited its turn in the queue.
+				if (ReferenceEquals(_selectedRow, row))
+				{
+					_selectedRow = null;
+					_selectedPackageId = null;
+					_currentView = NavView.Home;
+				}
+
 				await RefreshTableAsync();
 				return;
 			}
 
-			_progressMessage = $"Assessing {_selectedRow.RepositoryFullName}...";
+			if (listed.Count < row.Packages.Count)
+			{
+				var retired = row.Packages
+					.Select(package => package.PackageId)
+					.Except(listed, StringComparer.OrdinalIgnoreCase);
+
+				AppendConsole($"ℹ️ {row.RepositoryFullName}: {string.Join(", ", retired)} no longer listed on NuGet.");
+			}
+
+			cancellationToken.ThrowIfCancellationRequested();
+			_progressMessage = $"Assessing {row.RepositoryFullName}...";
 			StateHasChanged();
 
-			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
+			if (row.IsClonedLocally && row.LocalPath is not null)
 			{
-				await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
-				await Dashboard.RefreshGitStatusAsync(_selectedRow);
+				await Dashboard.AssessLocalRepositoryAsync(row);
+				await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
 			{
 				var github = CreateGitHubClient();
-				await Dashboard.AssessRepositoryAsync(_selectedRow, github);
+				await Dashboard.AssessRepositoryAsync(row, github);
 			}
 
-           await PersistSelectedRowUpdateAsync();
-			AppendConsole($"✅ Assessment complete for {_selectedRow.RepositoryFullName}");
+			await PersistRowUpdateAsync(row);
+			AppendConsole($"✅ Assessment complete for {row.RepositoryFullName}");
+		}
+		catch (OperationCanceledException)
+		{
+			// The pump says so, and says it the same way for every step.
+			throw;
 		}
 		catch (Exception ex)
 		{
@@ -4924,6 +5028,13 @@ else
 			return false;
 		}
 
+		// Checked here rather than at each button: Fix is offered from the toolbar, from each issue
+		// category and from individual rules, and a gate on only one of them is not a gate.
+		if (IsStepQueueBlocked(WorkflowStep.Fix))
+		{
+			return false;
+		}
+
 		if (_selectedRow.Assessment is null ||
 			!_selectedRow.Assessment.RuleResults.Any(r => !r.Passed && Dashboard.IsAutoRemediable(r)))
 		{
@@ -5240,15 +5351,7 @@ else
 	// === Console helpers ===
 
 	private NodeUiState GetOrCreateNodeUiState(string nodeKey)
-	{
-		if (!_nodeUiStateByKey.TryGetValue(nodeKey, out var state))
-		{
-			state = new NodeUiState();
-			_nodeUiStateByKey[nodeKey] = state;
-		}
-
-		return state;
-	}
+		=> _nodeUiStateByKey.GetOrAdd(nodeKey, static _ => new NodeUiState());
 
 	/// <summary>
 	/// Routes IssuesView's output into the console at the bottom of the screen, opening it if it is
@@ -5311,10 +5414,15 @@ else
 		if (item is null)
 		{
 			// Folded into an identical pending item. Said out loud, because a button that appears to do
-			// nothing is worse than one that queues a second pass.
+			// nothing is worse than one that queues a second pass. The console it was folded into keeps
+			// its own node — the fold produced no new work to report.
 			AppendConsole($"↩️ {title} is already queued.");
 			return;
 		}
+
+		// Recorded now rather than read when the item runs: the queue may not reach it for minutes, by
+		// which time the selection has moved and the run's output would land in an unrelated console.
+		_consoleNodeKeyByWorkItemId[item.Id] = _selectedNodeKey;
 
 		AppendConsole(WorkQueue.Running is null ? $"▶️ {title}" : $"⏳ Queued: {title}");
 		_ = PumpQueueAsync();
@@ -5330,6 +5438,15 @@ else
 		while (WorkQueue.TryDequeueForExecution(this, out var item))
 		{
 			Exception? error = null;
+
+			// Stamped on this method's asynchronous flow, which the item's own work and everything it
+			// logs runs inside. That — not the current selection — is what decides where its output
+			// appears, so a run started on one node stays there however far the user navigates. Set
+			// inside this async method, so it cannot escape into the caller that fired the pump.
+			UiConsoleScope.NodeKey = _consoleNodeKeyByWorkItemId.TryGetValue(item.Id, out var nodeKey)
+				? nodeKey
+				: _selectedNodeKey;
+
 			try
 			{
 				var progress = new Progress<string>(line => WorkQueue.ReportProgress(item, line));
@@ -5348,6 +5465,7 @@ else
 			finally
 			{
 				WorkQueue.Complete(item, error);
+				_consoleNodeKeyByWorkItemId.TryRemove(item.Id, out _);
 			}
 
 			await SafeStateHasChangedAsync();
@@ -5498,19 +5616,89 @@ else
 		}
 	}
 
-	private void AppendConsole(string line) { CurrentConsoleLines.Add(new ConsoleLine(line, GetConsoleLineClass(line))); _consoleScrollPending = true; }
-	private void ClearConsole() { CurrentConsoleLines.Clear(); CurrentLastPromptText = null; CurrentCopyFeedback = false; CurrentConsoleCopyFeedback = false; }
+	/// <summary>
+	/// Says something in the console. Logged rather than written straight into the buffer, so the same
+	/// words reach stdout as well and there is exactly one path into the console:
+	/// <see cref="OnLogLineWritten"/>, which is what actually appends it. The line is passed as an
+	/// argument rather than as the template so that braces in a path or a message are not read as
+	/// structured-logging placeholders.
+	/// </summary>
+	private void AppendConsole(string line) => Logger.LogInformation("{ConsoleLine}", line);
+
+	/// <summary>
+	/// Empties a console. Most callers are runs clearing the console before they start writing to it,
+	/// so it targets the run's own node for the same reason its output does — clearing whatever the
+	/// user has since clicked on would wipe an unrelated record. The toolbar's bin button is not in a
+	/// run, and so clears what is on screen.
+	/// </summary>
+	private void ClearConsole()
+	{
+		var state = GetOrCreateNodeUiState(UiConsoleScope.NodeKey ?? _selectedNodeKey);
+		state.ClearConsoleLines();
+		state.LastPromptText = null;
+		state.CopyFeedback = false;
+		state.ConsoleCopyFeedback = false;
+	}
+
+	/// <summary>
+	/// Appends one log line to the console it belongs to. Called from whichever thread logged it —
+	/// which during an assessment is one of ten parallel workers — so the buffer guards itself and the
+	/// re-render is only requested here, never performed.
+	/// </summary>
+	/// <param name="entry">The line, and the console it was scoped to when it was written.</param>
+	private void OnLogLineWritten(UiConsoleLogEntry entry)
+	{
+		// Warnings and errors that were logged rather than narrated arrive without the marker the
+		// console colours by, so they get one. Lines that already carry it are left alone.
+		var text = entry.Level >= LogLevel.Error && !entry.Message.StartsWith('❌')
+			? $"❌ {entry.Message}"
+			: entry.Level == LogLevel.Warning && !entry.Message.StartsWith('⚠')
+				? $"⚠️ {entry.Message}"
+				: entry.Message;
+
+		// An unscoped line was not produced by queued work — a click handler, or a background service —
+		// so it belongs to whatever the user is looking at.
+		GetOrCreateNodeUiState(entry.NodeKey ?? _selectedNodeKey)
+			.AppendConsoleLine(new ConsoleLine(text, GetConsoleLineClass(text)));
+
+		RequestConsoleRender();
+	}
+
+	/// <summary>
+	/// Asks for a re-render, at most ten times a second. A refresh logs several hundred lines in a
+	/// burst, and rendering each one on arrival would spend more of the circuit on the console than on
+	/// the work it is reporting.
+	/// </summary>
+	private void RequestConsoleRender()
+	{
+		_consoleScrollPending = true;
+
+		if (Interlocked.Exchange(ref _consoleRenderQueued, 1) == 1)
+		{
+			return;
+		}
+
+		_ = Task.Run(async () =>
+		{
+			await Task.Delay(100);
+
+			// Cleared before rendering, so a line that arrives while this render is in flight queues
+			// the next one rather than being held until something else happens to redraw.
+			Interlocked.Exchange(ref _consoleRenderQueued, 0);
+			await SafeStateHasChangedAsync();
+		});
+	}
 
 	private async Task CopyConsoleToClipboardAsync()
 	{
-		if (CurrentConsoleLines.Count == 0)
+		if (CurrentConsoleLines.Length == 0)
 		{
 			return;
 		}
 
 		try
 		{
-			var text = string.Join(Environment.NewLine, CurrentConsoleLines.ToArray().Select(l => l.Text));
+			var text = string.Join(Environment.NewLine, CurrentConsoleLines.Select(l => l.Text));
 			await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
 			CurrentConsoleCopyFeedback = true;
 			StateHasChanged();
@@ -6231,6 +6419,7 @@ else
 		// running task itself outlives the component long enough to unwind and report completion.
 		WorkQueue.Changed -= OnWorkQueueChanged;
 		RegressionGuard.StatusesChanged -= OnGuardStatusesChanged;
+		LogSink.LineWritten -= OnLogLineWritten;
 		WorkQueue.RemoveOwnedBy(this);
 		_autoRefreshTimer?.Dispose();
 		_treeFilterDebounce?.Dispose();
@@ -6388,7 +6577,48 @@ else
 
 	private sealed class NodeUiState
 	{
-		public List<ConsoleLine> ConsoleLines { get; } = [];
+		// Bounded rather than growing for the life of the circuit: now that every log line reaches the
+		// console, one estate-wide refresh writes several hundred of them, and a browser tab left open
+		// all day would otherwise accumulate without limit. The oldest go first.
+		private const int MaxConsoleLines = 5000;
+
+		private readonly List<ConsoleLine> _consoleLines = [];
+		private readonly Lock _consoleLock = new();
+
+		/// <summary>
+		/// Adds a line. Safe to call from any thread: log output arrives from the parallel assessment
+		/// tasks, not just the renderer.
+		/// </summary>
+		public void AppendConsoleLine(ConsoleLine line)
+		{
+			lock (_consoleLock)
+			{
+				if (_consoleLines.Count >= MaxConsoleLines)
+				{
+					_consoleLines.RemoveRange(0, _consoleLines.Count - MaxConsoleLines + 1);
+				}
+
+				_consoleLines.Add(line);
+			}
+		}
+
+		/// <summary>The lines as they stand — a copy, so the renderer can walk it while work writes more.</summary>
+		public ConsoleLine[] ConsoleSnapshot()
+		{
+			lock (_consoleLock)
+			{
+				return [.. _consoleLines];
+			}
+		}
+
+		public void ClearConsoleLines()
+		{
+			lock (_consoleLock)
+			{
+				_consoleLines.Clear();
+			}
+		}
+
 		public string? LastPromptText { get; set; }
 		public bool CopyFeedback { get; set; }
 		public bool ConsoleCopyFeedback { get; set; }

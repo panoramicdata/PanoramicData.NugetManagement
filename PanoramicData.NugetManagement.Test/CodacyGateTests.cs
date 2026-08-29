@@ -53,6 +53,35 @@ public class CodacyGateTests(ITestOutputHelper output) : TestWithOutput(output)
 		result.IsApplicable.Should().BeTrue();
 	}
 
+	[Fact]
+	public void ShouldIgnoreUngradedFiles_WhenAPageMixesGradedAndUngradedFiles()
+	{
+		// Codacy grades only the files it analyses. A branch also carries markdown, JSON, images and a
+		// solution file, and those come back with no grade letter at all. Reading that absence as an F
+		// made the worst file in every repository an F, so CQ-03 failed repositories with zero issues.
+		var levels = CodacyConfiguredRule.CollectGradedLevels(["A", null, "B", "", "   "]);
+
+		levels.Should().Equal(CodacyLevel.A, CodacyLevel.B);
+	}
+
+	[Fact]
+	public void ShouldKeepAnUnrecognisedGradeAsF_WhenCodacyReturnsALetterWeDoNotKnow()
+	{
+		// A letter we cannot parse is a grade we do not understand, not a good one, so it stays
+		// conservative. This is distinct from the blank case above, which means "not analysed".
+		var levels = CodacyConfiguredRule.CollectGradedLevels(["A", "Z"]);
+
+		levels.Should().Equal(CodacyLevel.A, CodacyLevel.F);
+	}
+
+	[Fact]
+	public void ShouldFindNoLevels_WhenCodacyHasGradedNothing()
+	{
+		// The caller turns an empty result into "analysis has not run", which is the honest answer for
+		// a repository Codacy has never looked at.
+		CodacyConfiguredRule.CollectGradedLevels([null, "", "  "]).Should().BeEmpty();
+	}
+
 	private static CodacyConfiguredRule Rule() => new();
 
 	private static RepositoryContext CreateContext(bool withBadge, bool withApiToken)
