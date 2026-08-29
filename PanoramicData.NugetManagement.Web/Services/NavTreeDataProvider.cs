@@ -371,8 +371,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// per-repository checkboxes.
 	/// </summary>
 	/// <returns>
-	/// The rolled-up health of the branch: the worst severity across its categories, or grey while any
-	/// repository is unassessed, since the issues of an unassessed repository are not in here yet.
+	/// The rolled-up health of the branch: the worst severity across its categories, so that the
+	/// colour always has a visible cause beneath it. Grey only while nothing has been assessed at all,
+	/// when the branch has no children either.
 	/// </returns>
 	private static PackageHealthStatus AddIssueHierarchy(
 		List<NavItem> items,
