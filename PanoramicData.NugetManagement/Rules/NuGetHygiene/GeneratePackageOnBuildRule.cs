@@ -4,6 +4,11 @@ namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
 /// Checks that GeneratePackageOnBuild is enabled in packable projects.
+/// <para>
+/// Projects that set <c>PackAsTool</c> are excluded. Packing a tool runs a publish, and
+/// <c>GeneratePackageOnBuild</c> makes packing run during Build - before that publish output
+/// exists - so enabling it makes <c>dotnet pack</c> fail with MSB3030 and produce no package.
+/// </para>
 /// </summary>
 public class GeneratePackageOnBuildRule : RuleBase
 {
@@ -28,7 +33,18 @@ public class GeneratePackageOnBuildRule : RuleBase
 			return Task.FromResult(notApplicable);
 		}
 
-		var missing = projects
+		// Tool projects are packed via publish; GeneratePackageOnBuild would break their packaging.
+		var applicable = projects
+			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "PackAsTool", "true"))
+			.ToList();
+
+		if (applicable.Count == 0)
+		{
+			return Task.FromResult(NotApplicable(
+				"Every published project packs as a .NET tool; GeneratePackageOnBuild does not apply."));
+		}
+
+		var missing = applicable
 			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "GeneratePackageOnBuild", "true"))
 			.ToList();
 
@@ -50,6 +66,6 @@ public class GeneratePackageOnBuildRule : RuleBase
 				}));
 		}
 
-		return Task.FromResult(Pass($"All {projects.Count} published project(s) have GeneratePackageOnBuild enabled."));
+		return Task.FromResult(Pass($"All {applicable.Count} published project(s) have GeneratePackageOnBuild enabled."));
 	}
 }
