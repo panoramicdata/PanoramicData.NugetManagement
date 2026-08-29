@@ -471,6 +471,16 @@ else
 										</button>
 									</span>
 								}
+								@if (_selectedRow is not null && _currentView != NavView.Settings)
+								{
+									<span style="display:inline-flex" title="@GetCombinedPromptTooltip()">
+										<button class="btn toolbar-action-btn"
+												@onclick="ResolveAllAsync"
+												disabled="@(!HasFailuresToPrompt())">
+											<i class="fas fa-magic"></i>
+										</button>
+									</span>
+								}
 								@if (_selectedRow is not null)
 								{
 									<span style="display:inline-flex" title="@(string.IsNullOrEmpty(CurrentLastPromptText) ? "No AI prompt generated yet" : "Copy the last generated AI prompt to clipboard")">
@@ -4565,6 +4575,16 @@ else
 
 	// === AI prompt methods ===
 
+	/// <summary>
+	/// Whether the selected repository has failing rules a combined prompt could cover.
+	/// </summary>
+	private bool HasFailuresToPrompt() => _selectedRow?.TotalFailures > 0;
+
+	private string GetCombinedPromptTooltip()
+		=> HasFailuresToPrompt()
+			? "Generate a combined AI prompt covering every failing rule, grouped by category"
+			: "No failing rules to generate a prompt for";
+
 	private async Task ResolveAllAsync()
 	{
 		if (_selectedRow is null)
@@ -5297,17 +5317,10 @@ else
 	};
 
 	// Colour rank for ordering the fix list: red (0) → amber (1) → blue (2), matching the badge colours above.
-	private static int SeverityColorRank(AssessmentSeverity severity) => severity switch
-	{
-		AssessmentSeverity.Critical or AssessmentSeverity.Error => 0,
-		AssessmentSeverity.Warning => 1,
-		_ => 2
-	};
+	// The ranking lives in DashboardService so the on-screen grouping and the AI prompt cannot drift apart.
+	private static int SeverityColorRank(AssessmentSeverity severity) => DashboardService.SeverityRank(severity);
 
-	private static int GroupColorRank(CategoryGroup group)
-		=> group.Failures.Any(f => f.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error) ? 0
-		 : group.Failures.Any(f => f.Severity == AssessmentSeverity.Warning) ? 1
-		 : 2;
+	private static int GroupColorRank(CategoryGroup group) => DashboardService.CategoryRank(group.Failures);
 
 	private static string GetConsoleLineClass(string line)
 		=> line.StartsWith("✅") ? "console-line console-success"

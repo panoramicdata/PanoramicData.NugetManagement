@@ -589,6 +589,23 @@ public class DashboardService
 		return string.Join('\n', lines);
 	}
 
+	/// <summary>
+	/// Orders rule failures worst-first: Critical and Error, then Warning, then everything else.
+	/// Shared by the prompt builder and the on-screen grouped failure list so the two cannot drift.
+	/// </summary>
+	public static int SeverityRank(AssessmentSeverity severity) => severity switch
+	{
+		AssessmentSeverity.Critical or AssessmentSeverity.Error => 0,
+		AssessmentSeverity.Warning => 1,
+		_ => 2
+	};
+
+	/// <summary>
+	/// Orders a category by the severity of its worst failure, so the most serious category leads.
+	/// </summary>
+	public static int CategoryRank(IEnumerable<RuleResult> failures)
+		=> failures.Select(f => SeverityRank(f.Severity)).DefaultIfEmpty(2).Min();
+
 	private static string GeneratePromptFromFailures(PackageDashboardRow row, List<RuleResult> failures)
 	{
 		if (failures.Count == 0)
@@ -596,33 +613,66 @@ public class DashboardService
 			return string.Empty;
 		}
 
+		var groups = failures
+			.GroupBy(f => f.Category)
+			.Select(g => new { Category = g.Key, Failures = g.OrderBy(f => SeverityRank(f.Severity)).ThenBy(f => f.RuleId).ToList() })
+			.OrderBy(g => CategoryRank(g.Failures))
+			.ThenBy(g => g.Category.ToString(), StringComparer.Ordinal)
+			.ToList();
+
+		// A single category needs no section headings — keep the flat form the per-category and
+		// per-rule prompts have always produced. Multiple categories get sections so the AI sees
+		// the whole picture, grouped and ordered the same way the UI presents it.
+		var grouped = groups.Count > 1;
+
 		var lines = new List<string>
 		{
 			$"# Remediation Instructions for {row.PackageId}",
 			$"Repository: {row.RepositoryFullName}",
 			$"Local path: {row.LocalPath}",
-			"",
-			"Please fix the following governance issues:",
 			""
 		};
 
-		foreach (var failure in failures)
+		if (grouped)
 		{
-			lines.Add($"## [{failure.RuleId}] {failure.RuleName}");
-			lines.Add($"- **Issue**: {failure.Message}");
-			if (failure.Advisory is not null)
+			lines.Add("Please fix the following governance issues, grouped by category and ordered by severity — start with the most serious.");
+		}
+		else
+		{
+			lines.Add("Please fix the following governance issues:");
+		}
+
+		lines.Add("");
+
+		var ruleHeadingPrefix = grouped ? "###" : "##";
+
+		foreach (var group in groups)
+		{
+			if (grouped)
 			{
-				lines.Add($"- **Fix**: {failure.Advisory.Detail}");
-				if (failure.Advisory.Data.Count > 0)
-				{
-					foreach (var (key, value) in failure.Advisory.Data)
-					{
-						lines.Add($"  - `{key}`: {FormatDataValue(value)}");
-					}
-				}
+				var count = group.Failures.Count;
+				lines.Add($"## {group.Category} ({count} {(count == 1 ? "issue" : "issues")})");
+				lines.Add("");
 			}
 
-			lines.Add("");
+			foreach (var failure in group.Failures)
+			{
+				lines.Add($"{ruleHeadingPrefix} [{failure.RuleId}] {failure.RuleName}");
+				lines.Add($"- **Issue**: {failure.Message}");
+				if (failure.Advisory is not null)
+				{
+					lines.Add($"- **Fix**: {failure.Advisory.Detail}");
+					if (failure.Advisory.Data.Count > 0)
+					{
+						foreach (var (key, value) in failure.Advisory.Data)
+						{
+							lines.Add($"  - `{key}`: {FormatDataValue(value)}");
+						}
+					}
+				}
+
+				lines.Add("");
+			}
 		}
 
 		return string.Join('\n', lines);
