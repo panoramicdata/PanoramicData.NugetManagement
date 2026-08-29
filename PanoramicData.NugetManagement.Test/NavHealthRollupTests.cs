@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Models;
+﻿using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Services;
 
@@ -109,9 +109,25 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 		=> NavHealthRollup.ForRepositories(null).Should().Be(PackageHealthStatus.Unknown);
 
 	[Fact]
-	public void ForIssues_UnassessedRepositoryGreysTheBranchEvenWithNoIssues()
+	public void ForIssues_UnassessedRepositoryDoesNotGreyTheBranch()
 	{
 		List<PackageDashboardRow> rows = [Assessed("Clean.Api", []), Unassessed("Mystery.Api")];
+
+		NavHealthRollup.ForIssues(rows, []).Should().Be(PackageHealthStatus.Success);
+	}
+
+	[Fact]
+	public void ForIssues_UnassessedRepositoryDoesNotOutrankACategorySeverity()
+	{
+		List<PackageDashboardRow> rows = [Assessed("Broken.Api", [Failure(AssessmentSeverity.Warning)]), Unassessed("Mystery.Api")];
+
+		NavHealthRollup.ForIssues(rows, [AssessmentSeverity.Warning]).Should().Be(PackageHealthStatus.Warning);
+	}
+
+	[Fact]
+	public void ForIssues_NothingAssessedYetIsUnknown()
+	{
+		List<PackageDashboardRow> rows = [Unassessed("Mystery.Api")];
 
 		NavHealthRollup.ForIssues(rows, []).Should().Be(PackageHealthStatus.Unknown);
 	}

@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Models;
+﻿using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Web.Models;
 
@@ -29,6 +29,23 @@ public class PackageDashboardRow
 	/// The GitHub repository full name (owner/repo).
 	/// </summary>
 	public string? RepositoryFullName { get; set; }
+
+	/// <summary>
+	/// Whether this package's repository is ours to govern.
+	/// </summary>
+	/// <remarks>
+	/// A package we publish can name a repository we do not own — a repackage declares the upstream it
+	/// was built from — and owning the package is no licence to clone, assess or write to that. An
+	/// ungoverned row is kept so the estate can say what was skipped and why, but it is counted in
+	/// nothing and acted on by nothing.
+	/// </remarks>
+	public bool IsGoverned { get; set; } = true;
+
+	/// <summary>
+	/// Why this package is not governed, or null when it is. Names the repository declared, so the
+	/// nuspec that needs fixing can be found.
+	/// </summary>
+	public string? NotGovernedReason { get; set; }
 
 	/// <summary>
 	/// The GitHub repository URL.
@@ -255,6 +272,11 @@ public enum PackageStatus
 	/// Not yet assessed.
 	/// </summary>
 	NotAssessed,
+
+	/// <summary>
+	/// The declared repository is not ours, so nothing is assessed or acted on.
+	/// </summary>
+	NotGoverned,
 
 	/// <summary>
 	/// Assessment is in progress.

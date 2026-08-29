@@ -1521,6 +1521,23 @@ i + .breadcrumb-link-text {
     padding: 0.25rem 0;
 }
 
+/* The tree and the work queue split the space between the filter and the footer. This wrapper
+   gives the splitter a definite box to fill; without it .pdsplitter's height: 100% resolves
+   against the whole sidebar and the panes overrun the footer. */
+.nav-split-area {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* An idle queue is collapsed to zero height by SyncNavSplitterAsync rather than by a rule here:
+   anything strong enough to override the flex-basis split.js writes inline would also override it
+   mid-drag, and the gutter has to keep working so an empty queue can be pulled open. All this pane
+   needs is to disappear cleanly when its height goes to nothing. */
+.nav-queue-pane {
+    overflow: hidden;
+}
+
 /* === RAG health colours for tree icons === */
 .text-success {
     color: var(--success) !important;
@@ -1869,11 +1886,11 @@ i + .breadcrumb-link-text {
 }
 
 /* === Work Queue (sidebar) === */
-/* Sits between the tree and the footer, and is rendered only when there is work outstanding. */
+/* Sits between the tree and the footer, filling the lower pane of the nav splitter. Its height
+   is the user's to set — drag the gutter above it. See .nav-split-area. */
 .nav-queue {
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-    max-height: 30vh;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
 }
 

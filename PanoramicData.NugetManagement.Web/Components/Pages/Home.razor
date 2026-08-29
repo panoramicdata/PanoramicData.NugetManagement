@@ -78,123 +78,135 @@ else
 								<div class="filter-error">@_treeFilterError</div>
 							}
 						</div>
-						<div class="nav-tree-scroll">
-							<PDTree @ref="_navTree"
-									TItem="NavItem"
-									DataProvider="NavDataProvider"
-									KeyField="x => x.Key"
-									ParentKeyField="x => x.ParentKey!"
-									TextField="x => x.Text"
-									IsLeaf="x => x.IsLeaf"
-									IconCssClass="(item, _) => string.Empty"
-									ToolTip="GetNavItemTooltip"
-									AllowSelection="true"
-									ShowRoot="true"
-									Sort="NavTreeDataProvider.CompareNavItems"
-									BeforeSelectionChange="OnNavBeforeSelect"
-									SelectionChange="OnNavSelectionChanged"
-									NodeExpanded="OnNavNodeExpanded"
-									NodeCollapsed="OnNavNodeCollapsed"
-									Ready="OnNavTreeReady">
-									<NodeTemplate Context="node">
-										<span class="nav-node-label @(node.Data is not null && NavTreeDataProvider.IsContainerNode(node.Data) ? "nav-node-container" : null) @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null) @(node.Data?.IsExcluded == true ? "nav-node-excluded" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
-											<i class="@GetNodeIconCss(node.Data)"></i>@node.Data?.Text
-										</span>
-										@if (node.Data?.GuardStateNeedingAttention is { } guardState)
+						@* The tree and the work queue share the space below the filter, and the user decides how it
+						   is divided. The splitter stays mounted whether or not there is work outstanding: tearing
+						   it down would rebuild the tree every time a job starts, and the handle would only exist
+						   while the queue was busy — too late to position it. See SyncNavSplitterAsync. *@
+						<div class="nav-split-area">
+							<PDSplitter @ref="_navSplitter" Direction="SplitDirection.Vertical" GutterSize="4" ExpandToMin="true"
+								CssClass="nav-split">
+								<PDSplitPanel Size="3" MinSize="120" CssClass="spa-panel nav-tree-pane">
+									<div class="nav-tree-scroll">
+										<PDTree @ref="_navTree"
+												TItem="NavItem"
+												DataProvider="NavDataProvider"
+												KeyField="x => x.Key"
+												ParentKeyField="x => x.ParentKey!"
+												TextField="x => x.Text"
+												IsLeaf="x => x.IsLeaf"
+												IconCssClass="(item, _) => string.Empty"
+												ToolTip="GetNavItemTooltip"
+												AllowSelection="true"
+												ShowRoot="true"
+												Sort="NavTreeDataProvider.CompareNavItems"
+												BeforeSelectionChange="OnNavBeforeSelect"
+												SelectionChange="OnNavSelectionChanged"
+												NodeExpanded="OnNavNodeExpanded"
+												NodeCollapsed="OnNavNodeCollapsed"
+												Ready="OnNavTreeReady">
+												<NodeTemplate Context="node">
+													<span class="nav-node-label @(node.Data is not null && NavTreeDataProvider.IsContainerNode(node.Data) ? "nav-node-container" : null) @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null) @(node.Data?.IsExcluded == true ? "nav-node-excluded" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+														<i class="@GetNodeIconCss(node.Data)"></i>@node.Data?.Text
+													</span>
+													@if (node.Data?.GuardStateNeedingAttention is { } guardState)
+													{
+														<i class="fas @GuardMarkerIcon(guardState) nav-guard-marker" title="@GuardMarkerTooltip(guardState)"></i>
+													}
+													@if (node.Data?.RepositoryFullName is { Length: > 0 } repositoryFullName)
+													{
+														<span class="nav-org-actions">
+															<button type="button" class="nav-org-action-btn" title="@(node.Data.IsExcluded ? "Bring this repository back into governance" : "Exclude this repository from governance")" @onclick="() => ToggleRepositoryExcludedAsync(repositoryFullName, node.Data.IsExcluded)" @onclick:stopPropagation @onmousedown:stopPropagation>
+																<i class="fas @(node.Data.IsExcluded ? "fa-eye" : "fa-eye-slash")"></i>
+															</button>
+														</span>
+													}
+													@if (AffectedRepoCountFor(node.Data) is { } affected)
+													{
+														@* Without this, seven repositories and one look identical: the node is orange
+														   either way, so a run that fixed six of them appears to have done nothing. *@
+														<span class="nav-node-count" title="@affected affected repositor@(affected == 1 ? "y" : "ies")">@affected</span>
+													}
+													@if (ShouldSpinOrgNode(node.Data))
+													{
+														@* The only progress indicator in the tree, and it mirrors whichever button
+														   started the run: a searching magnifier while discovering, the recycle
+														   icon while assessing. *@
+														@if (_isDiscovering)
+														{
+															@* 7px rather than the usual 6px: the sweep carries it 2.5px left, and the extra
+															   pixel keeps it clear of the organisation name at that extreme. *@
+															<i class="fas fa-magnifying-glass nav-org-searching" style="margin-left:7px;font-size:0.8rem;color:var(--text-muted);" title="@GetProgressIndicatorText()"></i>
+														}
+														else
+														{
+															<i class="fas fa-sync-alt fa-spin" style="margin-left:6px;font-size:0.8rem;color:var(--text-muted);" title="@GetProgressIndicatorText()"></i>
+														}
+													}
+													@if (node.Data?.Key == NavTreeDataProvider.OrganisationsKey)
+													{
+														@* Add-only by design: removing an organisation lives at the bottom of its own
+														   Settings screen, where a destructive action is harder to hit by accident. *@
+														<span class="nav-org-actions">
+															<button type="button" class="nav-org-action-btn" title="Add an organisation" @onclick="OpenAddOrganizationDialog" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-plus"></i></button>
+															@* Application-wide settings hang off Organisations, the level they actually
+															   apply to, mirroring how each organisation's cog sits on its own node. *@
+															<button type="button" class="nav-org-action-btn @(_currentView == NavView.AppSettings ? "active" : "")" title="Application settings — these apply to every organisation" @onclick="NavigateToAppSettings" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
+														</span>
+													}
+													@if (IsOrgRootNode(node.Data))
+													{
+														<span class="nav-org-actions">
+															@* Run-something actions first, then a gap, then the clone and settings pair. *@
+															<button type="button" class="nav-org-action-btn" title="Rediscover this organisation's packages from NuGet, then assess them" @onclick="() => RediscoverOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-magnifying-glass"></i></button>
+															<button type="button" class="nav-org-action-btn nav-org-action-group-end" title="Re-assess every repository in this organisation, without re-reading the package list from NuGet" @onclick="() => ReassessOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-sync-alt"></i></button>
+															@if (_isCloningAll && _cloningOrganization == node.Data!.Organization)
+															{
+																<button type="button" class="nav-org-action-btn active" title="Stop cloning" @onclick="CancelCloneAll" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
+															}
+															else
+															{
+																<button type="button" class="nav-org-action-btn" title="@GetCloneAllTooltip()" @onclick="() => OpenCloneDialogAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cloud-arrow-down"></i></button>
+															}
+															<button type="button" class="nav-org-action-btn @(_currentView == NavView.Settings && _selectedOrganization == node.Data!.Organization ? "active" : "")" title="Organization settings" @onclick="() => NavigateToSettingsAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
+														</span>
+													}
+												</NodeTemplate>
+											</PDTree>
+									</div>
+								</PDSplitPanel>
+								<PDSplitPanel Size="1" MinSize="0" CssClass="spa-panel nav-queue-pane">
+									@* Always rendered, and always the lower half of the nav splitter. When idle the pane is
+									   collapsed to nothing, so this costs the tree only the gutter — but the gutter stays,
+									   which is what lets the queue be dragged open (empty or not) whenever you want it. *@
+									<div class="nav-queue">
+										<div class="nav-queue-head">
+											<i class="fas fa-list-check"></i>
+											<span>Work queue</span>
+											<span class="nav-queue-count">@WorkQueue.Items.Count</span>
+										</div>
+										@foreach (var item in WorkQueue.Items)
 										{
-											<i class="fas @GuardMarkerIcon(guardState) nav-guard-marker" title="@GuardMarkerTooltip(guardState)"></i>
-										}
-										@if (node.Data?.RepositoryFullName is { Length: > 0 } repositoryFullName)
-										{
-											<span class="nav-org-actions">
-												<button type="button" class="nav-org-action-btn" title="@(node.Data.IsExcluded ? "Bring this repository back into governance" : "Exclude this repository from governance")" @onclick="() => ToggleRepositoryExcludedAsync(repositoryFullName, node.Data.IsExcluded)" @onclick:stopPropagation @onmousedown:stopPropagation>
-													<i class="fas @(node.Data.IsExcluded ? "fa-eye" : "fa-eye-slash")"></i>
-												</button>
-											</span>
-										}
-										@if (AffectedRepoCountFor(node.Data) is { } affected)
-										{
-											@* Without this, seven repositories and one look identical: the node is orange
-											   either way, so a run that fixed six of them appears to have done nothing. *@
-											<span class="nav-node-count" title="@affected affected repositor@(affected == 1 ? "y" : "ies")">@affected</span>
-										}
-										@if (ShouldSpinOrgNode(node.Data))
-										{
-											@* The only progress indicator in the tree, and it mirrors whichever button
-											   started the run: a searching magnifier while discovering, the recycle
-											   icon while assessing. *@
-											@if (_isDiscovering)
-											{
-												@* 7px rather than the usual 6px: the sweep carries it 2.5px left, and the extra
-												   pixel keeps it clear of the organisation name at that extreme. *@
-												<i class="fas fa-magnifying-glass nav-org-searching" style="margin-left:7px;font-size:0.8rem;color:var(--text-muted);" title="@GetProgressIndicatorText()"></i>
-											}
-											else
-											{
-												<i class="fas fa-sync-alt fa-spin" style="margin-left:6px;font-size:0.8rem;color:var(--text-muted);" title="@GetProgressIndicatorText()"></i>
-											}
-										}
-										@if (node.Data?.Key == NavTreeDataProvider.OrganisationsKey)
-										{
-											@* Add-only by design: removing an organisation lives at the bottom of its own
-											   Settings screen, where a destructive action is harder to hit by accident. *@
-											<span class="nav-org-actions">
-												<button type="button" class="nav-org-action-btn" title="Add an organisation" @onclick="OpenAddOrganizationDialog" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-plus"></i></button>
-												@* Application-wide settings hang off Organisations, the level they actually
-												   apply to, mirroring how each organisation's cog sits on its own node. *@
-												<button type="button" class="nav-org-action-btn @(_currentView == NavView.AppSettings ? "active" : "")" title="Application settings — these apply to every organisation" @onclick="NavigateToAppSettings" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
-											</span>
-										}
-										@if (IsOrgRootNode(node.Data))
-										{
-											<span class="nav-org-actions">
-												@* Run-something actions first, then a gap, then the clone and settings pair. *@
-												<button type="button" class="nav-org-action-btn" title="Rediscover this organisation's packages from NuGet, then assess them" @onclick="() => RediscoverOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-magnifying-glass"></i></button>
-												<button type="button" class="nav-org-action-btn nav-org-action-group-end" title="Re-assess every repository in this organisation, without re-reading the package list from NuGet" @onclick="() => ReassessOrganizationAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-sync-alt"></i></button>
-												@if (_isCloningAll && _cloningOrganization == node.Data!.Organization)
+											<div class="nav-queue-item @(item.State == WorkItemState.Running || item.State == WorkItemState.Cancelling ? "running" : null)" @key="item.Id">
+												<i class="fas @QueueItemIcon(item) nav-queue-icon"></i>
+												<span class="nav-queue-title" title="@item.Title">@item.Title</span>
+												@if (item.Progress is { Length: > 0 } progress)
 												{
-													<button type="button" class="nav-org-action-btn active" title="Stop cloning" @onclick="CancelCloneAll" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
+													<span class="nav-queue-progress">@progress</span>
 												}
-												else
+												@if (item.State == WorkItemState.Running)
 												{
-													<button type="button" class="nav-org-action-btn" title="@GetCloneAllTooltip()" @onclick="() => OpenCloneDialogAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cloud-arrow-down"></i></button>
+													<button type="button" class="nav-queue-btn" title="Stop, reverting anything half-applied" @onclick="() => WorkQueue.Cancel(item.Id)"><i class="fas fa-stop"></i></button>
 												}
-												<button type="button" class="nav-org-action-btn @(_currentView == NavView.Settings && _selectedOrganization == node.Data!.Organization ? "active" : "")" title="Organization settings" @onclick="() => NavigateToSettingsAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
-											</span>
-										}
-									</NodeTemplate>
-								</PDTree>
-						</div>
-						@if (WorkQueue.Items.Count > 0)
-						{
-							@* Hidden entirely when idle: an empty panel would cost the tree height for nothing. *@
-							<div class="nav-queue">
-								<div class="nav-queue-head">
-									<i class="fas fa-list-check"></i>
-									<span>Work queue</span>
-									<span class="nav-queue-count">@WorkQueue.Items.Count</span>
-								</div>
-								@foreach (var item in WorkQueue.Items)
-								{
-									<div class="nav-queue-item @(item.State == WorkItemState.Running || item.State == WorkItemState.Cancelling ? "running" : null)" @key="item.Id">
-										<i class="fas @QueueItemIcon(item) nav-queue-icon"></i>
-										<span class="nav-queue-title" title="@item.Title">@item.Title</span>
-										@if (item.Progress is { Length: > 0 } progress)
-										{
-											<span class="nav-queue-progress">@progress</span>
-										}
-										@if (item.State == WorkItemState.Running)
-										{
-											<button type="button" class="nav-queue-btn" title="Stop, reverting anything half-applied" @onclick="() => WorkQueue.Cancel(item.Id)"><i class="fas fa-stop"></i></button>
-										}
-										else if (item.State == WorkItemState.Pending)
-										{
-											<button type="button" class="nav-queue-btn" title="Remove from the queue" @onclick="() => WorkQueue.Remove(item.Id)"><i class="fas fa-xmark"></i></button>
+												else if (item.State == WorkItemState.Pending)
+												{
+													<button type="button" class="nav-queue-btn" title="Remove from the queue" @onclick="() => WorkQueue.Remove(item.Id)"><i class="fas fa-xmark"></i></button>
+												}
+											</div>
 										}
 									</div>
-								}
-							</div>
-						}
+								</PDSplitPanel>
+							</PDSplitter>
+						</div>
 						<div class="nav-footer">
 							<a href="/ci-template" class="nav-footer-link">
 								<i class="fas fa-file-code"></i> CI Workflow Template
@@ -799,6 +811,13 @@ else
 
 	// === Navigation state ===
 	private PDTree<NavItem>? _navTree;
+	private PDSplitter? _navSplitter;
+	// Percentage of the sidebar the work queue gets when it is open. Seeded with a sensible
+	// default and then replaced by wherever the user last dragged the gutter to, so collapsing
+	// and reopening returns to their position rather than to ours.
+	private double _navQueueSizePercent = 25;
+	private bool _navSplitterSynced;
+	private bool _navQueueWasBusy;
 	private NavView _currentView = NavView.Home;
 	private bool _userMenuOpen;
 	// True when the org (root) node is the current focus (org overview / org settings),
@@ -1017,6 +1036,71 @@ else
 			{
 				// Element may not exist yet
 			}
+		}
+
+		await SyncNavSplitterAsync();
+	}
+
+	/// <summary>
+	/// Opens the work queue pane when work arrives and closes it again when the queue drains,
+	/// leaving the gutter itself in place throughout.
+	/// </summary>
+	/// <remarks>
+	/// The pane is sized here rather than by CSS because the two have to coexist: an !important
+	/// override that collapsed an idle pane would also override split.js while the user was
+	/// dragging it, so an empty queue could never be pulled open. Driving split.js's own sizes
+	/// instead leaves the gutter working at all times.
+	/// </remarks>
+	private async Task SyncNavSplitterAsync()
+	{
+		if (_navSplitter is null)
+		{
+			return;
+		}
+
+		var busy = WorkQueue.Items.Count > 0;
+		if (_navSplitterSynced && busy == _navQueueWasBusy)
+		{
+			return;
+		}
+
+		var first = !_navSplitterSynced;
+		_navSplitterSynced = true;
+		_navQueueWasBusy = busy;
+
+		try
+		{
+			if (busy)
+			{
+				// Only open a pane that is actually shut. Someone who has already dragged the queue
+				// open should not have it jump to our size the moment a job starts.
+				var sizes = first ? Array.Empty<double>() : await _navSplitter.GetSizesAsync();
+				if (sizes.Length != 2 || sizes[1] < 5)
+				{
+					await _navSplitter.SetSizesAsync([100 - _navQueueSizePercent, _navQueueSizePercent]);
+				}
+			}
+			else
+			{
+				// Remember where the gutter was before collapsing, but ignore a queue that was already
+				// closed — otherwise draining while collapsed would record 0 and the next job would
+				// open the pane to nothing.
+				if (!first)
+				{
+					var sizes = await _navSplitter.GetSizesAsync();
+					if (sizes.Length == 2 && sizes[1] >= 5)
+					{
+						_navQueueSizePercent = sizes[1];
+					}
+				}
+
+				await _navSplitter.SetSizesAsync([100, 0]);
+			}
+		}
+		catch (JSException)
+		{
+			// split.js not initialised yet (or the circuit is going down) — the next render retries.
+			_navSplitterSynced = false;
 		}
 	}
 
@@ -2617,7 +2701,7 @@ else
 
 		_topIssueClasses =
 		[
-			.. Dashboard.BuildIssueCentricView(_rows).AllIssueClasses
+			.. Dashboard.BuildIssueCentricView([.. _rows.Where(r => r.IsGoverned)]).AllIssueClasses
 				.OrderByDescending(i => i.AffectedRepositoryCount)
 				.ThenBy(i => i.RuleId, StringComparer.OrdinalIgnoreCase)
 				.Take(take)
@@ -3314,8 +3398,100 @@ else
 					</span>
 				</div>
 			</div>
+
+			<h3 class="settings-section">Stray clones</h3>
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				Clone folders belonging to no organisation you manage. A package can declare a repository
+				somebody else owns — a repackage names the upstream it was built from — and until that was
+				checked, those repositories were cloned here and assessed as though they were ours. They are
+				never deleted automatically: they are real checkouts and may hold work.
+			</p>
+			@{ var strayClones = StrayClones; }
+			@if (strayClones.Count == 0)
+			{
+				<p style="color: var(--text-secondary); font-size: 0.85rem;">
+					<i class="fas fa-check" style="color: var(--success);"></i>&nbsp;Every clone belongs to an organisation you manage.
+				</p>
+			}
+			else
+			{
+				<div class="settings-form">
+					@foreach (var stray in strayClones)
+					{
+						<div class="form-group">
+							<div class="settings-path-row">
+								<input type="text" value="@stray.Path" readonly />
+								<button class="btn btn-sm btn-danger"
+										@onclick="() => DeleteStrayCloneAsync(stray)"
+										title="@($"Delete {stray.Path} and everything in it")">
+									<i class="fas fa-trash"></i>&nbsp;Delete
+								</button>
+							</div>
+							<span class="settings-hint">
+								@stray.Owner — @string.Join(", ", stray.RepositoryNames)
+							</span>
+						</div>
+					}
+				</div>
+			}
 		</div>
 	};
+
+	/// <summary>
+	/// Clone folders in the clone root that belong to no organisation under management.
+	/// </summary>
+	/// <remarks>
+	/// Read on render rather than held in a field: the list changes when a clone is deleted, when the
+	/// clone root is changed, and when an organisation is added or removed, and a field would have to
+	/// be invalidated by each of those. Scanning one directory is cheap enough not to bother.
+	/// </remarks>
+	private IReadOnlyList<StrayClone> StrayClones
+		=> StrayCloneScanner.FindStrayClones(LocalRepo.GetReposRoot(), RuntimeSettings.Organizations);
+
+	/// <summary>
+	/// Deletes a stray clone folder, once the user has confirmed it.
+	/// </summary>
+	private async Task DeleteStrayCloneAsync(StrayClone stray)
+	{
+		var confirmed = await ConfirmAsync(
+			$"Delete {stray.Path} and everything in it? It holds {stray.RepositoryNames.Count} checkout(s) of repositories belonging to {stray.Owner}, and any uncommitted work in them goes too.");
+
+		if (!confirmed)
+		{
+			return;
+		}
+
+		try
+		{
+			// Git marks objects read-only, and Directory.Delete refuses those, so the attributes are
+			// cleared first. Without this, deleting any clone fails on its .git folder alone.
+			ClearReadOnlyAttributes(stray.Path);
+			Directory.Delete(stray.Path, recursive: true);
+			AppendConsole($"Deleted stray clone folder {stray.Path}");
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			AppendConsole($"Could not delete {stray.Path}: {ex.Message}");
+			await NotifyAsync($"Could not delete {stray.Path}. {ex.Message}");
+		}
+
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Clears the read-only attribute from a directory and everything beneath it.
+	/// </summary>
+	private static void ClearReadOnlyAttributes(string path)
+	{
+		foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+		{
+			var attributes = File.GetAttributes(file);
+			if (attributes.HasFlag(FileAttributes.ReadOnly))
+			{
+				File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+			}
+		}
+	}
 
 	private RenderFragment RenderSettingsView() => __builder =>
 	{
@@ -3551,6 +3727,7 @@ else
 
 			var github = CreateGitHubClient();
 			var assessable = _rows
+				.Where(r => r.IsGoverned)
 				.Where(r => r.RepositoryFullName is not null)
 				.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
 				.ToList();
@@ -3888,7 +4065,7 @@ else
 			Cache.SetRows(_rows);
 
 			var github = CreateGitHubClient();
-			var assessable = freshRows.Where(r => r.RepositoryFullName is not null).ToList();
+			var assessable = freshRows.Where(r => r.IsGoverned && r.RepositoryFullName is not null).ToList();
 
 			// Mark them pending before the tree is rebuilt, so the new list appears already showing a
 			// spinner per repository.
@@ -3961,6 +4138,7 @@ else
 	private async Task ReassessOrganizationAsync(string? organization)
 	{
 		var assessable = _rows
+			.Where(r => r.IsGoverned)
 			.Where(r => r.RepositoryFullName is not null)
 			.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
 			.Where(r => organization is null
@@ -5337,8 +5515,11 @@ else
 		switch (item.View)
 		{
 			case NavView.Home:
-				var assessed = _rows.Count(r => r.Assessment is not null);
-				return $"Dashboard — {_rows.Count} packages ({assessed} assessed, {item.IssueCount} issues)"
+				// Only what is governed is counted: the rest are accounted for in their own branch, and
+				// counting them here would say the estate holds packages that nothing assesses.
+				var governedRows = _rows.Where(r => r.IsGoverned).ToList();
+				var assessed = governedRows.Count(r => r.Assessment is not null);
+				return $"Dashboard — {governedRows.Count} packages ({assessed} assessed, {item.IssueCount} issues)"
 					+ GetRolledUpHealthSuffix(item);
 
 			case NavView.PackageDetail:

@@ -1,4 +1,4 @@
-using PanoramicData.Blazor;
+﻿using PanoramicData.Blazor;
 using PanoramicData.Blazor.Models;
 using PanoramicData.NugetManagement.Web.Models;
 
@@ -24,7 +24,9 @@ public class PackageDashboardDataProvider : DataProviderBase<PackageDashboardRow
 	/// </summary>
 	public override Task<DataResponse<PackageDashboardRow>> GetDataAsync(DataRequest<PackageDashboardRow> request, CancellationToken cancellationToken)
 	{
-		var query = (_cache.GetCachedRows() ?? []).AsQueryable();
+		// Only repositories we govern reach the table. A package can name a repository belonging to
+		// somebody else, and every action on this table acts on the row's repository.
+		var query = (_cache.GetCachedRows() ?? []).Where(r => r.IsGoverned).AsQueryable();
 
 		// Apply PDTable search text (free-text filter across PackageId, RepositoryFullName, LatestVersion)
 		if (!string.IsNullOrWhiteSpace(request.SearchText))

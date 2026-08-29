@@ -1,4 +1,4 @@
-@implements IDisposable
+﻿@implements IDisposable
 @using PanoramicData.NugetManagement.Services
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
@@ -424,8 +424,10 @@
 			: [.. _rows.Where(r => string.Equals(r.Organization, Organization, StringComparison.OrdinalIgnoreCase))];
 
 		// Excluded repositories leave here, which keeps them out of the issue classes, the counts on
-		// the buttons and every bulk action — one decision, taken on the Repositories tree.
-		_rows = [.. _rows.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))];
+		// the buttons and every bulk action — one decision, taken on the Repositories tree. Packages
+		// whose repository is not ours leave for the same reason: there is no issue to raise against a
+		// repository we do not govern, and nothing here may offer to write to one.
+		_rows = [.. _rows.Where(r => r.IsGoverned && !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))];
 
 		_view = NarrowToFocus(Dashboard.BuildIssueCentricView(_rows));
 		_bumps = ActionVersionCatalog.Default.RecentBumps;

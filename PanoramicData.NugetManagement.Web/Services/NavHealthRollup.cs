@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Models;
+﻿using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Web.Models;
 
 namespace PanoramicData.NugetManagement.Web.Services;
@@ -11,7 +11,8 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// Unknown is the worst status of all, not the mildest: an unassessed repository could be in any
 /// state, so a green organisation node above one would claim something we do not know. Grey therefore
 /// wins over red, and a branch only turns green once every repository under it has been assessed and
-/// found clean.
+/// found clean. The one branch that does not take part is Issues, which is coloured by its own
+/// children alone — see <see cref="ForIssues"/>.
 /// </remarks>
 public static class NavHealthRollup
 {
@@ -78,10 +79,18 @@ public static class NavHealthRollup
 			: Worst(rows.Select(r => r.HealthStatus));
 
 	/// <summary>
-	/// The status of an organisation's Issues branch: the worst severity of its issue categories, but
-	/// grey while any repository is unassessed — the issue picture is built only from repositories that
-	/// were assessed, so an unassessed one means issues we have not seen yet.
+	/// The status of an organisation's Issues branch: the worst severity of its issue categories.
 	/// </summary>
+	/// <remarks>
+	/// Deliberately blind to unassessed repositories, even though their issues are not in the
+	/// categories yet. This node is coloured only by what hangs beneath it, so that its colour always
+	/// has a visible cause: a grey Issues branch above a row of red and amber categories tells the
+	/// reader nothing they can act on, and during a whole-organisation re-assessment — when every row
+	/// is briefly unassessed — it would be grey while showing no grey child at all. That the picture
+	/// is still being built is said by the spinner on the organisation node and the in-flight
+	/// treatment of the issue nodes, not by this colour. Unassessed repositories still grey the
+	/// Repositories branch, where they are visible as grey children.
+	/// </remarks>
 	public static PackageHealthStatus ForIssues(
 		IEnumerable<PackageDashboardRow>? rows,
 		IEnumerable<AssessmentSeverity> categorySeverities)
@@ -93,19 +102,15 @@ public static class NavHealthRollup
 
 		var rowList = rows as IReadOnlyCollection<PackageDashboardRow> ?? [.. rows];
 
-		if (rowList.Count == 0)
+		// An empty category list means one of two things, and only the rows can tell them apart:
+		// everything was assessed and came back clean, or nothing has been assessed yet. The first is
+		// green; the second has nothing beneath it and nothing known, so it stays grey.
+		if (!rowList.Any(r => r.Assessment is not null))
 		{
 			return PackageHealthStatus.Unknown;
 		}
 
-		// Only rows without an assessment can hide issues; an assessed row's failures are already in
-		// the categories. Those rows are Unknown or Pending, both of which outrank every severity.
-		var unassessed = Worst(rowList
-			.Where(r => r.Assessment is null)
-			.Select(r => r.HealthStatus)
-			.DefaultIfEmpty(PackageHealthStatus.Success));
-
-		return Worst(unassessed, Worst(categorySeverities.Select(FromSeverity).DefaultIfEmpty(PackageHealthStatus.Success)));
+		return Worst(categorySeverities.Select(FromSeverity).DefaultIfEmpty(PackageHealthStatus.Success));
 	}
 
 	/// <summary>
