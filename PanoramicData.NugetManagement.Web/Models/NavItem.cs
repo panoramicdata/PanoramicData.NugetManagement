@@ -136,9 +136,6 @@ public enum NavView
 	/// <summary>Application-wide settings (populated later).</summary>
 	AppSettings,
 
-	/// <summary>Cross-repository NuGet package update management.</summary>
-	NuGetUpdates,
-
 	/// <summary>
 	/// The issue-centric view for an organisation: the same failures grouped by issue rather than by
 	/// repository. Org-scoped, which is why it hangs off the organisation node.

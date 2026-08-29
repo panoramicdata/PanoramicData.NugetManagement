@@ -29,7 +29,6 @@ builder.Services.AddSingleton<RegressionGuardService>();
 builder.Services.AddSingleton<WorkQueueService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RegressionGuardService>());
 builder.Services.AddScoped<DashboardService>();
-builder.Services.AddScoped<NuGetUpdateService>();
 
 // GitHub OAuth authentication
 var settings = builder.Configuration.GetSection("AppSettings").Get<AppSettings>() ?? new AppSettings();
