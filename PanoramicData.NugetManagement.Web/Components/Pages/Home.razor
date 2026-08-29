@@ -422,7 +422,7 @@ else
 											 Text="@GetReassessButtonText()"
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
-											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
+											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
 											 IsEnabled="@(!IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Reassess))"
 											 ToolTip="@GatedTooltip(WorkflowStep.Reassess, IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
 											 Click="OnToolbarClick" />
@@ -436,7 +436,7 @@ else
 											 Text="Fix"
 											 IconCssClass="fas fa-wrench"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Fix)"
-											 IsVisible="@(_currentView is NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
+											 IsVisible="@(_currentView is NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
 											 IsEnabled="@IsFixEnabled()"
 											 ToolTip="@GatedTooltip(WorkflowStep.Fix, GetFixAllTooltip())"
 											 Click="OnToolbarClick" />

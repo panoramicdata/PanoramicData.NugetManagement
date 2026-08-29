@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Web.Models;
@@ -46,6 +46,36 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 		=> ReadRenderCurrentViewSwitch()
 			.Should().Contain("case NavView.RepositoryDetail:",
 				"selecting a repository must show its failing rules, not the getting-started text");
+
+	/// <summary>
+	/// The repository view is where the failing rules are read, so it is where Fix is pressed. The
+	/// toolbar button lists the views it appears in, and RepositoryDetail was added to the tree
+	/// without being added to that list — the button simply vanished, taking the queued, downstream-
+	/// blocking Fix run with it and leaving only the per-category buttons.
+	/// </summary>
+	[Theory]
+	[InlineData("fix")]
+	[InlineData("reassess")]
+	public void RepositoryDetailShouldOfferTheWorkflowToolbarButton(string key)
+		=> ReadToolbarButton(key)
+			.Should().Contain("NavView.RepositoryDetail",
+				"a step hidden on the repository view cannot be run from where its issues are read");
+
+	/// <summary>
+	/// The markup of one PDToolbarButton, from its Key to the end of the element.
+	/// </summary>
+	private static string ReadToolbarButton(string key)
+	{
+		var razor = File.ReadAllText(ResolveHomeRazorPath());
+
+		var start = razor.IndexOf($"<PDToolbarButton Key=\"{key}\"", StringComparison.Ordinal);
+		start.Should().BeGreaterThan(-1, $"the '{key}' toolbar button must exist for this test to mean anything");
+
+		var end = razor.IndexOf("/>", start, StringComparison.Ordinal);
+		end.Should().BeGreaterThan(start, "the button element must be closed");
+
+		return razor[start..end];
+	}
 
 	/// <summary>
 	/// The body of RenderCurrentView, from its declaration to the start of the next member.
