@@ -86,6 +86,17 @@ public static class Standards
 	public const string VsTestAdapterPackage = "xunit.runner.visualstudio";
 
 	/// <summary>
+	/// The expected AwesomeAssertions version. AwesomeAssertions is the API-compatible fork of
+	/// FluentAssertions, which from version 8 requires a paid Xceed licence for commercial use.
+	/// </summary>
+	public const string AwesomeAssertionsVersion = "9.6.0";
+
+	/// <summary>
+	/// The expected AwesomeAssertions.Analyzers version.
+	/// </summary>
+	public const string AwesomeAssertionsAnalyzersVersion = "9.0.8";
+
+	/// <summary>
 	/// The minimum acceptable actions/checkout major version. Repositories at or above this pass;
 	/// the value is derived from the highest version in use across the organization's repositories.
 	/// </summary>

@@ -15,13 +15,30 @@ public class AwesomeAssertionsRule : RuleBase
 {
 	/// <summary>The packages this rule bans, and what each becomes.</summary>
 	/// <remarks>
-	/// Order matters. The Analyzers package has to be rewritten before the bare name: rewrite the bare
-	/// name first and "FluentAssertions.Analyzers" has already become "AwesomeAssertions.Analyzers",
-	/// so the Analyzers rule no longer matches and its version pin is left behind.
+	/// <para>
+	/// Order matters twice over. The version pins have to be rewritten before the bare names, and the
+	/// Analyzers package before the library. Rewrite the bare name first and
+	/// "FluentAssertions.Analyzers" has already become "AwesomeAssertions.Analyzers", so the Analyzers
+	/// rule no longer matches and its version pin is left behind.
+	/// </para>
+	/// <para>
+	/// The version pins are not cosmetic. AwesomeAssertions runs 7.0.0 to
+	/// <see cref="Standards.AwesomeAssertionsVersion"/> and never published the 8.x versions
+	/// FluentAssertions is typically pinned at, so renaming the package without repinning produces a
+	/// reference that cannot restore.
+	/// </para>
 	/// </remarks>
 	private static readonly (string Pattern, string Replacement)[] _replacements =
 	[
-		("FluentAssertions.Analyzers", "AwesomeAssertions.Analyzers"),
+		(
+			@"Include=""FluentAssertions\.Analyzers""(\s+)Version=""[^""]*""",
+			$@"Include=""AwesomeAssertions.Analyzers""$1Version=""{Standards.AwesomeAssertionsAnalyzersVersion}"""
+		),
+		(
+			@"Include=""FluentAssertions""(\s+)Version=""[^""]*""",
+			$@"Include=""AwesomeAssertions""$1Version=""{Standards.AwesomeAssertionsVersion}"""
+		),
+		(@"FluentAssertions\.Analyzers", "AwesomeAssertions.Analyzers"),
 		("FluentAssertions", "AwesomeAssertions")
 	];
 
@@ -40,12 +57,10 @@ public class AwesomeAssertionsRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var testProjects = context.FindTestProjectFiles().ToList();
-		if (testProjects.Count == 0)
-		{
-			return Task.FromResult(NotApplicable("No test projects found; rule does not apply."));
-		}
-
+		// Deliberately not gated on the presence of a test project. The licence obligation attaches to
+		// the reference, wherever it lives, and a repository that pins FluentAssertions centrally has
+		// taken it on whether or not a test project consumes it yet.
+		//
 		// includeVariants catches FluentAssertions.Analyzers as well as the library itself: the
 		// analyzer package alone still pulls the licence question along with it.
 		var pinnedCentrally = ReferencesPackage(
@@ -53,7 +68,8 @@ public class AwesomeAssertionsRule : RuleBase
 			"FluentAssertions",
 			includeVariants: true);
 
-		var referencingProjects = testProjects
+		var referencingProjects = context
+			.FindFiles(".csproj")
 			.Where(project => ReferencesPackageDirectly(context.GetFileContent(project), "FluentAssertions", includeVariants: true))
 			.ToArray();
 
