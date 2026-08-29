@@ -49,7 +49,7 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 		// repository had already configured — none of which this rule has an opinion on.
 		var context = CreateContext(
 			testProject: _xunitV3,
-			globalJson: """{"sdk":{"version":"10.0.100"},"msbuild-sdks":{"Contoso.Build":"1.2.3"}}""");
+			globalJson: """{"sdk":{"version":"9.0.100"},"msbuild-sdks":{"Contoso.Build":"1.2.3"}}""");
 
 		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
 
@@ -82,6 +82,44 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 		var result = await Rule("TST-06").EvaluateAsync(context, CancellationToken.None);
 
 		result.IsApplicable.Should().BeFalse();
+	}
+
+	[Fact]
+	public void VER03_ShouldPinTheFeatureBandFloor_NotTheMachinesNewestSdk()
+	{
+		// Issue 76: LatestDotNetSdkVersion is whatever the machine running this tool has installed.
+		// Pinning it makes one machine's install list a build requirement for every other machine,
+		// because rollForward never rolls down.
+		// Asserted on shape, not on a comparison with the detected SDK: on a machine whose newest
+		// band happens to be the floor the two legitimately coincide, and a test that fails there
+		// would be coupled to the host's install list - the very fault this fixes.
+		Standards.DotNetSdkPinVersion.Should().EndWith(".100");
+		Standards.DotNetSdkPinVersion.Should().StartWith(
+			string.Join('.', Standards.LatestDotNetSdkVersion.Split('.').Take(2)) + ".");
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public void VER03_TemplateShouldRollForwardWithinTheMajor_NotWithinAFeatureBand(bool includeTestRunner)
+	{
+		var content = Standards.GetGlobalJsonContent(includeTestRunner);
+
+		content.Should().Contain("latestMinor");
+		content.Should().NotContain("latestFeature", "latestFeature cannot roll down to an installed band");
+		content.Should().Contain(Standards.DotNetSdkPinVersion);
+	}
+
+	[Fact]
+	public async Task VER03_ShouldPass_WhenGlobalJsonAlreadyPinsTheFloor()
+	{
+		var context = CreateContext(
+			testProject: _xunitV3,
+			globalJson: "{\"sdk\":{\"version\":\"" + Standards.DotNetSdkPinVersion + "\",\"rollForward\":\"latestMinor\"}}");
+
+		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeTrue();
 	}
 
 	private static IRule Rule(string ruleId) => RuleRegistry.Rules.First(r => r.RuleId == ruleId);
