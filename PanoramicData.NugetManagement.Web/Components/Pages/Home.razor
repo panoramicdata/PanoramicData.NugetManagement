@@ -939,6 +939,7 @@ else
 	private string? _localReposRoot;
 	private bool _folderSaved;
 	private bool _includeInfoInAiPrompt;
+	private bool _allowPublishWithoutTests;
 
 	// === Lifecycle ===
 
@@ -961,6 +962,7 @@ else
 		_localReposRoot = RuntimeSettings.LocalReposRoot;
 		_preferredIdeId = RuntimeSettings.PreferredIdeId;
 		_includeInfoInAiPrompt = RuntimeSettings.IncludeInfoInAiPrompt;
+		_allowPublishWithoutTests = RuntimeSettings.AllowPublishWithoutTests;
 
 		// Load from cache immediately
 		var cached = Cache.GetCachedRows();
@@ -3423,6 +3425,17 @@ else
 						When unchecked, informational (blue) items are excluded from the generated AI prompt.
 					</span>
 				</div>
+				<div class="form-group">
+					<div class="settings-checkbox-row">
+						<label for="allow-publish-without-tests">Allow publish without running&nbsp;tests</label>
+						<input id="allow-publish-without-tests" type="checkbox" checked="@_allowPublishWithoutTests" @onchange="OnAllowPublishWithoutTestsChanged" />
+					</div>
+					<span class="settings-hint">
+						When checked, Publish is offered for a repository that has built successfully but whose
+						tests have not been run. The build must still have succeeded, and a failed build or a
+						failed test still blocks publishing. Applies to every repository.
+					</span>
+				</div>
 			</div>
 
 			<h3 class="settings-section">Stray clones</h3>
@@ -3584,6 +3597,12 @@ else
 	{
 		_includeInfoInAiPrompt = e.Value is true;
 		RuntimeSettings.SetIncludeInfoInAiPrompt(_includeInfoInAiPrompt);
+	}
+
+	private void OnAllowPublishWithoutTestsChanged(ChangeEventArgs e)
+	{
+		_allowPublishWithoutTests = e.Value is true;
+		RuntimeSettings.SetAllowPublishWithoutTests(_allowPublishWithoutTests);
 	}
 
 	private void OnAutoRefreshTimer(object? state)
@@ -5322,12 +5341,7 @@ else
 			: "Fetch, pull --rebase, push";
 	}
 
-	private bool IsPublishEnabled()
-	{
-		return _selectedRow is not null && _selectedRow.IsClonedLocally
-			&& !IsBlockedByOutOfSync
-			&& _selectedRow.Status == PackageStatus.TestsPassed;
-	}
+	private bool IsPublishEnabled() => PublishGate.IsEnabled(_selectedRow, _allowPublishWithoutTests);
 
 	private string GetPublishTooltip()
 	{
@@ -5339,16 +5353,25 @@ else
 		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
 		{
 			return "Clone the repository first";
-			}
+		}
 
 		if (IsBlockedByOutOfSync)
 		{
 			return OutOfSyncBlockedTooltip;
 		}
 
+		if (PublishGate.WaivesTests(_selectedRow, _allowPublishWithoutTests))
+		{
+			// Says so on the button that acts on it: a green Publish normally means the tests passed,
+			// and a waiver nobody is reminded of is a waiver that quietly becomes the default.
+			return "Publishing without tests — the test gate is waived in Application settings";
+		}
+
 		if (_selectedRow.Status != PackageStatus.TestsPassed)
 		{
-			return "Run tests first — tests must pass before publishing";
+			return _selectedRow.Status == PackageStatus.BuildSucceeded
+				? "Run tests first — or waive the test gate in Application settings"
+				: "Run tests first — tests must pass before publishing";
 		}
 
 		return GetFixBlockReason() ?? "Run Publish.ps1";

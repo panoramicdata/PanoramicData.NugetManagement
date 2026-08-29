@@ -1,5 +1,4 @@
 using Codacy.Api;
-using Codacy.Api.Exceptions;
 using Codacy.Api.Models;
 using PanoramicData.NugetManagement.Models;
 
@@ -88,7 +87,7 @@ public sealed class CodacyIssueService : ICodacyIssueService
 			}
 			while (!string.IsNullOrEmpty(cursor));
 		}
-		catch (CodacyNotFoundException)
+		catch (Exception ex) when (CodacyNotFound.Matches(ex))
 		{
 			// Codacy does not track this repository (not added or not yet analysed).
 			return new CodacyRepositoryReport { IsTracked = false };

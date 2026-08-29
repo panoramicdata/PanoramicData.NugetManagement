@@ -138,6 +138,34 @@ public class RuntimeSettingsService
 	}
 
 	/// <summary>
+	/// Gets whether Publish is offered for a repository that built but was never tested.
+	/// </summary>
+	public bool AllowPublishWithoutTests
+	{
+		get
+		{
+			lock (_lock)
+			{
+				return _runtimeSettings.AllowPublishWithoutTests;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Sets whether Publish is offered for a repository that built but was never tested, and persists
+	/// to disk.
+	/// </summary>
+	public void SetAllowPublishWithoutTests(bool value)
+	{
+		lock (_lock)
+		{
+			_runtimeSettings.AllowPublishWithoutTests = value;
+		}
+
+		SaveToDisk();
+	}
+
+	/// <summary>
 	/// Sets the preferred IDE identifier at runtime and persists to disk.
 	/// </summary>
 	public void SetPreferredIdeId(string? value)
@@ -380,6 +408,7 @@ public class RuntimeSettingsService
 					LocalReposRoot = _runtimeSettings.LocalReposRoot,
 					PreferredIdeId = _runtimeSettings.PreferredIdeId,
 					IncludeInfoInAiPrompt = _runtimeSettings.IncludeInfoInAiPrompt,
+					AllowPublishWithoutTests = _runtimeSettings.AllowPublishWithoutTests,
 					Organizations = [.. _runtimeSettings.Organizations],
 					ExcludedRepositories = [.. _runtimeSettings.ExcludedRepositories]
 				};
@@ -423,6 +452,17 @@ public class RuntimeSettings
 	/// Defaults to false.
 	/// </summary>
 	public bool IncludeInfoInAiPrompt { get; set; }
+
+	/// <summary>
+	/// Whether Publish is offered for a repository that has built successfully but whose tests have
+	/// not been run. Defaults to false.
+	/// </summary>
+	/// <remarks>
+	/// A waiver of the test gate, not of the build gate: see <see cref="PublishGate"/>. Kept here
+	/// rather than per repository because it is a decision about how this estate is managed, and one
+	/// applied per repository would be forgotten in exactly the repository it was set on.
+	/// </remarks>
+	public bool AllowPublishWithoutTests { get; set; }
 
 	/// <summary>
 	/// Repositories excluded from governance, by full name.

@@ -132,7 +132,7 @@ dotnet user-secrets set "AppSettings:DevAuthUser" "your-github-username" --proje
 |---|---|
 | `AppSettings:GitHubPat` | A personal access token covering the same ground as the OAuth scopes above (`repo`, `read:org`). Without one, assessing more than a handful of repositories exhausts GitHub's unauthenticated rate limit. When `DevAuthBypass` is on, this is also used as the access token, so the dashboard can reach GitHub without signing in. |
 | `AppSettings:LocalReposRoot` | The folder your repositories are cloned into. Required before the dashboard can clone, build, test, auto-fix or publish anything — without it only read-only assessment works. This one can also be set from the dashboard's own settings page, which overrides the configured value. |
-| `AppSettings:CodacyApiToken` | Enables the Codacy issue rule (CQ-05). Without it that rule reports as not applicable. |
+| `AppSettings:CodacyApiToken` | Enables the Codacy rules: is the repository set up and analysed (CQ-03), its open issues (CQ-05), and its per-file grades (CQ-06, informational). Without it those rules report as not applicable. |
 
 Then run it:
 
