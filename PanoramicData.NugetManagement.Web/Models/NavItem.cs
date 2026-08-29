@@ -149,7 +149,13 @@ public enum NavView
 	/// </summary>
 	Dashboard,
 
-	/// <summary>Package-level detail / assessment view.</summary>
+	/// <summary>
+	/// Repository-level detail: the assessment, the clone, and every action that acts on the
+	/// repository. What <see cref="PackageDetail"/> showed while a package stood in for its repository.
+	/// </summary>
+	RepositoryDetail,
+
+	/// <summary>Package-level detail: the published version, its tag match and its listing state.</summary>
 	PackageDetail,
 
 	/// <summary>Category-level view within a package.</summary>

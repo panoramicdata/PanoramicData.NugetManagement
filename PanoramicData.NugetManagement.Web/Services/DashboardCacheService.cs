@@ -13,7 +13,8 @@ public class DashboardCacheService
 	private readonly Lock _lock = new();
 	private readonly string _cachePath;
 	private readonly ILogger<DashboardCacheService> _logger;
-	private List<PackageDashboardRow>? _cachedRows;
+	private List<RepositoryDashboardRow>? _cachedRows;
+	private List<UngovernedPackage> _ungovernedPackages = [];
 	private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
 
 	private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -40,8 +41,9 @@ public class DashboardCacheService
 	/// stopped them being produced, and went on offering actions against somebody else's repository.
 	///
 	/// 1: repositories outside the configured organisations are no longer governed.
+	/// 2: the row is the repository, not the package, and ungoverned packages are held separately.
 	/// </remarks>
-	public const int DiscoveryVersion = 1;
+	public const int DiscoveryVersion = 2;
 
 	/// <summary>
 	/// Initializes the cache service and loads any persisted state from disk.
@@ -79,7 +81,7 @@ public class DashboardCacheService
 	/// <summary>
 	/// Gets the cached dashboard rows, or null if no cache exists.
 	/// </summary>
-	public List<PackageDashboardRow>? GetCachedRows()
+	public List<RepositoryDashboardRow>? GetCachedRows()
 	{
 		lock (_lock)
 		{
@@ -119,7 +121,7 @@ public class DashboardCacheService
 	/// Updates the cached rows and refresh timestamp, then persists to disk.
 	/// Called when a full refresh cycle completes.
 	/// </summary>
-	public void Update(List<PackageDashboardRow> rows)
+	public void Update(List<RepositoryDashboardRow> rows)
 	{
 		lock (_lock)
 		{
@@ -134,7 +136,7 @@ public class DashboardCacheService
 	/// Sets the cached rows without updating the refresh timestamp.
 	/// Used for incremental updates (e.g. after discovering packages but before full assessment).
 	/// </summary>
-	public void SetRows(List<PackageDashboardRow> rows)
+	public void SetRows(List<RepositoryDashboardRow> rows)
 	{
 		lock (_lock)
 		{
@@ -143,28 +145,69 @@ public class DashboardCacheService
 	}
 
 	/// <summary>
-	/// Gets a single cached row by package ID.
+	/// Gets a single cached row by repository full name.
 	/// </summary>
-	public PackageDashboardRow? GetRow(string packageId)
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public RepositoryDashboardRow? GetRow(string repositoryFullName)
 	{
 		lock (_lock)
 		{
 			return _cachedRows?.FirstOrDefault(r =>
-				string.Equals(r.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
+				string.Equals(r.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase));
 		}
 	}
 
 	/// <summary>
- /// Inserts or replaces a single cached row by package ID and persists to disk.
+	/// The cached repository whose packages include the given id, or null when none does.
 	/// </summary>
-	public void UpsertRow(PackageDashboardRow row)
+	/// <remarks>
+	/// For callers that still hold a package id — a remediation prompt, a deep link — now that the row
+	/// they want is keyed on the repository that publishes it.
+	/// </remarks>
+	/// <param name="packageId">The NuGet package identifier.</param>
+	public RepositoryDashboardRow? GetRowByPackageId(string packageId)
+	{
+		lock (_lock)
+		{
+			return _cachedRows?.FirstOrDefault(row => row.Packages
+				.Any(package => string.Equals(package.PackageId, packageId, StringComparison.OrdinalIgnoreCase)));
+		}
+	}
+
+	/// <summary>
+	/// The packages that belong to no repository we govern, and why.
+	/// </summary>
+	public IReadOnlyList<UngovernedPackage> GetUngovernedPackages()
+	{
+		lock (_lock)
+		{
+			return [.. _ungovernedPackages];
+		}
+	}
+
+	/// <summary>
+	/// Replaces the ungoverned packages recorded by the last discovery.
+	/// </summary>
+	/// <param name="packages">The packages that belong to no repository we govern.</param>
+	public void SetUngovernedPackages(List<UngovernedPackage> packages)
+	{
+		lock (_lock)
+		{
+			_ungovernedPackages = packages;
+		}
+	}
+
+	/// <summary>
+	/// Inserts or replaces a single cached row by repository full name and persists to disk.
+	/// </summary>
+	public void UpsertRow(RepositoryDashboardRow row)
 	{
 		lock (_lock)
 		{
 			_cachedRows ??= [];
 
 			var index = _cachedRows.FindIndex(existing =>
-				string.Equals(existing.PackageId, row.PackageId, StringComparison.OrdinalIgnoreCase));
+				string.Equals(existing.RepositoryFullName, row.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
 
 			if (index >= 0)
 			{
@@ -195,10 +238,10 @@ public class DashboardCacheService
 	}
 
 	/// <summary>
-	/// Removes a row by package ID from the cache and persists to disk.
+	/// Removes a row by repository full name from the cache and persists to disk.
 	/// Returns true if the row was found and removed.
 	/// </summary>
-	public bool RemoveRow(string packageId)
+	public bool RemoveRow(string repositoryFullName)
 	{
 		bool removed;
 		lock (_lock)
@@ -209,7 +252,7 @@ public class DashboardCacheService
 			}
 
 			removed = _cachedRows.RemoveAll(r =>
-				string.Equals(r.PackageId, packageId, StringComparison.OrdinalIgnoreCase)) > 0;
+				string.Equals(r.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase)) > 0;
 
 			if (removed)
 			{
@@ -219,7 +262,7 @@ public class DashboardCacheService
 
 		if (removed)
 		{
-			_logger.LogInformation("Removed de-listed package '{PackageId}' from cache", packageId);
+			_logger.LogInformation("Removed repository '{RepositoryFullName}' from cache", repositoryFullName);
 			SaveToDisk();
 		}
 
@@ -230,12 +273,14 @@ public class DashboardCacheService
 	{
 		try
 		{
-			List<PackageDashboardRow>? rows;
+			List<RepositoryDashboardRow>? rows;
+			List<UngovernedPackage> ungoverned;
 			DateTimeOffset ts;
 
 			lock (_lock)
 			{
 				rows = _cachedRows;
+				ungoverned = _ungovernedPackages;
 				ts = _lastRefreshUtc;
 			}
 
@@ -248,7 +293,8 @@ public class DashboardCacheService
 			{
 				DiscoveryVersion = DiscoveryVersion,
 				LastRefreshUtc = ts,
-				Rows = rows
+				Rows = rows,
+				UngovernedPackages = ungoverned
 			};
 
 			var dir = Path.GetDirectoryName(_cachePath);
@@ -296,6 +342,7 @@ public class DashboardCacheService
 			lock (_lock)
 			{
 				_cachedRows = envelope.Rows;
+				_ungovernedPackages = envelope.UngovernedPackages;
 				_lastRefreshUtc = envelope.LastRefreshUtc;
 			}
 
@@ -322,7 +369,14 @@ public class DashboardCacheService
 		public int DiscoveryVersion { get; set; }
 
 		public DateTimeOffset LastRefreshUtc { get; set; }
-		public List<PackageDashboardRow> Rows { get; set; } = [];
+		public List<RepositoryDashboardRow> Rows { get; set; } = [];
+
+		/// <summary>
+		/// The packages that belong to no repository we govern. Absent in files written before the
+		/// repository layer, which deserialize as empty — harmless, since such a file is discarded for
+		/// its version anyway.
+		/// </summary>
+		public List<UngovernedPackage> UngovernedPackages { get; set; } = [];
 	}
 
 	/// <summary>

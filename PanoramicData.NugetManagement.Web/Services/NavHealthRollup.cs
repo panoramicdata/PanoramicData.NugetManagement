@@ -73,7 +73,7 @@ public static class NavHealthRollup
 	/// <summary>
 	/// The status of an organisation's Repositories branch: the worst of its repositories.
 	/// </summary>
-	public static PackageHealthStatus ForRepositories(IEnumerable<PackageDashboardRow>? rows)
+	public static PackageHealthStatus ForRepositories(IEnumerable<RepositoryDashboardRow>? rows)
 		=> rows is null
 			? PackageHealthStatus.Unknown
 			: Worst(rows.Select(r => r.HealthStatus));
@@ -92,7 +92,7 @@ public static class NavHealthRollup
 	/// Repositories branch, where they are visible as grey children.
 	/// </remarks>
 	public static PackageHealthStatus ForIssues(
-		IEnumerable<PackageDashboardRow>? rows,
+		IEnumerable<RepositoryDashboardRow>? rows,
 		IEnumerable<AssessmentSeverity> categorySeverities)
 	{
 		if (rows is null)
@@ -100,7 +100,7 @@ public static class NavHealthRollup
 			return PackageHealthStatus.Unknown;
 		}
 
-		var rowList = rows as IReadOnlyCollection<PackageDashboardRow> ?? [.. rows];
+		var rowList = rows as IReadOnlyCollection<RepositoryDashboardRow> ?? [.. rows];
 
 		// An empty category list means one of two things, and only the rows can tell them apart:
 		// everything was assessed and came back clean, or nothing has been assessed yet. The first is

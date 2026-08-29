@@ -23,6 +23,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- So the grouping of packages into repositories can be tested without a network. -->
+        <InternalsVisibleTo Include="PanoramicData.NugetManagement.Test" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\PanoramicData.NugetManagement\PanoramicData.NugetManagement.csproj" />
     </ItemGroup>
 

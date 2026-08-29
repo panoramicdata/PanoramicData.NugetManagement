@@ -10,6 +10,13 @@ namespace PanoramicData.NugetManagement.Web.Models;
 /// </remarks>
 public class UngovernedPackage
 {
+	/// <summary>
+	/// How a <see cref="Reason"/> begins when the nuspec could not be read at all, as opposed to
+	/// having been read and found to declare nothing. The console tells the two apart by this prefix,
+	/// so it is shared rather than written out at both ends.
+	/// </summary>
+	public const string LookupFailedReasonPrefix = "Could not read the nuspec";
+
 	/// <summary>The NuGet package identifier.</summary>
 	public required string PackageId { get; init; }
 

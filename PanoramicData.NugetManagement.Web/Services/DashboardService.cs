@@ -13,6 +13,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public class DashboardService
 {
 	private readonly NuGetDiscoveryService _nuget;
+	private readonly DashboardCacheService _cache;
 	private readonly LocalRepoService _localRepo;
 	private readonly RegressionGuardService _regressionGuard;
 	private readonly RuntimeSettingsService _runtimeSettings;
@@ -24,6 +25,7 @@ public class DashboardService
 	/// </summary>
 	public DashboardService(
 		NuGetDiscoveryService nuget,
+		DashboardCacheService cache,
 		LocalRepoService localRepo,
 		RemediationRegistry remediationRegistry,
 		RegressionGuardService regressionGuard,
@@ -32,6 +34,7 @@ public class DashboardService
 		ILogger<DashboardService> logger)
 	{
 		_nuget = nuget;
+		_cache = cache;
 		_localRepo = localRepo;
 		_regressionGuard = regressionGuard;
 		_runtimeSettings = runtimeSettings;
@@ -48,7 +51,7 @@ public class DashboardService
 	/// pay the cost of every other. When null, every configured organisation is discovered.
 	/// </param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-	public async Task<List<PackageDashboardRow>> DiscoverPackagesAsync(
+	public async Task<List<RepositoryDashboardRow>> DiscoverPackagesAsync(
 		string? organization = null,
 		CancellationToken cancellationToken = default)
 	{
@@ -69,49 +72,150 @@ public class DashboardService
 			packages.AddRange(discovered);
 		}
 
-		var rows = new List<PackageDashboardRow>();
+		// Whether a repository is ours at all is decided before anything is read from disk on the
+		// strength of it: NuGet's owner: search says who owns the package, never who owns the
+		// repository behind it. Every organisation under management is consulted, not merely the one
+		// being discovered: refreshing one must not decide that another's repositories belong to
+		// somebody else.
+		var (rows, ungoverned) = BuildRows(
+			packages,
+			_cache.GetCachedRows() ?? [],
+			_runtimeSettings.Organizations);
 
-		// Every organisation under management, not merely the one being discovered: refreshing one
-		// organisation must not decide that another's repositories belong to somebody else.
-		var governed = _runtimeSettings.Organizations;
+		_cache.SetUngovernedPackages(ungoverned);
 
-		foreach (var pkg in packages)
+		foreach (var row in rows)
 		{
 			// Local paths are keyed on the full owner/name identity, not the bare repository name.
-			var repoIdentity = pkg.RepositoryName is not null
-				? $"{pkg.RepositoryOwner ?? pkg.Organization}/{pkg.RepositoryName}"
-				: null;
-			var isCloned = repoIdentity is not null && _localRepo.IsClonedLocally(repoIdentity);
+			var isCloned = _localRepo.IsClonedLocally(row.RepositoryFullName);
 
-			var row = new PackageDashboardRow
+			row.IsClonedLocally = isCloned;
+			row.LocalPath = _localRepo.GetLocalPath(row.RepositoryFullName);
+			row.SlnxPath = isCloned ? _localRepo.FindSlnxFile(row.RepositoryFullName) : null;
+			row.Status = isCloned ? PackageStatus.NotAssessed : PackageStatus.NotCloned;
+
+			if (isCloned)
 			{
-				PackageId = pkg.PackageId,
-				Organization = pkg.Organization,
-				LatestVersion = pkg.LatestVersion,
-				RepositoryFullName = repoIdentity,
-				RepositoryUrl = pkg.RepositoryUrl,
-				IsClonedLocally = isCloned,
-				LocalPath = repoIdentity is not null ? _localRepo.GetLocalPath(repoIdentity) : null,
-				SlnxPath = isCloned && repoIdentity is not null ? _localRepo.FindSlnxFile(repoIdentity) : null,
-				Status = isCloned ? PackageStatus.NotAssessed : PackageStatus.NotCloned
-			};
+				row.CurrentBranch = await _localRepo
+					.GetCurrentBranchAsync(row.RepositoryFullName, cancellationToken)
+					.ConfigureAwait(false);
 
-			// Whether this repository is ours at all is decided before anything is read from disk on the
-			// strength of it: NuGet's owner: search says who owns the package, never who owns the
-			// repository behind it.
-			GovernanceScope.Apply(row, governed);
-
-			if (row.IsGoverned && isCloned && repoIdentity is not null)
-			{
-				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
-				row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+				row.IsWorkingTreeClean = await _localRepo
+					.IsWorkingTreeCleanAsync(row.RepositoryFullName, cancellationToken)
+					.ConfigureAwait(false);
 			}
-
-			rows.Add(row);
 		}
 
 		return rows;
 	}
+
+	/// <summary>
+	/// Turns discovered packages into one row per repository, plus the packages that belong to no
+	/// repository we govern.
+	/// </summary>
+	/// <remarks>
+	/// Static and free of the network so the grouping — the part with the interesting edge cases — can
+	/// be tested without one.
+	/// </remarks>
+	/// <param name="packages">The packages discovered from NuGet.</param>
+	/// <param name="previousRows">The rows from the last successful discovery, for carry-forward.</param>
+	/// <param name="organizations">The organisations under management.</param>
+	internal static (List<RepositoryDashboardRow> Rows, List<UngovernedPackage> Ungoverned) BuildRows(
+		IReadOnlyList<NuGetPackageInfo> packages,
+		IReadOnlyList<RepositoryDashboardRow> previousRows,
+		IReadOnlyList<string> organizations)
+	{
+		// A package whose nuspec we could not read keeps the repository we knew it by. Without this a
+		// request going astray removes a repository from governance, which is how eight of them came to
+		// be reported as declaring no repository at all.
+		var previousByPackageId = previousRows
+			.SelectMany(row => row.Packages.Select(package => (package.PackageId, row.RepositoryFullName)))
+			.GroupBy(pair => pair.PackageId, StringComparer.OrdinalIgnoreCase)
+			.ToDictionary(
+				group => group.Key,
+				group => group.First().RepositoryFullName,
+				StringComparer.OrdinalIgnoreCase);
+
+		var rows = new Dictionary<string, RepositoryDashboardRow>(StringComparer.OrdinalIgnoreCase);
+		var ungoverned = new List<UngovernedPackage>();
+
+		foreach (var package in packages)
+		{
+			var identity = IdentifyRepository(package, previousByPackageId);
+
+			var reason = identity is null
+				? ReasonForNoRepository(package)
+				: GovernanceScope.ReasonNotGoverned(identity, organizations);
+
+			if (reason is not null)
+			{
+				ungoverned.Add(new UngovernedPackage
+				{
+					PackageId = package.PackageId,
+					Organization = package.Organization,
+					DeclaredRepository = identity,
+					Reason = reason
+				});
+
+				continue;
+			}
+
+			if (!rows.TryGetValue(identity!, out var row))
+			{
+				row = new RepositoryDashboardRow
+				{
+					RepositoryFullName = identity!,
+					Organization = package.Organization,
+					RepositoryUrl = package.RepositoryUrl ?? $"https://github.com/{identity}"
+				};
+
+				rows[identity!] = row;
+			}
+
+			row.Packages.Add(new PublishedPackage
+			{
+				PackageId = package.PackageId,
+				LatestVersion = package.LatestVersion
+			});
+		}
+
+		foreach (var row in rows.Values)
+		{
+			row.Packages.Sort((left, right) =>
+				string.Compare(left.PackageId, right.PackageId, StringComparison.OrdinalIgnoreCase));
+		}
+
+		return (
+			[.. rows.Values.OrderBy(row => row.RepositoryFullName, StringComparer.OrdinalIgnoreCase)],
+			ungoverned);
+	}
+
+	/// <summary>
+	/// The repository a package belongs to, or null when it belongs to none we can name.
+	/// </summary>
+	private static string? IdentifyRepository(
+		NuGetPackageInfo package,
+		Dictionary<string, string> previousByPackageId)
+	{
+		if (package.RepositoryName is not null)
+		{
+			return $"{package.RepositoryOwner ?? package.Organization}/{package.RepositoryName}";
+		}
+
+		return package.ResolutionOutcome is RepositoryResolutionOutcome.LookupFailed
+			&& previousByPackageId.TryGetValue(package.PackageId, out var previous)
+				? previous
+				: null;
+	}
+
+	/// <summary>
+	/// Why a package with no repository has none — distinguishing a nuspec that declares nothing from
+	/// one we never managed to read.
+	/// </summary>
+	private static string ReasonForNoRepository(NuGetPackageInfo package)
+		=> package.ResolutionOutcome is RepositoryResolutionOutcome.LookupFailed
+			? $"{UngovernedPackage.LookupFailedReasonPrefix} (network) — rediscover to try again."
+			: "The package declares no repository in its nuspec.";
 
 	/// <summary>
 	/// Re-derives each row's local clone facts from what is actually on disk, leaving its assessment
@@ -125,7 +229,7 @@ public class DashboardService
 	/// the count the estate view leads on, so it should be true.
 	/// </remarks>
 	public async Task<int> ReconcileLocalStateAsync(
-		IEnumerable<PackageDashboardRow> rows,
+		IEnumerable<RepositoryDashboardRow> rows,
 		CancellationToken cancellationToken = default)
 	{
 		var changed = 0;
@@ -182,7 +286,7 @@ public class DashboardService
 	/// Assesses a single repository against all governance rules using GitHub API.
 	/// </summary>
 	public async Task AssessRepositoryAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		IGitHubClient github,
 		CancellationToken cancellationToken = default)
 	{
@@ -292,7 +396,7 @@ public class DashboardService
 	/// immediately visible without pushing to GitHub first.
 	/// </summary>
 	public async Task AssessLocalRepositoryAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		CancellationToken cancellationToken = default)
 	{
 		if (row.RepositoryFullName is null || row.LocalPath is null)
@@ -351,7 +455,7 @@ public class DashboardService
 				defaultBranch,
 				row.CurrentBranch,
 				row.LatestTag,
-				row.LatestVersion);
+				row.PrimaryPackage?.LatestVersion);
 
 			var rules = RuleRegistry.Rules;
 			var results = new List<RuleResult>();
@@ -390,7 +494,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt from failed rules.
 	/// </summary>
-	public static string GenerateRemediationPrompt(PackageDashboardRow row, bool includeInfo = true)
+	public static string GenerateRemediationPrompt(RepositoryDashboardRow row, bool includeInfo = true)
 	{
 		if (row.Assessment is null)
 		{
@@ -406,7 +510,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt for a specific category's failed rules.
 	/// </summary>
-	public static string GenerateCategoryRemediationPrompt(PackageDashboardRow row, AssessmentCategory category, bool includeInfo = true)
+	public static string GenerateCategoryRemediationPrompt(RepositoryDashboardRow row, AssessmentCategory category, bool includeInfo = true)
 	{
 		if (row.Assessment is null)
 		{
@@ -422,7 +526,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt for a single failed rule.
 	/// </summary>
-	public static string GenerateRuleRemediationPrompt(PackageDashboardRow row, RuleResult result)
+	public static string GenerateRuleRemediationPrompt(RepositoryDashboardRow row, RuleResult result)
 	{
 		if (row.Assessment is null || result.Passed)
 		{
@@ -437,7 +541,7 @@ public class DashboardService
 	/// standalone <c>.md</c> file or for pasting into an AI session. Returns null when the Codacy
 	/// issues rule (CQ-05) did not run or found nothing to report.
 	/// </summary>
-	public static string? GetCodacyReportMarkdown(PackageDashboardRow row)
+	public static string? GetCodacyReportMarkdown(RepositoryDashboardRow row)
 		=> row.Assessment?.RuleResults
 			.FirstOrDefault(r => r.RuleId == "CQ-05" && r.Advisory is not null)
 			?.Advisory?.Detail;
@@ -445,7 +549,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt from an explicit set of rule failures.
 	/// </summary>
-	public static string GenerateRemediationPromptForFailures(PackageDashboardRow row, IEnumerable<RuleResult> failures, bool includeInfo = false)
+	public static string GenerateRemediationPromptForFailures(RepositoryDashboardRow row, IEnumerable<RuleResult> failures, bool includeInfo = false)
 	{
 		var filtered = failures
 			.Where(r => !r.Passed && (includeInfo || r.Severity != AssessmentSeverity.Info))
@@ -457,7 +561,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt for a build or test workflow failure using recent console output.
 	/// </summary>
-	public static string GenerateWorkflowFailurePrompt(PackageDashboardRow row, string workflowArea, IEnumerable<string> consoleLines)
+	public static string GenerateWorkflowFailurePrompt(RepositoryDashboardRow row, string workflowArea, IEnumerable<string> consoleLines)
 	{
 		var excerpt = consoleLines
 			.Where(line => !string.IsNullOrWhiteSpace(line))
@@ -474,7 +578,7 @@ public class DashboardService
 
 		var lines = new List<string>
 		{
-			$"# {title} Fix Instructions for {row.PackageId}",
+			$"# {title} Fix Instructions for {row.RepositoryFullName}",
 			$"Repository: {row.RepositoryFullName}",
 			$"Local path: {row.LocalPath}",
 			$"Current status: {row.Status}",
@@ -503,7 +607,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates a concise AI remediation prompt for build/test failures using high-signal log lines.
 	/// </summary>
-	public static string GenerateConciseWorkflowFailurePrompt(PackageDashboardRow row, string workflowArea, IEnumerable<string> consoleLines)
+	public static string GenerateConciseWorkflowFailurePrompt(RepositoryDashboardRow row, string workflowArea, IEnumerable<string> consoleLines)
 	{
 		var isTest = workflowArea.Equals("test", StringComparison.OrdinalIgnoreCase);
 		var title = isTest ? "Test Failure" : "Build Failure";
@@ -569,7 +673,7 @@ public class DashboardService
 	public static int CategoryRank(IEnumerable<RuleResult> failures)
 		=> failures.Select(f => SeverityRank(f.Severity)).DefaultIfEmpty(2).Min();
 
-	private static string GeneratePromptFromFailures(PackageDashboardRow row, List<RuleResult> failures)
+	private static string GeneratePromptFromFailures(RepositoryDashboardRow row, List<RuleResult> failures)
 	{
 		if (failures.Count == 0)
 		{
@@ -590,7 +694,7 @@ public class DashboardService
 
 		var lines = new List<string>
 		{
-			$"# Remediation Instructions for {row.PackageId}",
+			$"# Remediation Instructions for {row.RepositoryFullName}",
 			$"Repository: {row.RepositoryFullName}",
 			$"Local path: {row.LocalPath}",
 			""
@@ -652,7 +756,7 @@ public class DashboardService
 	/// Returns the list of files created/modified.
 	/// </summary>
 	public async Task<List<string>> ApplyRemediationsAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
@@ -703,7 +807,7 @@ public class DashboardService
 	/// Applies automatic remediations for a specific category.
 	/// </summary>
 	public async Task<List<string>> ApplyCategoryRemediationsAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		AssessmentCategory category,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
@@ -785,7 +889,7 @@ public class DashboardService
 	/// Builds a local repository.
 	/// </summary>
 	public async Task BuildAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
@@ -810,7 +914,7 @@ public class DashboardService
 	/// Syncs a local repository with remote (fetch, pull --rebase, push).
 	/// </summary>
 	public async Task GitSyncAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
@@ -830,7 +934,7 @@ public class DashboardService
 			{
 				row.Status = PackageStatus.Error;
 				row.StatusMessage = "No repository known for this package.";
-				onOutput?.Invoke($"❌ {row.PackageId}: no repository is known for this package, so there is nothing to clone.");
+				onOutput?.Invoke($"❌ {row.RepositoryFullName}: no repository is known for this package, so there is nothing to clone.");
 				return;
 			}
 
@@ -873,7 +977,7 @@ public class DashboardService
 	/// Does not change the row status (preserves current workflow state).
 	/// </summary>
 	public async Task<CommitAndPushOutcome> CommitAndPushAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		string commitMessage,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
@@ -881,7 +985,7 @@ public class DashboardService
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
 		{
-			var reason = $"No repository is known for {row.PackageId}, so there is nothing to push to.";
+			var reason = $"No repository is known for {row.RepositoryFullName}, so there is nothing to push to.";
 			onOutput?.Invoke($"❌ {reason}");
 			return CommitAndPushOutcome.Refused(reason);
 		}
@@ -929,7 +1033,7 @@ public class DashboardService
 	/// same-named repository often does exist under the configured organisation, so the app would clone
 	/// that one and push to it.
 	/// </remarks>
-	private static string? BuildCloneUrl(PackageDashboardRow row)
+	private static string? BuildCloneUrl(RepositoryDashboardRow row)
 		=> row.RepositoryFullName is null
 			? null
 			: $"https://github.com/{row.RepositoryFullName}.git";
@@ -942,7 +1046,7 @@ public class DashboardService
 	/// name from the URL and discard the owner, which is what let two organisations owning a same-named
 	/// repository share one directory.
 	/// </remarks>
-	private static string? RepoIdentity(PackageDashboardRow row) => row.RepositoryFullName;
+	private static string? RepoIdentity(RepositoryDashboardRow row) => row.RepositoryFullName;
 
 	/// <summary>
 	/// Reduces a git remote URL to <c>owner/name</c>, lower-cased, so an https remote and an ssh one
@@ -982,7 +1086,7 @@ public class DashboardService
 	/// treated as a mismatch: refusing to act is recoverable, pushing to the wrong repository is not.
 	/// </remarks>
 	private async Task<string?> VerifyLocalCloneAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		string repoIdentity,
 		Action<string>? onOutput,
 		CancellationToken cancellationToken)
@@ -990,7 +1094,7 @@ public class DashboardService
 		var expected = NormaliseRepoIdentity(row.RepositoryFullName);
 		if (expected is null)
 		{
-			return Refuse($"No repository is known for {row.PackageId}, so nothing can be applied to it.", onOutput);
+			return Refuse($"No repository is known for {row.RepositoryFullName}, so nothing can be applied to it.", onOutput);
 		}
 
 		var origin = await _localRepo.GetOriginUrlAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
@@ -1034,7 +1138,7 @@ public class DashboardService
 	/// indeterminate answer fails closed for the same reason the identity check does.
 	/// </remarks>
 	private async Task<bool> VerifyCleanWorkingTreeAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		string repoIdentity,
 		Action<string>? onOutput,
 		CancellationToken cancellationToken)
@@ -1049,7 +1153,7 @@ public class DashboardService
 
 		if (isClean is null)
 		{
-			onOutput?.Invoke($"❌ {row.PackageId}: cannot determine whether {_localRepo.GetLocalPath(repoIdentity)} has uncommitted changes. Refusing to write to it.");
+			onOutput?.Invoke($"❌ {row.RepositoryFullName}: cannot determine whether {_localRepo.GetLocalPath(repoIdentity)} has uncommitted changes. Refusing to write to it.");
 			return false;
 		}
 
@@ -1061,7 +1165,7 @@ public class DashboardService
 		// and not yet committed looks the same as somebody else's work in progress. Either way the answer
 		// is the same, so the message says what to do rather than guessing at what happened.
 		onOutput?.Invoke(
-			$"❌ {row.PackageId}: {_localRepo.GetLocalPath(repoIdentity)} has uncommitted changes, which a governance commit would stage and push along with its own. Commit or discard them first.");
+			$"❌ {row.RepositoryFullName}: {_localRepo.GetLocalPath(repoIdentity)} has uncommitted changes, which a governance commit would stage and push along with its own. Commit or discard them first.");
 
 		foreach (var line in preview)
 		{
@@ -1087,7 +1191,7 @@ public class DashboardService
 	/// that newer work and pushed regardless, quietly.
 	/// </remarks>
 	private async Task<string?> VerifyNotBehindOriginAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		string repoIdentity,
 		Action<string>? onOutput,
 		CancellationToken cancellationToken)
@@ -1098,7 +1202,7 @@ public class DashboardService
 		{
 			// Fails closed, for the same reason the identity check does: not knowing is not a licence.
 			return Refuse(
-				$"Whether origin has moved on cannot be established for {row.PackageId}, so nothing was pushed. Check the repository can reach origin, then Sync.",
+				$"Whether origin has moved on cannot be established for {row.RepositoryFullName}, so nothing was pushed. Check the repository can reach origin, then Sync.",
 				onOutput);
 		}
 
@@ -1108,7 +1212,7 @@ public class DashboardService
 			row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
 
 			var reason =
-				$"Origin has {behind} commit(s) that {row.PackageId}'s clone does not, added since these changes were worked out. "
+				$"Origin has {behind} commit(s) that {row.RepositoryFullName}'s clone does not, added since these changes were worked out. "
 				+ "Nothing was pushed, because the changes were decided against a repository that has moved on.";
 
 			// Discarded rather than left for the user to deal with: they were derived from an assessment of
@@ -1145,14 +1249,14 @@ public class DashboardService
 	/// and it has nothing uncommitted in it. Returns false — having said why — if either does not hold.
 	/// </summary>
 	private async Task<bool> VerifyWritableCloneAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		Action<string>? onOutput,
 		CancellationToken cancellationToken)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
 		{
-			onOutput?.Invoke($"❌ {row.PackageId}: no repository is known for this package, so nothing can be applied to it.");
+			onOutput?.Invoke($"❌ {row.RepositoryFullName}: no repository is known for this package, so nothing can be applied to it.");
 			return false;
 		}
 
@@ -1166,20 +1270,20 @@ public class DashboardService
 	/// Builds the issue-centric view (Category → Rule → Repository) from the assessed rows,
 	/// marking each occurrence's auto-remediability via the remediation registry.
 	/// </summary>
-	public IssueCentricView BuildIssueCentricView(IEnumerable<PackageDashboardRow> rows)
+	public IssueCentricView BuildIssueCentricView(IEnumerable<RepositoryDashboardRow> rows)
 	{
 		// Pass the package id through: a repository hosting several packages appears once per package
 		// under a rule, and this is what tells those occurrences apart in the issue tree.
 		var entries = rows
 			.Where(r => r.RepositoryFullName is not null && r.Assessment is not null)
-			.Select(r => new AssessedPackage(r.RepositoryFullName!, r.Assessment!, r.PackageId));
+			.Select(r => new AssessedPackage(r.RepositoryFullName, r.Assessment!, r.RepositoryFullName));
 		return IssueCentricViewBuilder.Build(entries, IsAutoRemediable);
 	}
 
 	/// <summary>
 	/// Generates a single consolidated AI prompt for one issue class across every affected repository.
 	/// </summary>
-	public string GenerateCombinedRulePrompt(IEnumerable<PackageDashboardRow> rows, string ruleId)
+	public string GenerateCombinedRulePrompt(IEnumerable<RepositoryDashboardRow> rows, string ruleId)
 	{
 		var issueClass = BuildIssueCentricView(rows).AllIssueClasses
 			.FirstOrDefault(i => string.Equals(i.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
@@ -1189,7 +1293,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates a single consolidated AI prompt for a category across every affected repository.
 	/// </summary>
-	public string GenerateCombinedCategoryPrompt(IEnumerable<PackageDashboardRow> rows, AssessmentCategory category, bool onlyNonRemediable = true)
+	public string GenerateCombinedCategoryPrompt(IEnumerable<RepositoryDashboardRow> rows, AssessmentCategory category, bool onlyNonRemediable = true)
 	{
 		var group = BuildIssueCentricView(rows).Categories.FirstOrDefault(c => c.Category == category);
 		return group is null ? string.Empty : CombinedRemediationPromptBuilder.ForCategory(group, onlyNonRemediable);
@@ -1201,11 +1305,11 @@ public class DashboardService
 	/// are touched.
 	/// </summary>
 	public Task<BulkApplyOutcome> ApplyRuleAcrossReposAsync(
-		IEnumerable<PackageDashboardRow> rows,
+		IEnumerable<RepositoryDashboardRow> rows,
 		string ruleId,
 		Action<string>? onOutput = null,
 		IProgress<string>? onProgress = null,
-		Action<PackageDashboardRow>? onRepositoryFixed = null,
+		Action<RepositoryDashboardRow>? onRepositoryFixed = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows.Where(r => RepoHasFailingRule(r, ruleId)).ToList();
@@ -1223,11 +1327,11 @@ public class DashboardService
 	/// Applies all auto-remediable rules in a category across every affected repository.
 	/// </summary>
 	public Task<BulkApplyOutcome> ApplyCategoryAcrossReposAsync(
-		IEnumerable<PackageDashboardRow> rows,
+		IEnumerable<RepositoryDashboardRow> rows,
 		AssessmentCategory category,
 		Action<string>? onOutput = null,
 		IProgress<string>? onProgress = null,
-		Action<PackageDashboardRow>? onRepositoryFixed = null,
+		Action<RepositoryDashboardRow>? onRepositoryFixed = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows.Where(r => RepoHasFailingCategory(r, category)).ToList();
@@ -1245,10 +1349,10 @@ public class DashboardService
 	/// Applies every auto-remediable rule across every affected repository (the global "fix everything").
 	/// </summary>
 	public Task<BulkApplyOutcome> ApplyEverythingAcrossReposAsync(
-		IEnumerable<PackageDashboardRow> rows,
+		IEnumerable<RepositoryDashboardRow> rows,
 		Action<string>? onOutput = null,
 		IProgress<string>? onProgress = null,
-		Action<PackageDashboardRow>? onRepositoryFixed = null,
+		Action<RepositoryDashboardRow>? onRepositoryFixed = null,
 		CancellationToken cancellationToken = default)
 	{
 		var affected = rows
@@ -1265,7 +1369,7 @@ public class DashboardService
 			cancellationToken);
 	}
 
-	private Task<List<string>> ApplySingleRuleAsync(PackageDashboardRow row, string ruleId, Action<string>? onOutput)
+	private Task<List<string>> ApplySingleRuleAsync(RepositoryDashboardRow row, string ruleId, Action<string>? onOutput)
 	{
 		var applied = new List<string>();
 		var fresh = row.Assessment?.RuleResults
@@ -1282,7 +1386,7 @@ public class DashboardService
 	/// Throws away everything a stopped run had written into a clone, and says what went. Never
 	/// cancellable: this is the cleanup, and abandoning it half-way is the state it exists to prevent.
 	/// </summary>
-	private async Task RevertUncommittedAsync(PackageDashboardRow row, string name, Action<string>? onOutput)
+	private async Task RevertUncommittedAsync(RepositoryDashboardRow row, string name, Action<string>? onOutput)
 	{
 		var identity = row.RepositoryFullName;
 		if (identity is null)
@@ -1306,12 +1410,12 @@ public class DashboardService
 	}
 
 	private async Task<BulkApplyOutcome> ApplyAcrossReposAsync(
-		List<PackageDashboardRow> affected,
-		Func<PackageDashboardRow, Task<List<string>>> applyFunc,
+		List<RepositoryDashboardRow> affected,
+		Func<RepositoryDashboardRow, Task<List<string>>> applyFunc,
 		string commitMessage,
 		Action<string>? onOutput,
 		IProgress<string>? onProgress,
-		Action<PackageDashboardRow>? onRepositoryFixed,
+		Action<RepositoryDashboardRow>? onRepositoryFixed,
 		CancellationToken cancellationToken)
 	{
 		var outcome = new BulkApplyOutcome();
@@ -1321,7 +1425,7 @@ public class DashboardService
 		foreach (var row in affected)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			var name = row.RepositoryFullName ?? row.PackageId;
+			var name = row.RepositoryFullName;
 			onOutput?.Invoke($"── {name} ──");
 
 			// Two channels, deliberately: the console gets the narrative, the queue entry gets a count
@@ -1406,7 +1510,7 @@ public class DashboardService
 						: push.RefusalReason ?? "Commit/push failed."
 				});
 
-				if (push.Success && row.RepositoryFullName is not null)
+				if (push.Success)
 				{
 					// Re-assessed now the fix has landed, so the row stops reporting an issue that no
 					// longer exists. Without this the issue tree still shows the failures a run has just
@@ -1455,18 +1559,16 @@ public class DashboardService
 		return outcome;
 	}
 
-	private static bool RepoHasFailingRule(PackageDashboardRow row, string ruleId)
-		=> row.RepositoryFullName is not null
-			&& row.Assessment?.RuleResults.Any(rr => !rr.Passed && string.Equals(rr.RuleId, ruleId, StringComparison.OrdinalIgnoreCase)) == true;
+	private static bool RepoHasFailingRule(RepositoryDashboardRow row, string ruleId)
+		=> row.Assessment?.RuleResults.Any(rr => !rr.Passed && string.Equals(rr.RuleId, ruleId, StringComparison.OrdinalIgnoreCase)) == true;
 
-	private static bool RepoHasFailingCategory(PackageDashboardRow row, AssessmentCategory category)
-		=> row.RepositoryFullName is not null
-			&& row.Assessment?.RuleResults.Any(rr => !rr.Passed && rr.Category == category) == true;
+	private static bool RepoHasFailingCategory(RepositoryDashboardRow row, AssessmentCategory category)
+		=> row.Assessment?.RuleResults.Any(rr => !rr.Passed && rr.Category == category) == true;
 
 	/// <summary>
 	/// Refreshes the git status for a row (branch, working tree clean state, and sync status with origin).
 	/// </summary>
-	public async Task RefreshGitStatusAsync(PackageDashboardRow row, CancellationToken cancellationToken = default)
+	public async Task RefreshGitStatusAsync(RepositoryDashboardRow row, CancellationToken cancellationToken = default)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null || !row.IsClonedLocally)
@@ -1491,9 +1593,9 @@ public class DashboardService
 	/// they are the ones that go stale behind the app's back: anything done to a checkout outside the
 	/// dashboard leaves the row asserting a branch and a cleanliness that were true when it last acted.
 	/// The sync comparison is deliberately left alone rather than invalidated, so what it last established
-	/// stays on screen with its age (see <see cref="PackageDashboardRow.SyncStatusCheckedAtUtc"/>).
+	/// stays on screen with its age (see <see cref="RepositoryDashboardRow.SyncStatusCheckedAtUtc"/>).
 	/// </remarks>
-	public async Task RefreshLocalGitStatusAsync(PackageDashboardRow row, CancellationToken cancellationToken = default)
+	public async Task RefreshLocalGitStatusAsync(RepositoryDashboardRow row, CancellationToken cancellationToken = default)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null || !row.IsClonedLocally)
@@ -1509,7 +1611,7 @@ public class DashboardService
 	/// Returns a short preview of dirty working tree lines for diagnostics in UI output.
 	/// </summary>
 	public async Task<IReadOnlyList<string>> GetWorkingTreeStatusPreviewAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		int maxLines = 3,
 		CancellationToken cancellationToken = default)
 	{
@@ -1526,7 +1628,7 @@ public class DashboardService
 	/// Runs tests on a local repository.
 	/// </summary>
 	public async Task RunTestsAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
@@ -1551,7 +1653,7 @@ public class DashboardService
 	/// Runs the publish script on a local repository.
 	/// </summary>
 	public async Task RunPublishAsync(
-		PackageDashboardRow row,
+		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{

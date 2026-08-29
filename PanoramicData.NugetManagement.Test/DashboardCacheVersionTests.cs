@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Services;
 
 namespace PanoramicData.NugetManagement.Test;
@@ -32,7 +33,7 @@ public class DashboardCacheVersionTests(ITestOutputHelper output) : TestWithOutp
 		WriteCache(DashboardCacheService.DiscoveryVersion);
 
 		CreateService().GetCachedRows()
-			.Should().ContainSingle().Which.PackageId.Should().Be("Meraki.Api");
+			.Should().ContainSingle().Which.RepositoryFullName.Should().Be("panoramicdata/Meraki.Api");
 	}
 
 	[Fact]
@@ -44,12 +45,49 @@ public class DashboardCacheVersionTests(ITestOutputHelper output) : TestWithOutp
 		CreateService().GetCachedRows().Should().BeNull();
 	}
 
+	[Fact]
+	public void ACacheWrittenBeforeTheRepositoryLayerShouldBeDiscarded()
+	{
+		WriteCacheJson("""
+			{"discoveryVersion":1,"lastRefreshUtc":"2026-08-29T00:00:00+00:00","rows":[
+			  {"packageId":"Meraki.Api","repositoryFullName":"panoramicdata/Meraki.Api"}]}
+			""");
+
+		CreateService().GetCachedRows()
+			.Should().BeNull("rows keyed on a package cannot be read as repositories");
+	}
+
+	[Fact]
+	public void TheUngovernedPackagesShouldSurviveARoundTrip()
+	{
+		var service = CreateService();
+		service.Update([new() { RepositoryFullName = "panoramicdata/Meraki.Api" }]);
+		service.SetUngovernedPackages([new()
+		{
+			PackageId = "JiraSetup",
+			Organization = "panoramicdata",
+			Reason = "The package declares no repository in its nuspec."
+		}]);
+		service.NotifyRowUpdated();
+
+		CreateService().GetUngovernedPackages()
+			.Should().ContainSingle().Which.PackageId.Should().Be("JiraSetup");
+	}
+
 	private void WriteCache(int discoveryVersion)
 		=> WriteCacheJson(JsonSerializer.Serialize(new
 		{
 			discoveryVersion,
 			lastRefreshUtc = DateTimeOffset.UtcNow,
-			rows = new[] { new { packageId = "Meraki.Api", organization = "panoramicdata" } }
+			rows = new[]
+			{
+				new
+				{
+					repositoryFullName = "panoramicdata/Meraki.Api",
+					organization = "panoramicdata",
+					packages = new[] { new { packageId = "Meraki.Api" } }
+				}
+			}
 		}));
 
 	private void WriteCacheJson(string json)

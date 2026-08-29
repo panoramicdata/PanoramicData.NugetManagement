@@ -50,7 +50,9 @@ public static class GovernanceScope
 	/// checkout was governed under the older rules, and every button that offers to build, commit or
 	/// push reads exactly those fields.
 	/// </remarks>
-	public static void Apply(PackageDashboardRow row, IReadOnlyList<string> organizations)
+	/// <param name="row">The repository row to record the verdict on.</param>
+	/// <param name="organizations">The organisations under management.</param>
+	public static void Apply(RepositoryDashboardRow row, IReadOnlyList<string> organizations)
 	{
 		var reason = ReasonNotGoverned(row.RepositoryFullName, organizations);
 		row.NotGovernedReason = reason;

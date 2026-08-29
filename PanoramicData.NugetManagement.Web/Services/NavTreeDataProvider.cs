@@ -53,6 +53,32 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <summary>Builds the key for an organisation's "Not governed" branch.</summary>
 	public static string NotGovernedKey(string organization) => $"notgoverned:{organization}";
 
+	/// <summary>Builds the key for a repository node.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public static string RepoKey(string repositoryFullName) => $"repo:{repositoryFullName}";
+
+	/// <summary>Builds the key for a repository's "Packages" container.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public static string PackagesKey(string repositoryFullName) => $"pkgs:{repositoryFullName}";
+
+	/// <summary>Builds the key for one package published by a repository.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="packageId">The NuGet package identifier.</param>
+	public static string PackageKey(string repositoryFullName, string packageId)
+		=> $"pkg:{repositoryFullName}:{packageId}";
+
+	/// <summary>Builds the key for one assessment category of a repository.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="category">The assessment category.</param>
+	public static string CategoryKey(string repositoryFullName, AssessmentCategory category)
+		=> $"cat:{repositoryFullName}:{category}";
+
+	/// <summary>Builds the key for one failing rule of a repository.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="ruleId">The rule identifier.</param>
+	public static string RuleKey(string repositoryFullName, string ruleId)
+		=> $"rule:{repositoryFullName}:{ruleId}";
+
 	/// <summary>
 	/// The key of the always-expanded top-level container. Unlike the other container nodes it is
 	/// selectable, because selecting it shows the estate overview.
@@ -60,14 +86,51 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	public const string OrganisationsKey = "organisations";
 
 	/// <summary>
-	/// Whether a node is one of the tree's container headings — Organisations, Repositories and
-	/// Issues. They share a heading colour rather than a status colour, so the template marks them
-	/// for the stylesheet. Keyed off the node key rather than the glyph: the issue categories under
-	/// Issues use the same glyph as Issues itself, and telling them apart by the severity class on
-	/// the icon fails whenever the container carries one too.
+	/// Whether a node stands for a repository itself, rather than for something inside one.
+	/// </summary>
+	/// <remarks>
+	/// Every node beneath a repository carries its <see cref="NavItem.RepositoryFullName"/>, because
+	/// that is true of them and the selection handlers need it. Only this node, though, may offer the
+	/// actions that act on the whole repository: excluding it from governance is not something one of
+	/// its packages, categories or rules can do.
+	/// </remarks>
+	public static bool IsRepositoryNode(NavItem item)
+		=> item.Key.StartsWith("repo:", StringComparison.Ordinal);
+
+	/// <summary>
+	/// The repository a node belongs to, taken from its key, or null for nodes above the repository
+	/// layer. The owner/name identity contains no colon, so it is the segment after the prefix.
+	/// </summary>
+	/// <param name="key">The node key.</param>
+	public static string? RepositoryFromKey(string key)
+	{
+		var prefixEnd = key.IndexOf(':', StringComparison.Ordinal);
+		if (prefixEnd < 0)
+		{
+			return null;
+		}
+
+		var prefix = key[..prefixEnd];
+		if (prefix is not ("repo" or "pkgs" or "pkg" or "cat" or "rule"))
+		{
+			return null;
+		}
+
+		var rest = key[(prefixEnd + 1)..];
+		var next = rest.IndexOf(':', StringComparison.Ordinal);
+		return next < 0 ? rest : rest[..next];
+	}
+
+	/// <summary>
+	/// Whether a node is one of the tree's container headings — Organisations, Repositories, Issues
+	/// and a repository's Packages. They share a heading colour rather than a status colour, so the
+	/// template marks them for the stylesheet. Keyed off the node key rather than the glyph: the issue
+	/// categories under Issues use the same glyph as Issues itself, and telling them apart by the
+	/// severity class on the icon fails whenever the container carries one too.
 	/// </summary>
 	public static bool IsContainerNode(NavItem item)
 		=> item.Key == OrganisationsKey
+			|| item.Key.StartsWith("pkgs:", StringComparison.Ordinal)
 			|| item.Key.StartsWith("repos:", StringComparison.Ordinal)
 			|| item.Key.StartsWith("issues:", StringComparison.Ordinal);
 
@@ -97,8 +160,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 	/// <summary>
 	/// Builds the full list of navigation items from the current cache state.
-	/// Tree structure: Organisations → organisation → { Repositories → package → category → rule,
-	/// Issues → category → rule }.
+	/// Tree structure: Organisations → organisation → { Repositories → repository →
+	/// { Packages → package, category → rule }, Issues → category → rule, Not governed → package }.
 	/// </summary>
 	public List<NavItem> BuildNavItems()
 	{
@@ -157,7 +220,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		List<NavItem> items,
 		string organization,
 		int orgIndex,
-		List<PackageDashboardRow>? rows,
+		List<RepositoryDashboardRow>? rows,
 		string fallbackOrganization)
 	{
 		var orgKey = OrgKey(organization);
@@ -171,7 +234,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		// Packages whose repository is not ours are held apart from the estate entirely: they are not
 		// assessed, so they have no health to roll up and no rules to answer for. They are accounted
 		// for in their own branch rather than dropped, so a package cannot leave the tree unexplained.
-		var ungovernedRows = ApplyFilters(orgRows?.Where(r => !r.IsGoverned).ToList());
+		var ungovernedPackages = UngovernedPackagesFor(organization, fallbackOrganization);
 		var visibleRows = ApplyFilters(orgRows?.Where(r => r.IsGoverned).ToList());
 
 		// While a filter is active, an organisation with nothing matching is omitted entirely rather
@@ -229,8 +292,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		items.AddRange(issuesItems);
 
-		AddPackageNodes(items, organization, reposKey, visibleRows);
-		AddNotGovernedNodes(items, organization, orgKey, ungovernedRows);
+		AddRepositoryNodes(items, organization, reposKey, visibleRows);
+		AddNotGovernedNodes(items, organization, orgKey, ungovernedPackages);
 
 		// While loading, show a placeholder under Repositories if no repos are available yet.
 		if (IsLoading && (visibleRows is null || visibleRows.Count == 0))
@@ -271,13 +334,19 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
-	/// Adds the package → category → rule branch for one organisation.
+	/// Adds the repository → { packages, category → rule } branch for one organisation.
 	/// </summary>
-	private void AddPackageNodes(
+	/// <remarks>
+	/// The categories hang off the repository rather than off a package, because a repository is what
+	/// the rules evaluate. While a package stood in for its repository, PanoramicData.ECharts — which
+	/// publishes four — appeared four times, and the same findings were reported and remediated once
+	/// per package.
+	/// </remarks>
+	private void AddRepositoryNodes(
 		List<NavItem> items,
 		string organization,
 		string reposKey,
-		List<PackageDashboardRow>? visibleRows)
+		List<RepositoryDashboardRow>? visibleRows)
 	{
 		if (visibleRows is null)
 		{
@@ -286,35 +355,72 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		var guardStates = GuardStatesNeedingAttention();
 
-		foreach (var row in visibleRows.OrderBy(r => r.PackageId, StringComparer.OrdinalIgnoreCase))
+		foreach (var row in visibleRows.OrderBy(r => r.RepositoryFullName, StringComparer.OrdinalIgnoreCase))
 		{
-			var pkgKey = $"pkg:{organization}:{row.PackageId}";
-			var pkgIssues = row.TotalFailures;
-			var pkgHasErrors = row.TotalCriticals > 0 || row.TotalErrors > 0;
-			var pkgHasWarnings = row.TotalWarnings > 0;
-			var pkgIcon = BuildPackageIconCss(row);
+			var repoKey = RepoKey(row.RepositoryFullName);
+			var repoIssues = row.TotalFailures;
+			var repoHasErrors = row.TotalCriticals > 0 || row.TotalErrors > 0;
+			var repoHasWarnings = row.TotalWarnings > 0;
 
 			items.Add(new NavItem
 			{
-				Key = pkgKey,
-				Text = row.PackageId,
+				Key = repoKey,
+				// The owner is already the organisation node above, and repeating it in every child
+				// would spend the width the repository names need.
+				Text = row.RepositoryName,
 				ParentKey = reposKey,
-				IconCss = pkgIcon,
-				View = NavView.PackageDetail,
+				IconCss = BuildRepositoryIconCss(row),
+				View = NavView.RepositoryDetail,
 				Organization = organization,
-				PackageId = row.PackageId,
-				IsLeaf = row.Assessment is null,
-				IssueCount = pkgIssues,
-				HasErrors = pkgHasErrors,
-				HasWarnings = pkgHasWarnings,
+				IsLeaf = false,
+				IssueCount = repoIssues,
+				HasErrors = repoHasErrors,
+				HasWarnings = repoHasWarnings,
 				IsWorkingTreeDirty = row.IsWorkingTreeClean == false,
 				RepositoryFullName = row.RepositoryFullName,
 				IsExcluded = _runtimeSettings.IsRepositoryExcluded(row.RepositoryFullName),
-				GuardStateNeedingAttention = row.RepositoryFullName is not null
-					&& guardStates.TryGetValue(row.RepositoryFullName, out var guardState)
-						? guardState
-						: null
+				GuardStateNeedingAttention = guardStates.TryGetValue(row.RepositoryFullName, out var guardState)
+					? guardState
+					: null
 			});
+
+			var packagesKey = PackagesKey(row.RepositoryFullName);
+
+			items.Add(new NavItem
+			{
+				Key = packagesKey,
+				Text = $"Packages ({row.Packages.Count})",
+				ParentKey = repoKey,
+				IconCss = "fas fa-box text-muted",
+				View = NavView.None,
+				Organization = organization,
+				RepositoryFullName = row.RepositoryFullName,
+				IsLeaf = row.Packages.Count == 0,
+				// Ahead of the categories, so the shape reads the same on every repository.
+				SortOrder = 0
+			});
+
+			foreach (var package in row.Packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))
+			{
+				var outOfStep = package.MatchesTag(row.LatestTag) == false;
+
+				items.Add(new NavItem
+				{
+					Key = PackageKey(row.RepositoryFullName, package.PackageId),
+					Text = package.LatestVersion is null
+						? package.PackageId
+						: $"{package.PackageId}  {package.LatestVersion}",
+					ParentKey = packagesKey,
+					// Amber where the published version and the repository's tag disagree: what is on
+					// nuget.org is not the source the tag points at.
+					IconCss = outOfStep ? "fas fa-cube text-warning" : "fas fa-cube text-muted",
+					View = NavView.PackageDetail,
+					Organization = organization,
+					RepositoryFullName = row.RepositoryFullName,
+					PackageId = package.PackageId,
+					IsLeaf = true
+				});
+			}
 
 			// Category sub-nodes (only if assessed)
 			if (row.Assessment is null)
@@ -324,7 +430,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 			foreach (var category in row.CategorySummaries.Keys.OrderBy(c => c.ToString()))
 			{
-				var catKey = $"cat:{organization}:{row.PackageId}:{category}";
+				var catKey = CategoryKey(row.RepositoryFullName, category);
 				var catFailures = row.Assessment.RuleResults
 					.Where(r => !r.Passed && r.Category == category)
 					.ToList();
@@ -335,13 +441,14 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				{
 					Key = catKey,
 					Text = category.ToString(),
-					ParentKey = pkgKey,
+					ParentKey = repoKey,
 					IconCss = GetHealthIcon(true, catFailures.Count, catHasErrors, catHasWarnings),
 					View = NavView.CategoryDetail,
 					Organization = organization,
-					PackageId = row.PackageId,
+					RepositoryFullName = row.RepositoryFullName,
 					Category = category,
 					IsLeaf = catFailures.Count == 0,
+					SortOrder = 1,
 					IssueCount = catFailures.Count,
 					HasErrors = catHasErrors,
 					HasWarnings = catHasWarnings
@@ -352,13 +459,13 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				{
 					items.Add(new NavItem
 					{
-						Key = $"rule:{organization}:{row.PackageId}:{rule.RuleId}",
+						Key = RuleKey(row.RepositoryFullName, rule.RuleId),
 						Text = $"{rule.RuleId} {rule.RuleName}",
 						ParentKey = catKey,
 						IconCss = GetRuleIcon(rule.Severity),
 						View = NavView.RuleDetail,
 						Organization = organization,
-						PackageId = row.PackageId,
+						RepositoryFullName = row.RepositoryFullName,
 						Category = category,
 						RuleId = rule.RuleId,
 						IsLeaf = true,
@@ -388,14 +495,17 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		string organization,
 		string issuesKey,
 		string orgKey,
-		List<PackageDashboardRow>? visibleRows)
+		List<RepositoryDashboardRow>? visibleRows)
 	{
+		// One entry per repository, which is what the rules were evaluated against. While a package
+		// stood in for its repository, a repository publishing four of them counted as four affected
+		// repositories against every rule it failed.
 		var assessed = visibleRows?
 			.Where(r => r.Assessment is not null)
 			.Select(r => new AssessedPackage(
-				r.RepositoryFullName ?? r.PackageId,
+				r.RepositoryFullName,
 				r.Assessment!,
-				r.PackageId))
+				r.RepositoryFullName))
 			.ToList();
 
 		var view = assessed is { Count: > 0 }
@@ -484,9 +594,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		List<NavItem> items,
 		string organization,
 		string orgKey,
-		List<PackageDashboardRow>? rows)
+		IReadOnlyList<UngovernedPackage> packages)
 	{
-		if (rows is null || rows.Count == 0)
+		if (packages.Count == 0)
 		{
 			return;
 		}
@@ -496,7 +606,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		items.Add(new NavItem
 		{
 			Key = notGovernedKey,
-			Text = $"Not governed ({rows.Count})",
+			Text = $"Not governed ({packages.Count})",
 			ParentKey = orgKey,
 			IconCss = "fas fa-circle-question",
 			View = NavView.None,
@@ -505,23 +615,42 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			SortOrder = 2
 		});
 
-		foreach (var row in rows.OrderBy(r => r.PackageId, StringComparer.OrdinalIgnoreCase))
+		foreach (var package in packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))
 		{
 			items.Add(new NavItem
 			{
-				Key = $"notgoverned:{organization}:{row.PackageId}",
-				Text = $"{row.PackageId} — {row.NotGovernedReason}",
+				Key = $"notgoverned:{organization}:{package.PackageId}",
+				Text = $"{package.PackageId} — {package.Reason}",
 				ParentKey = notGovernedKey,
 				IconCss = "fas fa-circle-question",
 				View = NavView.None,
 				Organization = organization,
-				PackageId = row.PackageId,
+				PackageId = package.PackageId,
 				IsLeaf = true
 			});
 		}
 	}
 
-	private List<PackageDashboardRow>? ApplyFilters(List<PackageDashboardRow>? rows)
+	/// <summary>
+	/// The packages of one organisation that belong to no repository we govern, honouring the name
+	/// filter. They have no repository, so they are held beside the rows rather than among them.
+	/// </summary>
+	private List<UngovernedPackage> UngovernedPackagesFor(string organization, string fallbackOrganization)
+	{
+		var packages = _cache.GetUngovernedPackages()
+			.Where(package => string.IsNullOrEmpty(package.Organization)
+				? string.Equals(organization, fallbackOrganization, StringComparison.OrdinalIgnoreCase)
+				: string.Equals(package.Organization, organization, StringComparison.OrdinalIgnoreCase));
+
+		if (FilterRegex is not null)
+		{
+			packages = packages.Where(package => FilterRegex.IsMatch(package.PackageId));
+		}
+
+		return [.. packages];
+	}
+
+	private List<RepositoryDashboardRow>? ApplyFilters(List<RepositoryDashboardRow>? rows)
 	{
 		if (rows is null)
 		{
@@ -532,7 +661,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		if (FilterRegex is not null)
 		{
-			filtered = filtered.Where(r => FilterRegex.IsMatch(r.PackageId));
+			// The repository matches on its own name or on any package it publishes, so filtering for a
+			// package still finds the repository that holds it.
+			filtered = filtered.Where(r =>
+				FilterRegex.IsMatch(r.RepositoryFullName)
+				|| r.Packages.Any(p => FilterRegex.IsMatch(p.PackageId)));
 		}
 
 		if (LocalOnly)
@@ -547,7 +680,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// Decides whether a cached row belongs to the given organisation. Rows cached before
 	/// multi-organisation support carry no organisation and are attributed to the fallback.
 	/// </summary>
-	private static bool BelongsToOrganization(PackageDashboardRow row, string organization, string fallbackOrganization)
+	private static bool BelongsToOrganization(RepositoryDashboardRow row, string organization, string fallbackOrganization)
 		=> string.IsNullOrEmpty(row.Organization)
 			? string.Equals(organization, fallbackOrganization, StringComparison.OrdinalIgnoreCase)
 			: string.Equals(row.Organization, organization, StringComparison.OrdinalIgnoreCase);
@@ -603,7 +736,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// replaced by its result as soon as that result lands, without rebuilding the tree — rebuilding
 	/// nodes mid-run is what previously made the tree flicker and the scrollbar jump.
 	/// </remarks>
-	public static string BuildPackageIconCss(PackageDashboardRow row)
+	public static string BuildRepositoryIconCss(RepositoryDashboardRow row)
 	{
 		var icon = GetPackageHealthIcon(row.HealthStatus);
 

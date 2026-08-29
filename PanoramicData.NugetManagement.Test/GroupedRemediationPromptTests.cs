@@ -28,10 +28,10 @@ public class GroupedRemediationPromptTests(ITestOutputHelper output) : TestWithO
 			}
 		};
 
-	private static PackageDashboardRow Row(params RuleResult[] results) => new()
+	private static RepositoryDashboardRow Row(params RuleResult[] results) => new()
 	{
-		PackageId = "Athonet.Api",
 		RepositoryFullName = "panoramicdata/Athonet.Api",
+		Packages = [new() { PackageId = "Athonet.Api" }],
 		LocalPath = @"C:\repos\Athonet.Api",
 		Assessment = new RepoAssessment
 		{

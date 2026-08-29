@@ -74,7 +74,7 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void ForRepositories_OneUnknownRepositoryGreysTheBranch()
 	{
-		List<PackageDashboardRow> rows =
+		List<RepositoryDashboardRow> rows =
 		[
 			Assessed("Clean.Api", []),
 			Unassessed("Mystery.Api")
@@ -86,7 +86,7 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void ForRepositories_AllAssessedTakesTheWorstSeverity()
 	{
-		List<PackageDashboardRow> rows =
+		List<RepositoryDashboardRow> rows =
 		[
 			Assessed("Clean.Api", []),
 			Assessed("Warned.Api", [Failure(AssessmentSeverity.Warning)]),
@@ -99,7 +99,7 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void ForRepositories_AllCleanIsGreen()
 	{
-		List<PackageDashboardRow> rows = [Assessed("Clean.Api", []), Assessed("AlsoClean.Api", [])];
+		List<RepositoryDashboardRow> rows = [Assessed("Clean.Api", []), Assessed("AlsoClean.Api", [])];
 
 		NavHealthRollup.ForRepositories(rows).Should().Be(PackageHealthStatus.Success);
 	}
@@ -111,7 +111,7 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void ForIssues_UnassessedRepositoryDoesNotGreyTheBranch()
 	{
-		List<PackageDashboardRow> rows = [Assessed("Clean.Api", []), Unassessed("Mystery.Api")];
+		List<RepositoryDashboardRow> rows = [Assessed("Clean.Api", []), Unassessed("Mystery.Api")];
 
 		NavHealthRollup.ForIssues(rows, []).Should().Be(PackageHealthStatus.Success);
 	}
@@ -119,7 +119,7 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void ForIssues_UnassessedRepositoryDoesNotOutrankACategorySeverity()
 	{
-		List<PackageDashboardRow> rows = [Assessed("Broken.Api", [Failure(AssessmentSeverity.Warning)]), Unassessed("Mystery.Api")];
+		List<RepositoryDashboardRow> rows = [Assessed("Broken.Api", [Failure(AssessmentSeverity.Warning)]), Unassessed("Mystery.Api")];
 
 		NavHealthRollup.ForIssues(rows, [AssessmentSeverity.Warning]).Should().Be(PackageHealthStatus.Warning);
 	}
@@ -127,7 +127,7 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void ForIssues_NothingAssessedYetIsUnknown()
 	{
-		List<PackageDashboardRow> rows = [Unassessed("Mystery.Api")];
+		List<RepositoryDashboardRow> rows = [Unassessed("Mystery.Api")];
 
 		NavHealthRollup.ForIssues(rows, []).Should().Be(PackageHealthStatus.Unknown);
 	}
@@ -135,7 +135,7 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void ForIssues_EverythingAssessedAndCleanIsGreen()
 	{
-		List<PackageDashboardRow> rows = [Assessed("Clean.Api", [])];
+		List<RepositoryDashboardRow> rows = [Assessed("Clean.Api", [])];
 
 		NavHealthRollup.ForIssues(rows, []).Should().Be(PackageHealthStatus.Success);
 	}
@@ -143,7 +143,7 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void ForIssues_TakesTheWorstCategorySeverity()
 	{
-		List<PackageDashboardRow> rows = [Assessed("Broken.Api", [Failure(AssessmentSeverity.Error)])];
+		List<RepositoryDashboardRow> rows = [Assessed("Broken.Api", [Failure(AssessmentSeverity.Error)])];
 
 		NavHealthRollup.ForIssues(rows, [AssessmentSeverity.Warning, AssessmentSeverity.Critical])
 			.Should().Be(PackageHealthStatus.Error);
@@ -162,13 +162,18 @@ public class NavHealthRollupTests(ITestOutputHelper output) : TestWithOutput(out
 		NavHealthRollup.FromSeverity(AssessmentSeverity.Info).Should().Be(PackageHealthStatus.Info);
 	}
 
-	private static PackageDashboardRow Unassessed(string packageId)
-		=> new() { PackageId = packageId };
-
-	private static PackageDashboardRow Assessed(string packageId, List<RuleResult> failures)
+	private static RepositoryDashboardRow Unassessed(string packageId)
 		=> new()
 		{
-			PackageId = packageId,
+			RepositoryFullName = $"panoramicdata/{packageId}",
+			Packages = [new() { PackageId = packageId }]
+		};
+
+	private static RepositoryDashboardRow Assessed(string packageId, List<RuleResult> failures)
+		=> new()
+		{
+			RepositoryFullName = $"panoramicdata/{packageId}",
+			Packages = [new() { PackageId = packageId }],
 			Assessment = new RepoAssessment
 			{
 				RepositoryFullName = $"panoramicdata/{packageId}",

@@ -7,7 +7,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// <summary>
 /// Data provider that feeds cached dashboard rows to PDTable with filtering, sorting, and paging.
 /// </summary>
-public class PackageDashboardDataProvider : DataProviderBase<PackageDashboardRow>
+public class PackageDashboardDataProvider : DataProviderBase<RepositoryDashboardRow>
 {
 	private readonly DashboardCacheService _cache;
 
@@ -22,20 +22,21 @@ public class PackageDashboardDataProvider : DataProviderBase<PackageDashboardRow
 	/// <summary>
 	/// Returns the current set of dashboard rows, applying search, filter, sort, and paging.
 	/// </summary>
-	public override Task<DataResponse<PackageDashboardRow>> GetDataAsync(DataRequest<PackageDashboardRow> request, CancellationToken cancellationToken)
+	public override Task<DataResponse<RepositoryDashboardRow>> GetDataAsync(DataRequest<RepositoryDashboardRow> request, CancellationToken cancellationToken)
 	{
 		// Only repositories we govern reach the table. A package can name a repository belonging to
 		// somebody else, and every action on this table acts on the row's repository.
 		var query = (_cache.GetCachedRows() ?? []).Where(r => r.IsGoverned).AsQueryable();
 
-		// Apply PDTable search text (free-text filter across PackageId, RepositoryFullName, LatestVersion)
+		// Apply PDTable search text (free-text filter across the repository and any package it publishes)
 		if (!string.IsNullOrWhiteSpace(request.SearchText))
 		{
 			var search = request.SearchText.Trim();
 			query = query.Where(r =>
-				r.PackageId.Contains(search, StringComparison.OrdinalIgnoreCase)
-				|| (r.RepositoryFullName != null && r.RepositoryFullName.Contains(search, StringComparison.OrdinalIgnoreCase))
-				|| (r.LatestVersion != null && r.LatestVersion.Contains(search, StringComparison.OrdinalIgnoreCase)));
+				r.RepositoryFullName.Contains(search, StringComparison.OrdinalIgnoreCase)
+				|| r.Packages.Any(p =>
+					p.PackageId.Contains(search, StringComparison.OrdinalIgnoreCase)
+					|| (p.LatestVersion != null && p.LatestVersion.Contains(search, StringComparison.OrdinalIgnoreCase))));
 		}
 
 		var totalCount = query.Count();
@@ -60,6 +61,6 @@ public class PackageDashboardDataProvider : DataProviderBase<PackageDashboardRow
 		}
 
 		var items = query.ToList();
-		return Task.FromResult(new DataResponse<PackageDashboardRow>(items, totalCount));
+		return Task.FromResult(new DataResponse<RepositoryDashboardRow>(items, totalCount));
 	}
 }

@@ -112,7 +112,10 @@ else
 													{
 														<i class="fas @GuardMarkerIcon(guardState) nav-guard-marker" title="@GuardMarkerTooltip(guardState)"></i>
 													}
-													@if (node.Data?.RepositoryFullName is { Length: > 0 } repositoryFullName)
+													@* The repository node only. Every node beneath it carries the repository too,
+													   but excluding one from governance is not something a package, a category
+													   or a rule can do. *@
+													@if (node.Data is not null && NavTreeDataProvider.IsRepositoryNode(node.Data) && node.Data.RepositoryFullName is { Length: > 0 } repositoryFullName)
 													{
 														<span class="nav-org-actions">
 															<button type="button" class="nav-org-action-btn" title="@(node.Data.IsExcluded ? "Bring this repository back into governance" : "Exclude this repository from governance")" @onclick="() => ToggleRepositoryExcludedAsync(repositoryFullName, node.Data.IsExcluded)" @onclick:stopPropagation @onmousedown:stopPropagation>
@@ -266,14 +269,14 @@ else
 								{
 									@* Repo is the active page — show as current, not clickable *@
 									<span class="breadcrumb-current breadcrumb-repo">
-										<i class="@GetPackageHealthIcon(_selectedRow)"></i><span class="breadcrumb-repo-name">@_selectedRow.PackageId</span><span class="pkg-version">@_selectedRow.LatestVersion</span>
+										<i class="@GetPackageHealthIcon(_selectedRow)"></i><span class="breadcrumb-repo-name">@_selectedRow.RepositoryName</span><span class="pkg-version">@PackagesSummary(_selectedRow)</span>
 									</span>
 								}
 								else
 								{
 									@* Repo is an ancestor crumb — click to return to it *@
 									<a class="breadcrumb-link breadcrumb-repo" @onclick="NavigateToSelectedPackage" @onclick:preventDefault>
-										<i class="@GetPackageHealthIcon(_selectedRow)"></i><span class="breadcrumb-repo-name">@_selectedRow.PackageId</span><span class="pkg-version">@_selectedRow.LatestVersion</span>
+										<i class="@GetPackageHealthIcon(_selectedRow)"></i><span class="breadcrumb-repo-name">@_selectedRow.RepositoryName</span><span class="pkg-version">@PackagesSummary(_selectedRow)</span>
 									</a>
 								}
 								@if (_selectedRow.IsClonedLocally && _currentView != NavView.Settings)
@@ -305,13 +308,15 @@ else
 										   this shows unconfirmed, Sync is available, and vice versa. *@
 										<span class="git-unknown-badge" title="@UnconfirmedSyncBadgeTooltip">⇅ Synced?</span>
 									}
-																		@if (_selectedRow.NuGetVersionMatchesTag == true)
+									@if (_selectedRow.AllPackagesMatchTag)
 									{
-										<span class="git-clean-badge" title="NuGet @_selectedRow.LatestVersion matches latest tag @_selectedRow.LatestTag">📦 @_selectedRow.LatestTag ✓</span>
+										<span class="git-clean-badge" title="Every published package matches latest tag @_selectedRow.LatestTag">📦 @_selectedRow.LatestTag ✓</span>
 									}
-									else if (_selectedRow.NuGetVersionMatchesTag == false)
+									else if (_selectedRow.AnyPackageOutOfStepWithTag)
 									{
-										<span class="git-dirty-badge" title="NuGet @(_selectedRow.LatestVersion ?? """) does not match latest tag @(_selectedRow.LatestTag ?? """)">📦 tag @(_selectedRow.LatestTag ?? """) ≠ nuget @(_selectedRow.LatestVersion ?? """)</span>
+										@* Named, not counted: with four packages on one repository, a bare count of one
+										   out of step leaves the reader to open each in turn to find which. *@
+										<span class="git-dirty-badge" title="@OutOfStepTooltip(_selectedRow)">📦 tag @TagOrUnknown(_selectedRow) ≠ @OutOfStepSummary(_selectedRow)</span>
 									}
 								}
 								@if (_selectedCategory is not null)
@@ -875,7 +880,7 @@ else
 	private string? _selectedPackageId;
 	private AssessmentCategory? _selectedCategory;
 	private string? _selectedRuleId;
-	private PackageDashboardRow? _selectedRow;
+	private RepositoryDashboardRow? _selectedRow;
 	private string _treeFilterText = string.Empty;
 	private string? _treeFilterError;
 	private System.Threading.Timer? _treeFilterDebounce;
@@ -887,11 +892,11 @@ else
 	// Keeps the progress indicator visible briefly (showing "Done") after a refresh completes.
 	private bool _showDone;
 	private System.Threading.Timer? _doneClearTimer;
-	private List<PackageDashboardRow> _rows = [];
+	private List<RepositoryDashboardRow> _rows = [];
 	private AssessmentCategory[] _categories = [];
 	private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
 	private System.Threading.Timer? _autoRefreshTimer;
-	private PDTable<PackageDashboardRow>? _table;
+	private PDTable<RepositoryDashboardRow>? _table;
 	private string _searchText = string.Empty;
 
 	// === Package detail state ===
@@ -977,13 +982,15 @@ else
 		// If a PackageId was in the URL, select it
 		if (!string.IsNullOrEmpty(PackageId))
 		{
-			_selectedRow = _rows.FirstOrDefault(r =>
-				string.Equals(r.PackageId, PackageId, StringComparison.OrdinalIgnoreCase));
+			// The link names a package; what it selects is the repository that publishes it, which may
+			// publish several others besides.
+			_selectedRow = _rows.FirstOrDefault(r => r.Packages.Any(p =>
+				string.Equals(p.PackageId, PackageId, StringComparison.OrdinalIgnoreCase)));
 			if (_selectedRow is not null)
 			{
-				_selectedPackageId = _selectedRow.PackageId;
+				_selectedPackageId = PackageId;
 				_selectedOrganization = _selectedRow.Organization;
-				_selectedNodeKey = $"pkg:{_selectedRow.Organization}:{_selectedRow.PackageId}";
+				_selectedNodeKey = NavTreeDataProvider.PackageKey(_selectedRow.RepositoryFullName, PackageId);
 				_currentView = NavView.PackageDetail;
 			}
 		}
@@ -1128,10 +1135,9 @@ else
 			_selectedOrganization = item.Organization;
 		}
 
-		if (item.PackageId is not null)
+		if (item.RepositoryFullName is not null)
 		{
-			var newRow = _rows.FirstOrDefault(r =>
-				string.Equals(r.PackageId, item.PackageId, StringComparison.OrdinalIgnoreCase));
+			var newRow = RowForNavItem(item);
 			if (newRow != _selectedRow)
            {
 				_completedSteps.Clear();
@@ -1165,7 +1171,7 @@ else
 	/// <summary>
 	/// Re-reads the selected row's local git facts, repainting only if it is still the row on screen.
 	/// </summary>
-	private async Task RefreshSelectedRowGitStatusAsync(PackageDashboardRow row)
+	private async Task RefreshSelectedRowGitStatusAsync(RepositoryDashboardRow row)
 	{
 		try
 		{
@@ -1327,7 +1333,7 @@ else
 		// Only the repositories themselves dim — not the "Repositories" container above them, which
 		// stays legible as a heading. Progress is carried by the indicator on the organisation node
 		// and the counter in the breadcrumb bar.
-		return item.PackageId is not null;
+		return NavTreeDataProvider.IsRepositoryNode(item);
 	}
 
 	/// <summary>
@@ -1360,18 +1366,17 @@ else
 			return "fas fa-spinner fa-spin text-muted";
 		}
 
-		// Package nodes only. Category and rule nodes carry a PackageId too, so match on the key.
-		if (item.PackageId is null || !item.Key.StartsWith("pkg:", StringComparison.Ordinal))
+		// Repository nodes only. Everything beneath one carries its repository too, so match on the key.
+		if (!NavTreeDataProvider.IsRepositoryNode(item))
 		{
 			return item.IconCss;
 		}
 
-		var row = _rows.FirstOrDefault(r =>
-			string.Equals(r.PackageId, item.PackageId, StringComparison.OrdinalIgnoreCase));
+		var row = RowForNavItem(item);
 
 		return row is null
 			? item.IconCss
-			: NavTreeDataProvider.BuildPackageIconCss(row);
+			: NavTreeDataProvider.BuildRepositoryIconCss(row);
 	}
 
 	/// <summary>
@@ -2226,7 +2231,7 @@ else
 		}
 	}
 
-	private int EstimateRemoteAssessmentCost(IEnumerable<PackageDashboardRow> rows)
+	private int EstimateRemoteAssessmentCost(IEnumerable<RepositoryDashboardRow> rows)
 		=> rows.Count(r => r.RepositoryFullName is not null && !r.IsClonedLocally) * ApiCallsPerRemoteAssessment;
 
 	/// <summary>
@@ -3021,9 +3026,9 @@ else
 	private RenderFragment RenderRepositoryTable() => __builder =>
 	{
 		<PDTable @ref="_table"
-				 TItem="PackageDashboardRow"
+				 TItem="RepositoryDashboardRow"
 				 DataProvider="DataProvider"
-				 KeyField="x => x.PackageId"
+				 KeyField="x => x.RepositoryFullName"
 				 SearchText="@_searchText"
 				 Click="OnRowClick"
 				 DoubleClick="OnRowDoubleClick"
@@ -3034,13 +3039,19 @@ else
 								  ValueChanged="OnSearchChanged"
 								  Width="250px" />
 			</PDToolbar>
-			@* Package takes all the slack so Version and Issues sit hard right. Sortable defaults to true
-			   in PDColumn, so Version opts out explicitly: sorting unrelated packages by version string
-			   sorts nothing meaningful. *@
-			<PDColumn TItem="PackageDashboardRow" Field="x => x.PackageId" Title="Package" Sortable="true" Filterable="true" ThClass="home-col-grow" TdClass="text-start home-col-grow">
+			@* Repository takes all the slack so Version and Issues sit hard right. Sortable defaults to
+			   true in PDColumn, so Version opts out explicitly: sorting unrelated packages by version
+			   string sorts nothing meaningful. *@
+			<PDColumn TItem="RepositoryDashboardRow" Field="x => x.RepositoryFullName" Title="Repository" Sortable="true" Filterable="true" ThClass="home-col-grow" TdClass="text-start home-col-grow">
 				<Template>
 					@* title carries the full name, since a narrow column truncates it with an ellipsis. *@
-					<span class="pkg-name" title="@context.PackageId">@context.PackageId</span>
+					<span class="pkg-name" title="@context.RepositoryFullName">@context.RepositoryName</span>
+					@if (context.Packages.Count > 1)
+					{
+						@* A repository publishing several packages is the case this column used to hide
+						   entirely, by showing one row per package as though each were a repository. *@
+						<span class="pkg-version" title="@PackageIdList(context)">@context.Packages.Count packages</span>
+					}
 					@if (context.IsClonedLocally)
 					{
 						<span class="@(context.IsWorkingTreeClean == true ? "git-clean" : context.IsWorkingTreeClean == false ? "git-dirty" : "")"
@@ -3048,10 +3059,10 @@ else
 					}
 				</Template>
 			</PDColumn>
-			<PDColumn TItem="PackageDashboardRow" Field="x => x.LatestVersion" Title="Version" Sortable="false" ThClass="home-col-shrink" TdClass="home-col-shrink">
-				<Template><span class="pkg-version">@context.LatestVersion</span></Template>
+			<PDColumn TItem="RepositoryDashboardRow" Field="x => x.LatestTag" Title="Version" Sortable="false" ThClass="home-col-shrink" TdClass="home-col-shrink">
+				<Template><span class="pkg-version">@PackagesSummary(context)</span></Template>
 			</PDColumn>
-			<PDColumn TItem="PackageDashboardRow" Field="x => x.TotalFailures" Id="total" Title="Issues" Sortable="true" ThClass="home-col-shrink" TdClass="home-col-shrink">
+			<PDColumn TItem="RepositoryDashboardRow" Field="x => x.TotalFailures" Id="total" Title="Issues" Sortable="true" ThClass="home-col-shrink" TdClass="home-col-shrink">
 				<Template>
 					@if (context.Assessment is not null)
 					{
@@ -3621,8 +3632,8 @@ else
 	/// so shared state is only ever touched from one context.
 	/// </summary>
 	private async Task AssessInParallelAsync(
-		IReadOnlyList<PackageDashboardRow> assessable,
-		Func<PackageDashboardRow, Task> assessOne,
+		IReadOnlyList<RepositoryDashboardRow> assessable,
+		Func<RepositoryDashboardRow, Task> assessOne,
 		IProgress<string>? progress = null,
 		CancellationToken cancellationToken = default)
 	{
@@ -3646,7 +3657,7 @@ else
 			}
 			catch (Exception ex)
 			{
-				await InvokeAsync(() => AppendConsole($"❌ {row.PackageId}: {ex.Message}"));
+				await InvokeAsync(() => AppendConsole($"❌ {row.RepositoryFullName}: {ex.Message}"));
 			}
 			finally
 			{
@@ -3709,13 +3720,15 @@ else
 		{
 			var freshRows = await Dashboard.DiscoverPackagesAsync(cancellationToken: cancellationToken);
 
+			ReportUnreadNuspecs();
+
 			var existingByPackageId = _rows
 				.Where(r => r.Assessment is not null)
-				.ToDictionary(r => r.PackageId, StringComparer.OrdinalIgnoreCase);
+				.ToDictionary(r => r.RepositoryFullName, StringComparer.OrdinalIgnoreCase);
 
 			foreach (var row in freshRows)
 			{
-				if (existingByPackageId.TryGetValue(row.PackageId, out var existing))
+				if (existingByPackageId.TryGetValue(row.RepositoryFullName, out var existing))
 				{
 					row.Assessment = existing.Assessment;
 					row.CategorySummaries = existing.CategorySummaries;
@@ -3809,18 +3822,18 @@ else
 		StateHasChanged();
 	}
 
-	private void OnRowClick(PackageDashboardRow row)
+	private void OnRowClick(RepositoryDashboardRow row)
 	{
 		// Single click selects in tree navigation
 		_selectedRow = row;
-		_selectedPackageId = row.PackageId;
+		_selectedPackageId = row.RepositoryFullName;
 		_selectedOrganization = row.Organization;
-		_selectedNodeKey = $"pkg:{row.Organization}:{row.PackageId}";
+		_selectedNodeKey = $"pkg:{row.Organization}:{row.RepositoryFullName}";
 		_currentView = NavView.PackageDetail;
 		StateHasChanged();
 	}
 
-	private void OnRowDoubleClick(PackageDashboardRow row)
+	private void OnRowDoubleClick(RepositoryDashboardRow row)
 	{
 		OnRowClick(row);
 	}
@@ -3851,7 +3864,7 @@ else
 		}
 
 		var current = _rows.FirstOrDefault(r =>
-			string.Equals(r.PackageId, _selectedRow.PackageId, StringComparison.OrdinalIgnoreCase));
+			string.Equals(r.RepositoryFullName, _selectedRow.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
 
 		if (current is null)
 		{
@@ -3880,7 +3893,7 @@ else
 			return;
 		}
 
-		var rowIndex = _rows.FindIndex(r => string.Equals(r.PackageId, _selectedRow.PackageId, StringComparison.OrdinalIgnoreCase));
+		var rowIndex = _rows.FindIndex(r => string.Equals(r.RepositoryFullName, _selectedRow.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
 		if (rowIndex >= 0)
 		{
 			_rows[rowIndex] = _selectedRow;
@@ -3948,18 +3961,18 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		_isAssessing = true;
-		_progressMessage = $"Checking NuGet listing for {_selectedRow.PackageId}...";
+		_progressMessage = $"Checking NuGet listing for {_selectedRow.RepositoryFullName}...";
 		StateHasChanged();
 
 		try
 		{
 			// Check whether the package is still listed on NuGet
-			var isListed = await Dashboard.IsPackageListedAsync(_selectedRow.PackageId);
+			var isListed = await Dashboard.IsPackageListedAsync(_selectedRow.RepositoryFullName);
 			if (!isListed)
 			{
-				AppendConsole($"⚠️ {_selectedRow.PackageId} is no longer listed on NuGet — removing from cache.");
-				_rows.RemoveAll(r => string.Equals(r.PackageId, _selectedRow.PackageId, StringComparison.OrdinalIgnoreCase));
-				Cache.RemoveRow(_selectedRow.PackageId);
+				AppendConsole($"⚠️ {_selectedRow.RepositoryFullName} is no longer listed on NuGet — removing from cache.");
+				_rows.RemoveAll(r => string.Equals(r.RepositoryFullName, _selectedRow.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
+				Cache.RemoveRow(_selectedRow.RepositoryFullName);
 				_selectedRow = null;
 				_selectedPackageId = null;
 				_currentView = NavView.Home;
@@ -3967,7 +3980,7 @@ else
 				return;
 			}
 
-			_progressMessage = $"Assessing {_selectedRow.PackageId}...";
+			_progressMessage = $"Assessing {_selectedRow.RepositoryFullName}...";
 			StateHasChanged();
 
 			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
@@ -3983,7 +3996,7 @@ else
 			}
 
            await PersistSelectedRowUpdateAsync();
-			AppendConsole($"✅ Assessment complete for {_selectedRow.PackageId}");
+			AppendConsole($"✅ Assessment complete for {_selectedRow.RepositoryFullName}");
 		}
 		catch (Exception ex)
 		{
@@ -4026,7 +4039,7 @@ else
 
 	private async Task RediscoverOrganizationCoreAsync(
 		string organization,
-		List<PackageDashboardRow> existingForOrg,
+		List<RepositoryDashboardRow> existingForOrg,
 		IProgress<string> progress,
 		CancellationToken cancellationToken)
 	{
@@ -4040,15 +4053,17 @@ else
 		{
 			var freshRows = await Dashboard.DiscoverPackagesAsync(organization, cancellationToken);
 
+			ReportUnreadNuspecs();
+
 			// Carry over assessments we already have, so rediscovery does not throw away results for
 			// packages that have not changed.
 			var existingByPackageId = existingForOrg
 				.Where(r => r.Assessment is not null)
-				.ToDictionary(r => r.PackageId, StringComparer.OrdinalIgnoreCase);
+				.ToDictionary(r => r.RepositoryFullName, StringComparer.OrdinalIgnoreCase);
 
 			foreach (var row in freshRows)
 			{
-				if (existingByPackageId.TryGetValue(row.PackageId, out var existing))
+				if (existingByPackageId.TryGetValue(row.RepositoryFullName, out var existing))
 				{
 					row.Assessment = existing.Assessment;
 					row.CategorySummaries = existing.CategorySummaries;
@@ -4169,7 +4184,7 @@ else
 
 	private async Task ReassessOrganizationCoreAsync(
 		string? organization,
-		List<PackageDashboardRow> assessable,
+		List<RepositoryDashboardRow> assessable,
 		string scope,
 		IProgress<string> progress,
 		CancellationToken cancellationToken)
@@ -4265,7 +4280,7 @@ else
 			}
 
            await PersistSelectedRowUpdateAsync();
-			AppendConsole($"✅ Re-assessed {category} for {_selectedRow.PackageId}");
+			AppendConsole($"✅ Re-assessed {category} for {_selectedRow.RepositoryFullName}");
 		}
 		catch (Exception ex)
 		{
@@ -4298,13 +4313,13 @@ else
 
 		var capturedRow = _selectedRow;
 		EnqueueWork(
-			$"Fix {_selectedRow.PackageId}",
+			$"Fix {_selectedRow.RepositoryFullName}",
 			_selectedRow.Organization,
-			$"fix-all:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			$"fix-all:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}",
 			(progress, cancellationToken) => FixAllCoreAsync(capturedRow, progress, cancellationToken));
 	}
 
-	private async Task FixAllCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task FixAllCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		_isRunning = true;
 		ClearConsole();
@@ -4391,13 +4406,13 @@ else
 
 		var capturedRow = _selectedRow;
 		EnqueueWork(
-			$"Fix {category} — {_selectedRow.PackageId}",
+			$"Fix {category} — {_selectedRow.RepositoryFullName}",
 			_selectedRow.Organization,
-			$"fix-category:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}:{category}",
+			$"fix-category:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}:{category}",
 			(progress, cancellationToken) => FixCategoryCoreAsync(capturedRow, category, progress, cancellationToken));
 	}
 
-	private async Task FixCategoryCoreAsync(PackageDashboardRow row, AssessmentCategory category, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task FixCategoryCoreAsync(RepositoryDashboardRow row, AssessmentCategory category, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		_isRunning = true;
 		ClearConsole();
@@ -4466,19 +4481,19 @@ else
 
 		var capturedRow = _selectedRow;
 		EnqueueWork(
-			$"Fix {result.RuleId} — {_selectedRow.PackageId}",
+			$"Fix {result.RuleId} — {_selectedRow.RepositoryFullName}",
 			_selectedRow.Organization,
-			$"fix-rule:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}:{result.RuleId}",
+			$"fix-rule:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}:{result.RuleId}",
 			(progress, cancellationToken) => FixSingleRuleCoreAsync(capturedRow, result, progress, cancellationToken));
 	}
 
-	private async Task FixSingleRuleCoreAsync(PackageDashboardRow row, RuleResult result, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task FixSingleRuleCoreAsync(RepositoryDashboardRow row, RuleResult result, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		// Re-checked here rather than trusted from the click: the clone can be gone by the time the
 		// queue reaches this item.
 		if (row.LocalPath is null)
 		{
-			AppendConsole($"⏭️ {row.PackageId} is no longer cloned locally — skipping {result.RuleId}.");
+			AppendConsole($"⏭️ {row.RepositoryFullName} is no longer cloned locally — skipping {result.RuleId}.");
 			return;
 		}
 
@@ -4539,13 +4554,13 @@ else
 
 		var capturedRow = _selectedRow;
 		EnqueueWork(
-			$"Build {_selectedRow.PackageId}",
+			$"Build {_selectedRow.RepositoryFullName}",
 			_selectedRow.Organization,
-			$"build:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			$"build:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}",
 			(progress, cancellationToken) => BuildCoreAsync(capturedRow, progress, cancellationToken));
 	}
 
-	private async Task BuildCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task BuildCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		_isRunning = true;
 		ClearConsole();
@@ -4603,13 +4618,13 @@ else
 
 		var capturedRow = _selectedRow;
 		EnqueueWork(
-			$"Test {_selectedRow.PackageId}",
+			$"Test {_selectedRow.RepositoryFullName}",
 			_selectedRow.Organization,
-			$"test:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			$"test:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}",
 			(progress, cancellationToken) => RunTestsCoreAsync(capturedRow, progress, cancellationToken));
 	}
 
-	private async Task RunTestsCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task RunTestsCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		_isRunning = true;
 		ClearConsole();
@@ -4667,13 +4682,13 @@ else
 
 		var capturedRow = _selectedRow;
 		EnqueueWork(
-			$"Git sync {_selectedRow.PackageId}",
+			$"Git sync {_selectedRow.RepositoryFullName}",
 			_selectedRow.Organization,
-			$"sync:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			$"sync:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}",
 			(progress, cancellationToken) => GitSyncCoreAsync(capturedRow, progress, cancellationToken));
 	}
 
-	private async Task GitSyncCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task GitSyncCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		_isRunning = true;
 		ClearConsole();
@@ -4741,13 +4756,13 @@ else
 
 		var capturedRow = _selectedRow;
 		EnqueueWork(
-			$"Publish {_selectedRow.PackageId}",
+			$"Publish {_selectedRow.RepositoryFullName}",
 			_selectedRow.Organization,
-			$"publish:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			$"publish:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}",
 			(progress, cancellationToken) => RunPublishCoreAsync(capturedRow, progress, cancellationToken));
 	}
 
-	private async Task RunPublishCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task RunPublishCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		_isRunning = true;
 		ClearConsole();
@@ -5048,7 +5063,7 @@ else
 	/// check, and nothing tells the app when it does. Disabling Sync on the bare claim would eventually
 	/// strand someone with a button they cannot press and a pull they need, so the claim expires.
 	/// </remarks>
-	private static bool IsRecentlyConfirmedInSync(PackageDashboardRow row)
+	private static bool IsRecentlyConfirmedInSync(RepositoryDashboardRow row)
 		=> row.IsSyncedWithOrigin == true
 			&& row.SyncStatusCheckedAtUtc is { } checkedAt
 			&& DateTimeOffset.UtcNow - checkedAt < SyncStatusTrustedFor;
@@ -5072,6 +5087,84 @@ else
 	/// </summary>
 	private string UnconfirmedSyncBadgeTooltip
 		=> $"{SyncBadgeTooltip("Was in sync with origin")} — not confirmed since. Sync to check.";
+
+	/// <summary>
+	/// What a repository publishes, for the breadcrumb: the version when there is one package, and the
+	/// count when there are several, whose versions differ and cannot be shown as one.
+	/// </summary>
+	/// <summary>
+	/// The cached row a navigation node belongs to, or null when the node is above the repository
+	/// layer or its repository has since left the estate.
+	/// </summary>
+	/// <remarks>
+	/// Every node from the repository downwards carries its repository, so one lookup serves the
+	/// repository, its packages, its categories and its rules alike.
+	/// </remarks>
+	private RepositoryDashboardRow? RowForNavItem(NavItem item)
+		=> item.RepositoryFullName is not { Length: > 0 } repositoryFullName
+			? null
+			: _rows.FirstOrDefault(r =>
+				string.Equals(r.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// Names the packages whose nuspec could not be read, after a discovery.
+	/// </summary>
+	/// <remarks>
+	/// A repository silently held at yesterday's mapping looks exactly like one confirmed today, and a
+	/// package with no previous mapping drops out of the estate altogether. Neither is safe to leave
+	/// to the log. Named rather than counted: three packages failed sends the reader to the log, while
+	/// the names send them to the rediscover button for the ones that matter.
+	/// </remarks>
+	private void ReportUnreadNuspecs()
+	{
+		var unread = Cache.GetUngovernedPackages()
+			.Where(package => package.Reason.StartsWith(UngovernedPackage.LookupFailedReasonPrefix, StringComparison.Ordinal))
+			.Select(package => package.PackageId)
+			.ToList();
+
+		if (unread.Count == 0)
+		{
+			return;
+		}
+
+		_consoleVisible = true;
+		AppendConsole(
+			$"⚠️ Could not read the nuspec for {string.Join(", ", unread)}. "
+			+ "Their repositories are unchanged from the last successful discovery; rediscover to try again.");
+	}
+
+	/// <summary>
+	/// The repository's latest tag, or a placeholder when none is known.
+	/// </summary>
+	private static string TagOrUnknown(RepositoryDashboardRow row) => row.LatestTag ?? "(unknown)";
+
+	/// <summary>
+	/// Every package a repository publishes, comma-separated, for a tooltip.
+	/// </summary>
+	private static string PackageIdList(RepositoryDashboardRow row)
+		=> string.Join(", ", row.Packages.Select(package => package.PackageId));
+
+	private static string PackagesSummary(RepositoryDashboardRow row)
+		=> row.Packages.Count switch
+		{
+			0 => string.Empty,
+			1 => row.Packages[0].LatestVersion ?? string.Empty,
+			var count => $"{count} packages"
+		};
+
+	/// <summary>
+	/// The packages whose published version is not the repository's latest tag, as "id version".
+	/// </summary>
+	private static string OutOfStepSummary(RepositoryDashboardRow row)
+		=> string.Join(", ", row.Packages
+			.Where(package => package.MatchesTag(row.LatestTag) == false)
+			.Select(package => $"{package.PackageId} {package.LatestVersion}"));
+
+	/// <summary>
+	/// The full explanation of a tag disagreement, naming every package that is out of step.
+	/// </summary>
+	private static string OutOfStepTooltip(RepositoryDashboardRow row)
+		=> $"Latest tag {row.LatestTag ?? "(unknown)"} does not match {OutOfStepSummary(row)}";
 
 	private string GetSyncTooltip()
 	{
@@ -5167,7 +5260,7 @@ else
 	/// Throws away whatever a stopped fix had written into a clone, and says how much went. Not
 	/// cancellable: this is the cleanup, and abandoning it half-way is the state it exists to prevent.
 	/// </summary>
-	private async Task RevertPartAppliedFixAsync(PackageDashboardRow row)
+	private async Task RevertPartAppliedFixAsync(RepositoryDashboardRow row)
 	{
 		if (row.RepositoryFullName is null)
 		{
@@ -5477,7 +5570,7 @@ else
 
 	// === Utility methods ===
 
-	private static string GetLocalStateSuffix(PackageDashboardRow row)
+	private static string GetLocalStateSuffix(RepositoryDashboardRow row)
 	{
 		if (!row.IsClonedLocally)
 		{
@@ -5519,39 +5612,40 @@ else
 				// counting them here would say the estate holds packages that nothing assesses.
 				var governedRows = _rows.Where(r => r.IsGoverned).ToList();
 				var assessed = governedRows.Count(r => r.Assessment is not null);
-				return $"Dashboard — {governedRows.Count} packages ({assessed} assessed, {item.IssueCount} issues)"
+				return $"Dashboard — {governedRows.Count} repositories ({assessed} assessed, {item.IssueCount} issues)"
 					+ GetRolledUpHealthSuffix(item);
 
+			case NavView.RepositoryDetail:
 			case NavView.PackageDetail:
-				var row = _rows.FirstOrDefault(r => r.PackageId == item.PackageId);
+				var row = RowForNavItem(item);
 				if (row is null)
 				{
-					return item.PackageId ?? item.Text;
+					return item.RepositoryFullName ?? item.Text;
 				}
 
 				if (row.Assessment is null)
 				{
 					return row.Status switch
 					{
-						PackageStatus.Assessing => $"{row.PackageId}\n• assessing…{GetLocalStateSuffix(row)}",
-						PackageStatus.Error => $"{row.PackageId}\n• not assessable: {row.StatusMessage}{GetLocalStateSuffix(row)}",
-						_ => $"{row.PackageId}\n• not yet assessed{GetLocalStateSuffix(row)}"
+						PackageStatus.Assessing => $"{row.RepositoryFullName}\n• assessing…{GetLocalStateSuffix(row)}",
+						PackageStatus.Error => $"{row.RepositoryFullName}\n• not assessable: {row.StatusMessage}{GetLocalStateSuffix(row)}",
+						_ => $"{row.RepositoryFullName}\n• not yet assessed{GetLocalStateSuffix(row)}"
 					};
 				}
 
 				if (row.TotalFailures == 0)
 				{
-					return $"{row.PackageId}\n• all rules pass ✓ (green = compliant){GetLocalStateSuffix(row)}";
+					return $"{row.RepositoryFullName}\n• all rules pass ✓ (green = compliant){GetLocalStateSuffix(row)}";
 				}
 
 				if (row.TotalErrors > 0)
 				{
-					return $"{row.PackageId}\n• {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found){GetLocalStateSuffix(row)}";
+					return $"{row.RepositoryFullName}\n• {row.TotalErrors} error(s), {row.TotalWarnings} warning(s) (red = errors found){GetLocalStateSuffix(row)}";
 				}
 
 				return row.TotalWarnings > 0
-					? $"{row.PackageId}\n• {row.TotalWarnings} warning(s) (amber = warnings only){GetLocalStateSuffix(row)}"
-					: $"{row.PackageId}\n• informational only (blue = info){GetLocalStateSuffix(row)}";
+					? $"{row.RepositoryFullName}\n• {row.TotalWarnings} warning(s) (amber = warnings only){GetLocalStateSuffix(row)}"
+					: $"{row.RepositoryFullName}\n• informational only (blue = info){GetLocalStateSuffix(row)}";
 
 			case NavView.CategoryDetail:
 				if (item.IssueCount == 0)
@@ -5583,7 +5677,7 @@ else
 		}
 	}
 
-	private static string GetPackageHealthIcon(PackageDashboardRow row)
+	private static string GetPackageHealthIcon(RepositoryDashboardRow row)
 	{
 		return row.HealthStatus switch
 		{
@@ -5834,7 +5928,7 @@ else
 				return;
 			}
 
-			AppendConsole($"✅ Opened {_selectedRow.PackageId} in {ide.DisplayName}");
+			AppendConsole($"✅ Opened {_selectedRow.RepositoryFullName} in {ide.DisplayName}");
 			AppendConsole($"ℹ️ IDE launch: id={launch.IdeId}, exe={launch.ExecutablePath}");
 			AppendConsole($"ℹ️ IDE target: {launch.TargetPath}");
 			AppendConsole($"ℹ️ IDE PID: {launch.ProcessId?.ToString() ?? "(unknown)"}");
@@ -6056,13 +6150,13 @@ else
 
 		var capturedRow = _selectedRow;
 		EnqueueWork(
-			$"Commit & push {_selectedRow.PackageId}",
+			$"Commit & push {_selectedRow.RepositoryFullName}",
 			_selectedRow.Organization,
-			$"commit-push:{_selectedRow.RepositoryFullName ?? _selectedRow.PackageId}",
+			$"commit-push:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}",
 			(progress, cancellationToken) => CommitAndPushCoreAsync(capturedRow, progress, cancellationToken));
 	}
 
-	private async Task CommitAndPushCoreAsync(PackageDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task CommitAndPushCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		_isRunning = true;
 		ClearConsole();
@@ -6071,7 +6165,7 @@ else
 
 		try
 		{
-			var commitMessage = $"NuGet governance remediation for {row.PackageId}";
+			var commitMessage = $"NuGet governance remediation for {row.RepositoryFullName}";
 			var push = await Dashboard.CommitAndPushAsync(row, commitMessage, line =>
 			{
 				AppendConsole(line);

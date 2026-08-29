@@ -104,11 +104,11 @@ public class GovernanceScopeTests(ITestOutputHelper output) : TestWithOutput(out
 		row.TotalFailures.Should().Be(0);
 	}
 
-	private static PackageDashboardRow RowFor(string? repositoryFullName)
+	private static RepositoryDashboardRow RowFor(string repositoryFullName)
 		=> new()
 		{
-			PackageId = "Some.Package",
 			Organization = "panoramicdata",
-			RepositoryFullName = repositoryFullName
+			RepositoryFullName = repositoryFullName,
+			Packages = [new() { PackageId = "Some.Package" }]
 		};
 }

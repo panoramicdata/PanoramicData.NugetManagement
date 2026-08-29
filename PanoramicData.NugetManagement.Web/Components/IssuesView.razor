@@ -275,7 +275,7 @@
 	private string? _loadedFocusRuleId;
 	private bool _loaded;
 
-	private List<PackageDashboardRow> _rows = [];
+	private List<RepositoryDashboardRow> _rows = [];
 	private IssueCentricView? _view;
 	private IReadOnlyList<ActionVersionBump> _bumps = [];
 	// PDTree owns expansion state, so no hand-rolled expanded-node tracking is needed. The version
@@ -317,7 +317,7 @@
 	/// rebuilds the view, so a rule stops listing repositories it has just been fixed in — while the
 	/// run is still going, rather than after it finishes.
 	/// </summary>
-	private void OnRepositoryFixed(PackageDashboardRow row)
+	private void OnRepositoryFixed(RepositoryDashboardRow row)
 	{
 		if (row.RepositoryFullName is not null)
 		{
@@ -448,14 +448,14 @@
 			.Select(r => r.RepositoryFullName!)];
 	}
 
-	private List<PackageDashboardRow> SelectedRows()
+	private List<RepositoryDashboardRow> SelectedRows()
 		=> [.. _rows.Where(r => r.RepositoryFullName is not null && _inScope.Contains(r.RepositoryFullName))];
 
 	/// <summary>
 	/// The rows for a computed target set, in the order the run will visit them. The count the user
 	/// approved and the repositories the run touches come from the same list.
 	/// </summary>
-	private List<PackageDashboardRow> RowsFor(IReadOnlyList<string> repositoryFullNames)
+	private List<RepositoryDashboardRow> RowsFor(IReadOnlyList<string> repositoryFullNames)
 	{
 		var targets = repositoryFullNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
 		return [.. _rows.Where(r => r.RepositoryFullName is not null && targets.Contains(r.RepositoryFullName))];

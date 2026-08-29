@@ -32,6 +32,35 @@ public class RepositoryDashboardRow
 		=> Packages.Any(package => package.MatchesTag(LatestTag) == false);
 
 	/// <summary>
+	/// Whether every published package is at the repository's latest tag. False while the tag or any
+	/// version is unknown: not knowing is not the same as agreeing.
+	/// </summary>
+	public bool AllPackagesMatchTag
+		=> Packages.Count > 0 && Packages.TrueForAll(package => package.MatchesTag(LatestTag) == true);
+
+	/// <summary>
+	/// The short name of the repository, without its owner.
+	/// </summary>
+	public string RepositoryName => RepositoryFullName.Split('/')[^1];
+
+	/// <summary>
+	/// The package that stands for this repository where exactly one version is wanted: the package
+	/// named after the repository if it publishes one, otherwise the first alphabetically.
+	/// </summary>
+	/// <remarks>
+	/// A repository publishing several packages has no single version, and a rule comparing the tag
+	/// with "the" published version has to pick one. Naming the choice here keeps it in one place and
+	/// visible, rather than leaving each caller to take <c>Packages[0]</c> and mean something slightly
+	/// different by it. Use <see cref="AnyPackageOutOfStepWithTag"/> where every package matters.
+	/// </remarks>
+	public PublishedPackage? PrimaryPackage
+		=> Packages.FirstOrDefault(package => string.Equals(
+			package.PackageId,
+			RepositoryFullName.Split('/')[^1],
+			StringComparison.OrdinalIgnoreCase))
+			?? Packages.FirstOrDefault();
+
+	/// <summary>
 	/// The organisation this repository's packages were discovered under. Used to group rows into the
 	/// per-organisation branches of the navigation tree and to scope re-assessment.
 	/// Not the same as the owner segment of <see cref="RepositoryFullName"/>, which can differ

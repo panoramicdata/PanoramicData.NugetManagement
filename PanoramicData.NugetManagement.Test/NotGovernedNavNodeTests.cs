@@ -61,34 +61,37 @@ public class NotGovernedNavNodeTests(ITestOutputHelper output) : TestWithOutput(
 
 	private List<NavItem> BuildTree(bool includeUngoverned = true)
 	{
-		var rows = new List<PackageDashboardRow>
+		var rows = new List<RepositoryDashboardRow>
 		{
 			new()
 			{
-				PackageId = "Meraki.Api",
 				Organization = "panoramicdata",
-				RepositoryFullName = "panoramicdata/Meraki.Api"
+				RepositoryFullName = "panoramicdata/Meraki.Api",
+				Packages = [new() { PackageId = "Meraki.Api" }]
 			}
 		};
 
-		if (includeUngoverned)
-		{
-			rows.Add(new PackageDashboardRow
+		// A package with no repository we govern has no repository row to live in, so it is held
+		// beside the rows rather than among them.
+		var ungoverned = includeUngoverned
+			? new List<UngovernedPackage>
 			{
-				PackageId = "Vizor.ECharts.Net80",
-				Organization = "panoramicdata",
-				RepositoryFullName = "datahint-eu/vizor-echarts",
-				IsGoverned = false,
-				NotGovernedReason = "The nuspec declares datahint-eu/vizor-echarts, which is not one of our organisations.",
-				Status = PackageStatus.NotGoverned
-			});
-		}
+				new()
+				{
+					PackageId = "Vizor.ECharts.Net80",
+					Organization = "panoramicdata",
+					DeclaredRepository = "datahint-eu/vizor-echarts",
+					Reason = "The nuspec declares datahint-eu/vizor-echarts, which is not one of our organisations."
+				}
+			}
+			: [];
 
 		Directory.CreateDirectory(_cacheDirectory);
 		var cache = new DashboardCacheService(
 			NullLogger<DashboardCacheService>.Instance,
 			Path.Combine(_cacheDirectory, "dashboard-cache.json"));
 		cache.SetRows(rows);
+		cache.SetUngovernedPackages(ungoverned);
 
 		var settings = Options.Create(new AppSettings { NuGetOrganization = "panoramicdata" });
 
