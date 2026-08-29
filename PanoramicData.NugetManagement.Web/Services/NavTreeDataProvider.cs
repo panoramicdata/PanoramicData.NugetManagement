@@ -47,9 +47,6 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <summary>Builds the key for an organisation's "Issues" branch.</summary>
 	public static string IssuesKey(string organization) => $"issues:{organization}";
 
-	/// <summary>Builds the key for an organisation's "Package Updates" node.</summary>
-	public static string UpdatesKey(string organization) => $"updates:{organization}";
-
 	/// <summary>
 	/// The key of the always-expanded top-level container. Unlike the other container nodes it is
 	/// selectable, because selecting it shows the estate overview.
@@ -83,7 +80,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <summary>
 	/// Builds the full list of navigation items from the current cache state.
 	/// Tree structure: Organisations → organisation → { Repositories → package → category → rule,
-	/// Issues → category → rule, Package Updates }.
+	/// Issues → category → rule }.
 	/// </summary>
 	public List<NavItem> BuildNavItems()
 	{
@@ -119,7 +116,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 	/// <summary>
 	/// Adds one organisation's whole subtree: the organisation node, its Repositories branch (with
-	/// packages, categories and failing rules), its Issues branch and its Package Updates node.
+	/// packages, categories and failing rules) and its Issues branch.
 	/// </summary>
 	private void AddOrganizationNodes(
 		List<NavItem> items,
@@ -181,18 +178,6 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		});
 
 		AddIssueHierarchy(items, organization, issuesKey, orgKey, visibleRows);
-
-		items.Add(new NavItem
-		{
-			Key = UpdatesKey(organization),
-			Text = "Package Updates",
-			ParentKey = orgKey,
-			IconCss = "fas fa-arrow-circle-up",
-			View = NavView.NuGetUpdates,
-			Organization = organization,
-			IsLeaf = true,
-			SortOrder = 2
-		});
 
 		AddPackageNodes(items, organization, reposKey, visibleRows);
 

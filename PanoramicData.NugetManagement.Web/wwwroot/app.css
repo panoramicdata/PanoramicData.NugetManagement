@@ -2244,12 +2244,6 @@ i + .breadcrumb-link-text {
     margin-right: 4px;
 }
 
-/* Nudge the whole Package Updates node label (icon + text) 1px right. */
-.nav-node-label:has(> i.fa-arrow-circle-up) {
-    position: relative;
-    left: 1px;
-}
-
 /* Remove PDTreeNode's per-level 1px extra indent so non-top-level rows align ~1px further left. */
 .pdtreenode .pdtreenode_child_content {
     padding-left: 0 !important;
@@ -2273,7 +2267,7 @@ i + .breadcrumb-link-text {
     display: none;
 }
 
-/* Container header nodes (Organisations, Repositories, Issues, Package Updates) all share one colour
+/* Container header nodes (Organisations, Repositories, Issues) all share one colour
    so none of them reads as a status: a per-container palette was tried and, in a tree whose whole
    point is red/amber/green health, distinct hues looked like states rather than headings.
    Deliberately --accent (the interface's blue) and not --info, which is the Info severity colour and
@@ -2282,8 +2276,7 @@ i + .breadcrumb-link-text {
    glyph, distinguished only by a severity class, and they are content rather than containers. */
 .nav-node-label:has(> i.fa-sitemap),
 .nav-node-label:has(> i.fa-cubes),
-.nav-node-label:has(> i.fa-layer-group:not(.text-danger):not(.text-warning):not(.text-info)),
-.nav-node-label:has(> i.fa-arrow-circle-up) {
+.nav-node-label:has(> i.fa-layer-group:not(.text-danger):not(.text-warning):not(.text-info)) {
     /* Fallback for engines without color-mix. */
     color: #47aad9;
     /* The accent blue pulled 15% toward the page background: enough to stop the headings competing
@@ -2449,153 +2442,6 @@ i + .breadcrumb-link-text {
         opacity: 0;
         transform: translateY(-28px) scale(1.08);
     }
-}
-
-/* === NuGet Package Updates View === */
-.nuget-updates-view {
-    padding: 1.5rem;
-    overflow-y: auto;
-    height: 100%;
-    box-sizing: border-box;
-}
-
-.nuget-updates-header {
-    display: flex;
-    align-items: baseline;
-    gap: 1rem;
-    margin-bottom: 1.25rem;
-}
-
-.nuget-updates-header h2 {
-    margin: 0;
-    font-size: 1.2rem;
-    color: var(--text-primary);
-}
-
-.nuget-updates-last-checked {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-}
-
-.nuget-updates-loading,
-.nuget-updates-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 3rem 1rem;
-    color: var(--text-secondary);
-    text-align: center;
-}
-
-.update-groups-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-
-.update-group-card {
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-    overflow: hidden;
-}
-
-.update-group-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.6rem 0.9rem;
-    cursor: pointer;
-    user-select: none;
-    transition: background 0.15s;
-}
-
-.update-group-header:hover {
-    background: var(--hover);
-}
-
-.update-group-info {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    min-width: 0;
-}
-
-.update-package-name {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-}
-
-.update-version-arrow {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.85rem;
-}
-
-.version-from {
-    color: var(--text-secondary);
-    font-family: monospace;
-}
-
-.version-to {
-    color: var(--success);
-    font-family: monospace;
-    font-weight: 600;
-}
-
-.update-version-arrow .fa-long-arrow-alt-right {
-    color: var(--text-secondary);
-}
-
-.update-repo-count.badge {
-    background: var(--accent);
-    color: #fff;
-    border-radius: 999px;
-    padding: 0.15rem 0.5rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.update-group-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-shrink: 0;
-}
-
-.update-chevron {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    width: 14px;
-    text-align: center;
-}
-
-.update-group-repos {
-    border-top: 1px solid var(--border);
-    padding: 0.5rem 0.9rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-
-.update-repo-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    padding: 0.2rem 0;
-}
-
-.update-repo-row .fa-code-branch {
-    color: var(--accent);
-    width: 14px;
-    text-align: center;
 }
 
 /* === Clone repositories dialog ===

@@ -17,7 +17,6 @@
 @inject IdeDetectionService IdeDetection
 @inject LocalFileSystemDataProvider FileSystemDataProvider
 @inject LocalRepoService LocalRepo
-@inject NuGetUpdateService NuGetUpdates
 @inject WorkQueueService WorkQueue
 @implements IDisposable
 
@@ -209,8 +208,8 @@ else
 								<span class="breadcrumb-sep">›</span>
 								<span class="breadcrumb-current">Organisations</span>
 							}
-							@* Org crumb — shown at org level or deeper (repo selected, org settings, or package updates) *@
-							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || _currentView == NavView.NuGetUpdates || IsIssueView)
+							@* Org crumb — shown at org level or deeper (repo selected, or org settings) *@
+							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || IsIssueView)
 							{
 								<span class="breadcrumb-sep">›</span>
 								@if (_orgSelected && _selectedRow is null && _currentView != NavView.Settings)
@@ -300,11 +299,6 @@ else
 								<span class="breadcrumb-sep">›</span>
 								<span class="breadcrumb-current">Settings</span>
 							}
-							@if (_currentView == NavView.NuGetUpdates)
-							{
-								<span class="breadcrumb-sep">›</span>
-								<span class="breadcrumb-current">Package Updates</span>
-							}
 							@if (IsIssueView)
 							{
 								<span class="breadcrumb-sep">›</span>
@@ -371,15 +365,6 @@ else
 											 ToolTip="@(_orgSelected
 												? $"Re-read {CurrentOrganization}'s package list from NuGet, then assess it. Use Re-assess Org to skip the NuGet lookup."
 												: "Re-read every organisation's package list from NuGet, then assess everything. Use Re-assess Orgs to skip the NuGet lookup.")"
-											 Click="OnToolbarClick" />
-
-							<PDToolbarButton Key="check-for-updates"
-											 Text="Check for Updates"
-											 IconCssClass="fas fa-arrow-circle-up"
-											 CssClass="btn-primary"
-											 IsVisible="@(_currentView == NavView.NuGetUpdates)"
-											 IsEnabled="@(!NuGetUpdates.IsChecking)"
-											 ToolTip="Scan all assessed repositories for available NuGet package updates"
 											 Click="OnToolbarClick" />
 
 							<PDToolbarButton Key="git-sync"
@@ -865,9 +850,6 @@ else
 	private bool _isAssessing;
 	private bool _isRunning;
 
-	// === NuGet Updates state ===
-	private readonly HashSet<string> _expandedUpdateGroups = [];
-
 	// === Console state ===
 	private bool _consoleVisible = true;
 	private bool _consoleScrollPending;
@@ -1091,7 +1073,7 @@ else
 
 	private void OnNavNodeActivated(TreeNode<NavItem> node)
 	{
-		// Organisations / Repositories / Package Updates are structural grouping nodes — not selectable.
+		// Organisations / Repositories are structural grouping nodes — not selectable.
 		if (!IsSelectableNavNode(node.Data))
 		{
 			return;
@@ -2488,9 +2470,6 @@ else
 				}
 
 				break;
-			case "check-for-updates":
-				await NuGetUpdates.CheckForUpdatesAsync(StateHasChanged);
-				break;
 			case "fix":
 				await FixAllAsync();
 				break;
@@ -2843,9 +2822,6 @@ else
 				break;
 			case NavView.AppSettings:
 				@RenderAppSettingsView()
-				break;
-			case NavView.NuGetUpdates:
-				@RenderNuGetUpdatesView()
 				break;
 			case NavView.Issues:
 				@* Embedded so it drops its own page header. Organization is required: without it the
@@ -3369,107 +3345,6 @@ else
 			</div>
 		</div>
 	};
-
-	private RenderFragment RenderNuGetUpdatesView() => __builder =>
-	{
-		<div class="nuget-updates-view">
-			<div class="nuget-updates-header">
-				<h2><i class="fas fa-arrow-circle-up"></i> NuGet Package Updates</h2>
-				@if (NuGetUpdates.LastCheckedUtc.HasValue)
-				{
-					<span class="nuget-updates-last-checked">
-						Last checked: @NuGetUpdates.LastCheckedUtc.Value.ToLocalTime().ToString("HH:mm dd MMM")
-					</span>
-				}
-			</div>
-
-			@if (NuGetUpdates.IsChecking)
-			{
-				<div class="nuget-updates-loading">
-					<span class="spinner"></span> Scanning repositories for updates...
-				</div>
-			}
-			else if (NuGetUpdates.Groups is null)
-			{
-				<div class="nuget-updates-empty">
-					<i class="fas fa-search fa-2x"></i>
-					<p>Click <strong>Check for Updates</strong> in the toolbar to scan all assessed repositories.</p>
-				</div>
-			}
-			else if (NuGetUpdates.Groups.Count == 0)
-			{
-				<div class="nuget-updates-empty">
-					<i class="fas fa-check-circle fa-2x" style="color: var(--success);"></i>
-					<p>All packages are up to date.</p>
-				</div>
-			}
-			else
-			{
-				<div class="summary-strip">
-					<div class="summary-card">
-						<div class="label">Updates Available</div>
-						<div class="value blue">@NuGetUpdates.Groups.Count</div>
-					</div>
-					<div class="summary-card">
-						<div class="label">Repos Affected</div>
-						<div class="value amber">@NuGetUpdates.Groups.SelectMany(g => g.AffectedRepoNames).Distinct().Count()</div>
-					</div>
-				</div>
-
-				<div class="update-groups-list">
-					@foreach (var group in NuGetUpdates.Groups.OrderByDescending(g => g.AffectedCount).ThenBy(g => g.PackageId))
-					{
-						var groupKey = $"{group.PackageId}@{group.CurrentVersion}";
-						var isExpanded = _expandedUpdateGroups.Contains(groupKey);
-						<div class="update-group-card">
-							<div class="update-group-header" @onclick="() => ToggleUpdateGroup(groupKey)">
-								<div class="update-group-info">
-									<span class="update-package-name">@group.PackageId</span>
-									<span class="update-version-arrow">
-										<span class="version-from">@group.CurrentVersion</span>
-										<i class="fas fa-long-arrow-alt-right"></i>
-										<span class="version-to">@group.LatestVersion</span>
-									</span>
-									<span class="update-repo-count badge">
-										@group.AffectedCount @(group.AffectedCount == 1 ? "repo" : "repos")
-									</span>
-								</div>
-								<div class="update-group-actions">
-									<button class="btn btn-sm btn-primary"
-											disabled="true"
-											title="Apply this update to all affected repositories (not yet implemented)"
-											@onclick:stopPropagation="true">
-										<i class="fas fa-play"></i> Apply All
-									</button>
-									<i class="fas @(isExpanded ? "fa-chevron-up" : "fa-chevron-down") update-chevron"></i>
-								</div>
-							</div>
-							@if (isExpanded)
-							{
-								<div class="update-group-repos">
-									@foreach (var repoName in group.AffectedRepoNames.OrderBy(r => r))
-									{
-										<div class="update-repo-row">
-											<i class="fas fa-code-branch"></i>
-											<span>@repoName</span>
-										</div>
-									}
-								</div>
-							}
-						</div>
-					}
-				</div>
-			}
-		</div>
-	};
-
-	private void ToggleUpdateGroup(string key)
-	{
-		if (!_expandedUpdateGroups.Add(key))
-		{
-			_expandedUpdateGroups.Remove(key);
-		}
-	}
 
 	// === Dashboard methods ===
 
