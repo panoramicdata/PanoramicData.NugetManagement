@@ -1,3 +1,5 @@
+using System.Xml;
+using System.Xml.Linq;
 using Microsoft.Extensions.Options;
 using NuGet.Common;
 using NuGet.Protocol;
@@ -67,7 +69,7 @@ public class NuGetDiscoveryService
 
 			foreach (var result in batch)
 			{
-				var repoUrl = ExtractRepositoryUrl(result);
+				var repoUrl = await ResolveRepositoryUrlAsync(result, cancellationToken).ConfigureAwait(false);
 				results.Add(new NuGetPackageInfo
 				{
 					PackageId = result.Identity.Id,
@@ -124,15 +126,69 @@ public class NuGetDiscoveryService
 		}
 	}
 
-	private static string? ExtractRepositoryUrl(IPackageSearchMetadata metadata)
+	/// <summary>
+	/// Where a package's source actually lives.
+	/// </summary>
+	/// <remarks>
+	/// The nuspec's <c>repository</c> element first, because that is the publisher saying where the
+	/// source is. <c>projectUrl</c> is a documentation link and need not be the source at all: it is
+	/// how PanoramicData.EPPlus — whose nuspec correctly declares
+	/// <c>panoramicdata/PanoramicData.EPPlus</c> — was governed as <c>rimland/EPPlus</c>, the upstream
+	/// it was forked from, for seven remediation runs.
+	///
+	/// The search API does not carry repository metadata, so the nuspec is fetched directly. One small
+	/// request per package, during discovery only.
+	/// </remarks>
+	private async Task<string?> ResolveRepositoryUrlAsync(
+		IPackageSearchMetadata metadata,
+		CancellationToken cancellationToken)
 	{
-		var projectUrl = metadata.ProjectUrl?.ToString();
-		if (projectUrl is not null && projectUrl.Contains("github.com", StringComparison.OrdinalIgnoreCase))
+		var declared = await ReadRepositoryUrlFromNuspecAsync(
+			metadata.Identity.Id,
+			metadata.Identity.Version.ToNormalizedString(),
+			cancellationToken).ConfigureAwait(false);
+
+		if (IsGitHubUrl(declared))
 		{
-			return projectUrl;
+			return declared;
 		}
 
-		return null;
+		// No declaration to go on: fall back to the project link, which is right more often than not
+		// and is all there was before.
+		var projectUrl = metadata.ProjectUrl?.ToString();
+		return IsGitHubUrl(projectUrl) ? projectUrl : null;
+	}
+
+	private static bool IsGitHubUrl(string? url)
+		=> url is not null && url.Contains("github.com", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Reads the <c>repository</c> URL from a package's nuspec, or null when it declares none.
+	/// </summary>
+	private async Task<string?> ReadRepositoryUrlFromNuspecAsync(
+		string packageId,
+		string version,
+		CancellationToken cancellationToken)
+	{
+		var id = packageId.ToLowerInvariant();
+		var url = $"https://api.nuget.org/v3-flatcontainer/{id}/{version.ToLowerInvariant()}/{id}.nuspec";
+
+		try
+		{
+			using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+			var nuspec = await client.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+
+			return XDocument.Parse(nuspec)
+				.Descendants()
+				.FirstOrDefault(element => string.Equals(element.Name.LocalName, "repository", StringComparison.OrdinalIgnoreCase))
+				?.Attribute("url")?.Value;
+		}
+		catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or XmlException)
+		{
+			// Not fatal: the caller falls back to the project link, exactly as before.
+			_logger.LogDebug(ex, "Could not read the nuspec for {PackageId} {Version}", packageId, version);
+			return null;
+		}
 	}
 
 	private static string? ExtractRepoOwner(string? repoUrl)
