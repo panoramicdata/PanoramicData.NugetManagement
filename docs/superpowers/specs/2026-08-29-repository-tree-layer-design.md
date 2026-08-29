@@ -215,3 +215,43 @@ otherwise refactored in this pass.
 
 `main` is under active concurrent development, including in the discovery code this touches. The
 branch is rebased onto `main` before merging.
+
+## Verified
+
+Real discovery run against nuget.org for `panoramicdata`, 2026-08-29:
+
+| | Estimated in this spec | Observed |
+|---|---|---|
+| Packages discovered | 106 | 106 |
+| Repository rows | ~98 | **81** |
+| Ungoverned packages | 7 | **10** |
+| Nuspec lookups failed | — | 0 |
+
+The estimate of ~98 was wrong, and wrong in the direction that matters: it was extrapolated from the
+eight packages that had failed to resolve, and so counted only the multi-package repositories visible
+among them. There are ten in the live estate, collapsing 25 packages into 10 rows:
+
+```
+Lifx.Api                    Lifx.Api, Lifx.Cli
+LogicMonitor.Api            LogicMonitor.Api, LogicMonitor.PowerShell
+magicsuite                  MagicSuite.Api, MagicSuite.Cli
+PanoramicData.Blazor        PanoramicData.Blazor, .Demo
+PanoramicData.ECharts       PanoramicData.ECharts, .BindingGenerator, .Samples, .Sandbox
+PanoramicData.HealthChecks  .BasicAuthentication, .BasicAuthentication.HashGenerator, .Core, .Versions
+PanoramicData.Maps          PanoramicData.Maps, .Abstractions, .Blazor
+PanoramicData.SheetMagic    PanoramicData.SheetMagic, .Benchmarks
+PanoramicData.SyslogServer  ExampleApp, PanoramicData.SyslogServer
+Passbolt.Api                Passbolt.Api, Passbolt.Cli
+```
+
+`ConnectWise.Manage.Api` now resolves to `panoramicdata/ConnectWise.Manage.Api` and is a governed
+repository row.
+
+The ten ungoverned packages each state an accurate reason: eight declare no GitHub repository (Harvest
+declares Bitbucket, which is correctly read as none), and `Vizor.ECharts.Net80` plus the two
+`PanoramicData.OData.*.Client` packages declare repositories under owners that are not ours.
+
+**On the resilience work:** every nuspec was read first time on this run, so the eight packages that
+had failed would have resolved today with or without the retry. What the change guarantees is not
+that they resolve — it is that the next failure is reported as a failure rather than recorded as a
+fact about a nuspec, and that a repository governed yesterday is not dropped because of it.

@@ -50,7 +50,10 @@ public class NuspecRepositoryResolver(
 		var id = packageId.ToLowerInvariant();
 		var url = $"https://api.nuget.org/v3-flatcontainer/{id}/{version.ToLowerInvariant()}/{id}.nuspec";
 
-		using var client = httpClientFactory.CreateClient(HttpClientName);
+		// Not disposed: the client is the factory's, and the handler behind it is pooled and shared.
+		// Disposing it is a no-op for the real factory but fatal to any that hands out a shared
+		// client, and taking ownership of something we did not create buys nothing either way.
+		var client = httpClientFactory.CreateClient(HttpClientName);
 
 		string? nuspec = null;
 		string? lastError = null;
