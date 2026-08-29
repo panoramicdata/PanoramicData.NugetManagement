@@ -15,6 +15,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public class NavTreeDataProvider : DataProviderBase<NavItem>
 {
 	private readonly DashboardCacheService _cache;
+	private readonly RegressionGuardService? _regressionGuard;
 	private readonly RuntimeSettingsService _runtimeSettings;
 	private readonly string _configuredOrganizationName;
 	private readonly ILogger<NavTreeDataProvider>? _logger;
@@ -26,9 +27,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		DashboardCacheService cache,
 		RuntimeSettingsService runtimeSettings,
 		IOptions<AppSettings> settings,
+		RegressionGuardService? regressionGuard = null,
 		ILogger<NavTreeDataProvider>? logger = null)
 	{
 		_cache = cache;
+		_regressionGuard = regressionGuard;
 		_runtimeSettings = runtimeSettings;
 		_configuredOrganizationName = settings.Value.NuGetOrganization;
 		_logger = logger;
@@ -228,9 +231,29 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	}
 
 	/// <summary>
+	/// The repositories whose build-guard state the user should look at, keyed by repository full
+	/// name. Verified, Queued and Building are absent: they are the states that need nobody.
+	/// </summary>
+	private Dictionary<string, GuardState> GuardStatesNeedingAttention()
+		=> _regressionGuard is null
+			? []
+			: _regressionGuard.Statuses
+				// Only a revert earns a mark on the tree. Everything else the guard does is an event —
+				// queued, building, verified, a build that was already failing — and events belong in
+				// the console, which narrates them as they happen. A revert is different in kind: it
+				// means work the user did has been taken away, and that must still be visible once the
+				// console has scrolled.
+				.Where(status => status.State is GuardState.RegressionReverted)
+				.GroupBy(status => status.RepositoryFullName, StringComparer.OrdinalIgnoreCase)
+				.ToDictionary(
+					group => group.Key,
+					group => group.OrderByDescending(status => status.UpdatedUtc).First().State,
+					StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
 	/// Adds the package → category → rule branch for one organisation.
 	/// </summary>
-	private static void AddPackageNodes(
+	private void AddPackageNodes(
 		List<NavItem> items,
 		string organization,
 		string reposKey,
@@ -240,6 +263,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		{
 			return;
 		}
+
+		var guardStates = GuardStatesNeedingAttention();
 
 		foreach (var row in visibleRows.OrderBy(r => r.PackageId, StringComparer.OrdinalIgnoreCase))
 		{
@@ -262,7 +287,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				IssueCount = pkgIssues,
 				HasErrors = pkgHasErrors,
 				HasWarnings = pkgHasWarnings,
-				IsWorkingTreeDirty = row.IsWorkingTreeClean == false
+				IsWorkingTreeDirty = row.IsWorkingTreeClean == false,
+				GuardStateNeedingAttention = row.RepositoryFullName is not null
+					&& guardStates.TryGetValue(row.RepositoryFullName, out var guardState)
+						? guardState
+						: null
 			});
 
 			// Category sub-nodes (only if assessed)

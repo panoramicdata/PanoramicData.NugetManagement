@@ -2,7 +2,6 @@
 @using PanoramicData.NugetManagement.Services
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
-@inject RegressionGuardService Guard
 @inject IJSRuntime JS
 
 
@@ -64,21 +63,6 @@
 				<strong>Standard version baseline updated</strong> from an observed repository — commit <code>action-versions.json</code> to roll this out to everyone:
 				@string.Join(", ", _bumps.Select(b => $"{b.Action} {b.From}→{b.To}"))
 			</span>
-		</div>
-	}
-
-	@if (Guard.Statuses.Count > 0)
-	{
-		<div class="guard-panel">
-			<div class="guard-head"><i class="fas fa-shield-halved"></i> Build guard — repositories we changed are built in the background; regressions we caused are auto-reverted</div>
-			@foreach (var s in Guard.Statuses)
-			{
-				<div class="node-row guard-row">
-					<span class="guard-badge guard-@s.State">@s.State</span>
-					<span class="repo-name">@s.RepositoryFullName</span>
-					<span class="muted repo-msg">@s.Message</span>
-				</div>
-			}
 		</div>
 	}
 
@@ -220,15 +204,6 @@
 	.summary { font-weight: 600; margin: .5rem auto 1rem; }
 	.repo-package { font-size: .75rem; padding: 0 .35rem; border-radius: 3px; background: rgba(128,128,128,.18); color: var(--bs-secondary-color, #aaa); }
 	.baseline-banner { display: flex; gap: .6rem; align-items: center; background: #1f3a2e; border: 1px solid #2e7d32; color: #d7f5df; padding: .6rem .8rem; border-radius: 6px; margin: .5rem auto 1rem; font-size: .9rem; }
-	.guard-panel { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: .5rem auto 1rem; overflow: hidden; }
-	.guard-head { padding: .4rem .6rem; background: var(--bs-tertiary-bg, rgba(128,128,128,.12)); font-weight: 600; font-size: .85rem; }
-	.guard-row { border-top: 1px solid var(--bs-border-color, #2a2a2a); font-size: .85rem; }
-	.guard-badge { font-size: .68rem; text-transform: uppercase; font-weight: 700; padding: .1rem .4rem; border-radius: 3px; color: #fff; white-space: nowrap; }
-	.guard-Queued, .guard-Building { background: #374151; }
-	.guard-Verified { background: #2e7d32; }
-	.guard-RegressionReverted { background: #b45309; }
-	.guard-BuildFailingNotOurs { background: #6b7280; }
-	.guard-Error { background: #b91c1c; }
 	.repo-filter { border: 1px solid var(--bs-border-color, #333); border-radius: 6px; margin: 1.5rem auto 1rem; overflow: hidden; }
 	.repo-checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .1rem .8rem; padding: .5rem .8rem; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--bs-border-color, #2a2a2a); }
 	.repo-check { display: flex; gap: .4rem; align-items: center; font-family: monospace; font-size: .82rem; cursor: pointer; }
@@ -338,7 +313,6 @@
 	protected override void OnInitialized()
 	{
 		LoadView();
-		Guard.StatusesChanged += OnGuardChanged;
 	}
 
 	/// <summary>
@@ -358,8 +332,6 @@
 			LoadView();
 		}
 	}
-
-	private void OnGuardChanged() => _ = InvokeAsync(StateHasChanged);
 
 	/// <summary>
 	/// Called as each repository's fix lands. Writes the freshly re-assessed row back to the cache and
@@ -416,7 +388,11 @@
 		_ = InvokeAsync(StateHasChanged);
 	}
 
-	public void Dispose() => Guard.StatusesChanged -= OnGuardChanged;
+	public void Dispose()
+	{
+		// Nothing to unsubscribe from: build-guard status is per repository, so it belongs on the
+		// Repositories tree rather than above every issue class (#66).
+	}
 
 	/// <summary>
 	/// Reduces the view to the focused category and/or rule. With the issue hierarchy now living in

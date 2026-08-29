@@ -40,6 +40,16 @@ public class NavItem
 	public string Organization { get; init; } = string.Empty;
 
 	/// <summary>
+	/// The build-guard state for this repository, when it is one the user should look at:
+	/// a reverted regression, a guard error, or a build that was already failing.
+	/// </summary>
+	/// <remarks>
+	/// Deliberately null for Verified, Queued and Building. Verified is the expected outcome, and a
+	/// hundred green ticks are exactly what hides the two rows that need someone.
+	/// </remarks>
+	public GuardState? GuardStateNeedingAttention { get; init; }
+
+	/// <summary>
 	/// Optional associated package ID for package-level nodes.
 	/// </summary>
 	public string? PackageId { get; init; }

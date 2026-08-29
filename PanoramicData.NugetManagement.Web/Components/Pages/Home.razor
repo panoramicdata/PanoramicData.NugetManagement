@@ -18,6 +18,7 @@
 @inject LocalFileSystemDataProvider FileSystemDataProvider
 @inject LocalRepoService LocalRepo
 @inject WorkQueueService WorkQueue
+@inject RegressionGuardService RegressionGuard
 @implements IDisposable
 
 <PageTitle>NuGet Governance</PageTitle>
@@ -99,6 +100,10 @@ else
 										<span class="nav-node-label @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
 											<i class="@GetNodeIconCss(node.Data)"></i>@node.Data?.Text
 										</span>
+										@if (node.Data?.GuardStateNeedingAttention is { } guardState)
+										{
+											<i class="fas @GuardMarkerIcon(guardState) nav-guard-marker" title="@GuardMarkerTooltip(guardState)"></i>
+										}
 										@if (ShouldSpinOrgNode(node.Data))
 										{
 											@* The only progress indicator in the tree, and it mirrors whichever button
@@ -901,6 +906,7 @@ else
 
 		_isAuthenticated = true;
 		WorkQueue.Changed += OnWorkQueueChanged;
+		RegressionGuard.StatusesChanged += OnGuardStatusesChanged;
 		_userName = httpContext.User.Identity.Name ?? "User";
 		_organizationName = SettingsOptions.Value.NuGetOrganization;
 		_accessToken = await httpContext.GetTokenAsync("access_token");
@@ -5070,6 +5076,86 @@ else
 
 	private void OnWorkQueueChanged() => _ = SafeStateHasChangedAsync();
 
+	// === Build guard ===
+
+	/// <summary>What the guard last told us about each repository, so only changes are narrated.</summary>
+	private readonly Dictionary<string, GuardState> _reportedGuardStates = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Narrates guard activity to the console as it happens, and rebuilds the tree when a repository
+	/// has been reverted.
+	/// </summary>
+	/// <remarks>
+	/// The guard is an event stream — queued, building, verified — and events belong in the console.
+	/// A revert is the exception: it means work the user did has been taken away, which must still be
+	/// visible after the console has scrolled, so that one state also marks the repository's node.
+	/// </remarks>
+	private void OnGuardStatusesChanged() => _ = InvokeAsync(async () =>
+	{
+		try
+		{
+			var reverted = false;
+
+			foreach (var status in RegressionGuard.Statuses)
+			{
+				if (_reportedGuardStates.TryGetValue(status.RepositoryFullName, out var reported)
+					&& reported == status.State)
+				{
+					continue;
+				}
+
+				_reportedGuardStates[status.RepositoryFullName] = status.State;
+				reverted |= status.State == GuardState.RegressionReverted;
+
+				var line = status.State switch
+				{
+					GuardState.Verified => $"🛡️ {status.RepositoryFullName}: build verified after our change.",
+					GuardState.RegressionReverted => $"↩️ {status.RepositoryFullName}: our change broke the build and has been reverted.",
+					GuardState.BuildFailingNotOurs => $"⚠️ {status.RepositoryFullName}: build was already failing before our change.",
+					GuardState.Error => $"⚠️ {status.RepositoryFullName}: the guard could not verify the build — {status.Message}",
+					_ => null
+				};
+
+				if (line is not null)
+				{
+					AppendConsole(line);
+				}
+			}
+
+			// Only a revert changes what the tree shows, and rebuilding it is not free.
+			if (reverted)
+			{
+				await ReloadTreePreservingExpansionAsync();
+			}
+			else
+			{
+				await SafeStateHasChangedAsync();
+			}
+		}
+		catch (ObjectDisposedException)
+		{
+			// The circuit has gone; nothing left to render.
+		}
+	});
+
+	/// <summary>
+	/// The icon for a guard state worth showing. Only states needing someone reach here — a verified
+	/// repository shows nothing, because a wall of green is what hides the rows that matter.
+	/// </summary>
+	private static string GuardMarkerIcon(GuardState state) => state switch
+	{
+		GuardState.RegressionReverted => "fa-rotate-left",
+		GuardState.BuildFailingNotOurs => "fa-triangle-exclamation",
+		_ => "fa-circle-exclamation"
+	};
+
+	private static string GuardMarkerTooltip(GuardState state) => state switch
+	{
+		GuardState.RegressionReverted => "Our change broke the build and was reverted",
+		GuardState.BuildFailingNotOurs => "This repository's build was already failing",
+		_ => "The build guard could not verify this repository"
+	};
+
 	/// <summary>
 	/// Re-renders, tolerating the circuit having gone away. Queued work outlives its component for as
 	/// long as it takes to unwind, and must not fail while doing so.
@@ -5812,6 +5898,7 @@ else
 		// dropped and a running one is cancelled, which reverts whatever it had half-applied. The
 		// running task itself outlives the component long enough to unwind and report completion.
 		WorkQueue.Changed -= OnWorkQueueChanged;
+		RegressionGuard.StatusesChanged -= OnGuardStatusesChanged;
 		WorkQueue.RemoveOwnedBy(this);
 		_autoRefreshTimer?.Dispose();
 		_treeFilterDebounce?.Dispose();

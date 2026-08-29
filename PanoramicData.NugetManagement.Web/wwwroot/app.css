@@ -1837,6 +1837,15 @@ i + .breadcrumb-link-text {
 }
 
 /* === Nav Footer === */
+/* === Build guard marker (repository nodes) === */
+/* Only states needing someone are rendered at all, so this is always worth the eye it draws. */
+.nav-guard-marker {
+    margin-left: 0.35rem;
+    font-size: 0.72rem;
+    color: var(--warning);
+    flex-shrink: 0;
+}
+
 /* === Work Queue (sidebar) === */
 /* Sits between the tree and the footer, and is rendered only when there is work outstanding. */
 .nav-queue {
