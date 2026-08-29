@@ -288,6 +288,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				HasErrors = pkgHasErrors,
 				HasWarnings = pkgHasWarnings,
 				IsWorkingTreeDirty = row.IsWorkingTreeClean == false,
+				RepositoryFullName = row.RepositoryFullName,
+				IsExcluded = _runtimeSettings.IsRepositoryExcluded(row.RepositoryFullName),
 				GuardStateNeedingAttention = row.RepositoryFullName is not null
 					&& guardStates.TryGetValue(row.RepositoryFullName, out var guardState)
 						? guardState

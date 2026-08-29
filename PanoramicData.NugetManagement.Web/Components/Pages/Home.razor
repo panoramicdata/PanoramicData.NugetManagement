@@ -97,12 +97,20 @@ else
 									NodeCollapsed="OnNavNodeCollapsed"
 									Ready="OnNavTreeReady">
 									<NodeTemplate Context="node">
-										<span class="nav-node-label @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
+										<span class="nav-node-label @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null) @(node.Data?.IsExcluded == true ? "nav-node-excluded" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
 											<i class="@GetNodeIconCss(node.Data)"></i>@node.Data?.Text
 										</span>
 										@if (node.Data?.GuardStateNeedingAttention is { } guardState)
 										{
 											<i class="fas @GuardMarkerIcon(guardState) nav-guard-marker" title="@GuardMarkerTooltip(guardState)"></i>
+										}
+										@if (node.Data?.RepositoryFullName is { Length: > 0 } repositoryFullName)
+										{
+											<span class="nav-org-actions">
+												<button type="button" class="nav-org-action-btn" title="@(node.Data.IsExcluded ? "Bring this repository back into governance" : "Exclude this repository from governance")" @onclick="() => ToggleRepositoryExcludedAsync(repositoryFullName, node.Data.IsExcluded)" @onclick:stopPropagation @onmousedown:stopPropagation>
+													<i class="fas @(node.Data.IsExcluded ? "fa-eye" : "fa-eye-slash")"></i>
+												</button>
+											</span>
 										}
 										@if (AffectedRepoCountFor(node.Data) is { } affected)
 										{
@@ -3542,7 +3550,10 @@ else
 			Cache.SetRows(_rows);
 
 			var github = CreateGitHubClient();
-			var assessable = _rows.Where(r => r.RepositoryFullName is not null).ToList();
+			var assessable = _rows
+				.Where(r => r.RepositoryFullName is not null)
+				.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
+				.ToList();
 
 			// Mark them pending before the tree is rebuilt, so the new list appears already showing a
 			// spinner per repository.
@@ -3951,6 +3962,7 @@ else
 	{
 		var assessable = _rows
 			.Where(r => r.RepositoryFullName is not null)
+			.Where(r => !RuntimeSettings.IsRepositoryExcluded(r.RepositoryFullName))
 			.Where(r => organization is null
 				|| string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))
 			.ToList();
@@ -5091,6 +5103,21 @@ else
 			&& item.View is NavView.IssueCategoryDetail or NavView.IssueRuleDetail
 				? item.AffectedRepoCount
 				: null;
+
+	/// <summary>
+	/// Excludes a repository from governance, or brings it back. Persisted immediately, because it is
+	/// a decision about the estate rather than a filter for this session — an excluded repository is
+	/// not assessed, not listed under any issue class, and not reachable by a bulk action.
+	/// </summary>
+	private async Task ToggleRepositoryExcludedAsync(string repositoryFullName, bool currentlyExcluded)
+	{
+		RuntimeSettings.SetRepositoryExcluded(repositoryFullName, !currentlyExcluded);
+		AppendConsole(currentlyExcluded
+			? $"👁️ {repositoryFullName} is governed again."
+			: $"🚫 {repositoryFullName} is excluded from governance.");
+
+		await ReloadTreePreservingExpansionAsync();
+	}
 
 	// === Build guard ===
 

@@ -1837,6 +1837,14 @@ i + .breadcrumb-link-text {
 }
 
 /* === Nav Footer === */
+/* === Excluded repositories === */
+/* Struck through and dimmed: an excluded repository is still listed, because that is where the
+   decision is taken back, but it must not read as governed. */
+.nav-node-excluded {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
 /* === Issue node counts === */
 /* The number of repositories still affected, so a run that fixed six of seven looks different from
    one that fixed none. */
