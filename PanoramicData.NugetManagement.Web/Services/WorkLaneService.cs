@@ -355,6 +355,49 @@ public sealed class WorkLaneService
 		}
 	}
 
+	/// <summary>
+	/// Everything outstanding, in a form that can be written to disk. A running item is recorded as
+	/// having been running so that it can be cleaned up rather than resumed.
+	/// </summary>
+	public IReadOnlyList<PersistedWorkItem> Snapshot()
+	{
+		lock (_lock)
+		{
+			return
+			[
+				.. _lanes.Values
+					.SelectMany(lane => lane.Items)
+					.Where(i => i.State is WorkItemState.Pending or WorkItemState.Running or WorkItemState.Cancelling)
+					.Select(i => new PersistedWorkItem(
+						i.Title,
+						i.Descriptor,
+						i.DedupKey,
+						i.Step,
+						i.ConsoleNodeKey,
+						i.State is WorkItemState.Running or WorkItemState.Cancelling))
+			];
+		}
+	}
+
+	/// <summary>
+	/// Puts saved work back into its lanes at startup. Nothing is resumed mid-run: an item that was
+	/// executing comes back pending and flagged, so the runner cleans its working tree first.
+	/// </summary>
+	/// <param name="items">What was saved.</param>
+	public void Restore(IReadOnlyList<PersistedWorkItem> items)
+	{
+		foreach (var saved in items)
+		{
+			Enqueue(
+				saved.Title,
+				saved.Descriptor,
+				saved.DedupKey,
+				saved.Step,
+				saved.ConsoleNodeKey,
+				wasInterrupted: saved.WasRunning);
+		}
+	}
+
 	private WorkLane GetOrAddLane(WorkDescriptor descriptor)
 	{
 		var key = descriptor.LaneKey;
