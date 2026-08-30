@@ -127,6 +127,22 @@ public class NavItem
 	/// the repository list is still being discovered/assessed).
 	/// </summary>
 	public bool IsBusy { get; init; }
+
+	/// <summary>
+	/// The queued work item this node represents, or null for every other kind of node.
+	/// </summary>
+	public string? WorkItemId { get; init; }
+
+	/// <summary>Where the work item has got to, for work-item nodes.</summary>
+	public WorkItemState? WorkItemState { get; init; }
+
+	/// <summary>The work item's progress line, e.g. "repo 8 of 47". Null until it reports some.</summary>
+	public string? WorkItemProgress { get; init; }
+
+	/// <summary>
+	/// The lane a work node covers, so its "stop everything" button knows what to clear.
+	/// </summary>
+	public string? LaneKey { get; init; }
 }
 
 /// <summary>

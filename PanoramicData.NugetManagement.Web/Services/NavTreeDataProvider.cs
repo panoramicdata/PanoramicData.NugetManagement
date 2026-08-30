@@ -16,6 +16,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 {
 	private readonly DashboardCacheService _cache;
 	private readonly RegressionGuardService? _regressionGuard;
+	private readonly WorkLaneService? _workLanes;
 	private readonly RuntimeSettingsService _runtimeSettings;
 	private readonly string _configuredOrganizationName;
 	private readonly ILogger<NavTreeDataProvider>? _logger;
@@ -28,10 +29,12 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		RuntimeSettingsService runtimeSettings,
 		IOptions<AppSettings> settings,
 		RegressionGuardService? regressionGuard = null,
+		WorkLaneService? workLanes = null,
 		ILogger<NavTreeDataProvider>? logger = null)
 	{
 		_cache = cache;
 		_regressionGuard = regressionGuard;
+		_workLanes = workLanes;
 		_runtimeSettings = runtimeSettings;
 		_configuredOrganizationName = settings.Value.NuGetOrganization;
 		_logger = logger;
@@ -78,6 +81,18 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <param name="ruleId">The rule identifier.</param>
 	public static string RuleKey(string repositoryFullName, string ruleId)
 		=> $"rule:{repositoryFullName}:{ruleId}";
+
+	/// <summary>Builds the key for a repository's "Work" container.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public static string WorkKey(string repositoryFullName) => $"work:{repositoryFullName}";
+
+	/// <summary>Builds the key for an organisation's "Work" container.</summary>
+	/// <param name="organization">The organisation.</param>
+	public static string OrgWorkKey(string organization) => $"work-org:{organization}";
+
+	/// <summary>Builds the key for one queued work item's node.</summary>
+	/// <param name="workItemId">The item's identifier.</param>
+	public static string WorkItemKey(string workItemId) => $"work-item:{workItemId}";
 
 	/// <summary>
 	/// The key of the always-expanded top-level container. Unlike the other container nodes it is
@@ -301,6 +316,15 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		items.AddRange(issuesItems);
 
+		AddWorkNodes(
+			items,
+			OrgWorkKey(organization),
+			orgKey,
+			$"org:{organization.ToLowerInvariant()}",
+			organization,
+			repositoryFullName: null,
+			sortOrder: 1);
+
 		AddRepositoryNodes(items, organization, reposKey, visibleRows);
 		AddNotGovernedNodes(items, organization, orgKey, ungovernedPackages);
 
@@ -432,6 +456,17 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				SortOrder = 0
 			});
 
+			AddWorkNodes(
+				items,
+				WorkKey(row.RepositoryFullName),
+				repoKey,
+				$"repo:{row.RepositoryFullName.ToLowerInvariant()}",
+				organization,
+				row.RepositoryFullName,
+				// Below Packages and above the categories: work is transient, and putting it first would
+				// move the nodes the user navigates by every time something is queued.
+				sortOrder: 1);
+
 			foreach (var package in row.Packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))
 			{
 				var packageStatus = PackageTagStatus(package.MatchesTag(row.LatestTag));
@@ -506,6 +541,68 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					});
 				}
 			}
+		}
+	}
+
+	/// <summary>
+	/// Adds a lane's "Work" container and one node per outstanding item, or nothing when the lane is
+	/// empty. An empty container would be a node to open and find nothing in.
+	/// </summary>
+	private void AddWorkNodes(
+		List<NavItem> items,
+		string workKey,
+		string parentKey,
+		string laneKey,
+		string organization,
+		string? repositoryFullName,
+		int sortOrder)
+	{
+		var laneItems = _workLanes?.ItemsFor(laneKey) ?? [];
+		if (laneItems.Count == 0)
+		{
+			return;
+		}
+
+		items.Add(new NavItem
+		{
+			Key = workKey,
+			Text = $"Work ({laneItems.Count})",
+			ParentKey = parentKey,
+			IconCss = "fas fa-list-check",
+			View = NavView.None,
+			Organization = organization,
+			RepositoryFullName = repositoryFullName,
+			LaneKey = laneKey,
+			IsLeaf = false,
+			SortOrder = sortOrder
+		});
+
+		for (var index = 0; index < laneItems.Count; index++)
+		{
+			var workItem = laneItems[index];
+
+			items.Add(new NavItem
+			{
+				Key = WorkItemKey(workItem.Id),
+				Text = workItem.Title,
+				ParentKey = workKey,
+				IconCss = workItem.State switch
+				{
+					Models.WorkItemState.Running => "fas fa-circle-notch fa-spin",
+					Models.WorkItemState.Cancelling => "fas fa-rotate-left fa-spin",
+					_ => "fas fa-clock"
+				},
+				View = NavView.None,
+				Organization = organization,
+				RepositoryFullName = repositoryFullName,
+				LaneKey = laneKey,
+				WorkItemId = workItem.Id,
+				WorkItemState = workItem.State,
+				WorkItemProgress = workItem.Progress,
+				IsLeaf = true,
+				// The lane's own order, not alphabetical: the queue's order is the information.
+				SortOrder = index
+			});
 		}
 	}
 
