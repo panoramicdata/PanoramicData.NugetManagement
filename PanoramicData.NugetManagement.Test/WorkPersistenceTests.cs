@@ -107,4 +107,40 @@ public class WorkPersistenceTests(ITestOutputHelper output) : TestWithOutput(out
 		new WorkQueueStore(_path, NullLogger<WorkQueueStore>.Instance).Load().Should().BeEmpty(
 			"a queue file that cannot be read must not stop the application starting");
 	}
+
+	[Fact]
+	public void Load_EmptyFile_IsEmptyRatherThanThrowing()
+	{
+		File.WriteAllText(_path, string.Empty);
+
+		new WorkQueueStore(_path, NullLogger<WorkQueueStore>.Instance).Load().Should().BeEmpty(
+			"a partially-written or truncated queue file must not stop the application starting");
+	}
+
+	[Fact]
+	public void Restore_RunningAndPendingItemSharingADedupKey_KeepsBoth()
+	{
+		var store = new WorkQueueStore(_path, NullLogger<WorkQueueStore>.Instance);
+		var service = new WorkLaneService();
+		var descriptor = WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo);
+
+		var first = service.Enqueue("Build", descriptor, "build", WorkflowStep.Build, "node");
+		service.TryStartNext(out _);
+
+		// This is the precondition the bug relied on: Enqueue's fold only matches PENDING items, so
+		// a second request sharing the running item's dedup key is legitimately queued rather than
+		// swallowed — asking again while the first pass is stale earns a fresh pass.
+		var second = service.Enqueue("Build", descriptor, "build", WorkflowStep.Build, "node");
+		first.Should().NotBeNull();
+		second.Should().NotBeNull("a request sharing a dedup key with a RUNNING item is not folded");
+
+		store.Save(service.Snapshot());
+
+		var restored = new WorkLaneService();
+		restored.Restore(store.Load());
+
+		var items = restored.ItemsFor($"repo:{Repo.ToLowerInvariant()}");
+		items.Should().HaveCount(2,
+			"work queued behind a running item must not be folded away by a restart");
+	}
 }

@@ -99,13 +99,19 @@ public sealed class WorkLaneService
 	/// <param name="step">The workflow step this work performs, or null when it is not one.</param>
 	/// <param name="consoleNodeKey">The console its output belongs to.</param>
 	/// <param name="wasInterrupted">Whether this item is being restored after the process stopped mid-run.</param>
+	/// <param name="foldDuplicates">
+	/// Whether a matching pending item should swallow this request. False when restoring a saved
+	/// queue: those items were already judged distinct when they were queued, and folding them now
+	/// would silently drop work the user is owed.
+	/// </param>
 	public WorkItem? Enqueue(
 		string title,
 		WorkDescriptor descriptor,
 		string dedupKey,
 		WorkflowStep? step,
 		string? consoleNodeKey,
-		bool wasInterrupted = false)
+		bool wasInterrupted = false,
+		bool foldDuplicates = true)
 	{
 		WorkItem item;
 
@@ -116,7 +122,7 @@ public sealed class WorkLaneService
 			// Folded against pending items only, and only within this lane: the running item may
 			// already be returning a stale picture, so asking again earns a fresh pass rather than
 			// being swallowed. Across lanes a shared key means two repositories, not one repeat.
-			if (lane.Items.Any(i => i.State == WorkItemState.Pending
+			if (foldDuplicates && lane.Items.Any(i => i.State == WorkItemState.Pending
 				&& string.Equals(i.DedupKey, dedupKey, StringComparison.Ordinal)))
 			{
 				return null;
@@ -388,13 +394,17 @@ public sealed class WorkLaneService
 	{
 		foreach (var saved in items)
 		{
+			// Deduplication is judged once, when a request is first made. A snapshot already reflects
+			// that judgement — a running item and a pending item sharing a dedup key were deliberately
+			// both kept — so replaying it must not re-run the fold and silently drop the second one.
 			Enqueue(
 				saved.Title,
 				saved.Descriptor,
 				saved.DedupKey,
 				saved.Step,
 				saved.ConsoleNodeKey,
-				wasInterrupted: saved.WasRunning);
+				wasInterrupted: saved.WasRunning,
+				foldDuplicates: false);
 		}
 	}
 
