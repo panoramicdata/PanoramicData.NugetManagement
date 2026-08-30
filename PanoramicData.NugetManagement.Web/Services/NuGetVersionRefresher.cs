@@ -16,6 +16,20 @@ public sealed class NuGetVersionRefresher
 	/// <summary>The most requests in flight at once. nuget.org is a shared service, not ours.</summary>
 	private const int _maximumConcurrency = 4;
 
+	/// <summary>
+	/// The most requests started per second. Concurrency alone does not bound request rate: four
+	/// slots that each complete in twenty milliseconds is two hundred requests a second at a service
+	/// nobody pays us to hammer, so the sweep is paced as well as capped.
+	/// </summary>
+	public const int DefaultRequestsPerSecond = 4;
+
+	private readonly TimeSpan _minimumRequestSpacing;
+
+	/// <summary>Serialises slot allocation so concurrent sweep tasks cannot claim the same instant.</summary>
+	private readonly Lock _paceLock = new();
+
+	private DateTimeOffset _nextRequestUtc = DateTimeOffset.MinValue;
+
 	private readonly NuGetVersionCache _cache;
 	private readonly Func<string, CancellationToken, Task<(string Version, DateTimeOffset Published)?>> _lookup;
 	private readonly TimeProvider _timeProvider;
@@ -28,16 +42,48 @@ public sealed class NuGetVersionRefresher
 	/// <param name="lookup">Reads a package's latest stable version and publication date.</param>
 	/// <param name="timeProvider">The clock used to stamp genuine changes.</param>
 	/// <param name="logger">The logger.</param>
+	/// <param name="requestsPerSecond">
+	/// The most requests to start per second; defaults to <see cref="DefaultRequestsPerSecond"/>.
+	/// </param>
 	public NuGetVersionRefresher(
 		NuGetVersionCache cache,
 		Func<string, CancellationToken, Task<(string Version, DateTimeOffset Published)?>> lookup,
 		TimeProvider timeProvider,
-		ILogger<NuGetVersionRefresher> logger)
+		ILogger<NuGetVersionRefresher> logger,
+		int requestsPerSecond = DefaultRequestsPerSecond)
 	{
+		ArgumentOutOfRangeException.ThrowIfLessThan(requestsPerSecond, 1);
+
 		_cache = cache;
 		_lookup = lookup;
 		_timeProvider = timeProvider;
 		_logger = logger;
+		_minimumRequestSpacing = TimeSpan.FromSeconds(1.0 / requestsPerSecond);
+	}
+
+	/// <summary>
+	/// Waits until this request's paced slot arrives, reserving the next one as it goes.
+	/// </summary>
+	/// <remarks>
+	/// Slot allocation is a read-then-write pair over shared state, so it is serialised; the wait
+	/// itself happens outside the lock, and uses the injected <see cref="TimeProvider"/> so a test
+	/// can prove the pacing without spending the seconds.
+	/// </remarks>
+	private async Task PaceAsync(CancellationToken cancellationToken)
+	{
+		TimeSpan wait;
+		lock (_paceLock)
+		{
+			var now = _timeProvider.GetUtcNow();
+			var slot = _nextRequestUtc > now ? _nextRequestUtc : now;
+			_nextRequestUtc = slot + _minimumRequestSpacing;
+			wait = slot - now;
+		}
+
+		if (wait > TimeSpan.Zero)
+		{
+			await Task.Delay(wait, _timeProvider, cancellationToken).ConfigureAwait(false);
+		}
 	}
 
 	/// <summary>
@@ -63,6 +109,8 @@ public sealed class NuGetVersionRefresher
 			await limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
 			try
 			{
+				await PaceAsync(cancellationToken).ConfigureAwait(false);
+
 				var latest = await _lookup(packageId, cancellationToken).ConfigureAwait(false);
 				if (latest is null)
 				{

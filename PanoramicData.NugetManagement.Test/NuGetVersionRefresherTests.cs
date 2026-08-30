@@ -68,7 +68,7 @@ public class NuGetVersionRefresherTests(ITestOutputHelper output) : TestWithOutp
 		await refresher.RefreshAsync(["Codacy.Api"], TestContext.Current.CancellationToken);
 
 		cache.TryGet("Codacy.Api", out var snapshot);
-		snapshot.LatestVersion.Should().Be("3.0.42", "a version known a minute ago beats no version at all");
+		snapshot!.LatestVersion.Should().Be("3.0.42", "a version known a minute ago beats no version at all");
 	}
 
 	[Fact]
@@ -84,12 +84,59 @@ public class NuGetVersionRefresherTests(ITestOutputHelper output) : TestWithOutp
 		cache.TryGet("Octokit", out _).Should().BeTrue();
 	}
 
+	[Fact]
+	public async Task TheRequestsPerSecondLimitShouldBeHonoured()
+	{
+		// Concurrency alone does not bound the request rate: four slots that each complete instantly
+		// is an unbounded stream of requests at a service nobody pays us to hammer. At two requests a
+		// second the sweep may start one straight away and the next only 500ms later.
+		var timeProvider = new FakeTimeProvider(_published);
+		var started = 0;
+		var refresher = new NuGetVersionRefresher(
+			new NuGetVersionCache(null),
+			(_, _) =>
+			{
+				Interlocked.Increment(ref started);
+				return Task.FromResult<(string, DateTimeOffset)?>(("1.0.0", _published));
+			},
+			timeProvider,
+			NullLogger<NuGetVersionRefresher>.Instance,
+			requestsPerSecond: 2);
+
+		var sweep = refresher.RefreshAsync(["A", "B", "C", "D"], TestContext.Current.CancellationToken);
+
+		await WaitForAsync(() => Volatile.Read(ref started) >= 1).ConfigureAwait(true);
+		await Task.Delay(50, TestContext.Current.CancellationToken).ConfigureAwait(true);
+		Volatile.Read(ref started).Should().Be(1, "the clock has not moved, so no second slot has arrived");
+
+		timeProvider.Advance(TimeSpan.FromMilliseconds(500));
+		await WaitForAsync(() => Volatile.Read(ref started) >= 2).ConfigureAwait(true);
+		await Task.Delay(50, TestContext.Current.CancellationToken).ConfigureAwait(true);
+		Volatile.Read(ref started).Should().Be(2, "half a second buys exactly one more request");
+
+		timeProvider.Advance(TimeSpan.FromSeconds(1));
+		await sweep.ConfigureAwait(true);
+
+		Volatile.Read(ref started).Should().Be(4, "the whole sweep completes once its slots have arrived");
+	}
+
+	private static async Task WaitForAsync(Func<bool> condition)
+	{
+		for (var attempt = 0; attempt < 500 && !condition(); attempt++)
+		{
+			await Task.Delay(10, TestContext.Current.CancellationToken).ConfigureAwait(false);
+		}
+	}
+
+	// The pacing gate waits on the refresher's own TimeProvider, so tests that are not about pacing
+	// use the real clock: a FakeTimeProvider nobody advances would leave the second request of every
+	// sweep waiting forever for its slot. The pacing test below advances a fake clock deliberately.
 	private static NuGetVersionRefresher Refresher(
 		NuGetVersionCache cache,
 		Func<string, CancellationToken, Task<(string, DateTimeOffset)?>> lookup)
 		=> new(
 			cache,
 			lookup,
-			new FakeTimeProvider(_published),
+			TimeProvider.System,
 			NullLogger<NuGetVersionRefresher>.Instance);
 }
