@@ -19,6 +19,35 @@ public sealed class WorkRunnerService(
 {
 	private readonly SemaphoreSlim _wake = new(0);
 
+	/// <summary>
+	/// <see cref="Environment.TickCount64"/> when the queue first changed without having been saved
+	/// since, or zero when the file on disk is current.
+	/// </summary>
+	/// <remarks>
+	/// Set once per dirty window and never pushed forward by later changes, so the pump saves within
+	/// <see cref="SaveDelayMilliseconds"/> of the <em>first</em> unsaved change however many follow it.
+	/// A trailing debounce would instead be reset by each one, and a sweep that enqueues hundreds of
+	/// items in a loop would postpone the save until the loop ended.
+	/// </remarks>
+	private long _queueDirtySinceTicks;
+
+	/// <summary>
+	/// How long unsaved queue changes may accumulate before the pump writes them.
+	/// </summary>
+	/// <remarks>
+	/// The queue file used to be rewritten synchronously on whichever thread raised the change —
+	/// which, for an enqueue, is the Blazor circuit. A forty-repository, twelve-rule sweep enqueues
+	/// some five hundred items in one loop, so that was five hundred indented-JSON serialisations and
+	/// blocking file writes of a growing list, on the UI thread, each one taking the lane lock that up
+	/// to twenty runner threads are already contending. The circuit visibly hung.
+	/// <para>
+	/// Persistence has to be current-ish, not current per item: what it protects is the pending queue
+	/// across a crash, and a quarter of a second of queueing is an acceptable thing to lose. Shutdown
+	/// still writes a final synchronous snapshot, so an orderly stop loses nothing at all.
+	/// </para>
+	/// </remarks>
+	private const int SaveDelayMilliseconds = 250;
+
 	/// <summary>Raised when an item finishes, so open circuits can refresh what it changed.</summary>
 	public event Action<WorkItem>? ItemCompleted;
 
@@ -43,7 +72,11 @@ public sealed class WorkRunnerService(
 		// Unsubscribed before the final save, so a queue change racing shutdown cannot trigger a
 		// second, overlapping save of a lanes snapshot that is itself being torn down.
 		lanes.QueueChanged -= OnQueueChanged;
-		store.Save(lanes.Snapshot());
+
+		// Unconditionally, not only when dirty: this is the write that makes an orderly shutdown lose
+		// nothing, whatever the pump did or did not get round to saving.
+		Interlocked.Exchange(ref _queueDirtySinceTicks, 0);
+		SaveQueue();
 		await base.StopAsync(cancellationToken).ConfigureAwait(false);
 	}
 
@@ -59,9 +92,28 @@ public sealed class WorkRunnerService(
 				_ = RunAsync(item);
 			}
 
+			// Saved here rather than from whoever raised the change, so that a circuit enqueueing in a
+			// loop is never the thread doing the writing, and so that a burst of changes costs one
+			// write instead of one write each.
+			var dirtySinceTicks = Interlocked.Read(ref _queueDirtySinceTicks);
+			if (dirtySinceTicks != 0 && Environment.TickCount64 - dirtySinceTicks >= SaveDelayMilliseconds)
+			{
+				// Cleared before the snapshot is taken, not after it is written: a change arriving
+				// during the write belongs to the next window, and clearing afterwards would drop it.
+				Interlocked.Exchange(ref _queueDirtySinceTicks, 0);
+				SaveQueue();
+				continue;
+			}
+
 			try
 			{
-				await _wake.WaitAsync(stoppingToken).ConfigureAwait(false);
+				// Bounded only while something is waiting to be saved. Idle, the pump sleeps until it
+				// is woken rather than polling for a save it knows is not due.
+				var timeout = dirtySinceTicks == 0
+					? Timeout.InfiniteTimeSpan
+					: TimeSpan.FromMilliseconds(SaveDelayMilliseconds);
+
+				await _wake.WaitAsync(timeout, stoppingToken).ConfigureAwait(false);
 			}
 			catch (OperationCanceledException)
 			{
@@ -70,9 +122,32 @@ public sealed class WorkRunnerService(
 		}
 	}
 
+	/// <summary>
+	/// Writes the queue, treating a failure as something to log rather than something to stop the pump.
+	/// </summary>
+	private void SaveQueue()
+	{
+		try
+		{
+			store.Save(lanes.Snapshot());
+		}
+		catch (Exception ex)
+		{
+			// The store already swallows its own IO failures; this is the belt to that braces, because
+			// an exception escaping here would fault the BackgroundService and, under the default
+			// StopHost behaviour, shut the web application down over a queue file.
+			logger.LogError(ex, "Failed to save the work queue.");
+		}
+	}
+
 	private void OnQueueChanged()
 	{
-		store.Save(lanes.Snapshot());
+		// Marked, not written. The queue file used to be rewritten synchronously right here — on the
+		// circuit thread, for every one of the hundreds of items a bulk sweep enqueues in a loop. The
+		// pump writes it instead, at most once per SaveDelayMilliseconds. CompareExchange rather than
+		// a plain store, so the window is timed from the first unsaved change and cannot be pushed
+		// out indefinitely by a stream of later ones.
+		Interlocked.CompareExchange(ref _queueDirtySinceTicks, Environment.TickCount64, 0);
 
 		// Released rather than set: a change while the pump is mid-claim must not be lost, or a lane
 		// would sit ready with nothing to wake it. This check-then-release is a wake-up hint, not a

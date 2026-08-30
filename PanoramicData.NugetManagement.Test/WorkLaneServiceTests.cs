@@ -223,4 +223,52 @@ public class WorkLaneServiceTests(ITestOutputHelper output) : TestWithOutput(out
 
 		raised.Should().Be(1);
 	}
+
+	[Fact]
+	public void Changed_SubscriberThrows_DoesNotEscapeAndTheOthersStillRun()
+	{
+		// A raise from TryStartNext runs inside the pump's claim loop, which is a BackgroundService:
+		// an escaping exception faults it and, under the default StopHost behaviour, shuts the web
+		// application down. The realistic thrower is a circuit disposed a moment ago — the event
+		// captures its invocation list before walking it, so an unsubscribed handler still runs, and
+		// touching its disposed timer throws ObjectDisposedException.
+		var service = NewService();
+		var reachedAfterTheThrower = false;
+		service.Changed += () => throw new ObjectDisposedException("Timer");
+		service.Changed += () => reachedAfterTheThrower = true;
+
+		var enqueue = () => Enqueue(service, RepoA);
+
+		enqueue.Should().NotThrow();
+		reachedAfterTheThrower.Should().BeTrue("one closed tab must not deprive the others of the event");
+	}
+
+	[Fact]
+	public void QueueChanged_SubscriberThrows_DoesNotEscape()
+	{
+		var service = NewService();
+		service.QueueChanged += () => throw new InvalidOperationException("boom");
+		Enqueue(service, RepoA);
+
+		var start = () => service.TryStartNext(out _);
+
+		start.Should().NotThrow();
+	}
+
+	[Fact]
+	public void Changed_SubscriberThrowsDuringCompletion_LaneIsStillFreed()
+	{
+		// Complete raises from RunAsync's finally. An exception escaping there would take
+		// ItemCompleted with it, so no circuit would ever refresh — while the lane state itself is
+		// already correct and has nothing left to unwind.
+		var service = NewService();
+		var item = Enqueue(service, RepoA);
+		service.TryStartNext(out _);
+		service.Changed += () => throw new ObjectDisposedException("Timer");
+
+		var complete = () => service.Complete(item, error: null);
+
+		complete.Should().NotThrow();
+		service.Lanes.Should().BeEmpty();
+	}
 }

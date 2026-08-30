@@ -18,9 +18,12 @@ public class WorkPersistenceTests(ITestOutputHelper output) : TestWithOutput(out
 
 	public void Dispose()
 	{
-		if (File.Exists(_path))
+		foreach (var file in new[] { _path, _path + ".tmp" })
 		{
-			File.Delete(_path);
+			if (File.Exists(file))
+			{
+				File.Delete(file);
+			}
 		}
 
 		GC.SuppressFinalize(this);
@@ -115,6 +118,64 @@ public class WorkPersistenceTests(ITestOutputHelper output) : TestWithOutput(out
 
 		new WorkQueueStore(_path, NullLogger<WorkQueueStore>.Instance).Load().Should().BeEmpty(
 			"a partially-written or truncated queue file must not stop the application starting");
+	}
+
+	[Fact]
+	public void Snapshot_ItemTheUserStopped_IsNotSaved()
+	{
+		// A Cancelling item is work the user has explicitly stopped; it is only still in its lane
+		// because it has yet to unwind. Saving it would resurrect it on the next start — reviving,
+		// with WasRunning set, the one outcome the user has already ruled out.
+		var service = ServiceWithBuildAndTestQueued();
+		service.TryStartNext(out var running);
+		service.Cancel(running.Id);
+
+		var snapshot = service.Snapshot();
+
+		snapshot.Should().ContainSingle("only the untouched pending item is still owed")
+			.Which.Descriptor.Kind.Should().Be(WorkKind.Test);
+	}
+
+	[Fact]
+	public void Save_LeavesNoTemporaryFileBehind()
+	{
+		// The save is written to a sibling and moved into place, because File.WriteAllText truncates
+		// before it fills: a process killed between the two leaves a file that parses as nothing, and
+		// Load — which must not throw on a file it cannot read — would then silently discard every
+		// pending item. Surviving a kill is the whole point of the store.
+		var store = new WorkQueueStore(_path, NullLogger<WorkQueueStore>.Instance);
+		store.Save(ServiceWithBuildAndTestQueued().Snapshot());
+
+		File.Exists(_path + ".tmp").Should().BeFalse();
+		store.Load().Should().HaveCount(2);
+	}
+
+	[Fact]
+	public void Save_OverAnExistingQueue_ReplacesItAtomically()
+	{
+		var store = new WorkQueueStore(_path, NullLogger<WorkQueueStore>.Instance);
+		store.Save(ServiceWithBuildAndTestQueued().Snapshot());
+
+		var replacement = new WorkLaneService();
+		replacement.Enqueue("Publish", WorkDescriptor.ForRepository(WorkKind.Publish, "panoramicdata", Repo), "publish", null, null);
+		store.Save(replacement.Snapshot());
+
+		store.Load().Should().ContainSingle().Which.Descriptor.Kind.Should().Be(WorkKind.Publish);
+	}
+
+	[Fact]
+	public void Save_AStaleTemporaryFileFromAKilledWrite_DoesNotStopTheNextSave()
+	{
+		// What a kill mid-write actually leaves behind: a truncated sibling. The real file is still
+		// whole — that is the point — and the next save must simply overwrite the sibling rather than
+		// failing because it is already there.
+		Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+		File.WriteAllText(_path + ".tmp", "[ { \"Title\": \"half-writ");
+
+		var store = new WorkQueueStore(_path, NullLogger<WorkQueueStore>.Instance);
+		store.Save(ServiceWithBuildAndTestQueued().Snapshot());
+
+		store.Load().Should().HaveCount(2);
 	}
 
 	[Fact]

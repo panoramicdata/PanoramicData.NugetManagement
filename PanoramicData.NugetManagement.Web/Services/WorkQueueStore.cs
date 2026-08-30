@@ -44,6 +44,15 @@ public sealed class WorkQueueStore(string path, ILogger<WorkQueueStore> logger)
 		"work-queue.json");
 
 	/// <summary>Writes the outstanding work, replacing whatever was there.</summary>
+	/// <remarks>
+	/// Written to a temporary file and then moved over the real one, because
+	/// <see cref="File.WriteAllText(string, string?)"/> truncates first and fills afterwards: a
+	/// process killed between the two leaves a file that parses as nothing, and
+	/// <see cref="Load"/> — which correctly refuses to throw on a file it cannot read — would then
+	/// silently discard every pending item. "Kill the process" is the exact scenario this store
+	/// exists to survive, and saves happen often enough for that window to be real. A move on the
+	/// same volume is atomic, so the file on disk is always either the previous save or this one.
+	/// </remarks>
 	/// <param name="items">What is outstanding.</param>
 	public void Save(IReadOnlyList<PersistedWorkItem> items)
 	{
@@ -53,7 +62,10 @@ public sealed class WorkQueueStore(string path, ILogger<WorkQueueStore> logger)
 			{
 				var directory = Path.GetDirectoryName(path)!;
 				Directory.CreateDirectory(directory);
-				File.WriteAllText(path, JsonSerializer.Serialize(items, _options));
+
+				var temporaryPath = path + ".tmp";
+				File.WriteAllText(temporaryPath, JsonSerializer.Serialize(items, _options));
+				File.Move(temporaryPath, path, overwrite: true);
 			}
 			catch (Exception ex)
 			{

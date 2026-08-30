@@ -437,6 +437,11 @@ public sealed class WorkLaneService(ILogger<WorkLaneService>? logger = null)
 	/// Everything outstanding, in a form that can be written to disk. A running item is recorded as
 	/// having been running so that it can be cleaned up rather than resumed.
 	/// </summary>
+	/// <remarks>
+	/// <see cref="WorkItemState.Cancelling"/> is deliberately excluded. It is work the user has
+	/// explicitly stopped and which is only still present because it has yet to unwind; saving it
+	/// would resurrect it on the next start, which is the one outcome the user has already ruled out.
+	/// </remarks>
 	public IReadOnlyList<PersistedWorkItem> Snapshot()
 	{
 		lock (_lock)
@@ -445,14 +450,14 @@ public sealed class WorkLaneService(ILogger<WorkLaneService>? logger = null)
 			[
 				.. _lanes.Values
 					.SelectMany(lane => lane.Items)
-					.Where(i => i.State is WorkItemState.Pending or WorkItemState.Running or WorkItemState.Cancelling)
+					.Where(i => i.State is WorkItemState.Pending or WorkItemState.Running)
 					.Select(i => new PersistedWorkItem(
 						i.Title,
 						i.Descriptor,
 						i.DedupKey,
 						i.Step,
 						i.ConsoleNodeKey,
-						i.State is WorkItemState.Running or WorkItemState.Cancelling))
+						i.State is WorkItemState.Running))
 			];
 		}
 	}
