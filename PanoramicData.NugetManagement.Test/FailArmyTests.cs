@@ -15,7 +15,16 @@ public class FailArmyTests : TestWithOutput
 	/// Rules that cannot be made to fail by the fixture's files, so they are excluded from the
 	/// "every applicable rule must fail" invariant:
 	/// <list type="bullet">
-	/// <item>PKG-06 depends on live nuget.org state — whether a newer minor version exists today.</item>
+	/// <item>
+	/// PKG-05, PKG-06 and PKG-07 judge a declared version against two committed stores: a
+	/// per-package published-date cache and an estate-learned floor. The fixture is a set of project
+	/// files only — it cannot supply either, and it must not be made to, since seeding one inside the
+	/// fixture would couple this test to Task 8's committed seed data rather than to the fixture's own
+	/// files. With no cache entry and no floor for any package the fixture declares, every package
+	/// reads as UNKNOWN, and unknown must never fail a repository. This is now a deterministic
+	/// property of "no data supplied", not — as it was for PKG-06 alone before these rules stopped
+	/// making network calls — a dependence on whatever nuget.org happens to report today.
+	/// </item>
 	/// <item>
 	/// PKG-11 would need the fixture's own published package to be deprecated on nuget.org, which
 	/// requires it to declare a PackageId naming a real deprecated package. META-01 requires the
@@ -35,7 +44,7 @@ public class FailArmyTests : TestWithOutput
 	// PKG-10 joins these because it is the precondition for the packaging rules rather than one of
 	// them: the fixture has to declare that it publishes something before those rules apply at all,
 	// and declaring it is exactly what PKG-10 asks for.
-	private static readonly string[] _unfailableRuleIds = ["PKG-06", "CI-10", "PKG-10", "PKG-11"];
+	private static readonly string[] _unfailableRuleIds = ["PKG-05", "PKG-06", "PKG-07", "CI-10", "PKG-10", "PKG-11"];
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="FailArmyTests"/> class.

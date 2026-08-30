@@ -78,6 +78,9 @@ public class NuGetVersionChecker
 	/// <param name="packageId">The NuGet package ID.</param>
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>The latest stable version string, or null if not found.</returns>
+	[Obsolete("Use GetLatestStableWithPublishedAsync instead. Governance measures freshness from a "
+		+ "release's publication date, so a version without one cannot be judged; this overload "
+		+ "drops it. Nothing in this repository calls it any more.")]
 	public async Task<string?> GetLatestStableVersionAsync(string packageId, CancellationToken cancellationToken = default)
 	{
 		try
@@ -112,12 +115,70 @@ public class NuGetVersionChecker
 	}
 
 	/// <summary>
+	/// Gets the latest stable version of a package together with the date it was published.
+	/// </summary>
+	/// <remarks>
+	/// The published date is what the freshness grace period is measured from, so that "you are 89
+	/// days behind a release" is a fact about the release rather than about when this tool first
+	/// happened to look. That keeps the verdict identical on every machine, and unaffected by a
+	/// wiped or freshly cloned cache.
+	/// </remarks>
+	/// <param name="packageId">The NuGet package ID.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>The version and its publication date, or null when neither can be read.</returns>
+	public async Task<(string Version, DateTimeOffset Published)?> GetLatestStableWithPublishedAsync(
+		string packageId,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var metadataResource = await _sourceRepository
+				.GetResourceAsync<PackageMetadataResource>(cancellationToken)
+				.ConfigureAwait(false);
+
+			if (metadataResource is null)
+			{
+				_logger.LogWarning("NuGet source does not provide package metadata; cannot check {PackageId}", packageId);
+				return null;
+			}
+
+			var metadata = await metadataResource.GetMetadataAsync(
+				packageId,
+				includePrerelease: false,
+				includeUnlisted: false,
+				new SourceCacheContext(),
+				NuGet.Common.NullLogger.Instance,
+				cancellationToken).ConfigureAwait(false);
+
+			var latest = metadata
+				.OrderByDescending(m => m.Identity.Version)
+				.FirstOrDefault();
+
+			// A package with no published date cannot be graced, so it is treated as unknown rather
+			// than defaulted to "published today" (which would grant a fresh grace period forever) or
+			// to the epoch (which would fail every repository immediately).
+			return latest?.Published is { } published
+				? (latest.Identity.Version.ToNormalizedString(), published)
+				: null;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to query NuGet for package {PackageId}", packageId);
+			return null;
+		}
+	}
+
+	/// <summary>
 	/// Checks whether the specified version string matches the latest stable version.
 	/// </summary>
 	/// <param name="packageId">The NuGet package ID.</param>
 	/// <param name="currentVersion">The current version string.</param>
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>A tuple of (IsLatest, LatestVersion).</returns>
+	[Obsolete("Use GetLatestStableWithPublishedAsync instead. This method returns IsLatest = true "
+		+ "when it cannot reach nuget.org — it guesses a pass out of a lookup failure, which is "
+		+ "exactly what the version-floor design forbids: an unknown upstream must be reported as "
+		+ "unknown, never assumed compliant. Nothing in this repository calls it any more.")]
 	public async Task<(bool IsLatest, string? LatestVersion)> IsLatestVersionAsync(
 		string packageId,
 		string currentVersion,
@@ -139,6 +200,10 @@ public class NuGetVersionChecker
 	/// <param name="currentVersion">The current declared version.</param>
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>The version status, or null if the package cannot be evaluated.</returns>
+	[Obsolete("Use GetLatestStableWithPublishedAsync instead, with NuGetVersionCache and "
+		+ "NuGetFloorCatalog for the verdict. This resolves \"latest\" live per package, which is "
+		+ "the per-reference round trip the version-floor design removed. Nothing in this repository "
+		+ "calls it any more.")]
 	public async Task<PackageVersionStatus?> GetVersionStatusAsync(
 		string packageId,
 		string currentVersion,

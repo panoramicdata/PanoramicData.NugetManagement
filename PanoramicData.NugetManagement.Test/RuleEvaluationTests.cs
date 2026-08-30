@@ -1347,8 +1347,9 @@ public class RuleEvaluationTests : TestWithOutput
 			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Example.Package\" Version=\"1.2.3\" /></ItemGroup></Project>"
 		});
 
-		var rule = new NuGetBuildLevelUpdatesRule((packageId, currentVersion, _) =>
-			Task.FromResult<PackageVersionStatus?>(new(packageId, currentVersion, "1.2.4", PackageUpdateLevel.Build)));
+		var cache = new NuGetVersionCache(null);
+		cache.Update("Example.Package", "1.2.4", DateTimeOffset.UtcNow.AddDays(-60), DateTimeOffset.UtcNow.AddDays(-60));
+		var rule = new NuGetBuildLevelUpdatesRule(cache, new NuGetFloorCatalog(null), TimeProvider.System);
 
 		var result = await rule.EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
@@ -1367,8 +1368,9 @@ public class RuleEvaluationTests : TestWithOutput
 			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Example.Package\" Version=\"1.2.3\" /></ItemGroup></Project>"
 		});
 
-		var rule = new NuGetMinorLevelUpdatesRule((packageId, currentVersion, _) =>
-			Task.FromResult<PackageVersionStatus?>(new(packageId, currentVersion, "1.3.0", PackageUpdateLevel.Minor)));
+		var cache = new NuGetVersionCache(null);
+		cache.Update("Example.Package", "1.3.0", DateTimeOffset.UtcNow.AddDays(-120), DateTimeOffset.UtcNow.AddDays(-120));
+		var rule = new NuGetMinorLevelUpdatesRule(cache, new NuGetFloorCatalog(null), TimeProvider.System);
 
 		var result = await rule.EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
@@ -1385,8 +1387,9 @@ public class RuleEvaluationTests : TestWithOutput
 			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"Example.Package\" Version=\"1.2.3\" /></ItemGroup></Project>"
 		});
 
-		var rule = new NuGetMajorLevelUpdatesRule((packageId, currentVersion, _) =>
-			Task.FromResult<PackageVersionStatus?>(new(packageId, currentVersion, "2.0.0", PackageUpdateLevel.Major)));
+		var cache = new NuGetVersionCache(null);
+		cache.Update("Example.Package", "2.0.0", DateTimeOffset.UtcNow.AddDays(-400), DateTimeOffset.UtcNow.AddDays(-400));
+		var rule = new NuGetMajorLevelUpdatesRule(cache, new NuGetFloorCatalog(null), TimeProvider.System);
 
 		var result = await rule.EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
