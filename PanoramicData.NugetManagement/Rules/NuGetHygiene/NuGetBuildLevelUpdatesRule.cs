@@ -16,11 +16,16 @@ public sealed class NuGetBuildLevelUpdatesRule : NuGetPackageUpdateRuleBase
 	}
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="NuGetBuildLevelUpdatesRule"/> class.
+	/// Initializes a new instance with explicit stores and clock, for tests.
 	/// </summary>
-	/// <param name="versionStatusResolver">Resolves the latest version status for a package.</param>
-	public NuGetBuildLevelUpdatesRule(Func<string, string, CancellationToken, Task<PackageVersionStatus?>> versionStatusResolver)
-		: base(versionStatusResolver)
+	/// <param name="cache">The committed upstream snapshot.</param>
+	/// <param name="floors">The estate-learned floors.</param>
+	/// <param name="timeProvider">The clock the grace period is measured against.</param>
+	public NuGetBuildLevelUpdatesRule(
+		NuGetVersionCache cache,
+		NuGetFloorCatalog floors,
+		TimeProvider timeProvider)
+		: base(cache, floors, timeProvider)
 	{
 	}
 
@@ -38,4 +43,7 @@ public sealed class NuGetBuildLevelUpdatesRule : NuGetPackageUpdateRuleBase
 
 	/// <inheritdoc />
 	protected override string UpdateLevelDisplayName => "build-level";
+
+	/// <inheritdoc />
+	protected override int GraceDays => 30;
 }

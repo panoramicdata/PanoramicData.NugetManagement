@@ -1,30 +1,54 @@
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
+using NuGet.Versioning;
 
 namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
 /// Base class for rules that enforce NuGet package freshness by semantic update level.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Asks two questions. Are you behind the estate — a version some repository of ours already runs?
+/// That fails immediately, because it is a fact about us and somebody has already proven it works.
+/// Are you behind nuget.org? That fails only after a grace period measured from the release's own
+/// publication date, so drift still has consequences without handing the verdict to whoever
+/// published this morning.
+/// </para>
+/// <para>
+/// Neither question touches the network. Resolving "latest" live made an assessment depend on what
+/// strangers published that day, and turned repositories red without a line of code changing.
+/// </para>
+/// </remarks>
 public abstract class NuGetPackageUpdateRuleBase : RuleBase
 {
-	private readonly Func<string, string, CancellationToken, Task<PackageVersionStatus?>> _versionStatusResolver;
+	private readonly NuGetVersionCache _cache;
+	private readonly NuGetFloorCatalog _floors;
+	private readonly TimeProvider _timeProvider;
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="NuGetPackageUpdateRuleBase"/> class.
+	/// Initializes a new instance using the shared stores. This is the constructor
+	/// <see cref="RuleRegistry"/> uses, via <c>Activator.CreateInstance</c>.
 	/// </summary>
 	protected NuGetPackageUpdateRuleBase()
-		: this(new NuGetVersionChecker().GetVersionStatusAsync)
+		: this(NuGetVersionCache.Default, NuGetFloorCatalog.Default, TimeProvider.System)
 	{
 	}
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="NuGetPackageUpdateRuleBase"/> class.
+	/// Initializes a new instance with explicit stores and clock, for tests.
 	/// </summary>
-	/// <param name="versionStatusResolver">Resolves the latest version status for a package.</param>
-	protected NuGetPackageUpdateRuleBase(Func<string, string, CancellationToken, Task<PackageVersionStatus?>> versionStatusResolver)
+	/// <param name="cache">The committed upstream snapshot.</param>
+	/// <param name="floors">The estate-learned floors.</param>
+	/// <param name="timeProvider">The clock the grace period is measured against.</param>
+	protected NuGetPackageUpdateRuleBase(
+		NuGetVersionCache cache,
+		NuGetFloorCatalog floors,
+		TimeProvider timeProvider)
 	{
-		_versionStatusResolver = versionStatusResolver;
+		_cache = cache;
+		_floors = floors;
+		_timeProvider = timeProvider;
 	}
 
 	/// <inheritdoc />
@@ -40,63 +64,100 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase
 	/// </summary>
 	protected abstract string UpdateLevelDisplayName { get; }
 
+	/// <summary>
+	/// Gets how long a published release may go un-adopted before it becomes a failure.
+	/// </summary>
+	protected abstract int GraceDays { get; }
+
 	/// <inheritdoc />
-	public override async Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
+	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
 		var packageReferences = PackageReferenceScanner.Scan(context);
 		if (packageReferences.Count == 0)
 		{
-			return Pass("No explicit NuGet package versions were found to evaluate.");
+			return Task.FromResult(Pass("No explicit NuGet package versions were found to evaluate."));
 		}
 
-		var matches = new List<PackageVersionFinding>();
-		foreach (var packageReference in packageReferences)
+		var behindEstate = new List<string>();
+		var behindUpstream = new List<string>();
+		var pending = new List<string>();
+		var now = _timeProvider.GetUtcNow();
+
+		foreach (var reference in packageReferences)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 
-			var status = await _versionStatusResolver(packageReference.PackageId, packageReference.CurrentVersion, cancellationToken).ConfigureAwait(false);
-			if (status is null || status.UpdateLevel != TargetUpdateLevel)
+			// Raises the floor for subsequent runs only; this run's floor was frozen at load.
+			_floors.Observe(reference.PackageId, reference.CurrentVersion, context.FullName);
+
+			if (!NuGetVersion.TryParse(reference.CurrentVersion, out var current))
 			{
 				continue;
 			}
 
-			matches.Add(new PackageVersionFinding(
-				packageReference.FilePath,
-				packageReference.PackageId,
-				packageReference.VersionKind,
-				status.CurrentVersion,
-				status.LatestVersion));
+			// Consistency: behind a version the estate already runs.
+			var floor = _floors.GetFloor(reference.PackageId);
+			if (floor is not null
+				&& NuGetVersion.TryParse(floor, out var floorVersion)
+				&& NuGetVersionChecker.ClassifyUpdateLevel(current, floorVersion) == TargetUpdateLevel)
+			{
+				behindEstate.Add($"{reference.PackageId} {current.ToNormalizedString()} → {floor} ({reference.FilePath})");
+				continue;
+			}
+
+			// Freshness: behind nuget.org for longer than this level's grace.
+			if (!_cache.TryGet(reference.PackageId, out var snapshot)
+				|| !NuGetVersion.TryParse(snapshot.LatestVersion, out var latest)
+				|| NuGetVersionChecker.ClassifyUpdateLevel(current, latest) != TargetUpdateLevel)
+			{
+				continue;
+			}
+
+			var age = now - snapshot.Published;
+			var entry = $"{reference.PackageId} {current.ToNormalizedString()} → {snapshot.LatestVersion} ({reference.FilePath})";
+
+			if (age.TotalDays > GraceDays)
+			{
+				behindUpstream.Add($"{entry}, published {age.Days} days ago");
+			}
+			else
+			{
+				pending.Add(entry);
+			}
 		}
 
-		if (matches.Count == 0)
+		if (behindEstate.Count == 0 && behindUpstream.Count == 0)
 		{
-			return Pass($"No {UpdateLevelDisplayName} NuGet package updates are available.");
+			// Drift inside the grace period is always reported, so it is visible before it is a failure.
+			return Task.FromResult(pending.Count == 0
+				? Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue.")
+				: Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue. Available within the {GraceDays}-day grace period: {string.Join("; ", pending)}"));
 		}
 
-		var orderedMatches = matches
-			.OrderBy(match => match.PackageId, StringComparer.OrdinalIgnoreCase)
-			.ThenBy(match => match.FilePath, StringComparer.OrdinalIgnoreCase)
-			.ToList();
+		var messages = new List<string>();
+		if (behindEstate.Count > 0)
+		{
+			messages.Add($"behind the estate: {string.Join("; ", behindEstate)}");
+		}
 
-		return Fail(
-			$"The following NuGet packages have {UpdateLevelDisplayName} updates available: {string.Join("; ", orderedMatches.Select(FormatFinding))}",
+		if (behindUpstream.Count > 0)
+		{
+			messages.Add($"overdue against nuget.org: {string.Join("; ", behindUpstream)}");
+		}
+
+		return Task.FromResult(Fail(
+			$"The following NuGet packages have {UpdateLevelDisplayName} updates outstanding — {string.Join(", ", messages)}",
 			new RuleAdvisory
 			{
-				Summary = $"Update packages with {UpdateLevelDisplayName} updates to their latest stable versions.",
-				Detail = $"One or more explicit NuGet package versions are behind the latest stable version on nuget.org by a {UpdateLevelDisplayName} update. Update the listed package versions in `Directory.Packages.props` or the affected project files.",
+				Summary = $"Update the listed packages to at least the version the estate already uses, and adopt {UpdateLevelDisplayName} releases within {GraceDays} days.",
+				Detail = $"A package below the estate floor is behind a version another repository of ours already runs. A package past its {GraceDays}-day grace period has been behind a published release for too long. Update the listed versions in `Directory.Packages.props` or the affected project files.",
 				Data = new()
 				{
 					["remediation_type"] = "update_package_versions",
-					["updates"] = orderedMatches.Select(SerializeFinding).ToArray()
+					["behind_estate"] = behindEstate.ToArray(),
+					["behind_upstream"] = behindUpstream.ToArray(),
+					["grace_days"] = GraceDays
 				}
-			});
+			}));
 	}
-
-	private static string FormatFinding(PackageVersionFinding finding)
-		=> $"{finding.PackageId} {finding.CurrentVersion} → {finding.LatestVersion} ({finding.FilePath})";
-
-	private static string SerializeFinding(PackageVersionFinding finding)
-		=> string.Join('|', finding.FilePath, finding.PackageId, finding.VersionKind, finding.CurrentVersion, finding.LatestVersion);
-
-	private sealed record PackageVersionFinding(string FilePath, string PackageId, string VersionKind, string CurrentVersion, string LatestVersion);
 }
