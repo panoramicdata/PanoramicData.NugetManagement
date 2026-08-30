@@ -166,6 +166,7 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			localRepo,
 			runtimeSettings,
 			new WorkFanOut(lanes),
+			new GitHubTokenProvider(),
 			new HttpContextAccessor(),
 			NullLogger<WorkExecutors>.Instance);
 	}

@@ -22,8 +22,13 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// <param name="localRepo">Clones and the git operations performed directly on them.</param>
 /// <param name="runtimeSettings">User settings, chiefly which repositories are excluded.</param>
 /// <param name="fanOut">Turns a discovery's findings into one queued item per repository.</param>
+/// <param name="gitHubTokens">
+/// The signed-in user's GitHub token, handed forward by a circuit. Work runs with no request behind
+/// it, so this — not the accessor — is where the token comes from.
+/// </param>
 /// <param name="httpContextAccessor">
-/// The signed-in user's GitHub token, when there is a request to read it from.
+/// A fallback source for the same token, for the case where an executor is somehow invoked on a
+/// request thread. On the runner's own threads it always yields nothing.
 /// </param>
 /// <param name="logger">
 /// Where the work narrates itself. The UI console mirrors this category, so a line logged here
@@ -35,6 +40,7 @@ public sealed class WorkExecutors(
 	LocalRepoService localRepo,
 	RuntimeSettingsService runtimeSettings,
 	WorkFanOut fanOut,
+	GitHubTokenProvider gitHubTokens,
 	IHttpContextAccessor httpContextAccessor,
 	ILogger<WorkExecutors> logger)
 {
@@ -960,30 +966,39 @@ public sealed class WorkExecutors(
 	/// </summary>
 	/// <remarks>
 	/// The token belongs to a sign-in, and work no longer belongs to the browser tab that started
-	/// it: by the time a lane reaches an item there may be no request in flight at all. When the
-	/// token cannot be read the client is anonymous, which still answers for public repositories but
-	/// against a far smaller rate limit — so the shortfall is logged rather than passed off as
-	/// normal.
+	/// it: by the time a lane reaches an item there is no request in flight at all. The runner's
+	/// asynchronous flow starts at the host rather than at a request, so
+	/// <c>IHttpContextAccessor.HttpContext</c> is null here always, not merely sometimes — which is
+	/// why the token is taken from <see cref="GitHubTokenProvider"/>, where a circuit published it
+	/// while it still had a request to read it from. The accessor is kept only as a fallback for a
+	/// caller that does happen to be on a request thread.
+	/// <para>
+	/// With neither, the client is anonymous: it cannot see private repositories at all, and shares
+	/// the 60-per-hour anonymous rate limit — which one fanned-out organisation re-assessment
+	/// exhausts on its first pass. That is worth a warning rather than being passed off as normal.
+	/// </para>
 	/// </remarks>
 	private async Task<IGitHubClient> CreateGitHubClientAsync()
 	{
 		var client = new GitHubClient(new ProductHeaderValue("PanoramicData.NugetManagement.Web"));
 
-		var httpContext = httpContextAccessor.HttpContext;
-		if (httpContext is null)
+		var accessToken = gitHubTokens.AccessToken;
+
+		if (string.IsNullOrWhiteSpace(accessToken) && httpContextAccessor.HttpContext is { } httpContext)
+		{
+			accessToken = await httpContext.GetTokenAsync("access_token").ConfigureAwait(false);
+		}
+
+		if (string.IsNullOrWhiteSpace(accessToken))
 		{
 			logger.LogWarning(
-				"No signed-in GitHub token was available; falling back to anonymous GitHub access, "
-				+ "which cannot see private repositories and has a much smaller rate limit.");
+				"⚠️ No signed-in GitHub token is available, so this assessment will run anonymously: "
+				+ "private repositories cannot be read at all, and public ones share the 60-requests-per-hour "
+				+ "anonymous rate limit. Sign in and open the dashboard once to give the work runner a token.");
 			return client;
 		}
 
-		var accessToken = await httpContext.GetTokenAsync("access_token").ConfigureAwait(false);
-		if (accessToken is not null)
-		{
-			client.Credentials = new Credentials(accessToken);
-		}
-
+		client.Credentials = new Credentials(accessToken);
 		return client;
 	}
 }

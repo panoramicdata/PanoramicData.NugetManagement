@@ -22,6 +22,7 @@
 @inject WorkRunnerService Runner
 @inject RegressionGuardService RegressionGuard
 @inject UiConsoleLogSink LogSink
+@inject GitHubTokenProvider GitHubTokens
 @implements IDisposable
 
 <PageTitle>NuGet Governance</PageTitle>
@@ -979,6 +980,10 @@ else
 		_userName = httpContext.User.Identity.Name ?? "User";
 		_organizationName = SettingsOptions.Value.NuGetOrganization;
 		_accessToken = await httpContext.GetTokenAsync("access_token");
+
+		// Handed forward to the work runner, which has no request to read a token from: without this
+		// every assessment of a repository that is not cloned locally would go out anonymously.
+		GitHubTokens.Publish(_accessToken);
 		_categories = Enum.GetValues<AssessmentCategory>();
 		_localReposRoot = RuntimeSettings.LocalReposRoot;
 		_preferredIdeId = RuntimeSettings.PreferredIdeId;
@@ -4690,11 +4695,72 @@ else
 	/// </summary>
 	private readonly System.Timers.Timer _laneChangeDebounce = new(250) { AutoReset = false };
 
-	/// <summary>Restarts the debounce timer whenever a lane changes. Called from any thread.</summary>
+	/// <summary>
+	/// Whether this circuit has been disposed. Read by handlers that the lane service may still call
+	/// after <see cref="Dispose"/> has run, because an event raise captures its subscribers first.
+	/// </summary>
+	private volatile bool _disposed;
+
+	/// <summary>
+	/// <see cref="Environment.TickCount64"/> when the current burst of lane changes started, or zero
+	/// when no burst is in flight. Backs the maximum delay described on <see cref="OnLanesChanged"/>.
+	/// </summary>
+	/// <remarks>
+	/// A plain <c>long</c> read and written with <c>Interlocked</c> rather than a nullable timestamp:
+	/// it is written by up to twenty runner threads raising <c>Changed</c> and cleared by the timer's
+	/// own thread, and a torn read of a multi-word value would produce a burst age from nowhere.
+	/// </remarks>
+	private long _laneChangeBurstStartedTicks;
+
+	/// <summary>
+	/// The longest the tree may go without rebuilding while lane changes keep arriving.
+	/// </summary>
+	/// <remarks>
+	/// A pure trailing debounce is not enough on its own. <c>dotnet build</c> streams output
+	/// continuously, and every line raises <c>Changed</c> through <c>ReportProgress</c>, so with even
+	/// one build running the 250 ms window never closes — for the whole 30-120 seconds of the build
+	/// the tree would never rebuild, newly queued items would not appear, finished ones would not
+	/// disappear, and the lane flags would stay stale. With twenty lanes there is essentially always
+	/// such a burst. So the burst is capped: it collapses changes as before, but never withholds a
+	/// rebuild for longer than this.
+	/// </remarks>
+	private const long LaneChangeMaxDelayMilliseconds = 2000;
+
+	/// <summary>
+	/// Restarts the debounce timer whenever a lane changes, unless the current burst has already been
+	/// running for <see cref="LaneChangeMaxDelayMilliseconds"/>, in which case the pending rebuild is
+	/// left to fire. Called from any thread — including, thanks to the invocation list being captured
+	/// before it is walked, after this component has been disposed.
+	/// </summary>
 	private void OnLanesChanged()
 	{
-		_laneChangeDebounce.Stop();
-		_laneChangeDebounce.Start();
+		// A raise already in flight when Dispose() ran still reaches this handler: the event captures
+		// its subscribers before calling them, so unsubscribing does not recall a call already made.
+		// Touching the timer after Dispose() disposed it throws ObjectDisposedException, which — raised
+		// from the runner's claim loop — would fault the hosted service and stop the web application.
+		if (_disposed)
+		{
+			return;
+		}
+
+		try
+		{
+			var now = Environment.TickCount64;
+			var startedTicks = Interlocked.CompareExchange(ref _laneChangeBurstStartedTicks, now, 0);
+			if (startedTicks != 0 && now - startedTicks >= LaneChangeMaxDelayMilliseconds)
+			{
+				// Left alone deliberately: the timer is already counting down towards a rebuild this
+				// burst has waited long enough for, and restarting it would push that rebuild out again.
+				return;
+			}
+
+			_laneChangeDebounce.Stop();
+			_laneChangeDebounce.Start();
+		}
+		catch (ObjectDisposedException)
+		{
+			// Disposal raced the raise. Nothing left to render into, and nothing to report.
+		}
 	}
 
 	/// <summary>
@@ -4702,12 +4768,19 @@ else
 	/// and re-render are hopped back onto the circuit via <c>InvokeAsync</c>.
 	/// </summary>
 	private void OnLaneChangeDebounceElapsed(object? sender, System.Timers.ElapsedEventArgs e)
-		=> _ = InvokeAsync(async () =>
+	{
+		// The burst ends here, so the next change starts a fresh maximum-delay window. Cleared before
+		// the reload rather than after it: changes arriving while the reload runs belong to the next
+		// burst, not to the one this rebuild is already satisfying.
+		Interlocked.Exchange(ref _laneChangeBurstStartedTicks, 0);
+
+		_ = InvokeAsync(async () =>
 		{
 			RefreshLaneFlagsSnapshot();
 			await ReloadTreePreservingExpansionAsync();
 			await SafeStateHasChangedAsync();
 		});
+	}
 
 	/// <summary>
 	/// Refreshes <see cref="_isLoading"/>, <see cref="_isDiscovering"/>, <see cref="_busyOrganization"/>,
@@ -4772,6 +4845,16 @@ else
 		{
 			_rows = Cache.GetCachedRows() ?? _rows;
 			RefreshLaneFlagsSnapshot();
+
+			// The work bodies no longer write to the clipboard or open an IDE — they cannot, running
+			// without a browser attached — so the prompt they generate arrives here instead, on the
+			// item. Routed into the UI state of the node the work's console belongs to, which is
+			// exactly where the toolbar's copy button reads it from: without this the prompt would be
+			// generated, stored and never seen, and the user would have lost the auto-copy for nothing.
+			if (item.GeneratedPrompt is { Length: > 0 } generatedPrompt)
+			{
+				GetOrCreateNodeUiState(item.ConsoleNodeKey ?? _selectedNodeKey).LastPromptText = generatedPrompt;
+			}
 
 			if (item.State is not (WorkItemState.Cancelled or WorkItemState.Cancelling)
 				&& item.Step is { } step
@@ -5664,6 +5747,11 @@ else
 
 	public void Dispose()
 	{
+		// Set before anything is unsubscribed or disposed, because unsubscribing does not recall a
+		// raise already in flight: a handler whose invocation list was captured a moment ago still
+		// runs, and must find this flag set rather than a disposed timer.
+		_disposed = true;
+
 		// Work itself now belongs to the application, not this circuit: closing the tab must not
 		// cancel a lane, only stop this circuit listening to it.
 		Lanes.Changed -= OnLanesChanged;

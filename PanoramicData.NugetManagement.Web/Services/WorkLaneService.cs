@@ -16,7 +16,11 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// The service coordinates but does not execute. <see cref="WorkRunnerService"/> pumps it.
 /// </para>
 /// </remarks>
-public sealed class WorkLaneService
+/// <param name="logger">
+/// Where a throwing subscriber is reported. Optional so that a test can build a lane service without
+/// a logging stack; the application always supplies one.
+/// </param>
+public sealed class WorkLaneService(ILogger<WorkLaneService>? logger = null)
 {
 	private readonly Lock _lock = new();
 	private readonly Dictionary<string, WorkLane> _lanes = new(StringComparer.Ordinal);
@@ -157,8 +161,8 @@ public sealed class WorkLaneService
 			lane.Items.Add(item);
 		}
 
-		Changed?.Invoke();
-		QueueChanged?.Invoke();
+		RaiseChanged();
+		RaiseQueueChanged();
 		return item;
 	}
 
@@ -198,8 +202,8 @@ public sealed class WorkLaneService
 			item = head;
 		}
 
-		Changed?.Invoke();
-		QueueChanged?.Invoke();
+		RaiseChanged();
+		RaiseQueueChanged();
 		return true;
 	}
 
@@ -223,7 +227,7 @@ public sealed class WorkLaneService
 			item.Progress = progress;
 		}
 
-		Changed?.Invoke();
+		RaiseChanged();
 	}
 
 	/// <summary>
@@ -257,8 +261,8 @@ public sealed class WorkLaneService
 			}
 		}
 
-		Changed?.Invoke();
-		QueueChanged?.Invoke();
+		RaiseChanged();
+		RaiseQueueChanged();
 	}
 
 	/// <summary>
@@ -273,8 +277,8 @@ public sealed class WorkLaneService
 			CancelLocked(id);
 		}
 
-		Changed?.Invoke();
-		QueueChanged?.Invoke();
+		RaiseChanged();
+		RaiseQueueChanged();
 	}
 
 	/// <summary>Removes a pending item. A running item is left to <see cref="Cancel"/>, which unwinds it.</summary>
@@ -298,8 +302,8 @@ public sealed class WorkLaneService
 			}
 		}
 
-		Changed?.Invoke();
-		QueueChanged?.Invoke();
+		RaiseChanged();
+		RaiseQueueChanged();
 	}
 
 	/// <summary>Stops everything in one lane.</summary>
@@ -317,8 +321,8 @@ public sealed class WorkLaneService
 			}
 		}
 
-		Changed?.Invoke();
-		QueueChanged?.Invoke();
+		RaiseChanged();
+		RaiseQueueChanged();
 	}
 
 	/// <summary>
@@ -342,9 +346,55 @@ public sealed class WorkLaneService
 			}
 		}
 
-		Changed?.Invoke();
-		QueueChanged?.Invoke();
+		RaiseChanged();
+		RaiseQueueChanged();
 	}
+
+	/// <summary>
+	/// Raises one event, calling each subscriber inside its own try/catch.
+	/// </summary>
+	/// <remarks>
+	/// A subscriber that throws must not take the lane service — or the process — with it. These
+	/// events are raised from three places that all treat an escaping exception as fatal: the runner's
+	/// claim loop, where it faults the <c>BackgroundService</c> and, under the default
+	/// <c>BackgroundServiceExceptionBehavior.StopHost</c>, shuts down the web application; a
+	/// <c>Progress&lt;T&gt;</c> callback, where it is unhandled on a thread-pool thread and terminates
+	/// the process; and the <c>finally</c> of a completing item, where it would stop
+	/// <c>ItemCompleted</c> ever firing and leave every open circuit stale.
+	/// <para>
+	/// The realistic thrower is a circuit that has just been disposed: <c>Changed</c> captures its
+	/// invocation list before calling into it, so a handler unsubscribed mid-raise still runs, and
+	/// anything it touches — a disposed timer, say — throws. Calling subscribers individually also
+	/// means one bad circuit does not deprive the others of the event.
+	/// </para>
+	/// </remarks>
+	/// <param name="handlers">The event's current subscribers, or null when there are none.</param>
+	/// <param name="eventName">Which event this is, for the log line.</param>
+	private void Raise(Action? handlers, string eventName)
+	{
+		if (handlers is null)
+		{
+			return;
+		}
+
+		foreach (var handler in handlers.GetInvocationList())
+		{
+			try
+			{
+				((Action)handler)();
+			}
+			catch (Exception ex)
+			{
+				logger?.LogError(ex, "A {Event} subscriber threw; the lanes carried on regardless.", eventName);
+			}
+		}
+	}
+
+	/// <summary>Raises <see cref="Changed"/> without trusting its subscribers.</summary>
+	private void RaiseChanged() => Raise(Changed, nameof(Changed));
+
+	/// <summary>Raises <see cref="QueueChanged"/> without trusting its subscribers.</summary>
+	private void RaiseQueueChanged() => Raise(QueueChanged, nameof(QueueChanged));
 
 	private void CancelLocked(string id)
 	{

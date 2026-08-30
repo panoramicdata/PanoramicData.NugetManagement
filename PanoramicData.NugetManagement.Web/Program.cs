@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using PanoramicData.Blazor.Extensions;
@@ -44,6 +44,9 @@ builder.Services.AddSingleton<IdeDetectionService>();
 builder.Services.AddSingleton<LocalFileSystemDataProvider>();
 builder.Services.AddSingleton<PackageDashboardDataProvider>();
 builder.Services.AddSingleton<NavTreeDataProvider>();
+// Work runs with no HTTP context, so the signed-in GitHub token has to be handed forward from a
+// circuit rather than read from a request. See GitHubTokenProvider.
+builder.Services.AddSingleton<GitHubTokenProvider>();
 builder.Services.AddSingleton<RegressionGuardService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RegressionGuardService>());
 builder.Services.AddScoped<DashboardService>();
@@ -53,7 +56,10 @@ builder.Services.AddScoped<DashboardService>();
 builder.Services.AddSingleton<WorkLaneService>(sp =>
 {
 	var runtimeSettings = sp.GetRequiredService<RuntimeSettingsService>();
-	return new WorkLaneService { MaxConcurrentLanes = runtimeSettings.MaxConcurrentLanes };
+	return new WorkLaneService(sp.GetRequiredService<ILogger<WorkLaneService>>())
+	{
+		MaxConcurrentLanes = runtimeSettings.MaxConcurrentLanes
+	};
 });
 builder.Services.AddSingleton<WorkFanOut>();
 builder.Services.AddSingleton(sp => new WorkQueueStore(
