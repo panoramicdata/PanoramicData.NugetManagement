@@ -165,6 +165,30 @@ public class RuntimeSettingsService
 		SaveToDisk();
 	}
 
+	/// <summary>How many repository lanes may run at once.</summary>
+	public int MaxConcurrentLanes
+	{
+		get
+		{
+			lock (_lock)
+			{
+				return Math.Max(1, _runtimeSettings.MaxConcurrentLanes ?? 20);
+			}
+		}
+	}
+
+	/// <summary>Sets the lane concurrency cap and persists it.</summary>
+	/// <param name="value">The new cap; values below one are clamped.</param>
+	public void SetMaxConcurrentLanes(int value)
+	{
+		lock (_lock)
+		{
+			_runtimeSettings.MaxConcurrentLanes = Math.Max(1, value);
+		}
+
+		SaveToDisk();
+	}
+
 	/// <summary>
 	/// Sets the preferred IDE identifier at runtime and persists to disk.
 	/// </summary>
@@ -409,6 +433,7 @@ public class RuntimeSettingsService
 					PreferredIdeId = _runtimeSettings.PreferredIdeId,
 					IncludeInfoInAiPrompt = _runtimeSettings.IncludeInfoInAiPrompt,
 					AllowPublishWithoutTests = _runtimeSettings.AllowPublishWithoutTests,
+					MaxConcurrentLanes = _runtimeSettings.MaxConcurrentLanes,
 					Organizations = [.. _runtimeSettings.Organizations],
 					ExcludedRepositories = [.. _runtimeSettings.ExcludedRepositories]
 				};
@@ -463,6 +488,16 @@ public class RuntimeSettings
 	/// applied per repository would be forgotten in exactly the repository it was set on.
 	/// </remarks>
 	public bool AllowPublishWithoutTests { get; set; }
+
+	/// <summary>
+	/// How many repository lanes may run at once. Defaults to 20.
+	/// </summary>
+	/// <remarks>
+	/// A lane can run <c>dotnet build</c>, <c>dotnet test</c>, a clone and GitHub API calls, so the
+	/// cap is what stops a large estate saturating the machine. Twenty is a working default for a
+	/// developer machine, not a measured optimum.
+	/// </remarks>
+	public int? MaxConcurrentLanes { get; set; }
 
 	/// <summary>
 	/// Repositories excluded from governance, by full name.

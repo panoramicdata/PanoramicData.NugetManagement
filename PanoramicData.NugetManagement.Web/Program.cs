@@ -50,7 +50,11 @@ builder.Services.AddScoped<DashboardService>();
 
 // Per-repository work lanes: one queue-and-runner pair application-wide, replacing the single
 // application-wide work queue that used to serialise every repository behind one another.
-builder.Services.AddSingleton<WorkLaneService>();
+builder.Services.AddSingleton<WorkLaneService>(sp =>
+{
+	var runtimeSettings = sp.GetRequiredService<RuntimeSettingsService>();
+	return new WorkLaneService { MaxConcurrentLanes = runtimeSettings.MaxConcurrentLanes };
+});
 builder.Services.AddSingleton<WorkFanOut>();
 builder.Services.AddSingleton(sp => new WorkQueueStore(
 	WorkQueueStore.DefaultPath(),

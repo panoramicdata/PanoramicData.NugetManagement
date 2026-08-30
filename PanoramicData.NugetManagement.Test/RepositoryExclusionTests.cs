@@ -102,6 +102,30 @@ public class RepositoryExclusionTests(ITestOutputHelper output) : TestWithOutput
 		CreateService().IsRepositoryExcluded("datahint-eu/vizor-echarts").Should().BeTrue();
 	}
 
+	[Fact]
+	public void MaxConcurrentLanes_Unset_DefaultsToTwenty()
+		=> CreateService().MaxConcurrentLanes.Should().Be(20);
+
+	[Fact]
+	public void SetMaxConcurrentLanes_Persists()
+	{
+		var service = CreateService();
+
+		service.SetMaxConcurrentLanes(4);
+
+		CreateService().MaxConcurrentLanes.Should().Be(4);
+	}
+
+	[Fact]
+	public void SetMaxConcurrentLanes_BelowOne_IsClampedToOne()
+	{
+		var service = CreateService();
+
+		service.SetMaxConcurrentLanes(0);
+
+		service.MaxConcurrentLanes.Should().Be(1, "a cap of zero would stall every lane for ever");
+	}
+
 	private RuntimeSettingsService CreateService()
 	{
 		// A settings file of this test's own, so the developer's real settings are neither read nor
