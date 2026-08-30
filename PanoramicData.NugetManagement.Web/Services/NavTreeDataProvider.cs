@@ -67,6 +67,21 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	public static string PackageKey(string repositoryFullName, string packageId)
 		=> $"pkg:{repositoryFullName}:{packageId}";
 
+	/// <summary>Builds the key for a repository's GitHub "Issues" container.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <remarks>
+	/// Prefixed "repoissues" rather than "issues": <see cref="IssuesKey"/> already owns that prefix
+	/// for the organisation's rule-failure branch, and PDTree throws on a duplicate key and swallows
+	/// the exception, rendering the whole tree empty with nothing in the console.
+	/// </remarks>
+	public static string RepoIssuesKey(string repositoryFullName) => $"repoissues:{repositoryFullName}";
+
+	/// <summary>Builds the key for one open issue or pull request of a repository.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="number">The issue or pull request number.</param>
+	public static string RepoIssueKey(string repositoryFullName, int number)
+		=> $"repoissue:{repositoryFullName}:{number}";
+
 	/// <summary>Builds the key for one assessment category of a repository.</summary>
 	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
 	/// <param name="category">The assessment category.</param>
@@ -111,7 +126,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		}
 
 		var prefix = key[..prefixEnd];
-		if (prefix is not ("repo" or "pkgs" or "pkg" or "cat" or "rule"))
+		if (prefix is not ("repo" or "pkgs" or "pkg" or "cat" or "rule" or "repoissues" or "repoissue"))
 		{
 			return null;
 		}
@@ -122,17 +137,19 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	}
 
 	/// <summary>
-	/// Whether a node is one of the tree's container headings — Organisations, Repositories, Issues
-	/// and a repository's Packages. They share a heading colour rather than a status colour, so the
-	/// template marks them for the stylesheet. Keyed off the node key rather than the glyph: the issue
-	/// categories under Issues use the same glyph as Issues itself, and telling them apart by the
-	/// severity class on the icon fails whenever the container carries one too.
+	/// Whether a node is one of the tree's container headings — Organisations, Repositories, Issues,
+	/// a repository's Packages and a repository's own Issues branch. They share a heading colour
+	/// rather than a status colour, so the template marks them for the stylesheet. Keyed off the node
+	/// key rather than the glyph: the issue categories under Issues use the same glyph as Issues
+	/// itself, and telling them apart by the severity class on the icon fails whenever the container
+	/// carries one too.
 	/// </summary>
 	public static bool IsContainerNode(NavItem item)
 		=> item.Key == OrganisationsKey
 			|| item.Key.StartsWith("pkgs:", StringComparison.Ordinal)
 			|| item.Key.StartsWith("repos:", StringComparison.Ordinal)
-			|| item.Key.StartsWith("issues:", StringComparison.Ordinal);
+			|| item.Key.StartsWith("issues:", StringComparison.Ordinal)
+			|| item.Key.StartsWith("repoissues:", StringComparison.Ordinal);
 
 	/// <summary>
 	/// Gets or sets an optional regex used to filter package nodes by name.
@@ -453,6 +470,71 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				});
 			}
 
+			// Open issues and pull requests. One branch for both kinds, because GitHub's own model
+			// treats a pull request as an issue and because the reader wants the thing that has gone
+			// unanswered longest, whichever kind it happens to be. The leaf glyph says which.
+			var repoIssuesKey = RepoIssuesKey(row.RepositoryFullName);
+			var nowUtc = DateTimeOffset.UtcNow;
+
+			// An empty inbox means one of two things: genuinely nothing open, or nothing read. Only
+			// OpenIssuesKnown tells them apart. Having asked the assessment instead was wrong twice
+			// over — a locally-assessed repository never fetches an inbox at all unless a client was
+			// to hand, and a fetch that failed and was swallowed also leaves an assessed row with an
+			// empty list. Both drew a green "Issues (0)" over an inbox nobody had read.
+			var issueStatus = row.OpenIssues.Count > 0
+				? NavHealthRollup.Worst(row.OpenIssues.Select(issue => NavHealthRollup.FromSeverity(issue.SeverityAt(nowUtc))))
+				: row.OpenIssuesKnown
+					? PackageHealthStatus.Success
+					: PackageHealthStatus.Unknown;
+
+			items.Add(new NavItem
+			{
+				Key = repoIssuesKey,
+				// The count is every open item, healthy ones included: it answers "what is in this
+				// inbox". The repository's IssueCount, which counts only the unanswered, is a
+				// different question and deliberately a different number.
+				Text = $"Issues ({row.OpenIssues.Count})",
+				ParentKey = repoKey,
+				IconCss = NavHealthRollup.Icon("fas fa-comments", issueStatus),
+				HealthStatus = issueStatus,
+				View = NavView.None,
+				Organization = organization,
+				RepositoryFullName = row.RepositoryFullName,
+				IsLeaf = row.OpenIssues.Count == 0,
+				SortOrder = 1
+			});
+
+			foreach (var issue in row.OpenIssues)
+			{
+				var severity = issue.SeverityAt(nowUtc);
+				var severityRank = severity switch
+				{
+					AssessmentSeverity.Critical => 0,
+					AssessmentSeverity.Error => 1,
+					_ => 2
+				};
+
+				items.Add(new NavItem
+				{
+					Key = RepoIssueKey(row.RepositoryFullName, issue.Number),
+					Text = $"#{issue.Number} {issue.Title}",
+					ParentKey = repoIssuesKey,
+					IconCss = NavHealthRollup.Icon(
+						issue.IsPullRequest ? "fas fa-code-pull-request" : "fas fa-circle-dot",
+						NavHealthRollup.FromSeverity(severity)),
+					HealthStatus = NavHealthRollup.FromSeverity(severity),
+					View = NavView.RepositoryIssueDetail,
+					Organization = organization,
+					RepositoryFullName = row.RepositoryFullName,
+					IssueNumber = issue.Number,
+					IsLeaf = true,
+					// Worst first, then oldest first within a band. PDTree breaks SortOrder ties on
+					// Text, and alphabetical order on "#1000" against "#99" is meaningless, so the
+					// rank has to carry the number rather than leave it to the tie-break.
+					SortOrder = (severityRank * 1_000_000) + Math.Min(issue.Number, 999_999)
+				});
+			}
+
 			// Category sub-nodes (only if assessed)
 			if (row.Assessment is null)
 			{
@@ -479,7 +561,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					RepositoryFullName = row.RepositoryFullName,
 					Category = category,
 					IsLeaf = catFailures.Count == 0,
-					SortOrder = 1,
+					SortOrder = 2,
 					IssueCount = catFailures.Count,
 					HasErrors = catHasErrors,
 					HasWarnings = catHasWarnings

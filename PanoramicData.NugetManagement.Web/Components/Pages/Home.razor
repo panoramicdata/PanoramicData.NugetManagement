@@ -881,6 +881,7 @@ else
 	private string? _selectedPackageId;
 	private AssessmentCategory? _selectedCategory;
 	private string? _selectedRuleId;
+	private int? _selectedIssueNumber;
 	private RepositoryDashboardRow? _selectedRow;
 	private string _treeFilterText = string.Empty;
 	private string? _treeFilterError;
@@ -1136,6 +1137,7 @@ else
 		_selectedPackageId = item.PackageId;
 		_selectedCategory = item.Category;
 		_selectedRuleId = item.RuleId;
+		_selectedIssueNumber = item.IssueNumber;
 		_selectedNodeKey = item.Key;
 		_orgSelected = IsOrgRootNode(item);
 
@@ -2972,6 +2974,11 @@ else
 			case NavView.IssueRuleDetail:
 				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueRequestedWork" />
 				break;
+			case NavView.RepositoryIssueDetail:
+				@* Its own component rather than another render method here: this file is already
+				   enormous, and IssuesView sets the precedent for a self-contained panel. *@
+				<RepositoryIssueView Issue="@SelectedRepositoryIssue" RepositoryFullName="@_selectedRow?.RepositoryFullName" />
+				break;
 			default:
 				@RenderGettingStarted()
 				break;
@@ -3805,7 +3812,7 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github);
 					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
@@ -4107,15 +4114,18 @@ else
 			_progressMessage = $"Assessing {row.RepositoryFullName}...";
 			StateHasChanged();
 
+			// Hoisted out of the else: the local path wants a client too, to read the repository's
+			// inbox. Constructing one is local and free, so both branches can simply have one.
+			var github = CreateGitHubClient();
+
 			if (row.IsClonedLocally && row.LocalPath is not null)
 			{
-				await Dashboard.AssessLocalRepositoryAsync(row);
+				await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github);
 				await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
 			{
-				var github = CreateGitHubClient();
 				await Dashboard.AssessRepositoryAsync(row, github);
 			}
 
@@ -4237,7 +4247,7 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github);
 					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
@@ -4338,7 +4348,7 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github);
 					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
@@ -4396,15 +4406,17 @@ else
 
 		try
 		{
+			// Hoisted out of the else: see the note in the re-assess path above.
+			var github = CreateGitHubClient();
+
 			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
 			{
-				await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
+				await Dashboard.AssessLocalRepositoryAsync(_selectedRow, CancellationToken.None, github);
 				await Dashboard.RefreshGitStatusAsync(_selectedRow);
 				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
 			{
-				var github = CreateGitHubClient();
 				await Dashboard.AssessRepositoryAsync(_selectedRow, github);
 			}
 
@@ -5251,6 +5263,15 @@ else
 			? null
 			: _rows.FirstOrDefault(r =>
 				string.Equals(r.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// The selected open issue, taken from the selected row. Null if the cache has been refreshed
+	/// since the node was drawn and the item has closed.
+	/// </summary>
+	private RepositoryIssue? SelectedRepositoryIssue
+		=> _selectedIssueNumber is null
+			? null
+			: _selectedRow?.OpenIssues.FirstOrDefault(i => i.Number == _selectedIssueNumber);
 
 	/// <summary>
 	/// Names the packages whose nuspec could not be read, after a discovery.
