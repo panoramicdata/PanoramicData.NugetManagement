@@ -151,6 +151,23 @@ public class RepositoryDashboardRow
 	public Dictionary<AssessmentCategory, CategorySummary> CategorySummaries { get; set; } = [];
 
 	/// <summary>
+	/// The open GitHub issues and pull requests of this repository, each carrying when a maintainer
+	/// last replied to it.
+	/// </summary>
+	public List<RepositoryIssue> OpenIssues { get; set; } = [];
+
+	/// <summary>
+	/// The open items nobody has answered for at least a week — the ones that count as failures.
+	/// </summary>
+	/// <remarks>
+	/// Evaluated against the clock on each read rather than stored, so a row restored from a cache
+	/// written yesterday reports today's staleness. That is also why this is not a cached count.
+	/// </remarks>
+	public IEnumerable<RepositoryIssue> StaleIssues
+		=> OpenIssues.Where(issue => issue.SeverityAt(DateTimeOffset.UtcNow)
+			is AssessmentSeverity.Error or AssessmentSeverity.Critical);
+
+	/// <summary>
 	/// Current remediation/operation status.
 	/// </summary>
 	public PackageStatus Status { get; set; } = PackageStatus.NotAssessed;
@@ -161,19 +178,31 @@ public class RepositoryDashboardRow
 	public string StatusMessage { get; set; } = string.Empty;
 
 	/// <summary>
-	/// Total number of failed rules.
+	/// Total number of failures: failing rules, plus every open issue or pull request that has gone
+	/// unanswered for a week or more.
 	/// </summary>
-	public int TotalFailures => Assessment?.FailedCount ?? 0;
+	/// <remarks>
+	/// Fresh issues are deliberately excluded. An issue answered yesterday is not a failure, and
+	/// counting it as one would mean a healthy, responsive repository could never reach zero — which
+	/// would destroy the meaning of every figure on the dashboard.
+	/// </remarks>
+	public int TotalFailures
+		=> (Assessment?.FailedCount ?? 0)
+			+ StaleIssues.Count();
 
 	/// <summary>
-	/// Total number of critical findings.
+	/// Total number of critical findings, including issues unanswered for a month or more.
 	/// </summary>
-	public int TotalCriticals => Assessment?.CriticalCount ?? 0;
+	public int TotalCriticals
+		=> (Assessment?.CriticalCount ?? 0)
+			+ OpenIssues.Count(i => i.SeverityAt(DateTimeOffset.UtcNow) == AssessmentSeverity.Critical);
 
 	/// <summary>
-	/// Total number of errors.
+	/// Total number of errors, including issues unanswered for between a week and a month.
 	/// </summary>
-	public int TotalErrors => Assessment?.ErrorCount ?? 0;
+	public int TotalErrors
+		=> (Assessment?.ErrorCount ?? 0)
+			+ OpenIssues.Count(i => i.SeverityAt(DateTimeOffset.UtcNow) == AssessmentSeverity.Error);
 
 	/// <summary>
 	/// Total number of warnings.
