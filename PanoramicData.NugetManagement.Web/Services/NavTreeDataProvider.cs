@@ -67,6 +67,21 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	public static string PackageKey(string repositoryFullName, string packageId)
 		=> $"pkg:{repositoryFullName}:{packageId}";
 
+	/// <summary>Builds the key for a repository's GitHub "Issues" container.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <remarks>
+	/// Prefixed "repoissues" rather than "issues": <see cref="IssuesKey"/> already owns that prefix
+	/// for the organisation's rule-failure branch, and PDTree throws on a duplicate key and swallows
+	/// the exception, rendering the whole tree empty with nothing in the console.
+	/// </remarks>
+	public static string RepoIssuesKey(string repositoryFullName) => $"repoissues:{repositoryFullName}";
+
+	/// <summary>Builds the key for one open issue or pull request of a repository.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="number">The issue or pull request number.</param>
+	public static string RepoIssueKey(string repositoryFullName, int number)
+		=> $"repoissue:{repositoryFullName}:{number}";
+
 	/// <summary>Builds the key for one assessment category of a repository.</summary>
 	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
 	/// <param name="category">The assessment category.</param>
@@ -111,7 +126,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		}
 
 		var prefix = key[..prefixEnd];
-		if (prefix is not ("repo" or "pkgs" or "pkg" or "cat" or "rule"))
+		if (prefix is not ("repo" or "pkgs" or "pkg" or "cat" or "rule" or "repoissues" or "repoissue"))
 		{
 			return null;
 		}
@@ -453,6 +468,65 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				});
 			}
 
+			// Open issues and pull requests. One branch for both kinds, because GitHub's own model
+			// treats a pull request as an issue and because the reader wants the thing that has gone
+			// unanswered longest, whichever kind it happens to be. The leaf glyph says which.
+			var repoIssuesKey = RepoIssuesKey(row.RepositoryFullName);
+			var nowUtc = DateTimeOffset.UtcNow;
+
+			var issueStatus = NavHealthRollup.Worst(
+				row.OpenIssues.Select(issue => NavHealthRollup.FromSeverity(issue.SeverityAt(nowUtc))));
+
+			items.Add(new NavItem
+			{
+				Key = repoIssuesKey,
+				// The count is every open item, healthy ones included: it answers "what is in this
+				// inbox". The repository's IssueCount, which counts only the unanswered, is a
+				// different question and deliberately a different number.
+				Text = $"Issues ({row.OpenIssues.Count})",
+				ParentKey = repoKey,
+				IconCss = NavHealthRollup.Icon("fas fa-comments", issueStatus),
+				HealthStatus = issueStatus,
+				View = NavView.None,
+				Organization = organization,
+				RepositoryFullName = row.RepositoryFullName,
+				IsLeaf = row.OpenIssues.Count == 0,
+				SortOrder = 1
+			});
+
+			foreach (var issue in row.OpenIssues)
+			{
+				var severity = issue.SeverityAt(nowUtc);
+				var severityRank = severity switch
+				{
+					AssessmentSeverity.Critical => 0,
+					AssessmentSeverity.Error => 1,
+					_ => 2
+				};
+
+				items.Add(new NavItem
+				{
+					Key = RepoIssueKey(row.RepositoryFullName, issue.Number),
+					Text = $"#{issue.Number} {issue.Title}",
+					ParentKey = repoIssuesKey,
+					IconCss = NavHealthRollup.Icon(
+						issue.IsPullRequest ? "fas fa-code-pull-request" : "fas fa-circle-dot",
+						NavHealthRollup.FromSeverity(severity)),
+					HealthStatus = NavHealthRollup.FromSeverity(severity),
+					View = NavView.RepositoryIssueDetail,
+					Organization = organization,
+					RepositoryFullName = row.RepositoryFullName,
+					IssueNumber = issue.Number,
+					IsLeaf = true,
+					// Worst first, then oldest first within a band. PDTree breaks SortOrder ties on
+					// Text, and alphabetical order on "#1000" against "#99" is meaningless, so the
+					// rank has to carry the number rather than leave it to the tie-break.
+					SortOrder = (severityRank * 1_000_000) + Math.Min(issue.Number, 999_999),
+					IssueCount = severity is AssessmentSeverity.Critical or AssessmentSeverity.Error ? 1 : 0,
+					HasErrors = severity is AssessmentSeverity.Critical or AssessmentSeverity.Error
+				});
+			}
+
 			// Category sub-nodes (only if assessed)
 			if (row.Assessment is null)
 			{
@@ -479,7 +553,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					RepositoryFullName = row.RepositoryFullName,
 					Category = category,
 					IsLeaf = catFailures.Count == 0,
-					SortOrder = 1,
+					SortOrder = 2,
 					IssueCount = catFailures.Count,
 					HasErrors = catHasErrors,
 					HasWarnings = catHasWarnings

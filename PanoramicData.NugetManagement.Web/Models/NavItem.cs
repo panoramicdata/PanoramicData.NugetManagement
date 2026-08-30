@@ -81,6 +81,13 @@ public class NavItem
 	public string? RuleId { get; init; }
 
 	/// <summary>
+	/// For an open issue or pull request leaf, its GitHub number. Lets a selection be resolved back
+	/// to its <see cref="PanoramicData.NugetManagement.Models.RepositoryIssue"/> without parsing the
+	/// key.
+	/// </summary>
+	public int? IssueNumber { get; init; }
+
+	/// <summary>
 	/// Whether this node is a leaf (no children).
 	/// </summary>
 	public bool IsLeaf { get; init; }
@@ -186,5 +193,11 @@ public enum NavView
 	/// One rule of the issue hierarchy — the repositories it affects, with the per-rule bulk
 	/// actions (apply auto-fixes, apply and push, copy combined AI prompt).
 	/// </summary>
-	IssueRuleDetail
+	IssueRuleDetail,
+
+	/// <summary>
+	/// One open GitHub issue or pull request of a repository: who raised it, when a maintainer last
+	/// replied, and how stale that makes it.
+	/// </summary>
+	RepositoryIssueDetail
 }
