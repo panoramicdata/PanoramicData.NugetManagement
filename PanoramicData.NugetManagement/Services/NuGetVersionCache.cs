@@ -118,11 +118,22 @@ public sealed class NuGetVersionCache
 
 		try
 		{
-			var ordered = _snapshots
-				.OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
-				.ToDictionary(
-					kvp => kvp.Key,
-					kvp => new Entry(kvp.Value.LatestVersion, kvp.Value.Published, kvp.Value.RefreshedAtUtc));
+			// Snapshotting under the same lock that guards Update stops a concurrent sweep's
+			// read-then-write from being serialised mid-write: without this, two overlapping
+			// RefreshAsync calls (nothing prevents that at the registration level) could have one
+			// sweep's Persist enumerate the dictionary while the other's Update is between its read
+			// and its write, committing a partial view with no exception to say so. The lock is held
+			// only long enough to copy the snapshots; the file write itself runs outside it, since it
+			// does not touch shared state and must not hold the lock across I/O.
+			Dictionary<string, Entry> ordered;
+			lock (_updateLock)
+			{
+				ordered = _snapshots
+					.OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
+					.ToDictionary(
+						kvp => kvp.Key,
+						kvp => new Entry(kvp.Value.LatestVersion, kvp.Value.Published, kvp.Value.RefreshedAtUtc));
+			}
 
 			File.WriteAllText(_filePath, JsonSerializer.Serialize(ordered, _jsonOptions));
 		}
