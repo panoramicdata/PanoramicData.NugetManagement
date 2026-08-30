@@ -156,10 +156,16 @@ Under each repository node, after `Packages (N)`:
 |---|---|
 | `Packages (N)` | 0 (unchanged) |
 | `Issues (N)` | 1 |
-| `Pull requests (N)` | 2 |
-| Category nodes | 3 (was 1) |
+| Category nodes | 2 (was 1) |
 
-`N` is the count of *all* open items of that kind, healthy ones included — it answers "what is in
+**One node covers both kinds.** Issues and pull requests share a single `Issues (N)` branch, and
+the leaves are told apart by their icon — `fas fa-circle-dot` for an issue, `fas fa-code-pull-request`
+for a pull request, the shapes GitHub itself uses. This follows GitHub's own model, where a pull
+request *is* an issue, so it should match what someone already expects. Splitting them into sibling
+nodes was considered and dropped: it made the reader pick a branch before they could see what was
+rotting, and the thing that has gone unanswered longest matters more than which kind of thing it is.
+
+`N` is the count of *all* open items, healthy ones and both kinds included — it answers "what is in
 this inbox", which is the informational count that was asked for. The node's glyph is coloured by
 the worst severity beneath it, via the existing `NavHealthRollup.Worst`, so a repository with
 eleven fresh issues and one three-month-old one reads red.
@@ -168,11 +174,13 @@ The label count and the failure count are deliberately different numbers. `Issue
 things are open; the repository's `IssueCount`, fed by `TotalFailures` above, counts only the one
 that has gone unanswered. The first is inventory, the second is work.
 
-Each item is a leaf below its node, titled `#123 Title`, with a glyph coloured by its own severity.
-Leaves sort worst-first, then oldest-first within a band: `SortOrder = severityRank * 1_000_000 +
-min(Number, 999_999)` where `severityRank` is Critical 0, Error 1, Info 2. `NavItem` breaks
-`SortOrder` ties on `Text`, and alphabetical order on `#1000` versus `#99` is meaningless, so the
-rank has to carry the number rather than leave it to the tie-break.
+Each item is a leaf below the node, titled `#123 Title`, with its kind icon coloured by its own
+severity. Leaves sort worst-first, then oldest-first within a band, interleaving issues and pull
+requests: `SortOrder = severityRank * 1_000_000 + min(Number, 999_999)` where `severityRank` is
+Critical 0, Error 1, Info 2. `NavItem` breaks `SortOrder` ties on `Text`, and alphabetical order on
+`#1000` versus `#99` is meaningless, so the rank has to carry the number rather than leave it to
+the tie-break. Kind deliberately plays no part in the sort: a month-old pull request outranks a
+week-old issue, and the icon says which is which.
 
 `NavItem` gains an `IssueNumber` field so a selected leaf can be resolved back to its
 `RepositoryIssue` without parsing the key.
@@ -219,7 +227,11 @@ Rollup:
 - A null assessment still reads `Unknown` regardless of issue severity.
 
 Tree:
-- Both nodes appear under a repository, with counts including healthy items.
-- Category nodes still sort below them.
-- Leaves sort critical-first, then by ascending number within a band.
-- A repository with no open items of a kind still shows that node, as a leaf reading `(0)`.
+- One `Issues (N)` node appears under a repository, counting issues and pull requests together,
+  healthy items included.
+- Category nodes still sort below it.
+- Leaves sort critical-first, then by ascending number within a band, with issues and pull requests
+  interleaved rather than grouped by kind.
+- An issue leaf carries `fa-circle-dot` and a pull request leaf `fa-code-pull-request`, each
+  coloured by that item's own severity.
+- A repository with nothing open still shows the node, as a leaf reading `Issues (0)`.
