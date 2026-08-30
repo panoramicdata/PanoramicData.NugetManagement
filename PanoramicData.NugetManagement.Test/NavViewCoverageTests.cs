@@ -125,6 +125,18 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 				Organization = "panoramicdata",
 				RepositoryFullName = "panoramicdata/Governed.Api",
 				Packages = [new() { PackageId = "Governed.Api" }],
+				OpenIssues =
+				[
+					new()
+					{
+						Number = 1,
+						Title = "Sample issue",
+						HtmlUrl = "https://github.com/panoramicdata/Governed.Api/issues/1",
+						AuthorLogin = "reporter",
+						CreatedAtUtc = DateTimeOffset.UtcNow - TimeSpan.FromDays(400),
+						LastMaintainerReplyUtc = DateTimeOffset.UtcNow - TimeSpan.FromDays(1)
+					}
+				],
 				Assessment = new RepoAssessment
 				{
 					RepositoryFullName = "panoramicdata/Governed.Api",

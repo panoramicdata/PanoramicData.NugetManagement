@@ -881,6 +881,7 @@ else
 	private string? _selectedPackageId;
 	private AssessmentCategory? _selectedCategory;
 	private string? _selectedRuleId;
+	private int? _selectedIssueNumber;
 	private RepositoryDashboardRow? _selectedRow;
 	private string _treeFilterText = string.Empty;
 	private string? _treeFilterError;
@@ -1136,6 +1137,7 @@ else
 		_selectedPackageId = item.PackageId;
 		_selectedCategory = item.Category;
 		_selectedRuleId = item.RuleId;
+		_selectedIssueNumber = item.IssueNumber;
 		_selectedNodeKey = item.Key;
 		_orgSelected = IsOrgRootNode(item);
 
@@ -2971,6 +2973,11 @@ else
 				break;
 			case NavView.IssueRuleDetail:
 				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueRequestedWork" />
+				break;
+			case NavView.RepositoryIssueDetail:
+				@* Its own component rather than another render method here: this file is already
+				   enormous, and IssuesView sets the precedent for a self-contained panel. *@
+				<RepositoryIssueView Issue="@SelectedRepositoryIssue" RepositoryFullName="@_selectedRow?.RepositoryFullName" />
 				break;
 			default:
 				@RenderGettingStarted()
@@ -5251,6 +5258,15 @@ else
 			? null
 			: _rows.FirstOrDefault(r =>
 				string.Equals(r.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// The selected open issue, taken from the selected row. Null if the cache has been refreshed
+	/// since the node was drawn and the item has closed.
+	/// </summary>
+	private RepositoryIssue? SelectedRepositoryIssue
+		=> _selectedIssueNumber is null
+			? null
+			: _selectedRow?.OpenIssues.FirstOrDefault(i => i.Number == _selectedIssueNumber);
 
 	/// <summary>
 	/// Names the packages whose nuspec could not be read, after a discovery.
