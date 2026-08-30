@@ -1,3 +1,5 @@
+using PanoramicData.NugetManagement.Web.Services;
+
 namespace PanoramicData.NugetManagement.Web.Models;
 
 /// <summary>
@@ -8,7 +10,7 @@ public enum WorkItemState
 	/// <summary>Waiting for its turn. Nothing has happened yet, so it can be removed freely.</summary>
 	Pending,
 
-	/// <summary>Executing. Exactly one item is in this state at a time, application-wide.</summary>
+	/// <summary>Executing. Exactly one item per lane is in this state at a time.</summary>
 	Running,
 
 	/// <summary>Stop has been asked for; the item is unwinding and reverting anything half-applied.</summary>
@@ -25,56 +27,79 @@ public enum WorkItemState
 }
 
 /// <summary>
-/// One unit of queued work: a single action the user asked for, however many repositories it touches.
+/// One unit of queued work: a single action the user asked for, acting on one repository or on one
+/// organisation.
 /// </summary>
 /// <remarks>
-/// A class rather than a record because <see cref="State"/> and <see cref="Progress"/> change while
-/// the UI holds a reference to the item.
+/// A class rather than a record because <see cref="State"/>, <see cref="Progress"/> and
+/// <see cref="GeneratedPrompt"/> change while the UI holds a reference to the item.
+/// <para>
+/// The item no longer carries a delegate or an owning component. Work is named
+/// (<see cref="Descriptor"/>) and executed by WorkRunnerService, so it belongs to the
+/// application rather than to the browser tab that asked for it.
+/// </para>
 /// </remarks>
 public sealed class WorkItem
 {
 	/// <summary>Identifies the item within the queue.</summary>
 	public required string Id { get; init; }
 
-	/// <summary>What the user sees in the queue, e.g. "Apply TST-06 &amp; push — 12 repos".</summary>
+	/// <summary>What the user sees in the tree, e.g. "Fix panoramicdata/Athonet.Api".</summary>
 	public required string Title { get; init; }
 
-	/// <summary>The organisation this work is scoped to, or null when it spans every organisation.</summary>
-	public string? Organization { get; init; }
+	/// <summary>What this item will do.</summary>
+	public required WorkDescriptor Descriptor { get; init; }
 
 	/// <summary>
-	/// The repository this work acts on, as "org/repo", or null when it spans more than one. What the
-	/// toolbar gates against: work on one repository never closes another repository's buttons.
-	/// </summary>
-	public string? RepositoryFullName { get; init; }
-
-	/// <summary>
-	/// The workflow step this work performs, or null for work that is not a step on the toolbar.
-	/// Queueing a step closes it and everything downstream — see <see cref="Services.WorkflowGate"/>.
-	/// </summary>
-	public WorkflowStep? Step { get; init; }
-
-	/// <summary>
-	/// Identifies work that would repeat what is already queued. A second enqueue with the same key
-	/// is folded into the pending item rather than queued again.
+	/// Identifies work that would repeat what is already queued in this lane. A second enqueue with
+	/// the same key is folded into the pending item rather than queued again.
 	/// </summary>
 	public required string DedupKey { get; init; }
 
 	/// <summary>
-	/// The component that enqueued the item and will execute it. Work belongs to the circuit that
-	/// started it, so when that circuit goes away its work goes with it.
+	/// The workflow step this work performs, or null for work that is not a step on the toolbar.
+	/// Queueing a step closes it and everything downstream — see <see cref="WorkflowGate"/>.
 	/// </summary>
-	public required object OwnerId { get; init; }
+	public WorkflowStep? Step { get; init; }
 
 	/// <summary>
-	/// The work itself. Reports progress lines through the supplied <see cref="IProgress{T}"/>, and
-	/// must honour the token by reverting anything it has half-applied.
+	/// The console this item's output belongs to, recorded when it was queued rather than read when it
+	/// runs: the lane may not reach it for minutes, by which time the selection has moved and the
+	/// output would land in an unrelated console.
 	/// </summary>
-	public required Func<IProgress<string>, CancellationToken, Task> Run { get; init; }
+	public string? ConsoleNodeKey { get; init; }
+
+	/// <summary>The lane this item runs on.</summary>
+	public string LaneKey => Descriptor.LaneKey;
+
+	/// <summary>The organisation this work is scoped to, or null when it spans every organisation.</summary>
+	public string? Organization => Descriptor.Organization;
+
+	/// <summary>
+	/// The repository this work acts on, or null for organisation-scoped work. What the toolbar gates
+	/// against: work on one repository never closes another repository's buttons.
+	/// </summary>
+	public string? RepositoryFullName => Descriptor.RepositoryFullName;
 
 	/// <summary>Where the item has got to.</summary>
 	public WorkItemState State { get; set; } = WorkItemState.Pending;
 
 	/// <summary>Progress within the item, e.g. "repo 8 of 47". Null until the work reports some.</summary>
 	public string? Progress { get; set; }
+
+	/// <summary>
+	/// The AI prompt the work produced for issues it could not fix, or null when it produced none.
+	/// </summary>
+	/// <remarks>
+	/// Held rather than pushed. The work used to write this straight to the browser clipboard and open
+	/// an IDE, which cannot be done from a runner with no browser attached — and twenty lanes finishing
+	/// together would have raced twenty of each. The user claims it from the prompt UI instead.
+	/// </remarks>
+	public string? GeneratedPrompt { get; set; }
+
+	/// <summary>
+	/// Whether this item was running when the process last stopped. Such an item is restored as
+	/// pending, and its working tree is cleaned before it is run again.
+	/// </summary>
+	public bool WasInterrupted { get; init; }
 }
