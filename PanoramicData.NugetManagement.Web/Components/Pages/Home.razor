@@ -4054,91 +4054,6 @@ else
 		return Task.CompletedTask;
 	}
 
-	private async Task ReassessAllCoreAsync(RepositoryDashboardRow row, CancellationToken cancellationToken)
-	{
-		_isAssessing = true;
-		_progressMessage = $"Checking NuGet listing for {row.RepositoryFullName}...";
-		StateHasChanged();
-
-		try
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-
-			// A repository leaves the estate only when every package it publishes has been retired.
-			// Dropping it because one of four was unlisted would take the other three with it.
-			var listed = new List<string>();
-			foreach (var package in row.Packages)
-			{
-				if (await Dashboard.IsPackageListedAsync(package.PackageId))
-				{
-					listed.Add(package.PackageId);
-				}
-			}
-
-			if (listed.Count == 0)
-			{
-				AppendConsole($"⚠️ {row.RepositoryFullName} publishes nothing still listed on NuGet — removing from cache.");
-				_rows.RemoveAll(r => string.Equals(r.RepositoryFullName, row.RepositoryFullName, StringComparison.OrdinalIgnoreCase));
-				Cache.RemoveRow(row.RepositoryFullName);
-
-				// Only clear the selection if it is this row: the user may have moved on while this
-				// waited its turn in the queue.
-				if (ReferenceEquals(_selectedRow, row))
-				{
-					_selectedRow = null;
-					_selectedPackageId = null;
-					_currentView = NavView.Home;
-				}
-
-				await RefreshTableAsync();
-				return;
-			}
-
-			if (listed.Count < row.Packages.Count)
-			{
-				var retired = row.Packages
-					.Select(package => package.PackageId)
-					.Except(listed, StringComparer.OrdinalIgnoreCase);
-
-				AppendConsole($"ℹ️ {row.RepositoryFullName}: {string.Join(", ", retired)} no longer listed on NuGet.");
-			}
-
-			cancellationToken.ThrowIfCancellationRequested();
-			_progressMessage = $"Assessing {row.RepositoryFullName}...";
-			StateHasChanged();
-
-			if (row.IsClonedLocally && row.LocalPath is not null)
-			{
-				await Dashboard.AssessLocalRepositoryAsync(row);
-				await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
-				await AppendDirtyWorkingTreePreviewAsync();
-			}
-			else
-			{
-				var github = CreateGitHubClient();
-				await Dashboard.AssessRepositoryAsync(row, github);
-			}
-
-			await PersistRowUpdateAsync(row);
-			AppendConsole($"✅ Assessment complete for {row.RepositoryFullName}");
-		}
-		catch (OperationCanceledException)
-		{
-			// The pump says so, and says it the same way for every step.
-			throw;
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Assessment failed: {ex.Message}");
-		}
-		finally
-		{
-			_isAssessing = false;
-			_progressMessage = string.Empty;
-			StateHasChanged();
-		}
-	}
-
 	private async Task ReassessAllReposAsync() => await ReassessOrganizationAsync(null);
 
 	/// <summary>
@@ -4450,73 +4365,6 @@ else
 			_selectedRow.RepositoryFullName);
 	}
 
-	private async Task FixAllCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
-	{
-		_isRunning = true;
-		ClearConsole();
-		AppendConsole("▶ Applying all auto-remediations...");
-		StateHasChanged();
-
-		try
-		{
-			var applied = await Dashboard.ApplyRemediationsAsync(row, line =>
-			{
-				AppendConsole(line);
-				InvokeAsync(StateHasChanged);
-			});
-
-			await Dashboard.RefreshGitStatusAsync(row);
-			await PersistSelectedRowUpdateAsync();
-			AppendConsole($"✅ Applied {applied.Count} remediation(s)");
-
-			// Re-assess
-			_isAssessing = true;
-			_progressMessage = "Re-assessing...";
-			StateHasChanged();
-			await Dashboard.AssessLocalRepositoryAsync(row);
-           await PersistSelectedRowUpdateAsync();
-
-			// Report remaining issues that have no auto-fix
-			var remaining = row.Assessment?.RuleResults
-				.Where(r => !r.Passed && !Dashboard.IsAutoRemediable(r))
-				.ToList() ?? [];
-			if (remaining.Count > 0)
-			{
-				foreach (var r in remaining)
-				{
-					AppendConsole($"⚠️ [{r.RuleId}] {r.RuleName} — no auto-fix available");
-				}
-
-				AppendConsole($"ℹ️ {remaining.Count} issue(s) require manual fix. Preparing AI prompt for clipboard...");
-				var prompt = DashboardService.GenerateRemediationPromptForFailures(row, remaining, includeInfo: false);
-				OpenInIde();
-				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Fix, "remaining remediation options");
-			}
-			else if (row.TotalFailures == 0)
-			{
-				AppendConsole("🎉 No remaining issues — all rules pass.");
-			}
-		}
-		catch (OperationCanceledException)
-		{
-			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
-			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row);
-			throw;
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Error: {ex.Message}");
-		}
-		finally
-		{
-			_isRunning = false;
-			_isAssessing = false;
-			_progressMessage = string.Empty;
-			StateHasChanged();
-		}
-	}
-
 	private async Task FixCategoryAsync(AssessmentCategory category)
 	{
 		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
@@ -4541,51 +4389,6 @@ else
 			_selectedRow.Organization,
 			$"fix-category:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}:{category}",
 			(progress, cancellationToken) => FixCategoryCoreAsync(capturedRow, category, progress, cancellationToken));
-	}
-
-	private async Task FixCategoryCoreAsync(RepositoryDashboardRow row, AssessmentCategory category, IProgress<string> progress, CancellationToken cancellationToken)
-	{
-		_isRunning = true;
-		ClearConsole();
-		AppendConsole($"▶ Fixing {category}...");
-		StateHasChanged();
-
-		try
-		{
-			var applied = await Dashboard.ApplyCategoryRemediationsAsync(row, category, line =>
-			{
-				AppendConsole(line);
-				InvokeAsync(StateHasChanged);
-			});
-
-			await Dashboard.RefreshGitStatusAsync(row);
-			await PersistSelectedRowUpdateAsync();
-			AppendConsole($"✅ Applied {applied.Count} remediation(s) for {category}");
-
-			_isAssessing = true;
-			_progressMessage = "Re-assessing...";
-			StateHasChanged();
-			await Dashboard.AssessLocalRepositoryAsync(row);
-           await PersistSelectedRowUpdateAsync();
-		}
-		catch (OperationCanceledException)
-		{
-			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
-			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row);
-			throw;
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Error: {ex.Message}");
-		}
-		finally
-		{
-			_isRunning = false;
-			_isAssessing = false;
-			_progressMessage = string.Empty;
-			StateHasChanged();
-		}
 	}
 
 	private async Task FixSingleRuleAsync(RuleResult result)
@@ -4616,60 +4419,6 @@ else
 			_selectedRow.Organization,
 			$"fix-rule:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}:{result.RuleId}",
 			(progress, cancellationToken) => FixSingleRuleCoreAsync(capturedRow, result, progress, cancellationToken));
-	}
-
-	private async Task FixSingleRuleCoreAsync(RepositoryDashboardRow row, RuleResult result, IProgress<string> progress, CancellationToken cancellationToken)
-	{
-		// Re-checked here rather than trusted from the click: the clone can be gone by the time the
-		// queue reaches this item.
-		if (row.LocalPath is null)
-		{
-			AppendConsole($"⏭️ {row.RepositoryFullName} is no longer cloned locally — skipping {result.RuleId}.");
-			return;
-		}
-
-		_isRunning = true;
-		ClearConsole();
-		AppendConsole($"▶ Fixing {result.RuleId}...");
-		StateHasChanged();
-
-		try
-		{
-			var applied = new List<string>();
-			Dashboard.ApplySingleRemediationPublic(row.LocalPath, result, applied, line =>
-			{
-				AppendConsole(line);
-				InvokeAsync(StateHasChanged);
-			});
-
-			await Dashboard.RefreshGitStatusAsync(row);
-			await PersistSelectedRowUpdateAsync();
-			AppendConsole(applied.Count > 0 ? $"✅ Fixed {result.RuleId}" : $"⚠️ Could not fix {result.RuleId}");
-
-			_isAssessing = true;
-			_progressMessage = "Re-assessing...";
-			StateHasChanged();
-			await Dashboard.AssessLocalRepositoryAsync(row);
-           await PersistSelectedRowUpdateAsync();
-		}
-		catch (OperationCanceledException)
-		{
-			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
-			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row);
-			throw;
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Error: {ex.Message}");
-		}
-		finally
-		{
-			_isRunning = false;
-			_isAssessing = false;
-			_progressMessage = string.Empty;
-			StateHasChanged();
-		}
 	}
 
 	// === Build / Test / Git Sync / Publish ===

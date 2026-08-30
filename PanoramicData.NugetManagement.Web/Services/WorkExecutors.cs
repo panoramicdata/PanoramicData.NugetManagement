@@ -58,6 +58,10 @@ public sealed class WorkExecutors(
 	public Task ExecuteAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
 		=> item.Descriptor.Kind switch
 		{
+			WorkKind.Reassess => ReassessAsync(item, progress, cancellationToken),
+			WorkKind.FixAll => FixAllAsync(item, progress, cancellationToken),
+			WorkKind.FixCategory => FixCategoryAsync(item, progress, cancellationToken),
+			WorkKind.FixRule => FixRuleAsync(item, progress, cancellationToken),
 			WorkKind.Build => BuildAsync(item, progress, cancellationToken),
 			WorkKind.Test => TestAsync(item, progress, cancellationToken),
 			WorkKind.GitSync => GitSyncAsync(item, progress, cancellationToken),
@@ -136,6 +140,279 @@ public sealed class WorkExecutors(
 		{
 			Say($"❌ Error: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Re-checks one repository's packages against the NuGet listing and, if any are still listed,
+	/// re-assesses it against every rule.
+	/// </summary>
+	/// <remarks>
+	/// A repository leaves the estate only when every package it publishes has been retired. Dropping
+	/// it because one of several was unlisted would take the still-listed ones with it.
+	/// </remarks>
+	/// <param name="item">The item naming the repository to re-assess.</param>
+	/// <param name="progress">Unused: a re-assessment reports no sub-steps.</param>
+	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
+	private async Task ReassessAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	{
+		var row = RowFor(item);
+		if (row is null)
+		{
+			SayRepositoryGone(item);
+			return;
+		}
+
+		Say($"▶ Checking NuGet listing for {row.RepositoryFullName}...");
+
+		try
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var listed = new List<string>();
+			foreach (var package in row.Packages)
+			{
+				if (await dashboard.IsPackageListedAsync(package.PackageId))
+				{
+					listed.Add(package.PackageId);
+				}
+			}
+
+			if (listed.Count == 0)
+			{
+				Say($"⚠️ {row.RepositoryFullName} publishes nothing still listed on NuGet — removing from cache.");
+				cache.RemoveRow(row.RepositoryFullName);
+				return;
+			}
+
+			if (listed.Count < row.Packages.Count)
+			{
+				var retired = row.Packages
+					.Select(package => package.PackageId)
+					.Except(listed, StringComparer.OrdinalIgnoreCase);
+
+				Say($"ℹ️ {row.RepositoryFullName}: {string.Join(", ", retired)} no longer listed on NuGet.");
+			}
+
+			cancellationToken.ThrowIfCancellationRequested();
+			Say($"▶ Assessing {row.RepositoryFullName}...");
+
+			if (row.IsClonedLocally && row.LocalPath is not null)
+			{
+				await dashboard.AssessLocalRepositoryAsync(row);
+				await dashboard.RefreshGitStatusAsync(row, cancellationToken);
+				await SayDirtyWorkingTreePreviewAsync(row);
+			}
+			else
+			{
+				var github = await CreateGitHubClientAsync();
+				await dashboard.AssessRepositoryAsync(row, github);
+			}
+
+			cache.UpsertRow(row);
+			Say($"✅ Assessment complete for {row.RepositoryFullName}");
+		}
+		catch (OperationCanceledException)
+		{
+			// The pump says so, and says it the same way for every step.
+			throw;
+		}
+		catch (Exception ex)
+		{
+			Say($"❌ Assessment failed: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Applies every available auto-remediation to one repository, re-assesses it, and leaves behind
+	/// an AI prompt for whatever it could not fix.
+	/// </summary>
+	/// <remarks>
+	/// The prompt used to be copied to the clipboard and an IDE opened alongside it. Twenty lanes
+	/// finishing together would race twenty of each, so it is stored on the item and claimed from the
+	/// UI instead.
+	/// </remarks>
+	/// <param name="item">The item naming the repository to fix.</param>
+	/// <param name="progress">Unused: a fix-all reports no sub-steps.</param>
+	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
+	private async Task FixAllAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	{
+		var row = RowFor(item);
+		if (row is null)
+		{
+			SayRepositoryGone(item);
+			return;
+		}
+
+		Say("▶ Applying all auto-remediations...");
+
+		try
+		{
+			var applied = await dashboard.ApplyRemediationsAsync(row, Say);
+
+			await dashboard.RefreshGitStatusAsync(row);
+			cache.UpsertRow(row);
+			Say($"✅ Applied {applied.Count} remediation(s)");
+
+			Say("▶ Re-assessing...");
+			await dashboard.AssessLocalRepositoryAsync(row);
+			cache.UpsertRow(row);
+
+			// Report remaining issues that have no auto-fix.
+			var remaining = row.Assessment?.RuleResults
+				.Where(r => !r.Passed && !dashboard.IsAutoRemediable(r))
+				.ToList() ?? [];
+			if (remaining.Count > 0)
+			{
+				foreach (var r in remaining)
+				{
+					Say($"⚠️ [{r.RuleId}] {r.RuleName} — no auto-fix available");
+				}
+
+				Say($"ℹ️ {remaining.Count} issue(s) require manual fix. Generating AI prompt...");
+				item.GeneratedPrompt = DashboardService.GenerateRemediationPromptForFailures(row, remaining, includeInfo: false);
+			}
+			else if (row.TotalFailures == 0)
+			{
+				Say("🎉 No remaining issues — all rules pass.");
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
+			// it was found rather than carrying half a remediation into the next commit.
+			await RevertPartAppliedFixAsync(row);
+			throw;
+		}
+		catch (Exception ex)
+		{
+			Say($"❌ Error: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Applies the auto-remediations of one assessment category to a repository, then re-assesses it.
+	/// </summary>
+	/// <param name="item">The item naming the repository and, via <c>category</c>, which category to fix.</param>
+	/// <param name="progress">Unused: a category fix reports no sub-steps.</param>
+	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
+	private async Task FixCategoryAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	{
+		var row = RowFor(item);
+		if (row is null)
+		{
+			SayRepositoryGone(item);
+			return;
+		}
+
+		var category = Enum.Parse<AssessmentCategory>(item.Descriptor.Parameter("category")!);
+		Say($"▶ Fixing {category}...");
+
+		try
+		{
+			var applied = await dashboard.ApplyCategoryRemediationsAsync(row, category, Say);
+
+			await dashboard.RefreshGitStatusAsync(row);
+			cache.UpsertRow(row);
+			Say($"✅ Applied {applied.Count} remediation(s) for {category}");
+
+			Say("▶ Re-assessing...");
+			await dashboard.AssessLocalRepositoryAsync(row);
+			cache.UpsertRow(row);
+		}
+		catch (OperationCanceledException)
+		{
+			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
+			// it was found rather than carrying half a remediation into the next commit.
+			await RevertPartAppliedFixAsync(row);
+			throw;
+		}
+		catch (Exception ex)
+		{
+			Say($"❌ Error: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Applies the auto-remediation of one rule to a repository, then re-assesses it.
+	/// </summary>
+	/// <remarks>
+	/// The rule is looked up on the row's current assessment rather than trusted from when it was
+	/// queued: the queue can take minutes to reach an item, by which time the rule may already have
+	/// been fixed by something else, in which case the item is skipped rather than re-applied.
+	/// </remarks>
+	/// <param name="item">The item naming the repository and, via <c>ruleId</c>, which rule to fix.</param>
+	/// <param name="progress">Unused: a single-rule fix reports no sub-steps.</param>
+	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
+	private async Task FixRuleAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	{
+		var row = RowFor(item);
+		if (row is null)
+		{
+			SayRepositoryGone(item);
+			return;
+		}
+
+		var ruleId = item.Descriptor.Parameter("ruleId")!;
+		var result = row.Assessment?.RuleResults
+			.FirstOrDefault(r => string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+
+		if (result is null || result.Passed)
+		{
+			logger.LogWarning(
+				"Skipping {RuleId} on {Repository}: it is no longer failing.",
+				ruleId,
+				row.RepositoryFullName);
+			return;
+		}
+
+		if (row.LocalPath is null)
+		{
+			Say($"⏭️ {row.RepositoryFullName} is no longer cloned locally — skipping {result.RuleId}.");
+			return;
+		}
+
+		Say($"▶ Fixing {result.RuleId}...");
+
+		try
+		{
+			var applied = new List<string>();
+			dashboard.ApplySingleRemediationPublic(row.LocalPath, result, applied, Say);
+
+			await dashboard.RefreshGitStatusAsync(row);
+			cache.UpsertRow(row);
+			Say(applied.Count > 0 ? $"✅ Fixed {result.RuleId}" : $"⚠️ Could not fix {result.RuleId}");
+
+			Say("▶ Re-assessing...");
+			await dashboard.AssessLocalRepositoryAsync(row);
+			cache.UpsertRow(row);
+		}
+		catch (OperationCanceledException)
+		{
+			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
+			// it was found rather than carrying half a remediation into the next commit.
+			await RevertPartAppliedFixAsync(row);
+			throw;
+		}
+		catch (Exception ex)
+		{
+			Say($"❌ Error: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Discards whatever a stopped fix had half-written and reports what came of it.
+	/// </summary>
+	/// <param name="row">The repository whose part-applied changes to discard.</param>
+	private async Task RevertPartAppliedFixAsync(RepositoryDashboardRow row)
+	{
+		var (success, discarded) = await localRepo.DiscardLocalChangesAsync(row.RepositoryFullName, CancellationToken.None);
+		Say(success
+			? discarded.Count == 0
+				? "↩️ Stopped before anything was written."
+				: $"↩️ Reverted {discarded.Count} change(s) written before the stop."
+			: "⚠️ Could not revert the part-applied changes — check the clone by hand.");
+
+		await dashboard.RefreshGitStatusAsync(row, CancellationToken.None);
 	}
 
 	/// <summary>
