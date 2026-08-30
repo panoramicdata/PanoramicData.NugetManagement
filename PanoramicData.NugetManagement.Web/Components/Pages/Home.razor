@@ -3812,7 +3812,7 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github);
 					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
@@ -4114,15 +4114,18 @@ else
 			_progressMessage = $"Assessing {row.RepositoryFullName}...";
 			StateHasChanged();
 
+			// Hoisted out of the else: the local path wants a client too, to read the repository's
+			// inbox. Constructing one is local and free, so both branches can simply have one.
+			var github = CreateGitHubClient();
+
 			if (row.IsClonedLocally && row.LocalPath is not null)
 			{
-				await Dashboard.AssessLocalRepositoryAsync(row);
+				await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github);
 				await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
 			{
-				var github = CreateGitHubClient();
 				await Dashboard.AssessRepositoryAsync(row, github);
 			}
 
@@ -4244,7 +4247,7 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github);
 					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
@@ -4345,7 +4348,7 @@ else
 			{
 				if (row.IsClonedLocally && row.LocalPath is not null)
 				{
-					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken);
+					await Dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github);
 					await Dashboard.RefreshGitStatusAsync(row, cancellationToken);
 				}
 				else
@@ -4403,15 +4406,17 @@ else
 
 		try
 		{
+			// Hoisted out of the else: see the note in the re-assess path above.
+			var github = CreateGitHubClient();
+
 			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
 			{
-				await Dashboard.AssessLocalRepositoryAsync(_selectedRow);
+				await Dashboard.AssessLocalRepositoryAsync(_selectedRow, CancellationToken.None, github);
 				await Dashboard.RefreshGitStatusAsync(_selectedRow);
 				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
 			{
-				var github = CreateGitHubClient();
 				await Dashboard.AssessRepositoryAsync(_selectedRow, github);
 			}
 

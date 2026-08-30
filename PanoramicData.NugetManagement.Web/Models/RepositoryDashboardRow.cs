@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Web.Models;
@@ -157,12 +158,25 @@ public class RepositoryDashboardRow
 	public List<RepositoryIssue> OpenIssues { get; set; } = [];
 
 	/// <summary>
+	/// Whether the inbox was successfully read. False covers both never-fetched and fetch-failed:
+	/// in either case <see cref="OpenIssues"/> being empty says nothing about the repository.
+	/// </summary>
+	/// <remarks>
+	/// Carried on the row rather than inferred from <see cref="Assessment"/>, because a repository
+	/// can be fully assessed without its inbox ever having been read — the local assessment path
+	/// with no GitHub client, or a fetch that failed and was swallowed. Persisted in the dashboard
+	/// cache, so a row written by an older build deserialises to false, which is the honest answer.
+	/// </remarks>
+	public bool OpenIssuesKnown { get; set; }
+
+	/// <summary>
 	/// The open items nobody has answered for at least a week — the ones that count as failures.
 	/// </summary>
 	/// <remarks>
 	/// Evaluated against the clock on each read rather than stored, so a row restored from a cache
 	/// written yesterday reports today's staleness. That is also why this is not a cached count.
 	/// </remarks>
+	[JsonIgnore]
 	public IEnumerable<RepositoryIssue> StaleIssues
 		=> OpenIssues.Where(issue => issue.SeverityAt(DateTimeOffset.UtcNow)
 			is AssessmentSeverity.Error or AssessmentSeverity.Critical);

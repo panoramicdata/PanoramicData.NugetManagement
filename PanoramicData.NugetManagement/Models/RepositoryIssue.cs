@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace PanoramicData.NugetManagement.Models;
 
 /// <summary>
@@ -50,6 +52,7 @@ public class RepositoryIssue
 	/// opened when there has never been one. An item nobody has answered has been waiting since it
 	/// was raised.
 	/// </summary>
+	[JsonIgnore]
 	public DateTimeOffset ClockStartUtc => LastMaintainerReplyUtc ?? CreatedAtUtc;
 
 	/// <summary>

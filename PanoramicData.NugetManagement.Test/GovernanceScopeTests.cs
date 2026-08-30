@@ -115,6 +115,7 @@ public class GovernanceScopeTests(ITestOutputHelper output) : TestWithOutput(out
 			AssessedAtUtc = DateTimeOffset.UtcNow,
 			RuleResults = []
 		};
+		row.OpenIssuesKnown = true;
 		row.OpenIssues =
 		[
 			new()
@@ -132,6 +133,8 @@ public class GovernanceScopeTests(ITestOutputHelper output) : TestWithOutput(out
 
 		row.OpenIssues.Should().BeEmpty(
 			"findings against a repository we do not govern must not reach the counts, and a cached row can carry issues from when it was governed");
+		row.OpenIssuesKnown.Should().BeFalse(
+			"an inbox we are no longer entitled to read is not a read inbox, and leaving the flag set would draw a green \"Issues (0)\" over it");
 		row.TotalFailures.Should().Be(0);
 	}
 

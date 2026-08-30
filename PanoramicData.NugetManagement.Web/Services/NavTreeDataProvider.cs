@@ -476,16 +476,14 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			var repoIssuesKey = RepoIssuesKey(row.RepositoryFullName);
 			var nowUtc = DateTimeOffset.UtcNow;
 
-			// An empty inbox means one of two things, and only the assessment can tell them apart:
-			// genuinely nothing open, or nothing fetched yet. Grey-for-empty conflated the two — a
-			// repository that had never been checked looked identical to one that was checked and
-			// found clean — so an assessed repository with nothing open is green, and only a
-			// repository that has not been assessed at all stays the grey "unknown". This mirrors
-			// NavHealthRollup.ForIssues, which draws the same distinction for the organisation-level
-			// Issues branch.
+			// An empty inbox means one of two things: genuinely nothing open, or nothing read. Only
+			// OpenIssuesKnown tells them apart. Having asked the assessment instead was wrong twice
+			// over — a locally-assessed repository never fetches an inbox at all unless a client was
+			// to hand, and a fetch that failed and was swallowed also leaves an assessed row with an
+			// empty list. Both drew a green "Issues (0)" over an inbox nobody had read.
 			var issueStatus = row.OpenIssues.Count > 0
 				? NavHealthRollup.Worst(row.OpenIssues.Select(issue => NavHealthRollup.FromSeverity(issue.SeverityAt(nowUtc))))
-				: row.Assessment is not null
+				: row.OpenIssuesKnown
 					? PackageHealthStatus.Success
 					: PackageHealthStatus.Unknown;
 
@@ -533,9 +531,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					// Worst first, then oldest first within a band. PDTree breaks SortOrder ties on
 					// Text, and alphabetical order on "#1000" against "#99" is meaningless, so the
 					// rank has to carry the number rather than leave it to the tie-break.
-					SortOrder = (severityRank * 1_000_000) + Math.Min(issue.Number, 999_999),
-					IssueCount = severity is AssessmentSeverity.Critical or AssessmentSeverity.Error ? 1 : 0,
-					HasErrors = severity is AssessmentSeverity.Critical or AssessmentSeverity.Error
+					SortOrder = (severityRank * 1_000_000) + Math.Min(issue.Number, 999_999)
 				});
 			}
 

@@ -84,10 +84,13 @@ public class RepositoryIssueNavNodeTests(ITestOutputHelper output) : TestWithOut
 	}
 
 	/// <summary>
-	/// Builds the whole navigation tree over a single repository with no <c>OpenIssues</c> and,
-	/// optionally, no assessment — the two situations that "Issues (0)" must not render identically.
+	/// Builds the whole navigation tree over a single repository with no <c>OpenIssues</c>, varying
+	/// independently whether it was assessed and whether its inbox was actually read — the situations
+	/// that "Issues (0)" must not render identically.
 	/// </summary>
-	private List<NavItem> TreeWithNoOpenIssues(bool assessed)
+	/// <param name="assessed">Whether the row carries an assessment.</param>
+	/// <param name="inboxRead">Whether the inbox was successfully read.</param>
+	private List<NavItem> TreeWithNoOpenIssues(bool assessed, bool inboxRead)
 	{
 		var rows = new List<RepositoryDashboardRow>
 		{
@@ -97,6 +100,7 @@ public class RepositoryIssueNavNodeTests(ITestOutputHelper output) : TestWithOut
 				RepositoryFullName = Repo,
 				Packages = [new() { PackageId = "Sample" }],
 				OpenIssues = [],
+				OpenIssuesKnown = inboxRead,
 				Assessment = assessed
 					? new RepoAssessment
 					{
@@ -230,23 +234,34 @@ public class RepositoryIssueNavNodeTests(ITestOutputHelper output) : TestWithOut
 	}
 
 	[Fact]
-	public void AnAssessedRepositoryWithNothingOpenIsGreenNotGrey()
+	public void ARepositoryWhoseInboxWasReadAndIsEmptyIsGreenNotGrey()
 	{
-		var node = TreeWithNoOpenIssues(assessed: true)
+		var node = TreeWithNoOpenIssues(assessed: true, inboxRead: true)
 			.Single(i => i.Key == NavTreeDataProvider.RepoIssuesKey(Repo));
 
 		node.HealthStatus.Should().Be(PackageHealthStatus.Success,
-			"the repository has been checked and its inbox is genuinely empty");
+			"the inbox was read and is genuinely empty");
 	}
 
 	[Fact]
 	public void AnUnassessedRepositoryWithNothingOpenStaysUnknown()
 	{
-		var node = TreeWithNoOpenIssues(assessed: false)
+		var node = TreeWithNoOpenIssues(assessed: false, inboxRead: false)
 			.Single(i => i.Key == NavTreeDataProvider.RepoIssuesKey(Repo));
 
 		node.HealthStatus.Should().Be(PackageHealthStatus.Unknown,
 			"nothing open is not yet known to mean nothing to worry about, because nothing has been fetched");
+	}
+
+	[Fact]
+	public void AnAssessedRepositoryWhoseInboxWasNotReadStaysUnknown()
+	{
+		var node = TreeWithNoOpenIssues(assessed: true, inboxRead: false)
+			.Single(i => i.Key == NavTreeDataProvider.RepoIssuesKey(Repo));
+
+		node.HealthStatus.Should().Be(PackageHealthStatus.Unknown,
+			"a local assessment with no GitHub client, and a fetch that failed and was swallowed, both "
+			+ "leave an assessed row with an empty list that nobody has actually read");
 	}
 
 	[Fact]
