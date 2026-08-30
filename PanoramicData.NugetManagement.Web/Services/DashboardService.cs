@@ -367,6 +367,11 @@ public class DashboardService
 			// one staleness window. A failure to read the inbox must not fail the assessment: the rules
 			// have already been evaluated by this point, and losing them because a comment endpoint
 			// misbehaved would be a poor trade.
+			//
+			// Rate-limit and authorisation failures are deliberately NOT swallowed here. They derive
+			// from ApiException, they say nothing about the inbox in particular, and the enclosing
+			// handlers turn them into a message telling the user what to do. Reporting them as an empty
+			// inbox would show a healthy-looking repository whose issues had quietly gone missing.
 			try
 			{
 				var issueService = new RepositoryIssueService(new OctokitGitHubIssueApi(github));
@@ -374,7 +379,10 @@ public class DashboardService
 					.GetOpenIssuesAsync(parts[0], parts[1], cancellationToken)
 					.ConfigureAwait(false)];
 			}
-			catch (ApiException ex)
+			catch (ApiException ex) when (ex is not RateLimitExceededException
+				&& ex is not AuthorizationException
+				&& !ex.Message.Contains("abuse", StringComparison.OrdinalIgnoreCase)
+				&& !ex.Message.Contains("secondary rate limit", StringComparison.OrdinalIgnoreCase))
 			{
 				_logger.LogWarning(
 					ex,
