@@ -6,7 +6,7 @@ namespace PanoramicData.NugetManagement.Web.Models;
 /// <remarks>
 /// Closed deliberately. A queue of arbitrary delegates cannot be written to disk and picked up
 /// again after a restart; a queue of named work can. Adding a member here without adding it to
-/// WorkExecutors fails a test rather than failing at run time.
+/// <see cref="Services.WorkExecutors"/> fails a test rather than failing at run time.
 /// </remarks>
 public enum WorkKind
 {

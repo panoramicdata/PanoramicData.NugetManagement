@@ -35,7 +35,7 @@ public enum WorkItemState
 /// <see cref="GeneratedPrompt"/> change while the UI holds a reference to the item.
 /// <para>
 /// The item no longer carries a delegate or an owning component. Work is named
-/// (<see cref="Descriptor"/>) and executed by WorkRunnerService, so it belongs to the
+/// (<see cref="Descriptor"/>) and executed by <see cref="WorkRunnerService"/>, so it belongs to the
 /// application rather than to the browser tab that asked for it.
 /// </para>
 /// </remarks>

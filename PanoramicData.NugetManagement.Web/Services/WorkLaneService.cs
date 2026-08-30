@@ -13,7 +13,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// that shared nothing with it. The invariant is kept but narrowed: one item at a time
 /// <em>within a lane</em>, many lanes at once across the estate.
 /// <para>
-/// The service coordinates but does not execute. WorkRunnerService pumps it.
+/// The service coordinates but does not execute. <see cref="WorkRunnerService"/> pumps it.
 /// </para>
 /// </remarks>
 public sealed class WorkLaneService
@@ -31,8 +31,23 @@ public sealed class WorkLaneService
 	/// <remarks>
 	/// Raised from whatever thread the change happened on, and — with twenty lanes reporting progress
 	/// — often. Subscribers rendering from it must debounce; see the navigation tree.
+	/// <para>
+	/// This is the UI's event, not the runner's — see <see cref="QueueChanged"/> for the distinction.
+	/// </para>
 	/// </remarks>
 	public event Action? Changed;
+
+	/// <summary>
+	/// Raised whenever what is queued changes: an item is added, started, finished, cancelled or
+	/// removed — as distinct from <see cref="Changed"/>, which also fires for a progress report and is
+	/// what the UI renders from.
+	/// </summary>
+	/// <remarks>
+	/// A progress line is not a change to what is queued, so it does not raise this event. That is what
+	/// lets <see cref="WorkRunnerService"/> use it to decide when to save the queue and when to wake the
+	/// pump, without rewriting the queue file on every one of up to twenty lanes' progress reports.
+	/// </remarks>
+	public event Action? QueueChanged;
 
 	/// <summary>
 	/// How many lanes may execute at once. Lowering it does not stop lanes already running; it takes
@@ -143,6 +158,7 @@ public sealed class WorkLaneService
 		}
 
 		Changed?.Invoke();
+		QueueChanged?.Invoke();
 		return item;
 	}
 
@@ -183,6 +199,7 @@ public sealed class WorkLaneService
 		}
 
 		Changed?.Invoke();
+		QueueChanged?.Invoke();
 		return true;
 	}
 
@@ -241,6 +258,7 @@ public sealed class WorkLaneService
 		}
 
 		Changed?.Invoke();
+		QueueChanged?.Invoke();
 	}
 
 	/// <summary>
@@ -256,6 +274,7 @@ public sealed class WorkLaneService
 		}
 
 		Changed?.Invoke();
+		QueueChanged?.Invoke();
 	}
 
 	/// <summary>Removes a pending item. A running item is left to <see cref="Cancel"/>, which unwinds it.</summary>
@@ -280,6 +299,7 @@ public sealed class WorkLaneService
 		}
 
 		Changed?.Invoke();
+		QueueChanged?.Invoke();
 	}
 
 	/// <summary>Stops everything in one lane.</summary>
@@ -298,6 +318,7 @@ public sealed class WorkLaneService
 		}
 
 		Changed?.Invoke();
+		QueueChanged?.Invoke();
 	}
 
 	/// <summary>
@@ -322,6 +343,7 @@ public sealed class WorkLaneService
 		}
 
 		Changed?.Invoke();
+		QueueChanged?.Invoke();
 	}
 
 	private void CancelLocked(string id)
