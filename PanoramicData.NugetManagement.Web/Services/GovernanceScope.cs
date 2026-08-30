@@ -69,6 +69,11 @@ public static class GovernanceScope
 		// still thought to be ours. Every count on the estate — failures, criticals, health — reads
 		// through Assessment, so leaving it in place would keep somebody else's repository in the totals.
 		row.Assessment = null;
+		// Issues count toward the same totals as rules, so leaving them would keep somebody else's
+		// repository contributing failures after it stopped being ours.
+		row.OpenIssues = [];
+		// And the flag with it: an empty inbox we are no longer entitled to read is not a read inbox.
+		row.OpenIssuesKnown = false;
 		row.IsClonedLocally = false;
 		row.LocalPath = null;
 		row.SlnxPath = null;

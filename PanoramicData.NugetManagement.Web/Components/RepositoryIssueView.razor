@@ -1,0 +1,71 @@
+@using PanoramicData.NugetManagement.Models
+
+@if (Issue is null)
+{
+	<div class="alert alert-secondary">
+		This issue is no longer in the cache. Re-assess the repository to refresh its inbox.
+	</div>
+}
+else
+{
+	<div class="mb-3">
+		<h4>
+			<i class="@(Issue.IsPullRequest ? "fas fa-code-pull-request" : "fas fa-circle-dot") @SeverityColour"></i>
+			#@Issue.Number @Issue.Title
+		</h4>
+		<div class="text-muted">@(Issue.IsPullRequest ? "Pull request" : "Issue") in @RepositoryFullName</div>
+	</div>
+
+	<dl class="row">
+		<dt class="col-sm-3">Raised by</dt>
+		<dd class="col-sm-9">@Issue.AuthorLogin</dd>
+
+		<dt class="col-sm-3">Opened</dt>
+		<dd class="col-sm-9">@Issue.CreatedAtUtc.ToString("u")</dd>
+
+		<dt class="col-sm-3">Last maintainer reply</dt>
+		<dd class="col-sm-9">
+			@if (Issue.LastMaintainerReplyUtc is null)
+			{
+				<span class="text-danger">Never — nobody with write access has commented.</span>
+			}
+			else
+			{
+				@Issue.LastMaintainerReplyUtc.Value.ToString("u")
+			}
+		</dd>
+
+		<dt class="col-sm-3">Waiting</dt>
+		<dd class="col-sm-9">@WholeDaysWaiting day(s)</dd>
+
+		<dt class="col-sm-3">Severity</dt>
+		<dd class="col-sm-9"><span class="@SeverityColour">@Severity</span></dd>
+	</dl>
+
+	<a class="btn btn-outline-primary" href="@Issue.HtmlUrl" target="_blank" rel="noopener">
+		<i class="fab fa-github"></i> Open on GitHub
+	</a>
+}
+
+@code {
+	/// <summary>The issue or pull request to show. Null when it has fallen out of the cache.</summary>
+	[Parameter]
+	public RepositoryIssue? Issue { get; set; }
+
+	/// <summary>The repository the item belongs to, as "owner/name".</summary>
+	[Parameter]
+	public string? RepositoryFullName { get; set; }
+
+	private AssessmentSeverity Severity
+		=> Issue?.SeverityAt(DateTimeOffset.UtcNow) ?? AssessmentSeverity.Info;
+
+	private int WholeDaysWaiting
+		=> Issue is null ? 0 : (int)(DateTimeOffset.UtcNow - Issue.ClockStartUtc).TotalDays;
+
+	private string SeverityColour => Severity switch
+	{
+		AssessmentSeverity.Critical or AssessmentSeverity.Error => "text-danger",
+		AssessmentSeverity.Warning => "text-warning",
+		_ => "text-info"
+	};
+}

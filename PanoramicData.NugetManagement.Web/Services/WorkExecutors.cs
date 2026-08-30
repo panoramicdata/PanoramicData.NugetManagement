@@ -511,15 +511,18 @@ public sealed class WorkExecutors(
 			cancellationToken.ThrowIfCancellationRequested();
 			Say($"▶ Assessing {row.RepositoryFullName}...");
 
+			// Hoisted out of the else: the local path wants a client too, to read the repository's
+			// inbox. Constructing one is local and free, so both branches can simply have one.
+			var github = await CreateGitHubClientAsync().ConfigureAwait(false);
+
 			if (row.IsClonedLocally && row.LocalPath is not null)
 			{
-				await dashboard.AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+				await dashboard.AssessLocalRepositoryAsync(row, cancellationToken, github).ConfigureAwait(false);
 				await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 				await SayDirtyWorkingTreePreviewAsync(row).ConfigureAwait(false);
 			}
 			else
 			{
-				var github = await CreateGitHubClientAsync().ConfigureAwait(false);
 				await dashboard.AssessRepositoryAsync(row, github).ConfigureAwait(false);
 			}
 
@@ -574,7 +577,13 @@ public sealed class WorkExecutors(
 			Say($"✅ Applied {applied.Count} remediation(s)");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+
+			// The client is what lets the local assessment read the repository's inbox, so a
+			// re-assessment after a fix reports the same issue state a fresh one would.
+			await dashboard.AssessLocalRepositoryAsync(
+				row,
+				cancellationToken,
+				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
 			cache.UpsertRow(row);
 
 			// Report remaining issues that have no auto-fix.
@@ -644,7 +653,13 @@ public sealed class WorkExecutors(
 			Say($"✅ Applied {applied.Count} remediation(s) for {category}");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+
+			// The client is what lets the local assessment read the repository's inbox, so a
+			// re-assessment after a fix reports the same issue state a fresh one would.
+			await dashboard.AssessLocalRepositoryAsync(
+				row,
+				cancellationToken,
+				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
 			cache.UpsertRow(row);
 		}
 		catch (OperationCanceledException)
@@ -721,7 +736,13 @@ public sealed class WorkExecutors(
 			Say(applied.Count > 0 ? $"✅ Fixed {result.RuleId}" : $"⚠️ Could not fix {result.RuleId}");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+
+			// The client is what lets the local assessment read the repository's inbox, so a
+			// re-assessment after a fix reports the same issue state a fresh one would.
+			await dashboard.AssessLocalRepositoryAsync(
+				row,
+				cancellationToken,
+				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
 			cache.UpsertRow(row);
 		}
 		catch (OperationCanceledException)

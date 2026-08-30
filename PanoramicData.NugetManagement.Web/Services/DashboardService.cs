@@ -362,6 +362,9 @@ public class DashboardService
 
 			// Build category summaries
 			row.CategorySummaries = BuildCategorySummaries(results);
+
+			await RefreshOpenIssuesAsync(row, github, parts[0], parts[1], cancellationToken).ConfigureAwait(false);
+
 			row.Status = PackageStatus.Assessed;
 			row.StatusMessage = $"{row.TotalFailures} issue(s) found.";
 		}
@@ -399,13 +402,77 @@ public class DashboardService
 	}
 
 	/// <summary>
+	/// Reads the repository's open issues and pull requests onto the row, and records whether the
+	/// inbox was actually read.
+	/// </summary>
+	/// <param name="row">The row to populate.</param>
+	/// <param name="github">The GitHub client to read through.</param>
+	/// <param name="owner">The repository owner.</param>
+	/// <param name="name">The repository name.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// Fetched as part of an assessment rather than on its own schedule so there is one refresh path,
+	/// one cache and one staleness window. A failure to read the inbox must not fail the assessment:
+	/// the rules have already been evaluated by the time this runs, and losing them because a comment
+	/// endpoint misbehaved would be a poor trade.
+	/// <para>
+	/// Rate-limit and authorisation failures are deliberately NOT swallowed here. They derive from
+	/// <see cref="ApiException"/>, they say nothing about the inbox in particular, and the callers'
+	/// handlers turn them into a message telling the user what to do. Reporting them as an empty inbox
+	/// would show a healthy-looking repository whose issues had quietly gone missing.
+	/// </para>
+	/// <para>
+	/// Both assessment paths call this one method so that the catch filter cannot drift between them.
+	/// A swallowed failure leaves <see cref="RepositoryDashboardRow.OpenIssuesKnown"/> false, so the
+	/// tree draws the unknown grey rather than a false green.
+	/// </para>
+	/// </remarks>
+	private async Task RefreshOpenIssuesAsync(
+		RepositoryDashboardRow row,
+		IGitHubClient github,
+		string owner,
+		string name,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			var issueService = new RepositoryIssueService(new OctokitGitHubIssueApi(github));
+			row.OpenIssues = [.. await issueService
+				.GetOpenIssuesAsync(owner, name, cancellationToken)
+				.ConfigureAwait(false)];
+			row.OpenIssuesKnown = true;
+		}
+		catch (ApiException ex) when (ex is not RateLimitExceededException
+			&& ex is not AuthorizationException
+			&& !ex.Message.Contains("abuse", StringComparison.OrdinalIgnoreCase)
+			&& !ex.Message.Contains("secondary rate limit", StringComparison.OrdinalIgnoreCase))
+		{
+			_logger.LogWarning(
+				ex,
+				"Could not read open issues for {Repo}; its inbox will show as unknown.",
+				row.RepositoryFullName);
+			row.OpenIssues = [];
+			row.OpenIssuesKnown = false;
+		}
+	}
+
+	/// <summary>
 	/// Assesses a single repository against all governance rules using the local filesystem.
 	/// This reads files directly from disk so that changes made by remediations are
 	/// immediately visible without pushing to GitHub first.
 	/// </summary>
+	/// <param name="row">The row to assess.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <param name="github">
+	/// A GitHub client, when the caller has one. Supplied, the repository's open issues and pull
+	/// requests are read as well, exactly as the remote path reads them. Omitted, both
+	/// <see cref="RepositoryDashboardRow.OpenIssues"/> and
+	/// <see cref="RepositoryDashboardRow.OpenIssuesKnown"/> are left as they were.
+	/// </param>
 	public async Task AssessLocalRepositoryAsync(
 		RepositoryDashboardRow row,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		IGitHubClient? github = null)
 	{
 		if (row.RepositoryFullName is null || row.LocalPath is null)
 		{
@@ -498,6 +565,19 @@ public class DashboardService
 			};
 
 			row.CategorySummaries = BuildCategorySummaries(results);
+
+			// The local path is the one every actively-worked repository takes, so without this it
+			// would be exactly those repositories whose inbox was never read.
+			if (github is not null)
+			{
+				var identityParts = row.RepositoryFullName.Split('/');
+				if (identityParts.Length == 2)
+				{
+					await RefreshOpenIssuesAsync(row, github, identityParts[0], identityParts[1], cancellationToken)
+						.ConfigureAwait(false);
+				}
+			}
+
 			row.Status = PackageStatus.Assessed;
 			row.StatusMessage = $"{row.TotalFailures} issue(s) found (local).";
 		}

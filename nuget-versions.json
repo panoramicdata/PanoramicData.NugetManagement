@@ -1,0 +1,122 @@
+{
+  "AspNet.Security.OAuth.GitHub": {
+    "latestVersion": "10.0.0",
+    "published": "2025-11-11T13:37:56.71+00:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "AwesomeAssertions": {
+    "latestVersion": "9.6.0",
+    "published": "2026-08-20T17:01:17.883+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "AwesomeAssertions.Analyzers": {
+    "latestVersion": "9.0.8",
+    "published": "2025-10-13T13:21:30.843+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Codacy.Api": {
+    "latestVersion": "3.0.45",
+    "published": "2026-08-30T14:40:53.66+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.Configuration": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:37.93+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.Configuration.Abstractions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:37.44+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.Configuration.UserSecrets": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:36.403+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.DependencyInjection": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:39.61+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.Logging": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:32.773+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.Logging.Abstractions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:32.52+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.Options": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:31.217+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.Options.ConfigurationExtensions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:30.72+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.TimeProvider.Testing": {
+    "latestVersion": "10.9.0",
+    "published": "2026-08-12T00:32:46.303+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.NET.Test.Sdk": {
+    "latestVersion": "18.9.0",
+    "published": "2026-08-14T10:42:25.82+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Testing.Extensions.CodeCoverage": {
+    "latestVersion": "18.10.0",
+    "published": "2026-08-12T18:01:25.7+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Nerdbank.GitVersioning": {
+    "latestVersion": "3.10.94",
+    "published": "2026-08-28T19:13:26.44+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Newtonsoft.Json": {
+    "latestVersion": "13.0.4",
+    "published": "2025-09-16T09:13:09.313+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "NuGet.Protocol": {
+    "latestVersion": "7.9.0",
+    "published": "2026-08-11T17:55:22.85+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Octokit": {
+    "latestVersion": "14.0.0",
+    "published": "2025-01-08T17:26:08.81+00:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "PanoramicData.Blazor": {
+    "latestVersion": "10.0.215",
+    "published": "2026-08-30T13:45:59.31+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Refit": {
+    "latestVersion": "15.2.0",
+    "published": "2026-08-18T15:52:52.423+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Refit.HttpClientFactory": {
+    "latestVersion": "15.2.0",
+    "published": "2026-08-18T15:52:53.573+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Xunit.Microsoft.DependencyInjection": {
+    "latestVersion": "10.1.0",
+    "published": "2026-08-29T13:25:39.717+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "xunit.v3": {
+    "latestVersion": "4.0.0",
+    "published": "2026-08-15T02:50:55.493+01:00",
+    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  }
+}

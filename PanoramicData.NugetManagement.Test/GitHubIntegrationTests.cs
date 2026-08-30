@@ -13,6 +13,18 @@ public class GitHubIntegrationTests : TestWithOutput
 	private static readonly string[] _excludedPathPrefixes = ["PanoramicData.NugetManagement.Test/Fixtures/"];
 
 	/// <summary>
+	/// The rules whose verdict depends on how long ago somebody else published, rather than on
+	/// anything in this repository.
+	/// </summary>
+	/// <remarks>
+	/// A grace period is a clock: a release nobody adopts will eventually breach it and turn this
+	/// suite red with no code change. That is the rule working as intended, but "the live repository
+	/// satisfies all rules" would then be an assertion about the calendar. Their results are printed
+	/// so drift is still visible here.
+	/// </remarks>
+	private static readonly string[] _graceDependentRuleIds = ["PKG-05", "PKG-06", "PKG-07"];
+
+	/// <summary>
 	/// Whether a GitHub token is configured. Referenced by <c>SkipUnless</c> on each test so these
 	/// tests are reported as skipped, not failed, on a machine with no GitHub secret configured.
 	/// </summary>
@@ -67,7 +79,14 @@ public class GitHubIntegrationTests : TestWithOutput
 			}
 		}
 
-		failures.Should().BeEmpty("the live panoramicdata/PanoramicData.NugetManagement repository should satisfy all assessment rules");
+		foreach (var graced in failures.Where(r => _graceDependentRuleIds.Contains(r.RuleId)))
+		{
+			Output.WriteLine($"[grace] {graced.RuleId}: {graced.Message}");
+		}
+
+		failures
+			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId))
+			.Should().BeEmpty("the live panoramicdata/PanoramicData.NugetManagement repository should satisfy all assessment rules");
 	}
 
 	[Fact(SkipUnless = nameof(IsGitHubConfigured), Skip = "GitHub:Token is not configured in user secrets")]

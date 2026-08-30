@@ -48,7 +48,23 @@ builder.Services.AddSingleton<NavTreeDataProvider>();
 // circuit rather than read from a request. See GitHubTokenProvider.
 builder.Services.AddSingleton<GitHubTokenProvider>();
 builder.Services.AddSingleton<RegressionGuardService>();
+builder.Services.AddSingleton(_ => NuGetVersionCache.Default);
+builder.Services.AddSingleton(_ => NuGetFloorCatalog.Default);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<NuGetVersionRefresher>(sp =>
+{
+	var checker = new NuGetVersionChecker(sp.GetRequiredService<ILogger<NuGetVersionChecker>>());
+	return new NuGetVersionRefresher(
+		NuGetVersionCache.Default,
+		checker.GetLatestStableWithPublishedAsync,
+		TimeProvider.System,
+		sp.GetRequiredService<ILogger<NuGetVersionRefresher>>());
+});
+builder.Services.AddSingleton<NuGetVersionRefreshService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RegressionGuardService>());
+// Nothing else resolves the refresher, so without this the cache never moves after seeding and every
+// package the seed did not mention is a permanent cache miss.
+builder.Services.AddHostedService(sp => sp.GetRequiredService<NuGetVersionRefreshService>());
 builder.Services.AddScoped<DashboardService>();
 
 // Per-repository work lanes: one queue-and-runner pair application-wide, replacing the single

@@ -104,6 +104,40 @@ public class GovernanceScopeTests(ITestOutputHelper output) : TestWithOutput(out
 		row.TotalFailures.Should().Be(0);
 	}
 
+	[Fact]
+	public void AnUngovernedRowShouldCarryNoOpenIssues()
+	{
+		var row = RowFor("datahint-eu/vizor-echarts");
+		row.Assessment = new RepoAssessment
+		{
+			RepositoryFullName = "datahint-eu/vizor-echarts",
+			DefaultBranch = "main",
+			AssessedAtUtc = DateTimeOffset.UtcNow,
+			RuleResults = []
+		};
+		row.OpenIssuesKnown = true;
+		row.OpenIssues =
+		[
+			new()
+			{
+				Number = 1,
+				Title = "Item 1",
+				HtmlUrl = "https://github.com/datahint-eu/vizor-echarts/issues/1",
+				AuthorLogin = "reporter",
+				CreatedAtUtc = DateTimeOffset.UtcNow - TimeSpan.FromDays(400),
+				LastMaintainerReplyUtc = DateTimeOffset.UtcNow - TimeSpan.FromDays(45)
+			}
+		];
+
+		GovernanceScope.Apply(row, _organizations);
+
+		row.OpenIssues.Should().BeEmpty(
+			"findings against a repository we do not govern must not reach the counts, and a cached row can carry issues from when it was governed");
+		row.OpenIssuesKnown.Should().BeFalse(
+			"an inbox we are no longer entitled to read is not a read inbox, and leaving the flag set would draw a green \"Issues (0)\" over it");
+		row.TotalFailures.Should().Be(0);
+	}
+
 	private static RepositoryDashboardRow RowFor(string repositoryFullName)
 		=> new()
 		{
