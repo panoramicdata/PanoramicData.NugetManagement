@@ -53,10 +53,37 @@ public sealed class NuGetFloorCatalog
 	public NuGetFloorCatalog(string? filePath)
 	{
 		_filePath = filePath;
-		var loaded = Load(filePath);
+		var loaded = Load(filePath, out var loadFailure);
+		LoadFailure = loadFailure;
 		_frozenBaseline = new(loaded, StringComparer.OrdinalIgnoreCase);
 		_learned = new(loaded, StringComparer.OrdinalIgnoreCase);
 	}
+
+	/// <summary>
+	/// Why the file could not be read, or null when there was nothing to read or reading succeeded.
+	/// </summary>
+	public string? LoadFailure { get; }
+
+	/// <summary>
+	/// Whether a file was present but could not be read.
+	/// </summary>
+	/// <remarks>
+	/// An unreadable catalogue silently stands the consistency half of the gate down: every package
+	/// has no floor, every repository passes, and the run looks healthy. An absent file is not a
+	/// failure — nothing has been learned yet — but a file that exists and will not parse is.
+	/// </remarks>
+	public bool LoadFailed => LoadFailure is not null;
+
+	/// <summary>
+	/// Every package id this catalogue has a floor for, including those learned since it loaded.
+	/// </summary>
+	/// <remarks>
+	/// This is the estate's package-id universe as observed by assessments: every rule evaluation
+	/// calls <see cref="Observe"/> for each package reference it sees, so the set grows as the
+	/// application assesses repositories. The refresher sweeps it, unioned with the version cache's
+	/// ids, instead of rediscovering the estate for itself.
+	/// </remarks>
+	public IReadOnlyCollection<string> PackageIds => [.. _learned.Keys];
 
 	/// <summary>The floor changes learned during this process, most recent last.</summary>
 	public IReadOnlyList<NuGetFloorBump> RecentBumps => [.. _bumps];
@@ -80,6 +107,17 @@ public sealed class NuGetFloorCatalog
 	{
 		// Versions can be MSBuild properties rather than literals; those say nothing about the estate.
 		if (!NuGetVersion.TryParse(version, out var observed))
+		{
+			return;
+		}
+
+		// A prerelease pin proves nothing, and the ratchet has no un-lower path. One repository
+		// trying "11.0.0-beta.1" would otherwise raise a floor above every stable pin in the estate,
+		// persist it to the committed file, and fail every other repository at PKG-07 (Critical) with
+		// remediation text telling them to adopt a beta — undoable only by hand-editing the file.
+		// The floor must also mean the same kind of version the cache means, and the cache is
+		// deliberately stable-only (includePrerelease: false).
+		if (observed.IsPrerelease)
 		{
 			return;
 		}
@@ -125,11 +163,13 @@ public sealed class NuGetFloorCatalog
 		}
 	}
 
-	private static Dictionary<string, NuGetVersion> Load(string? filePath)
+	private static Dictionary<string, NuGetVersion> Load(string? filePath, out string? loadFailure)
 	{
+		loadFailure = null;
 		var result = new Dictionary<string, NuGetVersion>(StringComparer.OrdinalIgnoreCase);
 		if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
 		{
+			// Absent is normal before anything has been learned, and is not a failure.
 			return result;
 		}
 
@@ -147,9 +187,13 @@ public sealed class NuGetFloorCatalog
 				}
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Corrupt or unreadable: no floors, so the consistency half of the gate stands down.
+			// Corrupt or unreadable: no floors, so the consistency half of the gate stands down —
+			// which looks exactly like a compliant estate. Recorded so an operator can tell the two
+			// apart rather than swallowed without trace.
+			loadFailure = $"{filePath}: {ex.Message}";
+			result.Clear();
 		}
 
 		return result;

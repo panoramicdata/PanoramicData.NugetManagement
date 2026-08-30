@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -62,16 +63,43 @@ public sealed class NuGetVersionCache
 	public NuGetVersionCache(string? filePath)
 	{
 		_filePath = filePath;
-		_snapshots = new(Load(filePath), StringComparer.OrdinalIgnoreCase);
+		_snapshots = new(Load(filePath, out var loadFailure), StringComparer.OrdinalIgnoreCase);
+		LoadFailure = loadFailure;
 	}
+
+	/// <summary>
+	/// Why the file could not be read, or null when there was nothing to read or reading succeeded.
+	/// </summary>
+	public string? LoadFailure { get; }
+
+	/// <summary>
+	/// Whether a file was present but could not be read.
+	/// </summary>
+	/// <remarks>
+	/// An unreadable cache silently disables the upstream half of the gate: every package reads as
+	/// unknown, all three freshness rules go green estate-wide, and nothing else says so. An absent
+	/// file is not a failure — that is the normal state before the first refresh is committed — but a
+	/// file that exists and will not parse is, and an operator has to be able to see it.
+	/// </remarks>
+	public bool LoadFailed => LoadFailure is not null;
+
+	/// <summary>
+	/// Every package id this cache holds a snapshot for.
+	/// </summary>
+	/// <remarks>
+	/// The refresher sweeps this, unioned with the floor catalogue's observed ids, rather than
+	/// rediscovering the estate: between them the two stores already hold every package id the
+	/// application has ever seen, and each assessment adds to them.
+	/// </remarks>
+	public IReadOnlyCollection<string> PackageIds => [.. _snapshots.Keys];
 
 	/// <summary>
 	/// The snapshot for a package, if one has been recorded.
 	/// </summary>
 	/// <param name="packageId">The package identifier.</param>
 	/// <param name="snapshot">The snapshot, when found.</param>
-	public bool TryGet(string packageId, out NuGetVersionSnapshot snapshot)
-		=> _snapshots.TryGetValue(packageId, out snapshot!);
+	public bool TryGet(string packageId, [MaybeNullWhen(false)] out NuGetVersionSnapshot snapshot)
+		=> _snapshots.TryGetValue(packageId, out snapshot);
 
 	/// <summary>
 	/// Records what nuget.org reported for a package, and says whether that changed anything.
@@ -149,11 +177,13 @@ public sealed class NuGetVersionCache
 		[property: JsonPropertyName("published")] DateTimeOffset Published,
 		[property: JsonPropertyName("refreshedAtUtc")] DateTimeOffset RefreshedAtUtc);
 
-	private static Dictionary<string, NuGetVersionSnapshot> Load(string? filePath)
+	private static Dictionary<string, NuGetVersionSnapshot> Load(string? filePath, out string? loadFailure)
 	{
+		loadFailure = null;
 		var result = new Dictionary<string, NuGetVersionSnapshot>(StringComparer.OrdinalIgnoreCase);
 		if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
 		{
+			// Absent is normal before the first refresh is committed, and is not a failure.
 			return result;
 		}
 
@@ -175,10 +205,14 @@ public sealed class NuGetVersionCache
 				}
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
 			// Corrupt or unreadable: every package stays unknown, which disables the upstream half of
-			// the gate rather than judging repositories against invented versions.
+			// the gate rather than judging repositories against invented versions. That failure mode
+			// is indistinguishable from a healthy estate at the rule level, so it is recorded here
+			// for an operator to see rather than swallowed without trace.
+			loadFailure = $"{filePath}: {ex.Message}";
+			result.Clear();
 		}
 
 		return result;

@@ -88,6 +88,75 @@ public class NuGetFloorCatalogTests(ITestOutputHelper output) : TestWithOutput(o
 		new NuGetFloorCatalog(path).GetFloor("Codacy.Api").Should().BeNull();
 	}
 
+	[Fact]
+	public void APrereleasePinShouldNotRaiseTheFloor()
+	{
+		// One repository pinning PanoramicData.Blazor 11.0.0-beta.1 to try it out is greater than
+		// 10.0.205, so an unguarded ratchet would raise the committed floor above every stable pin in
+		// the estate and fail all of them at PKG-07 (Critical) with remediation text telling them to
+		// adopt a beta. There is no un-lower path, so the only remedy would be editing the file by
+		// hand. A beta has proven nothing, which is the whole justification for the ratchet.
+		var path = Path.Combine(_directory, NuGetFloorCatalog.FileName);
+		Directory.CreateDirectory(_directory);
+
+		var catalog = new NuGetFloorCatalog(path);
+		catalog.Observe("PanoramicData.Blazor", "10.0.205", "panoramicdata/Stable");
+		catalog.Observe("PanoramicData.Blazor", "11.0.0-beta.1", "panoramicdata/Adventurous");
+
+		new NuGetFloorCatalog(path).GetFloor("PanoramicData.Blazor")
+			.Should().Be("10.0.205", "the floor must mean the same kind of version the cache means");
+	}
+
+	[Fact]
+	public void APrereleaseShouldNotEvenBeRecordedAsABump()
+	{
+		var catalog = new NuGetFloorCatalog(null);
+
+		catalog.Observe("PanoramicData.Blazor", "11.0.0-beta.1", "panoramicdata/Adventurous");
+
+		catalog.RecentBumps.Should().BeEmpty("a prerelease is not a floor movement");
+	}
+
+	[Fact]
+	public void AFirstPrereleaseObservationShouldNotCreateAFloor()
+	{
+		var path = Path.Combine(_directory, NuGetFloorCatalog.FileName);
+		Directory.CreateDirectory(_directory);
+
+		new NuGetFloorCatalog(path).Observe("PanoramicData.Blazor", "11.0.0-beta.1");
+
+		new NuGetFloorCatalog(path).GetFloor("PanoramicData.Blazor").Should().BeNull();
+	}
+
+	[Fact]
+	public void ACorruptFileShouldSayThatItFailedToLoad()
+	{
+		Directory.CreateDirectory(_directory);
+		var path = Path.Combine(_directory, NuGetFloorCatalog.FileName);
+		File.WriteAllText(path, "{ not json");
+
+		var catalog = new NuGetFloorCatalog(path);
+
+		catalog.LoadFailed.Should().BeTrue("a silently empty catalogue looks exactly like a compliant estate");
+		catalog.LoadFailure.Should().NotBeNullOrWhiteSpace();
+	}
+
+	[Fact]
+	public void AnAbsentFileShouldNotCountAsALoadFailure()
+		=> new NuGetFloorCatalog(Path.Combine(_directory, NuGetFloorCatalog.FileName))
+			.LoadFailed.Should().BeFalse("nothing has been learned yet, which is normal");
+
+	[Fact]
+	public void ObservedPackagesShouldBeVisibleToTheRefreshSweep()
+	{
+		var catalog = new NuGetFloorCatalog(null);
+
+		catalog.Observe("Codacy.Api", "3.0.43");
+		catalog.Observe("Octokit", "14.0.0");
+
+		catalog.PackageIds.Should().BeEquivalentTo(["Codacy.Api", "Octokit"]);
+	}
+
 	/// <inheritdoc />
 	public void Dispose()
 	{

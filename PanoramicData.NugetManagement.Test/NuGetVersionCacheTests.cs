@@ -31,7 +31,7 @@ public class NuGetVersionCacheTests(ITestOutputHelper output) : TestWithOutput(o
 		new NuGetVersionCache(Path.Combine(_directory, NuGetVersionCache.FileName))
 			.TryGet("Codacy.Api", out var snapshot).Should().BeTrue();
 
-		snapshot.LatestVersion.Should().Be("3.0.43");
+		snapshot!.LatestVersion.Should().Be("3.0.43");
 		snapshot.Published.Should().Be(new DateTimeOffset(2026, 8, 12, 0, 0, 0, TimeSpan.Zero));
 	}
 
@@ -75,7 +75,7 @@ public class NuGetVersionCacheTests(ITestOutputHelper output) : TestWithOutput(o
 		cache.Persist();
 
 		new NuGetVersionCache(path).TryGet("Codacy.Api", out var reloaded).Should().BeTrue();
-		reloaded.LatestVersion.Should().Be("3.0.43");
+		reloaded!.LatestVersion.Should().Be("3.0.43");
 	}
 
 	[Fact]
@@ -96,7 +96,35 @@ public class NuGetVersionCacheTests(ITestOutputHelper output) : TestWithOutput(o
 		cache.Update("Codacy.Api", "3.0.43", Published, Now.AddDays(1));
 
 		cache.TryGet("Codacy.Api", out var snapshot);
-		snapshot.RefreshedAtUtc.Should().Be(Now, "refreshedAtUtc records what changed, not when we looked");
+		snapshot!.RefreshedAtUtc.Should().Be(Now, "refreshedAtUtc records what changed, not when we looked");
+	}
+
+	[Fact]
+	public void ACorruptFileShouldSayThatItFailedToLoad()
+	{
+		WriteFile("{ this is not json");
+
+		var cache = new NuGetVersionCache(Path.Combine(_directory, NuGetVersionCache.FileName));
+
+		cache.LoadFailed.Should().BeTrue(
+			"an unreadable cache turns every package unknown and every freshness rule green, which is "
+			+ "indistinguishable from a healthy estate unless it is reported");
+		cache.LoadFailure.Should().NotBeNullOrWhiteSpace();
+	}
+
+	[Fact]
+	public void AnAbsentFileShouldNotCountAsALoadFailure()
+		=> new NuGetVersionCache(Path.Combine(_directory, NuGetVersionCache.FileName))
+			.LoadFailed.Should().BeFalse("no file yet is the normal state before the first refresh is committed");
+
+	[Fact]
+	public void CachedPackagesShouldBeVisibleToTheRefreshSweep()
+	{
+		var cache = new NuGetVersionCache(null);
+		cache.Update("Codacy.Api", "3.0.43", Published, Now);
+		cache.Update("Octokit", "14.0.0", Published, Now);
+
+		cache.PackageIds.Should().BeEquivalentTo(["Codacy.Api", "Octokit"]);
 	}
 
 	private static readonly DateTimeOffset Published = new(2026, 8, 12, 0, 0, 0, TimeSpan.Zero);
