@@ -165,6 +165,23 @@ public class RepositoryIssueServiceTests(ITestOutputHelper output) : TestWithOut
 	}
 
 	[Fact]
+	public async Task AnExhaustedSweepAnswersAnUnansweredItemWithoutAskingAboutIt()
+	{
+		// One open item nobody has answered, and a first page that comes back empty: the sweep has
+		// now seen every comment the repository has.
+		var api = new FakeApi([Item(1)], [[]]);
+
+		var result = await new RepositoryIssueService(api).GetOpenIssuesAsync(
+			"panoramicdata", "Sample", TestContext.Current.CancellationToken);
+
+		api.ItemsFetchedIndividually.Should().BeEmpty(
+			"the sweep read every comment in the repository and none was a maintainer reply to this "
+			+ "item, so asking about it individually could only re-learn what is already known — and "
+			+ "unanswered items are the common case this feature exists to surface");
+		result.Single().LastMaintainerReplyUtc.Should().BeNull();
+	}
+
+	[Fact]
 	public async Task CommentsOnOtherItemsAreIgnored()
 	{
 		var api = new FakeApi(
@@ -175,5 +192,7 @@ public class RepositoryIssueServiceTests(ITestOutputHelper output) : TestWithOut
 			"panoramicdata", "Sample", TestContext.Current.CancellationToken);
 
 		result.Single().LastMaintainerReplyUtc.Should().BeNull();
+		api.ItemsFetchedIndividually.Should().BeEmpty(
+			"page two comes back empty, so the sweep has seen every comment and knows item 1 is unanswered");
 	}
 }
