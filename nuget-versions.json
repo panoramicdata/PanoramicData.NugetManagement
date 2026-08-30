@@ -4,6 +4,51 @@
     "published": "2025-11-11T13:37:56.71+00:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "AspNetCore.HealthChecks.Network": {
+    "latestVersion": "9.0.0",
+    "published": "2024-12-19T10:52:45.513+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "AspNetCore.HealthChecks.NpgSql": {
+    "latestVersion": "9.0.0",
+    "published": "2024-12-19T10:53:05.517+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "AspNetCore.HealthChecks.SystemMemory": {
+    "latestVersion": "1.0.1",
+    "published": "2021-01-17T08:04:57.907+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "AspNetCore.HealthChecks.UI.Client": {
+    "latestVersion": "9.0.0",
+    "published": "2024-12-19T10:53:14.737+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "AsyncFixer": {
+    "latestVersion": "2.1.0",
+    "published": "2025-12-29T07:57:38.71+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Atlassian.SDK": {
+    "latestVersion": "13.0.0",
+    "published": "2022-03-13T02:17:33.837+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "AutoFixture": {
+    "latestVersion": "4.18.1",
+    "published": "2023-11-28T09:10:51.497+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "AutoTask.Api": {
+    "latestVersion": "1.7.11",
+    "published": "2026-06-06T18:14:55.763+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "AutoTask.Psa.Api": {
+    "latestVersion": "1.1.16",
+    "published": "2026-08-28T20:12:08.287+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "AwesomeAssertions": {
     "latestVersion": "9.6.0",
     "published": "2026-08-20T17:01:17.883+01:00",
@@ -14,10 +59,655 @@
     "published": "2025-10-13T13:21:30.843+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "Azure.AI.OpenAI": {
+    "latestVersion": "2.1.0",
+    "published": "2024-12-06T23:08:41.843+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Azure.Extensions.AspNetCore.Configuration.Secrets": {
+    "latestVersion": "1.5.2",
+    "published": "2026-08-18T04:23:37.59+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Azure.Identity": {
+    "latestVersion": "1.21.0",
+    "published": "2026-04-11T01:38:19.413+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Azure.Storage.Blobs": {
+    "latestVersion": "12.29.2",
+    "published": "2026-08-25T00:49:39.467+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "BenchmarkDotNet": {
+    "latestVersion": "0.15.8",
+    "published": "2025-11-30T02:54:27.83+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "BetterConsoleTables": {
+    "latestVersion": "1.1.3",
+    "published": "2022-01-06T20:22:42.077+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Blazor-ApexCharts": {
+    "latestVersion": "7.0.0",
+    "published": "2026-07-24T18:49:17.513+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "BlazorMonaco": {
+    "latestVersion": "3.5.0",
+    "published": "2026-06-28T20:08:06.477+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Bogus": {
+    "latestVersion": "35.6.5",
+    "published": "2025-10-26T04:07:06.547+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "BouncyCastle.Cryptography": {
+    "latestVersion": "2.7.0",
+    "published": "2026-07-30T12:09:20.513+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "bunit": {
+    "latestVersion": "2.9.0",
+    "published": "2026-08-03T20:51:54.89+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Castle.Core": {
+    "latestVersion": "5.2.1",
+    "published": "2025-03-09T21:10:23.063+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Certify.Api": {
+    "latestVersion": "2.0.1",
+    "published": "2026-08-30T15:00:31.167+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Cherwell.Api": {
+    "latestVersion": "1.0.66",
+    "published": "2026-08-28T20:13:29.747+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Cisco.Api": {
+    "latestVersion": "3.0.151",
+    "published": "2026-08-28T20:12:06.667+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Cisco.DnaCenter.Api": {
+    "latestVersion": "1.3.156",
+    "published": "2026-08-29T15:54:03.827+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Clone.Behave": {
+    "latestVersion": "1.0.1",
+    "published": "2016-01-27T13:32:05.067+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "CloneExtensions": {
+    "latestVersion": "1.4.2",
+    "published": "2017-09-27T06:06:27.727+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ClosedXML": {
+    "latestVersion": "0.105.1",
+    "published": "2026-07-25T19:00:50.067+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "Codacy.Api": {
     "latestVersion": "3.0.45",
     "published": "2026-08-30T14:40:53.66+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Codeuctivity.ImageSharpCompare": {
+    "latestVersion": "4.1.390",
+    "published": "2026-05-13T21:21:16.63+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "CommandLineParser": {
+    "latestVersion": "2.9.1",
+    "published": "2022-05-17T09:12:12.237+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ConnectWise.Manage.Api": {
+    "latestVersion": "3.1.0",
+    "published": "2026-08-13T05:53:54.107+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "coverlet.collector": {
+    "latestVersion": "10.0.1",
+    "published": "2026-05-18T09:04:46.64+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "CronExpressionDescriptor": {
+    "latestVersion": "2.51.0",
+    "published": "2026-07-07T17:39:01.78+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Cronos": {
+    "latestVersion": "0.13.0",
+    "published": "2026-04-29T10:25:56.1+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "CsvHelper": {
+    "latestVersion": "33.1.0",
+    "published": "2025-06-02T15:33:41.563+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Dapper": {
+    "latestVersion": "2.1.79",
+    "published": "2026-05-16T21:39:31.827+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "DesertOctopus": {
+    "latestVersion": "0.1.1",
+    "published": "2016-12-18T21:56:08.827+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "DeveloperForce.Force": {
+    "latestVersion": "2.1.0",
+    "published": "2019-08-14T04:59:15.183+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Divergic.Logging.Xunit": {
+    "latestVersion": "4.3.1",
+    "published": "2024-04-20T13:24:13.56+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "DocumentFormat.OpenXml": {
+    "latestVersion": "3.5.1",
+    "published": "2026-03-18T21:57:16.077+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "DotNetSeleniumExtras.WaitHelpers": {
+    "latestVersion": "3.11.0",
+    "published": "2018-03-11T21:11:52.79+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Dropbox.Sign": {
+    "latestVersion": "2.2.0",
+    "published": "2026-05-13T12:36:49.85+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "EasyNetQ.Management.Client": {
+    "latestVersion": "3.0.1",
+    "published": "2025-10-17T12:35:31.613+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Edi.RouteDebugger": {
+    "latestVersion": "1.12.0",
+    "published": "2026-01-18T02:35:18.087+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "EFCore.BulkExtensions.PostgreSql": {
+    "latestVersion": "10.0.1",
+    "published": "2026-02-25T07:51:00.093+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "EFCore.BulkExtensions.SqlServer": {
+    "latestVersion": "10.0.1",
+    "published": "2026-02-25T07:50:38.487+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Elastic.Apm.NetCoreAll": {
+    "latestVersion": "1.34.6",
+    "published": "2026-08-24T09:36:39.973+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Elastic.Apm.SerilogEnricher": {
+    "latestVersion": "9.0.0",
+    "published": "2025-08-13T11:41:34.567+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Elastic.Clients.Elasticsearch": {
+    "latestVersion": "9.5.1",
+    "published": "2026-08-28T14:07:38.89+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Elastic.Serilog.Sinks": {
+    "latestVersion": "9.0.0",
+    "published": "2025-08-13T11:41:33.843+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "EntityFramework": {
+    "latestVersion": "6.5.2",
+    "published": "2026-04-28T13:58:27.34+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "EPPlusFree": {
+    "latestVersion": "4.5.3.8",
+    "published": "2020-05-22T11:48:35.313+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "FakeItEasy": {
+    "latestVersion": "9.0.1",
+    "published": "2026-01-24T13:20:05.563+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "FastDeepCloner": {
+    "latestVersion": "1.3.6",
+    "published": "2021-10-16T14:52:22.54+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "FluentAssertions.Analyzers": {
+    "latestVersion": "0.34.1",
+    "published": "2024-10-07T20:53:12.713+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "FluentValidation": {
+    "latestVersion": "12.1.1",
+    "published": "2025-12-03T17:24:25.59+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "FluentValidation.AspNetCore": {
+    "latestVersion": "11.3.1",
+    "published": "2025-06-03T16:02:10.433+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "GeorgeCloney": {
+    "latestVersion": "1.1.2.20",
+    "published": "2016-09-04T14:24:29.12+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Google.Apis.Blogger.v3": {
+    "latestVersion": "1.75.0.4205",
+    "published": "2026-07-09T09:12:31.423+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Google.Apis.Sheets.v4": {
+    "latestVersion": "1.75.0.4178",
+    "published": "2026-06-18T09:28:32.653+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Google.Protobuf": {
+    "latestVersion": "3.36.0",
+    "published": "2026-08-20T17:31:21.687+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "GraphQL.Client": {
+    "latestVersion": "6.1.0",
+    "published": "2024-05-21T08:07:25.59+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "GraphQL.Client.Serializer.SystemTextJson": {
+    "latestVersion": "6.1.0",
+    "published": "2024-05-21T08:07:24.55+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Grpc.AspNetCore": {
+    "latestVersion": "2.83.0",
+    "published": "2026-08-03T06:10:22.623+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Grpc.Core.Api": {
+    "latestVersion": "2.83.0",
+    "published": "2026-08-03T06:10:41.233+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Grpc.Net.Client": {
+    "latestVersion": "2.83.0",
+    "published": "2026-08-03T06:10:48.317+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Grpc.Net.ClientFactory": {
+    "latestVersion": "2.83.0",
+    "published": "2026-08-03T06:10:54.177+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Grpc.Tools": {
+    "latestVersion": "2.83.0",
+    "published": "2026-07-23T08:16:50.08+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "HaloPsa.Api": {
+    "latestVersion": "2.196.66",
+    "published": "2026-08-28T20:12:07.543+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Highlight.Api": {
+    "latestVersion": "2.0.39",
+    "published": "2026-08-28T15:20:15.91+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "HtmlAgilityPack": {
+    "latestVersion": "1.13.0",
+    "published": "2026-08-24T16:11:27.73+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Humanizer.Core": {
+    "latestVersion": "3.0.10",
+    "published": "2026-03-07T05:33:40.157+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "IDisposableAnalyzers": {
+    "latestVersion": "4.0.8",
+    "published": "2024-06-19T15:05:30.2+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "idunno.Authentication.Basic": {
+    "latestVersion": "2.4.0",
+    "published": "2024-08-09T12:59:14.537+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "idunno.Bluesky": {
+    "latestVersion": "5.0.0",
+    "published": "2026-08-24T14:42:59.287+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "InTheHand.Net.Bluetooth": {
+    "latestVersion": "4.2.4",
+    "published": "2026-04-03T18:15:48.563+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "IPNetwork2": {
+    "latestVersion": "4.3.0",
+    "published": "2026-05-17T15:49:19.91+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Jira.Api": {
+    "latestVersion": "9.3.11",
+    "published": "2026-08-30T01:38:17.237+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "KubernetesClient": {
+    "latestVersion": "19.0.2",
+    "published": "2026-02-24T19:29:13.143+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Lextm.SharpSnmpLib": {
+    "latestVersion": "12.5.7",
+    "published": "2025-11-03T23:38:19.13+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Lextm.SharpSnmpLib.MibParser": {
+    "latestVersion": "1.0.1",
+    "published": "2017-09-27T04:03:58.813+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "LibGit2Sharp": {
+    "latestVersion": "0.32.0",
+    "published": "2026-07-24T08:36:55.707+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "LogicMonitor.Api": {
+    "latestVersion": "3.240.56",
+    "published": "2026-08-30T15:39:05.523+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "LogicMonitor.Datamart": {
+    "latestVersion": "3.240.5",
+    "published": "2026-08-28T14:05:48.903+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "LTAF.Navigator": {
+    "latestVersion": "0.1.0",
+    "published": "2019-10-30T03:24:27.35+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Macross.Json.Extensions": {
+    "latestVersion": "3.0.0",
+    "published": "2022-06-15T04:54:51.967+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MailKit": {
+    "latestVersion": "4.17.0",
+    "published": "2026-05-26T22:56:56.44+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Markdig": {
+    "latestVersion": "1.3.2",
+    "published": "2026-06-18T18:09:27.07+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Meraki.Api": {
+    "latestVersion": "1.70.95",
+    "published": "2026-08-30T14:59:21.18+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.ApplicationInsights.WorkerService": {
+    "latestVersion": "3.1.2",
+    "published": "2026-05-29T00:03:33.45+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.App": {
+    "latestVersion": "2.2.8",
+    "published": "2019-11-18T23:13:07.727+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Authentication.JwtBearer": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:54.087+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Components": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:52.76+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Components.Authorization": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:52.39+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Components.Web": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:51.167+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Components.WebAssembly": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:51.927+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Components.WebAssembly.Authentication": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:51.06+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Components.WebAssembly.DevServer": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:53.567+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Components.WebAssembly.Server": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:51.89+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Components.WebView.WindowsForms": {
+    "latestVersion": "10.0.100",
+    "published": "2026-08-20T17:20:28.46+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.DataProtection": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:50.467+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.DataProtection.Abstractions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:50.207+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Hosting.Abstractions": {
+    "latestVersion": "2.3.12",
+    "published": "2026-08-11T18:15:53.633+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Http": {
+    "latestVersion": "2.3.12",
+    "published": "2026-08-11T18:17:03.197+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Http.Abstractions": {
+    "latestVersion": "2.3.12",
+    "published": "2026-08-11T18:15:54.63+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Mvc.Core": {
+    "latestVersion": "2.3.12",
+    "published": "2026-08-11T18:16:50.677+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Mvc.NewtonsoftJson": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:46.427+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.Mvc.Testing": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:48.863+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.OData": {
+    "latestVersion": "9.5.0",
+    "published": "2026-07-14T17:00:35.307+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.SignalR.Client": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:49.463+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.AspNetCore.WebUtilities": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:44.26+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Azure.Core.NewtonsoftJson": {
+    "latestVersion": "2.0.0",
+    "published": "2023-12-14T21:44:57.147+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Azure.Functions.Worker": {
+    "latestVersion": "2.52.0",
+    "published": "2026-04-21T18:55:59.49+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Azure.Functions.Worker.ApplicationInsights": {
+    "latestVersion": "2.51.0",
+    "published": "2026-06-05T00:37:14.35+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Azure.Functions.Worker.Extensions.Http": {
+    "latestVersion": "3.3.0",
+    "published": "2025-01-28T21:25:57.27+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Azure.Functions.Worker.Extensions.ServiceBus": {
+    "latestVersion": "5.24.0",
+    "published": "2025-09-26T21:50:27.477+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Azure.Functions.Worker.Extensions.Storage": {
+    "latestVersion": "6.8.2",
+    "published": "2026-08-14T21:32:22.203+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Azure.Functions.Worker.Extensions.Timer": {
+    "latestVersion": "4.3.1",
+    "published": "2024-06-06T22:28:08.047+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Azure.Functions.Worker.Sdk": {
+    "latestVersion": "2.1.0",
+    "published": "2026-07-23T17:56:13.65+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Build.Framework": {
+    "latestVersion": "18.9.6",
+    "published": "2026-08-11T16:56:34.7+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Build.Utilities.Core": {
+    "latestVersion": "18.9.6",
+    "published": "2026-08-11T16:58:58.18+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.CodeAnalysis.Analyzers": {
+    "latestVersion": "5.9.0",
+    "published": "2026-08-17T17:55:52.75+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.CodeAnalysis.CSharp": {
+    "latestVersion": "5.9.0",
+    "published": "2026-08-17T17:55:58.073+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.CodeAnalysis.CSharp.Workspaces": {
+    "latestVersion": "5.9.0",
+    "published": "2026-08-17T17:56:04.407+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.CodeAnalysis.NetAnalyzers": {
+    "latestVersion": "10.0.400",
+    "published": "2026-08-11T17:57:03.987+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Data.SqlClient": {
+    "latestVersion": "7.0.2",
+    "published": "2026-06-25T17:17:34.293+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Data.SqlClient.Extensions.Azure": {
+    "latestVersion": "7.0.2",
+    "published": "2026-06-25T17:14:46.413+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.EntityFrameworkCore": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:42.467+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.EntityFrameworkCore.Abstractions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:41.573+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.EntityFrameworkCore.Design": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:41.343+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.EntityFrameworkCore.InMemory": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:41.12+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.EntityFrameworkCore.Relational": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:41.103+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.EntityFrameworkCore.Sqlite": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:40.37+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.EntityFrameworkCore.SqlServer": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:40.557+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.EntityFrameworkCore.Tools": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:39.187+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.AI.OpenAI": {
+    "latestVersion": "10.9.0",
+    "published": "2026-08-12T00:32:51.66+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Caching.Abstractions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:38.643+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Caching.Memory": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:38.497+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Microsoft.Extensions.Configuration": {
     "latestVersion": "10.0.11",
@@ -29,6 +719,26 @@
     "published": "2026-08-11T17:54:37.44+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "Microsoft.Extensions.Configuration.Binder": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:37.71+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Configuration.EnvironmentVariables": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:39.553+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Configuration.FileExtensions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:39.713+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Configuration.Json": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:36.407+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "Microsoft.Extensions.Configuration.UserSecrets": {
     "latestVersion": "10.0.11",
     "published": "2026-08-11T17:54:36.403+01:00",
@@ -39,6 +749,46 @@
     "published": "2026-08-11T17:54:39.61+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "Microsoft.Extensions.DependencyInjection.Abstractions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:39.663+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:35.617+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Hosting": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:34.013+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Hosting.Abstractions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:33.737+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Hosting.Systemd": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:33.82+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Hosting.WindowsServices": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:33.64+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Http": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:33.443+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Http.Polly": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:33.6+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "Microsoft.Extensions.Logging": {
     "latestVersion": "10.0.11",
     "published": "2026-08-11T17:54:32.773+01:00",
@@ -48,6 +798,26 @@
     "latestVersion": "10.0.11",
     "published": "2026-08-11T17:54:32.52+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.Extensions.Logging.ApplicationInsights": {
+    "latestVersion": "2.23.0",
+    "published": "2025-02-19T22:31:31.413+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Logging.Console": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:32.34+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Logging.Debug": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:31.567+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Extensions.Logging.EventLog": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:31.887+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Microsoft.Extensions.Options": {
     "latestVersion": "10.0.11",
@@ -64,40 +834,425 @@
     "published": "2026-08-12T00:32:46.303+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "Microsoft.Graph": {
+    "latestVersion": "6.5.0",
+    "published": "2026-08-06T02:24:15.8+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Identity.Web": {
+    "latestVersion": "4.14.2",
+    "published": "2026-07-30T18:25:33.14+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.JSInterop": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:30.01+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Kiota.Abstractions": {
+    "latestVersion": "2.0.0",
+    "published": "2026-05-07T00:50:49.277+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.ML": {
+    "latestVersion": "5.0.0",
+    "published": "2025-11-11T08:30:13.96+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Net.Compilers.Toolset": {
+    "latestVersion": "5.9.0",
+    "published": "2026-08-17T17:56:22.667+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "Microsoft.NET.Test.Sdk": {
     "latestVersion": "18.9.0",
     "published": "2026-08-14T10:42:25.82+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Microsoft.OData.Core": {
+    "latestVersion": "9.0.0",
+    "published": "2026-07-28T19:21:11.06+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.OData.Edm": {
+    "latestVersion": "9.0.0",
+    "published": "2026-07-28T19:20:46.967+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Office.Interop.Word": {
+    "latestVersion": "15.0.4797.1004",
+    "published": "2022-06-10T23:00:33.697+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.OpenApi.OData": {
+    "latestVersion": "3.2.1",
+    "published": "2026-04-14T13:41:35.823+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.OpenApi.Readers": {
+    "latestVersion": "1.6.31",
+    "published": "2026-08-20T21:10:17.053+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Playwright": {
+    "latestVersion": "1.62.0",
+    "published": "2026-08-11T16:37:01.81+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.PowerShell.SDK": {
+    "latestVersion": "7.6.5",
+    "published": "2026-08-14T18:05:33.043+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.SourceLink.GitHub": {
+    "latestVersion": "10.0.400",
+    "published": "2026-08-11T17:57:02.413+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Microsoft.Testing.Extensions.CodeCoverage": {
     "latestVersion": "18.10.0",
     "published": "2026-08-12T18:01:25.7+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": {
+    "latestVersion": "1.23.0",
+    "published": "2025-09-26T04:44:58.83+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Microsoft.Windows.Compatibility": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:21.503+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MicrosoftAzure.Api": {
+    "latestVersion": "2.0.30",
+    "published": "2026-08-28T20:13:49.88+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MicrosoftDynamics.Api": {
+    "latestVersion": "10.0.28",
+    "published": "2026-08-21T09:39:04.003+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MicrosoftExtensions.Logging.Xunit": {
+    "latestVersion": "1.2.1",
+    "published": "2025-08-22T10:22:30.853+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MicrosoftOfficeCore": {
+    "latestVersion": "15.0.0",
+    "published": "2017-08-25T14:19:49.017+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MimeTypeMapOfficial": {
+    "latestVersion": "1.0.17",
+    "published": "2021-05-25T22:26:20.16+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MimeTypesMap": {
+    "latestVersion": "1.0.9",
+    "published": "2024-12-14T12:08:47.27+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ModelContextProtocol": {
+    "latestVersion": "2.2.0",
+    "published": "2026-08-13T09:56:14.417+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ModelContextProtocol.AspNetCore": {
+    "latestVersion": "2.2.0",
+    "published": "2026-08-13T09:56:14.92+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ModelContextProtocol.Core": {
+    "latestVersion": "2.2.0",
+    "published": "2026-08-13T09:56:15.39+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MongoDB.Driver": {
+    "latestVersion": "3.11.1",
+    "published": "2026-08-27T17:42:18.437+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Moq": {
+    "latestVersion": "4.20.72",
+    "published": "2024-09-07T02:37:52.233+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MSTest.TestAdapter": {
+    "latestVersion": "4.3.3",
+    "published": "2026-07-28T08:32:48.78+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "MSTest.TestFramework": {
+    "latestVersion": "4.3.3",
+    "published": "2026-07-28T08:32:49.82+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NCalcSync": {
+    "latestVersion": "7.1.0",
+    "published": "2026-08-07T19:26:57.3+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NClone": {
+    "latestVersion": "1.2.0",
+    "published": "2018-10-18T08:55:45.347+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Neovolve.Logging.Xunit": {
+    "latestVersion": "6.3.0",
+    "published": "2024-12-23T10:04:20.62+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Neovolve.Logging.Xunit.v3": {
+    "latestVersion": "7.2.0",
+    "published": "2025-11-10T08:36:19.473+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "Nerdbank.GitVersioning": {
     "latestVersion": "3.10.94",
     "published": "2026-08-28T19:13:26.44+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "Nerdbank.MessagePack": {
+    "latestVersion": "1.3.85",
+    "published": "2026-08-26T21:02:42.843+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NetTopologySuite": {
+    "latestVersion": "2.6.0",
+    "published": "2025-03-12T21:52:42.077+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NetTopologySuite.IO.GeoJSON": {
+    "latestVersion": "4.0.0",
+    "published": "2023-09-15T12:06:18.78+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NetTopologySuite.IO.VectorTiles": {
+    "latestVersion": "1.1.0",
+    "published": "2024-08-14T11:02:49.653+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NetTopologySuite.IO.VectorTiles.Mapbox": {
+    "latestVersion": "1.1.0",
+    "published": "2024-08-14T11:02:49.89+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Newtonsoft.Json": {
     "latestVersion": "13.0.4",
     "published": "2025-09-16T09:13:09.313+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "Newtonsoft.Json.Schema": {
+    "latestVersion": "4.0.1",
+    "published": "2024-06-08T14:10:37.15+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Npgsql": {
+    "latestVersion": "10.0.3",
+    "published": "2026-05-27T12:33:04.433+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Npgsql.EntityFrameworkCore.PostgreSQL": {
+    "latestVersion": "10.0.3",
+    "published": "2026-07-10T09:53:42.443+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NSubstitute": {
+    "latestVersion": "6.2.0",
+    "published": "2026-08-11T11:59:03.63+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NSubstitute.Analyzers.CSharp": {
+    "latestVersion": "1.0.17",
+    "published": "2024-02-11T21:57:16.827+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Nuclex.Cloning": {
+    "latestVersion": "1.0.0",
+    "published": "2013-12-04T12:40:19.46+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NuGet.Common": {
+    "latestVersion": "7.9.0",
+    "published": "2026-08-11T17:55:02.267+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NuGet.Packaging": {
+    "latestVersion": "7.9.0",
+    "published": "2026-08-11T17:55:18.723+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "NuGet.Protocol": {
     "latestVersion": "7.9.0",
     "published": "2026-08-11T17:55:22.85+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "NUnit": {
+    "latestVersion": "4.6.1",
+    "published": "2026-05-19T11:10:40.42+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "NUnit3TestAdapter": {
+    "latestVersion": "6.3.0",
+    "published": "2026-08-24T21:10:23.213+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Octokit": {
     "latestVersion": "14.0.0",
     "published": "2025-01-08T17:26:08.81+00:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "Ollama.Api": {
+    "latestVersion": "1.0.21",
+    "published": "2026-08-30T13:56:59.077+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "PanoramicData.Blazor": {
     "latestVersion": "10.0.215",
     "published": "2026-08-30T13:45:59.31+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "PanoramicData.ChartMagic": {
+    "latestVersion": "9.1.26",
+    "published": "2026-08-29T22:02:25.47+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.DeepCloner": {
+    "latestVersion": "1.0.8",
+    "published": "2026-04-17T00:52:23.257+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.ECharts": {
+    "latestVersion": "6.1.5",
+    "published": "2026-08-18T14:59:14.953+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.Encryption": {
+    "latestVersion": "1.0.38",
+    "published": "2026-08-30T01:43:51.8+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.Engines": {
+    "latestVersion": "1.0.6",
+    "published": "2026-06-07T23:09:21.54+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.EpPlus": {
+    "latestVersion": "10.1.1",
+    "published": "2026-08-26T07:58:31.363+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.HealthChecks.BasicAuthentication": {
+    "latestVersion": "10.0.17",
+    "published": "2026-03-29T03:15:34.313+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.HealthChecks.Core": {
+    "latestVersion": "10.0.17",
+    "published": "2026-03-29T03:15:46.24+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.HealthChecks.Versions": {
+    "latestVersion": "10.0.17",
+    "published": "2026-03-29T03:15:48.897+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.Mapper": {
+    "latestVersion": "10.0.37",
+    "published": "2026-06-26T09:07:17.2+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.NCalcExtensions": {
+    "latestVersion": "6.1.7",
+    "published": "2026-08-20T13:31:50.293+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.NetFlowServer": {
+    "latestVersion": "1.0.9",
+    "published": "2026-06-06T21:27:18.353+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.NugetManagement": {
+    "latestVersion": "1.0.160",
+    "published": "2026-08-28T20:20:29.26+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.OData.Client": {
+    "latestVersion": "10.0.115",
+    "published": "2026-08-28T14:14:40.41+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.Render": {
+    "latestVersion": "1.0.279",
+    "published": "2026-08-28T14:48:55.813+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.SheetMagic": {
+    "latestVersion": "3.1.140",
+    "published": "2026-08-30T01:46:23.32+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.Slack.Webhooks": {
+    "latestVersion": "1.0.3",
+    "published": "2025-01-06T15:58:48.54+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.SshServer": {
+    "latestVersion": "1.0.22",
+    "published": "2026-06-07T11:31:24.34+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.SyslogServer": {
+    "latestVersion": "1.0.9",
+    "published": "2026-06-07T11:15:10.443+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PanoramicData.System.Windows.Forms.DataVisualization": {
+    "latestVersion": "1.0.7",
+    "published": "2025-12-12T18:01:52.633+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PdfPig": {
+    "latestVersion": "0.1.16",
+    "published": "2026-08-22T08:59:44.71+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PDFtoImage": {
+    "latestVersion": "5.4.0",
+    "published": "2026-08-16T20:29:08.6+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Pgvector.EntityFrameworkCore": {
+    "latestVersion": "0.3.0",
+    "published": "2025-12-21T00:05:59.31+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Polly": {
+    "latestVersion": "8.7.0",
+    "published": "2026-06-10T17:49:54.043+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PowerShellStandard.Library": {
+    "latestVersion": "5.1.1",
+    "published": "2019-03-07T22:08:47.177+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "PuppeteerSharp": {
+    "latestVersion": "25.8.0",
+    "published": "2026-08-17T21:59:15.96+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Quartz": {
+    "latestVersion": "3.20.0",
+    "published": "2026-08-27T20:37:20.897+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "RabbitMQ.Client": {
+    "latestVersion": "7.2.2",
+    "published": "2026-08-05T19:25:19.87+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Refit": {
     "latestVersion": "15.2.0",
@@ -109,14 +1264,459 @@
     "published": "2026-08-18T15:52:53.573+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "Refit.Newtonsoft.Json": {
+    "latestVersion": "15.2.0",
+    "published": "2026-08-18T15:52:54.973+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ReflectionMagic": {
+    "latestVersion": "6.0.0",
+    "published": "2026-08-23T12:33:42.167+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "RestSharp": {
+    "latestVersion": "114.0.0",
+    "published": "2026-03-05T14:59:39.247+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "RestSharp.Serializers.NewtonsoftJson": {
+    "latestVersion": "114.0.0",
+    "published": "2026-03-05T15:08:54.977+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Roslynator.Analyzers": {
+    "latestVersion": "5.0.0",
+    "published": "2026-08-21T21:03:03.227+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Roslynator.CodeFixes": {
+    "latestVersion": "5.0.0",
+    "published": "2026-08-21T21:03:03.863+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Rundeck.Api": {
+    "latestVersion": "34.0.60",
+    "published": "2020-03-27T11:20:47.863+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ScienceLogic.Em7.Api": {
+    "latestVersion": "1.0.6",
+    "published": "2018-08-14T02:51:44.817+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SecurityCodeScan.VS2019": {
+    "latestVersion": "5.6.7",
+    "published": "2022-09-05T16:50:24.003+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Selenium.Support": {
+    "latestVersion": "4.48.0",
+    "published": "2026-08-27T21:06:23.2+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Selenium.WebDriver": {
+    "latestVersion": "4.48.0",
+    "published": "2026-08-27T21:06:25.043+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Selenium.WebDriver.ChromeDriver": {
+    "latestVersion": "152.0.7977.6400",
+    "published": "2026-08-26T00:04:13.933+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog": {
+    "latestVersion": "4.4.0",
+    "published": "2026-07-10T04:35:24.047+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.AspNetCore": {
+    "latestVersion": "10.0.0",
+    "published": "2025-11-28T07:11:30.033+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Enrichers.Environment": {
+    "latestVersion": "3.0.1",
+    "published": "2024-06-20T06:42:09.693+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Expressions": {
+    "latestVersion": "5.0.0",
+    "published": "2024-06-13T03:02:12.58+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Extensions.Hosting": {
+    "latestVersion": "10.0.0",
+    "published": "2025-11-28T06:35:43.703+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Extensions.Logging": {
+    "latestVersion": "10.0.0",
+    "published": "2025-11-21T21:48:30.083+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Settings.Configuration": {
+    "latestVersion": "10.0.1",
+    "published": "2026-06-15T07:44:54.293+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Sinks.ApplicationInsights": {
+    "latestVersion": "5.0.1",
+    "published": "2026-04-17T03:34:51.193+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Sinks.AzureAnalytics": {
+    "latestVersion": "3.1.0",
+    "published": "2018-06-11T08:30:07.333+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Sinks.BrowserConsole": {
+    "latestVersion": "8.0.0",
+    "published": "2024-07-12T06:16:35.65+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Sinks.Console": {
+    "latestVersion": "6.1.1",
+    "published": "2025-11-02T21:00:19.21+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Sinks.ElasticSearch": {
+    "latestVersion": "10.0.0",
+    "published": "2024-03-12T14:06:27.533+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Sinks.File": {
+    "latestVersion": "7.0.0",
+    "published": "2025-04-28T01:39:12.867+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Serilog.Sinks.PeriodicBatching": {
+    "latestVersion": "5.0.0",
+    "published": "2024-06-05T03:07:30.577+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ServiceNow.Api": {
+    "latestVersion": "1.3.30",
+    "published": "2026-08-30T15:11:43.673+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ServiceStack": {
+    "latestVersion": "10.1.4",
+    "published": "2026-08-18T16:54:47.667+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SharpZipLib": {
+    "latestVersion": "1.4.2",
+    "published": "2023-01-30T06:42:27.793+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Shouldly": {
+    "latestVersion": "4.3.0",
+    "published": "2025-01-23T15:21:07.413+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SideroLabs.Omni.Api": {
+    "latestVersion": "1.1.16",
+    "published": "2026-08-28T18:32:03.44+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SimpleSOAPClient": {
+    "latestVersion": "2.1.0",
+    "published": "2018-06-26T11:43:21.207+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SkiaSharp": {
+    "latestVersion": "4.151.1",
+    "published": "2026-08-05T22:56:44.303+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SkiaSharp.HarfBuzz": {
+    "latestVersion": "4.151.1",
+    "published": "2026-08-05T22:56:46.217+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SkiaSharp.NativeAssets.Linux": {
+    "latestVersion": "4.151.1",
+    "published": "2026-08-05T22:56:54.473+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SkiaSharp.NativeAssets.Linux.NoDependencies": {
+    "latestVersion": "4.151.1",
+    "published": "2026-08-05T22:56:56.977+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SkiaSharp.NativeAssets.WebAssembly": {
+    "latestVersion": "4.151.1",
+    "published": "2026-08-05T22:57:07.497+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Snappier": {
+    "latestVersion": "1.3.1",
+    "published": "2026-04-28T15:18:44.7+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SolarWinds.Api": {
+    "latestVersion": "2026.5.49",
+    "published": "2026-08-28T20:12:30.047+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Spectre.Console": {
+    "latestVersion": "0.57.2",
+    "published": "2026-07-02T22:37:50.753+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Spectre.Console.Cli": {
+    "latestVersion": "0.55.0",
+    "published": "2026-04-03T21:19:58.617+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SSH.NET": {
+    "latestVersion": "2026.0.0",
+    "published": "2026-08-09T20:00:33.51+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "StackExchange.Redis": {
+    "latestVersion": "3.1.31",
+    "published": "2026-08-21T11:28:05.27+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "StreamJsonRpc": {
+    "latestVersion": "2.25.29",
+    "published": "2026-06-15T19:13:05.593+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Superpower": {
+    "latestVersion": "3.2.1",
+    "published": "2026-04-29T23:46:15.797+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Svg": {
+    "latestVersion": "3.4.8",
+    "published": "2026-07-23T18:09:09.697+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Svg.Skia": {
+    "latestVersion": "5.2.3",
+    "published": "2026-08-27T23:19:42.627+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Swashbuckle.AspNetCore": {
+    "latestVersion": "10.2.3",
+    "published": "2026-06-22T15:52:49.397+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Swashbuckle.AspNetCore.SwaggerUI": {
+    "latestVersion": "10.2.3",
+    "published": "2026-06-22T15:52:44.703+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "SymphonyAi.Summit.Api": {
+    "latestVersion": "1.1.32",
+    "published": "2026-08-28T21:02:39.2+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.CommandLine": {
+    "latestVersion": "2.0.11",
+    "published": "2026-08-11T17:54:20.587+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.ComponentModel": {
+    "latestVersion": "4.3.0",
+    "published": "2016-11-15T23:40:36.6+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.ComponentModel.Annotations": {
+    "latestVersion": "5.0.0",
+    "published": "2020-11-09T23:38:04.46+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Configuration.ConfigurationManager": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:20.04+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Data.SqlClient": {
+    "latestVersion": "4.9.1",
+    "published": "2026-02-18T02:33:33.59+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Drawing.Common": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:20.62+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.IdentityModel.Tokens.Jwt": {
+    "latestVersion": "8.22.0",
+    "published": "2026-07-29T11:21:26.923+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Linq.Dynamic.Core": {
+    "latestVersion": "1.7.4",
+    "published": "2026-08-30T12:41:25.24+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Management.Automation": {
+    "latestVersion": "7.6.5",
+    "published": "2026-08-14T18:05:41.283+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Net.Http.Json": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:19.077+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Resources.Extensions": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:18.833+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Security.Cryptography.Pkcs": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:18.48+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Security.Cryptography.ProtectedData": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:18.427+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Security.Cryptography.Xml": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:18.293+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.ServiceModel.Duplex": {
+    "latestVersion": "6.0.0",
+    "published": "2023-05-18T19:00:10.33+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.ServiceModel.Http": {
+    "latestVersion": "10.0.652802",
+    "published": "2025-11-11T17:20:18.923+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.ServiceModel.NetTcp": {
+    "latestVersion": "10.0.652802",
+    "published": "2025-11-11T17:20:24.593+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.ServiceModel.Security": {
+    "latestVersion": "6.0.0",
+    "published": "2023-05-18T19:01:57.827+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.ServiceModel.Syndication": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:18.027+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.ServiceProcess.ServiceController": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:17.84+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Text.Encoding.CodePages": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:18.063+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Text.Json": {
+    "latestVersion": "10.0.11",
+    "published": "2026-08-11T17:54:17.65+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "System.Xml.XPath.XmlDocument": {
+    "latestVersion": "4.7.0",
+    "published": "2024-11-12T23:07:05.627+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "TextCopy": {
+    "latestVersion": "6.2.1",
+    "published": "2022-12-16T01:29:46.233+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "TimeZoneConverter": {
+    "latestVersion": "7.2.0",
+    "published": "2025-10-20T20:25:00.867+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Tmds.DBus": {
+    "latestVersion": "0.95.0",
+    "published": "2026-08-21T20:05:29.21+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Toggl.Api": {
+    "latestVersion": "9.0.106",
+    "published": "2026-08-28T20:12:40.7+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Twilio": {
+    "latestVersion": "8.0.0",
+    "published": "2026-08-25T13:01:41.38+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Uk.Parliament": {
+    "latestVersion": "10.1.17",
+    "published": "2026-08-30T14:59:33.027+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Whois": {
+    "latestVersion": "3.0.1",
+    "published": "2021-01-05T13:38:06.573+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "WordPressPCL": {
+    "latestVersion": "3.0.0",
+    "published": "2026-06-21T20:15:57.133+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "xunit": {
+    "latestVersion": "2.9.3",
+    "published": "2025-01-08T17:32:14.713+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "xunit.analyzers": {
+    "latestVersion": "2.0.0",
+    "published": "2026-08-15T02:50:53.65+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "Xunit.Microsoft.DependencyInjection": {
     "latestVersion": "10.1.0",
     "published": "2026-08-29T13:25:39.717+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
+  "xunit.runner.visualstudio": {
+    "latestVersion": "4.0.0",
+    "published": "2026-08-15T02:50:54.81+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
   "xunit.v3": {
     "latestVersion": "4.0.0",
     "published": "2026-08-15T02:50:55.493+01:00",
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+  },
+  "xunit.v3.assert": {
+    "latestVersion": "4.0.0",
+    "published": "2026-08-15T02:50:58.267+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "xunit.v3.common": {
+    "latestVersion": "4.0.0",
+    "published": "2026-08-15T02:51:00.603+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "YamlDotNet": {
+    "latestVersion": "18.1.0",
+    "published": "2026-06-26T23:53:00.657+01:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "Yarp.ReverseProxy": {
+    "latestVersion": "2.3.0",
+    "published": "2025-02-27T16:21:43.743+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "ZendeskApi_v2": {
+    "latestVersion": "3.12.4",
+    "published": "2023-11-29T23:05:10.433+00:00",
+    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   }
 }
