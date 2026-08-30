@@ -4693,53 +4693,6 @@ else
 			_selectedRow.RepositoryFullName);
 	}
 
-	private async Task BuildCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
-	{
-		_isRunning = true;
-		ClearConsole();
-		AppendConsole("▶ Building...");
-		StateHasChanged();
-
-		try
-		{
-			await Dashboard.BuildAsync(row, line =>
-			{
-				AppendConsole(line);
-				InvokeAsync(StateHasChanged);
-			}, cancellationToken);
-
-			if (row.Status == PackageStatus.BuildSucceeded)
-			{
-                _lastFailedWorkflowStep = null;
-				_failedSteps.Remove(WorkflowStep.Build);
-				_completedSteps.Add(WorkflowStep.Build);
-				AppendConsole("✅ Build succeeded");
-			}
-			else
-			{
-             _lastFailedWorkflowStep = WorkflowStep.Build;
-				_completedSteps.Remove(WorkflowStep.Build);
-				_failedSteps.Add(WorkflowStep.Build);
-                AppendConsole("❌ Build failed");
-				OpenInIde();
-				var prompt = DashboardService.GenerateConciseWorkflowFailurePrompt(
-					row,
-					"build",
-					CurrentConsoleLines.Select(line => line.Text));
-				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Build, "build failure");
-			}
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Error: {ex.Message}");
-		}
-		finally
-		{
-			_isRunning = false;
-			StateHasChanged();
-		}
-	}
-
 	private async Task RunTestsAsync()
 	{
 		if (_selectedRow is null)
@@ -4759,53 +4712,6 @@ else
 			_selectedRow.RepositoryFullName);
 	}
 
-	private async Task RunTestsCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
-	{
-		_isRunning = true;
-		ClearConsole();
-		AppendConsole("▶ Running tests...");
-		StateHasChanged();
-
-		try
-		{
-			await Dashboard.RunTestsAsync(row, line =>
-			{
-				AppendConsole(line);
-				InvokeAsync(StateHasChanged);
-			}, cancellationToken);
-
-			if (row.Status == PackageStatus.TestsPassed)
-			{
-             _lastFailedWorkflowStep = null;
-				_failedSteps.Remove(WorkflowStep.Test);
-				_completedSteps.Add(WorkflowStep.Test);
-				AppendConsole("✅ Tests passed");
-			}
-			else
-			{
-              _lastFailedWorkflowStep = WorkflowStep.Test;
-				_completedSteps.Remove(WorkflowStep.Test);
-				_failedSteps.Add(WorkflowStep.Test);
-				AppendConsole("❌ Tests failed");
-				OpenInIde();
-				var prompt = DashboardService.GenerateConciseWorkflowFailurePrompt(
-					row,
-					"test",
-					CurrentConsoleLines.Select(line => line.Text));
-				await AutoCopyAiPromptAsync(prompt, WorkflowStep.Test, "test failure");
-			}
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Error: {ex.Message}");
-		}
-		finally
-		{
-			_isRunning = false;
-			StateHasChanged();
-		}
-	}
-
 	private async Task GitSyncAsync()
 	{
 		if (_selectedRow is null)
@@ -4823,42 +4729,6 @@ else
 			(progress, cancellationToken) => GitSyncCoreAsync(capturedRow, progress, cancellationToken),
 			WorkflowStep.GitSync,
 			_selectedRow.RepositoryFullName);
-	}
-
-	private async Task GitSyncCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
-	{
-		_isRunning = true;
-		ClearConsole();
-		AppendConsole("▶ Git syncing...");
-		StateHasChanged();
-
-		try
-		{
-			await Dashboard.GitSyncAsync(row, line =>
-			{
-				AppendConsole(line);
-				InvokeAsync(StateHasChanged);
-			}, cancellationToken);
-
-			AppendConsole(row.Status == PackageStatus.GitSynced ? "✅ Git sync complete" : "❌ Git sync failed");
-			await PersistSelectedRowUpdateAsync();
-
-			if (row.CurrentBranch is not null)
-			{
-				AppendConsole($"ℹ️ Branch: {row.CurrentBranch} | Clean: {row.IsWorkingTreeClean} | Synced: {row.IsSyncedWithOrigin}");
-			}
-
-			await AppendDirtyWorkingTreePreviewAsync();
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Error: {ex.Message}");
-		}
-		finally
-		{
-			_isRunning = false;
-			StateHasChanged();
-		}
 	}
 
 	private async Task AppendDirtyWorkingTreePreviewAsync()
@@ -4899,34 +4769,6 @@ else
 			(progress, cancellationToken) => RunPublishCoreAsync(capturedRow, progress, cancellationToken),
 			WorkflowStep.Publish,
 			_selectedRow.RepositoryFullName);
-	}
-
-	private async Task RunPublishCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
-	{
-		_isRunning = true;
-		ClearConsole();
-		AppendConsole("▶ Publishing...");
-		StateHasChanged();
-
-		try
-		{
-			await Dashboard.RunPublishAsync(row, line =>
-			{
-				AppendConsole(line);
-				InvokeAsync(StateHasChanged);
-			}, cancellationToken);
-
-			AppendConsole(row.Status == PackageStatus.Published ? "✅ Published" : "❌ Publish failed");
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Error: {ex.Message}");
-		}
-		finally
-		{
-			_isRunning = false;
-			StateHasChanged();
-		}
 	}
 
 	// === AI prompt methods ===
@@ -6391,60 +6233,6 @@ else
 			(progress, cancellationToken) => CommitAndPushCoreAsync(capturedRow, progress, cancellationToken),
 			WorkflowStep.CommitAndPush,
 			_selectedRow.RepositoryFullName);
-	}
-
-	private async Task CommitAndPushCoreAsync(RepositoryDashboardRow row, IProgress<string> progress, CancellationToken cancellationToken)
-	{
-		_isRunning = true;
-		ClearConsole();
-		AppendConsole("▶ Committing and pushing...");
-		StateHasChanged();
-
-		try
-		{
-			var commitMessage = $"NuGet governance remediation for {row.RepositoryFullName}";
-			var push = await Dashboard.CommitAndPushAsync(row, commitMessage, line =>
-			{
-				AppendConsole(line);
-				InvokeAsync(StateHasChanged);
-			});
-
-			if (push.Success)
-			{
-				_completedSteps.Add(WorkflowStep.CommitAndPush);
-				AppendConsole("✅ Changes committed and pushed");
-				await PersistSelectedRowUpdateAsync();
-
-				if (row.CurrentBranch is not null)
-				{
-					AppendConsole($"ℹ️ Branch: {row.CurrentBranch} | Clean: {row.IsWorkingTreeClean} | Synced: {row.IsSyncedWithOrigin}");
-				}
-			}
-			else
-			{
-				AppendConsole("❌ Commit and push failed");
-				await PersistSelectedRowUpdateAsync();
-
-				// A guard's refusal is the conclusion of the whole fix attempt, so it is put in front of
-				// the user rather than left in the console — which may be collapsed, and is easy to miss
-				// scrolling past even when it is not. A plain git failure is not raised this way: git has
-				// already explained itself in the output, and there is nothing to decide.
-				if (push.WasRefused)
-				{
-					_isRunning = false;
-					await NotifyAsync(push.RefusalReason!, "Nothing was pushed", "fas fa-triangle-exclamation");
-				}
-			}
-		}
-		catch (Exception ex)
-		{
-			AppendConsole($"❌ Error: {ex.Message}");
-		}
-		finally
-		{
-			_isRunning = false;
-			StateHasChanged();
-		}
 	}
 
 	public void Dispose()
