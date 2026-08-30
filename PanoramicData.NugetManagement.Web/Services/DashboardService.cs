@@ -362,6 +362,27 @@ public class DashboardService
 
 			// Build category summaries
 			row.CategorySummaries = BuildCategorySummaries(results);
+
+			// Fetched here rather than on its own schedule so there is one refresh path, one cache and
+			// one staleness window. A failure to read the inbox must not fail the assessment: the rules
+			// have already been evaluated by this point, and losing them because a comment endpoint
+			// misbehaved would be a poor trade.
+			try
+			{
+				var issueService = new RepositoryIssueService(new OctokitGitHubIssueApi(github));
+				row.OpenIssues = [.. await issueService
+					.GetOpenIssuesAsync(parts[0], parts[1], cancellationToken)
+					.ConfigureAwait(false)];
+			}
+			catch (ApiException ex)
+			{
+				_logger.LogWarning(
+					ex,
+					"Could not read open issues for {Repo}; its inbox will show as empty.",
+					row.RepositoryFullName);
+				row.OpenIssues = [];
+			}
+
 			row.Status = PackageStatus.Assessed;
 			row.StatusMessage = $"{row.TotalFailures} issue(s) found.";
 		}
