@@ -24,4 +24,12 @@ public sealed class WorkLane
 
 	/// <summary>Whether the scheduler has promoted this lane and an item is executing on it.</summary>
 	public bool IsRunning { get; set; }
+
+	/// <summary>
+	/// The order in which this lane first received work. Cross-lane promotion is ordered by this
+	/// rather than by dictionary enumeration order: a removed dictionary entry's slot can be reused
+	/// by a later insertion, so a lane that empties and is re-enqueued could otherwise reclaim its
+	/// old position ahead of a lane that has been waiting.
+	/// </summary>
+	public required long Sequence { get; init; }
 }

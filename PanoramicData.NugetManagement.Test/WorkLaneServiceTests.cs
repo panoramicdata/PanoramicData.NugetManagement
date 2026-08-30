@@ -101,6 +101,21 @@ public class WorkLaneServiceTests(ITestOutputHelper output) : TestWithOutput(out
 	}
 
 	[Fact]
+	public void TryStartNext_LaneReEnqueuedAfterEmptying_DoesNotJumpAheadOfAWaitingLane()
+	{
+		var service = NewService(maxConcurrentLanes: 1);
+		var first = Enqueue(service, RepoA);
+		service.TryStartNext(out _);
+		service.Complete(first, error: null);
+
+		Enqueue(service, RepoB);
+		Enqueue(service, RepoA);
+
+		service.TryStartNext(out var started).Should().BeTrue();
+		started.RepositoryFullName.Should().Be(RepoB, "B has been waiting since before A was re-enqueued");
+	}
+
+	[Fact]
 	public void Enqueue_IdenticalPendingItemInSameLane_IsFoldedIn()
 	{
 		var service = NewService();

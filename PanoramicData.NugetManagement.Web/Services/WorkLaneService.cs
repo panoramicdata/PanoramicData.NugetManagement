@@ -22,6 +22,7 @@ public sealed class WorkLaneService
 	private readonly Dictionary<string, WorkLane> _lanes = new(StringComparer.Ordinal);
 	private readonly Dictionary<string, CancellationTokenSource> _tokenSources = new(StringComparer.Ordinal);
 	private int _nextId;
+	private long _nextLaneSequence;
 	private int _maxConcurrentLanes = 20;
 
 	/// <summary>
@@ -46,7 +47,30 @@ public sealed class WorkLaneService
 	/// <summary>Every lane with outstanding work.</summary>
 	public IReadOnlyList<WorkLane> Lanes
 	{
-		get { lock (_lock) { return [.. _lanes.Values]; } }
+		get
+		{
+			lock (_lock)
+			{
+				// Snapshots, not the live lanes: WorkLane.Items is a mutable list that every locked
+				// mutator writes to, and a caller rendering from Changed would otherwise enumerate it
+				// while the runner adds to it. The WorkItem instances themselves stay shared by
+				// reference — the UI reads their live State/Progress — only the lane and its list
+				// are copied.
+				return [.. _lanes.Values.Select(lane =>
+				{
+					var copy = new WorkLane
+					{
+						Key = lane.Key,
+						Organization = lane.Organization,
+						RepositoryFullName = lane.RepositoryFullName,
+						IsRunning = lane.IsRunning,
+						Sequence = lane.Sequence
+					};
+					copy.Items.AddRange(lane.Items);
+					return copy;
+				})];
+			}
+		}
 	}
 
 	/// <summary>How many lanes are executing.</summary>
@@ -132,10 +156,13 @@ public sealed class WorkLaneService
 				return false;
 			}
 
-			// Insertion-ordered: Dictionary preserves it here because lanes are only removed when empty,
-			// and a lane that empties has no claim on its old position.
-			var lane = _lanes.Values.FirstOrDefault(l =>
-				!l.IsRunning && l.Items.Any(i => i.State == WorkItemState.Pending));
+			// Ordered by Sequence, not by Dictionary enumeration order: a removed entry's slot can be
+			// reused by a later insertion, so a lane that empties and is re-enqueued could otherwise
+			// reclaim its old position ahead of a lane that has been waiting the whole time.
+			var lane = _lanes.Values
+				.Where(l => !l.IsRunning && l.Items.Any(i => i.State == WorkItemState.Pending))
+				.OrderBy(l => l.Sequence)
+				.FirstOrDefault();
 
 			if (lane is null)
 			{
@@ -168,7 +195,11 @@ public sealed class WorkLaneService
 	/// <param name="progress">What to show.</param>
 	public void ReportProgress(WorkItem item, string progress)
 	{
-		item.Progress = progress;
+		lock (_lock)
+		{
+			item.Progress = progress;
+		}
+
 		Changed?.Invoke();
 	}
 
@@ -336,7 +367,8 @@ public sealed class WorkLaneService
 		{
 			Key = key,
 			Organization = descriptor.Organization,
-			RepositoryFullName = descriptor.RepositoryFullName
+			RepositoryFullName = descriptor.RepositoryFullName,
+			Sequence = ++_nextLaneSequence
 		};
 
 		_lanes[key] = lane;
