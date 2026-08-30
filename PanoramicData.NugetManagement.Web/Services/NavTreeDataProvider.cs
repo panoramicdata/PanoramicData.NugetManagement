@@ -323,7 +323,10 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			$"org:{organization.ToLowerInvariant()}",
 			organization,
 			repositoryFullName: null,
-			sortOrder: 1);
+			// Rank 2, after Repositories (0) and Issues (1) and before Not governed (3). Explicit
+			// rather than tie-broken: today "Issues" happens to sort before "Work" alphabetically,
+			// but that is luck, not a rule, and the same trap that buried the repo-level node.
+			sortOrder: 2);
 
 		AddRepositoryNodes(items, organization, reposKey, visibleRows);
 		AddNotGovernedNodes(items, organization, orgKey, ungovernedPackages);
@@ -463,8 +466,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				$"repo:{row.RepositoryFullName.ToLowerInvariant()}",
 				organization,
 				row.RepositoryFullName,
-				// Below Packages and above the categories: work is transient, and putting it first would
-				// move the nodes the user navigates by every time something is queued.
+				// Rank 1, between Packages (0) and the categories (2). Explicit rather than
+				// tie-broken: PDTree falls back to alphabetical order, and "Work" loses that race
+				// against every category name.
 				sortOrder: 1);
 
 			foreach (var package in row.Packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))
@@ -514,7 +518,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					RepositoryFullName = row.RepositoryFullName,
 					Category = category,
 					IsLeaf = catFailures.Count == 0,
-					SortOrder = 1,
+					// Rank 2, after Packages (0) and the repo-level Work node (1) — see the comment
+					// beside that node for why this must be explicit rather than tie-broken.
+					SortOrder = 2,
 					IssueCount = catFailures.Count,
 					HasErrors = catHasErrors,
 					HasWarnings = catHasWarnings
@@ -740,7 +746,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			View = NavView.None,
 			Organization = organization,
 			IsLeaf = false,
-			SortOrder = 2
+			// Rank 3, after Repositories (0), Issues (1) and the org-level Work node (2).
+			SortOrder = 3
 		});
 
 		foreach (var package in packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))

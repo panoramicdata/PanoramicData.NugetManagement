@@ -83,6 +83,53 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 			.Which.ParentKey.Should().Be(NavTreeDataProvider.OrgKey("panoramicdata"));
 	}
 
+	[Fact]
+	public void WorkItemNodes_KeepTheLanesOrderNotAlphabeticalOrder()
+	{
+		var lanes = new WorkLaneService();
+
+		// Titles deliberately alphabetise in the opposite order to the queue, so a regression that
+		// dropped "SortOrder = index" — leaving every node at the default 0, tie-broken by Text —
+		// would still slip past a test that only checked membership.
+		lanes.Enqueue("Zebra build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "z", null, null);
+		lanes.Enqueue("Apple test", WorkDescriptor.ForRepository(WorkKind.Test, "panoramicdata", Repo), "a", null, null);
+		lanes.Enqueue("Middle publish", WorkDescriptor.ForRepository(WorkKind.Publish, "panoramicdata", Repo), "m", null, null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		var nodes = provider.BuildNavItems()
+			.Where(i => i.ParentKey == NavTreeDataProvider.WorkKey(Repo))
+			.ToList();
+
+		nodes.Select(n => n.Text).Should().ContainInOrder("Zebra build", "Apple test", "Middle publish");
+
+		var zebra = nodes.Single(n => n.Text == "Zebra build");
+		var apple = nodes.Single(n => n.Text == "Apple test");
+		zebra.SortOrder.Should().BeLessThan(
+			apple.SortOrder,
+			"the queue's order is the information — alphabetising it would make the tree lie about what runs next");
+	}
+
+	[Fact]
+	public void WorkNode_MixedCaseRepositoryName_StillFindsItsLane()
+	{
+		var lanes = new WorkLaneService();
+
+		// Queued in a different casing to the repository row below. WorkDescriptor.LaneKey lower-cases
+		// both forms, so this must still find the lane — the failure mode without that lower-casing is
+		// silent: no work node, no error, nothing in the browser console to explain it.
+		lanes.Enqueue(
+			"Build",
+			WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", "PanoramicData/ATHONET.API"),
+			"build",
+			null,
+			null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Should().ContainSingle(i => i.Key == NavTreeDataProvider.WorkKey(Repo))
+			.Which.ParentKey.Should().Be(NavTreeDataProvider.RepoKey(Repo));
+	}
+
 	/// <summary>
 	/// Builds a provider over a cache primed with one repository, so each test needs only to describe
 	/// the lane state it cares about.
