@@ -83,6 +83,46 @@ public class RepositoryIssueNavNodeTests(ITestOutputHelper output) : TestWithOut
 			settings).BuildNavItems();
 	}
 
+	/// <summary>
+	/// Builds the whole navigation tree over a single repository with no <c>OpenIssues</c> and,
+	/// optionally, no assessment — the two situations that "Issues (0)" must not render identically.
+	/// </summary>
+	private List<NavItem> TreeWithNoOpenIssues(bool assessed)
+	{
+		var rows = new List<RepositoryDashboardRow>
+		{
+			new()
+			{
+				Organization = "panoramicdata",
+				RepositoryFullName = Repo,
+				Packages = [new() { PackageId = "Sample" }],
+				OpenIssues = [],
+				Assessment = assessed
+					? new RepoAssessment
+					{
+						RepositoryFullName = Repo,
+						DefaultBranch = "main",
+						AssessedAtUtc = DateTimeOffset.UtcNow,
+						RuleResults = []
+					}
+					: null
+			}
+		};
+
+		Directory.CreateDirectory(_cacheDirectory);
+		var cache = new DashboardCacheService(
+			NullLogger<DashboardCacheService>.Instance,
+			Path.Combine(_cacheDirectory, "dashboard-cache.json"));
+		cache.SetRows(rows);
+
+		var settings = Options.Create(new AppSettings { NuGetOrganization = "panoramicdata" });
+
+		return new NavTreeDataProvider(
+			cache,
+			new RuntimeSettingsService(settings, NullLogger<RuntimeSettingsService>.Instance),
+			settings).BuildNavItems();
+	}
+
 	/// <inheritdoc />
 	public void Dispose()
 	{
@@ -188,4 +228,36 @@ public class RepositoryIssueNavNodeTests(ITestOutputHelper output) : TestWithOut
 		leaf.Key.Should().Be(NavTreeDataProvider.RepoIssueKey(Repo, 7));
 		NavTreeDataProvider.RepositoryFromKey(leaf.Key).Should().Be(Repo);
 	}
+
+	[Fact]
+	public void AnAssessedRepositoryWithNothingOpenIsGreenNotGrey()
+	{
+		var node = TreeWithNoOpenIssues(assessed: true)
+			.Single(i => i.Key == NavTreeDataProvider.RepoIssuesKey(Repo));
+
+		node.HealthStatus.Should().Be(PackageHealthStatus.Success,
+			"the repository has been checked and its inbox is genuinely empty");
+	}
+
+	[Fact]
+	public void AnUnassessedRepositoryWithNothingOpenStaysUnknown()
+	{
+		var node = TreeWithNoOpenIssues(assessed: false)
+			.Single(i => i.Key == NavTreeDataProvider.RepoIssuesKey(Repo));
+
+		node.HealthStatus.Should().Be(PackageHealthStatus.Unknown,
+			"nothing open is not yet known to mean nothing to worry about, because nothing has been fetched");
+	}
+
+	[Fact]
+	public void TheIssuesNodeIsAContainerHeadingLikePackages()
+		=> NavTreeDataProvider.IsContainerNode(
+			Tree(Aged(1, 1)).Single(i => i.Key == NavTreeDataProvider.RepoIssuesKey(Repo)))
+			.Should().BeTrue("it is per-repository, expandable and parenthesis-counted, exactly like Packages");
+
+	[Fact]
+	public void AnIndividualIssueLeafIsNotAContainerHeading()
+		=> NavTreeDataProvider.IsContainerNode(
+			Tree(Aged(1, 1)).Single(i => i.ParentKey == NavTreeDataProvider.RepoIssuesKey(Repo)))
+			.Should().BeFalse("a leaf issue is an item, not a heading");
 }

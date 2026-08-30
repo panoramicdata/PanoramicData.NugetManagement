@@ -137,17 +137,19 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	}
 
 	/// <summary>
-	/// Whether a node is one of the tree's container headings — Organisations, Repositories, Issues
-	/// and a repository's Packages. They share a heading colour rather than a status colour, so the
-	/// template marks them for the stylesheet. Keyed off the node key rather than the glyph: the issue
-	/// categories under Issues use the same glyph as Issues itself, and telling them apart by the
-	/// severity class on the icon fails whenever the container carries one too.
+	/// Whether a node is one of the tree's container headings — Organisations, Repositories, Issues,
+	/// a repository's Packages and a repository's own Issues branch. They share a heading colour
+	/// rather than a status colour, so the template marks them for the stylesheet. Keyed off the node
+	/// key rather than the glyph: the issue categories under Issues use the same glyph as Issues
+	/// itself, and telling them apart by the severity class on the icon fails whenever the container
+	/// carries one too.
 	/// </summary>
 	public static bool IsContainerNode(NavItem item)
 		=> item.Key == OrganisationsKey
 			|| item.Key.StartsWith("pkgs:", StringComparison.Ordinal)
 			|| item.Key.StartsWith("repos:", StringComparison.Ordinal)
-			|| item.Key.StartsWith("issues:", StringComparison.Ordinal);
+			|| item.Key.StartsWith("issues:", StringComparison.Ordinal)
+			|| item.Key.StartsWith("repoissues:", StringComparison.Ordinal);
 
 	/// <summary>
 	/// Gets or sets an optional regex used to filter package nodes by name.
@@ -474,8 +476,18 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			var repoIssuesKey = RepoIssuesKey(row.RepositoryFullName);
 			var nowUtc = DateTimeOffset.UtcNow;
 
-			var issueStatus = NavHealthRollup.Worst(
-				row.OpenIssues.Select(issue => NavHealthRollup.FromSeverity(issue.SeverityAt(nowUtc))));
+			// An empty inbox means one of two things, and only the assessment can tell them apart:
+			// genuinely nothing open, or nothing fetched yet. Grey-for-empty conflated the two — a
+			// repository that had never been checked looked identical to one that was checked and
+			// found clean — so an assessed repository with nothing open is green, and only a
+			// repository that has not been assessed at all stays the grey "unknown". This mirrors
+			// NavHealthRollup.ForIssues, which draws the same distinction for the organisation-level
+			// Issues branch.
+			var issueStatus = row.OpenIssues.Count > 0
+				? NavHealthRollup.Worst(row.OpenIssues.Select(issue => NavHealthRollup.FromSeverity(issue.SeverityAt(nowUtc))))
+				: row.Assessment is not null
+					? PackageHealthStatus.Success
+					: PackageHealthStatus.Unknown;
 
 			items.Add(new NavItem
 			{
