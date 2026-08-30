@@ -423,3 +423,6 @@ FodyWeavers.xsd
 
 # Claude Code worktrees: isolated checkouts, never part of the repository.
 .claude/worktrees/
+
+# Subagent-driven development scratch (ledger, briefs, review packages)
+.superpowers/
