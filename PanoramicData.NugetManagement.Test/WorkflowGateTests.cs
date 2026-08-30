@@ -17,10 +17,10 @@ public class WorkflowGateTests(ITestOutputHelper output) : TestWithOutput(output
 		Id = $"{step}",
 		Title = $"{step} {repositoryFullName}",
 		DedupKey = $"{step}:{repositoryFullName}",
-		OwnerId = new object(),
-		RepositoryFullName = repositoryFullName,
-		Step = step,
-		Run = (_, _) => Task.CompletedTask
+		Descriptor = repositoryFullName is null
+			? WorkDescriptor.ForOrganization(WorkKind.Reassess, "panoramicdata")
+			: WorkDescriptor.ForRepository(WorkKind.Reassess, "panoramicdata", repositoryFullName),
+		Step = step
 	};
 
 	[Fact]

@@ -129,7 +129,7 @@ public sealed class WorkExecutors(
 					output.Add(line);
 					Say(line);
 				},
-				cancellationToken);
+				cancellationToken).ConfigureAwait(false);
 
 			if (row.Status == PackageStatus.BuildSucceeded)
 			{
@@ -173,12 +173,12 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			var (success, output) = await localRepo.CloneAsync(cloneUrl, repositoryFullName, Say, cancellationToken);
+			var (success, output) = await localRepo.CloneAsync(cloneUrl, repositoryFullName, Say, cancellationToken).ConfigureAwait(false);
 
 			if (success)
 			{
 				Say($"✅ Cloned {repositoryFullName}");
-				await AdoptClonedRepositoryAsync(repositoryFullName, cancellationToken);
+				await AdoptClonedRepositoryAsync(repositoryFullName, cancellationToken).ConfigureAwait(false);
 			}
 			else
 			{
@@ -213,8 +213,8 @@ public sealed class WorkExecutors(
 		}
 
 		var localPath = localRepo.GetLocalPath(repositoryFullName);
-		var branch = await localRepo.GetCurrentBranchAsync(repositoryFullName, cancellationToken);
-		var isClean = await localRepo.IsWorkingTreeCleanAsync(repositoryFullName, cancellationToken);
+		var branch = await localRepo.GetCurrentBranchAsync(repositoryFullName, cancellationToken).ConfigureAwait(false);
+		var isClean = await localRepo.IsWorkingTreeCleanAsync(repositoryFullName, cancellationToken).ConfigureAwait(false);
 
 		foreach (var row in rows)
 		{
@@ -290,7 +290,7 @@ public sealed class WorkExecutors(
 				.Where(r => string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))
 				.ToList();
 
-			var freshRows = await dashboard.DiscoverPackagesAsync(organization, cancellationToken);
+			var freshRows = await dashboard.DiscoverPackagesAsync(organization, cancellationToken).ConfigureAwait(false);
 			SayUnreadNuspecs();
 
 			// Carry over assessments already held, so rediscovery does not throw away results for
@@ -382,7 +382,7 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			var freshRows = await dashboard.DiscoverPackagesAsync(cancellationToken: cancellationToken);
+			var freshRows = await dashboard.DiscoverPackagesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 			SayUnreadNuspecs();
 
 			var existingByRepository = (cache.GetCachedRows() ?? [])
@@ -470,7 +470,7 @@ public sealed class WorkExecutors(
 			var listed = new List<string>();
 			foreach (var package in row.Packages)
 			{
-				if (await dashboard.IsPackageListedAsync(package.PackageId))
+				if (await dashboard.IsPackageListedAsync(package.PackageId).ConfigureAwait(false))
 				{
 					listed.Add(package.PackageId);
 				}
@@ -497,14 +497,14 @@ public sealed class WorkExecutors(
 
 			if (row.IsClonedLocally && row.LocalPath is not null)
 			{
-				await dashboard.AssessLocalRepositoryAsync(row);
-				await dashboard.RefreshGitStatusAsync(row, cancellationToken);
-				await SayDirtyWorkingTreePreviewAsync(row);
+				await dashboard.AssessLocalRepositoryAsync(row).ConfigureAwait(false);
+				await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+				await SayDirtyWorkingTreePreviewAsync(row).ConfigureAwait(false);
 			}
 			else
 			{
-				var github = await CreateGitHubClientAsync();
-				await dashboard.AssessRepositoryAsync(row, github);
+				var github = await CreateGitHubClientAsync().ConfigureAwait(false);
+				await dashboard.AssessRepositoryAsync(row, github).ConfigureAwait(false);
 			}
 
 			cache.UpsertRow(row);
@@ -546,14 +546,14 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			var applied = await dashboard.ApplyRemediationsAsync(row, Say);
+			var applied = await dashboard.ApplyRemediationsAsync(row, Say).ConfigureAwait(false);
 
-			await dashboard.RefreshGitStatusAsync(row);
+			await dashboard.RefreshGitStatusAsync(row).ConfigureAwait(false);
 			cache.UpsertRow(row);
 			Say($"✅ Applied {applied.Count} remediation(s)");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row);
+			await dashboard.AssessLocalRepositoryAsync(row).ConfigureAwait(false);
 			cache.UpsertRow(row);
 
 			// Report remaining issues that have no auto-fix.
@@ -579,7 +579,7 @@ public sealed class WorkExecutors(
 		{
 			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
 			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row);
+			await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
 			throw;
 		}
 		catch (Exception ex)
@@ -608,21 +608,21 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			var applied = await dashboard.ApplyCategoryRemediationsAsync(row, category, Say);
+			var applied = await dashboard.ApplyCategoryRemediationsAsync(row, category, Say).ConfigureAwait(false);
 
-			await dashboard.RefreshGitStatusAsync(row);
+			await dashboard.RefreshGitStatusAsync(row).ConfigureAwait(false);
 			cache.UpsertRow(row);
 			Say($"✅ Applied {applied.Count} remediation(s) for {category}");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row);
+			await dashboard.AssessLocalRepositoryAsync(row).ConfigureAwait(false);
 			cache.UpsertRow(row);
 		}
 		catch (OperationCanceledException)
 		{
 			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
 			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row);
+			await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
 			throw;
 		}
 		catch (Exception ex)
@@ -677,19 +677,19 @@ public sealed class WorkExecutors(
 			var applied = new List<string>();
 			dashboard.ApplySingleRemediationPublic(row.LocalPath, result, applied, Say);
 
-			await dashboard.RefreshGitStatusAsync(row);
+			await dashboard.RefreshGitStatusAsync(row).ConfigureAwait(false);
 			cache.UpsertRow(row);
 			Say(applied.Count > 0 ? $"✅ Fixed {result.RuleId}" : $"⚠️ Could not fix {result.RuleId}");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row);
+			await dashboard.AssessLocalRepositoryAsync(row).ConfigureAwait(false);
 			cache.UpsertRow(row);
 		}
 		catch (OperationCanceledException)
 		{
 			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
 			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row);
+			await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
 			throw;
 		}
 		catch (Exception ex)
@@ -704,14 +704,14 @@ public sealed class WorkExecutors(
 	/// <param name="row">The repository whose part-applied changes to discard.</param>
 	private async Task RevertPartAppliedFixAsync(RepositoryDashboardRow row)
 	{
-		var (success, discarded) = await localRepo.DiscardLocalChangesAsync(row.RepositoryFullName, CancellationToken.None);
+		var (success, discarded) = await localRepo.DiscardLocalChangesAsync(row.RepositoryFullName, CancellationToken.None).ConfigureAwait(false);
 		Say(success
 			? discarded.Count == 0
 				? "↩️ Stopped before anything was written."
 				: $"↩️ Reverted {discarded.Count} change(s) written before the stop."
 			: "⚠️ Could not revert the part-applied changes — check the clone by hand.");
 
-		await dashboard.RefreshGitStatusAsync(row, CancellationToken.None);
+		await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -754,7 +754,7 @@ public sealed class WorkExecutors(
 					output.Add(line);
 					Say(line);
 				},
-				cancellationToken);
+				cancellationToken).ConfigureAwait(false);
 
 			if (row.Status == PackageStatus.TestsPassed)
 			{
@@ -791,7 +791,7 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			await dashboard.GitSyncAsync(row, Say, cancellationToken);
+			await dashboard.GitSyncAsync(row, Say, cancellationToken).ConfigureAwait(false);
 
 			Say(row.Status == PackageStatus.GitSynced ? "✅ Git sync complete" : "❌ Git sync failed");
 			cache.UpsertRow(row);
@@ -801,7 +801,7 @@ public sealed class WorkExecutors(
 				Say($"ℹ️ Branch: {row.CurrentBranch} | Clean: {row.IsWorkingTreeClean} | Synced: {row.IsSyncedWithOrigin}");
 			}
 
-			await SayDirtyWorkingTreePreviewAsync(row);
+			await SayDirtyWorkingTreePreviewAsync(row).ConfigureAwait(false);
 		}
 		catch (Exception ex)
 		{
@@ -828,7 +828,7 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			await dashboard.RunPublishAsync(row, Say, cancellationToken);
+			await dashboard.RunPublishAsync(row, Say, cancellationToken).ConfigureAwait(false);
 
 			Say(row.Status == PackageStatus.Published ? "✅ Published" : "❌ Publish failed");
 		}
@@ -863,7 +863,7 @@ public sealed class WorkExecutors(
 		try
 		{
 			var commitMessage = $"NuGet governance remediation for {row.RepositoryFullName}";
-			var push = await dashboard.CommitAndPushAsync(row, commitMessage, Say);
+			var push = await dashboard.CommitAndPushAsync(row, commitMessage, Say).ConfigureAwait(false);
 
 			if (push.Success)
 			{
@@ -911,7 +911,7 @@ public sealed class WorkExecutors(
 			return;
 		}
 
-		var lines = await dashboard.GetWorkingTreeStatusPreviewAsync(row, maxLines: 3);
+		var lines = await dashboard.GetWorkingTreeStatusPreviewAsync(row, maxLines: 3).ConfigureAwait(false);
 		if (lines.Count == 0)
 		{
 			Say("ℹ️ Working tree is dirty but no git porcelain entries were captured.");
@@ -948,7 +948,7 @@ public sealed class WorkExecutors(
 			return client;
 		}
 
-		var accessToken = await httpContext.GetTokenAsync("access_token");
+		var accessToken = await httpContext.GetTokenAsync("access_token").ConfigureAwait(false);
 		if (accessToken is not null)
 		{
 			client.Credentials = new Credentials(accessToken);

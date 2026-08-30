@@ -44,7 +44,7 @@ public sealed class WorkRunnerService(
 		// second, overlapping save of a lanes snapshot that is itself being torn down.
 		lanes.QueueChanged -= OnQueueChanged;
 		store.Save(lanes.Snapshot());
-		await base.StopAsync(cancellationToken);
+		await base.StopAsync(cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <inheritdoc />
@@ -61,7 +61,7 @@ public sealed class WorkRunnerService(
 
 			try
 			{
-				await _wake.WaitAsync(stoppingToken);
+				await _wake.WaitAsync(stoppingToken).ConfigureAwait(false);
 			}
 			catch (OperationCanceledException)
 			{
@@ -113,7 +113,7 @@ public sealed class WorkRunnerService(
 			// be resumed on a working tree left half-reverted.
 			if (item.WasInterrupted && item.RepositoryFullName is { Length: > 0 } repository)
 			{
-				var (success, discarded) = await localRepo.DiscardLocalChangesAsync(repository, CancellationToken.None);
+				var (success, discarded) = await localRepo.DiscardLocalChangesAsync(repository, CancellationToken.None).ConfigureAwait(false);
 				if (success && discarded.Count > 0)
 				{
 					logger.LogInformation(
@@ -124,7 +124,7 @@ public sealed class WorkRunnerService(
 			}
 
 			var progress = new Progress<string>(line => lanes.ReportProgress(item, line));
-			await executors.ExecuteAsync(item, progress, lanes.Token(item.Id) ?? CancellationToken.None);
+			await executors.ExecuteAsync(item, progress, lanes.Token(item.Id) ?? CancellationToken.None).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException ex)
 		{

@@ -3,6 +3,7 @@
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
 @inject RuntimeSettingsService RuntimeSettings
+@inject WorkRunnerService Runner
 @inject IJSRuntime JS
 
 
@@ -261,13 +262,13 @@
 	public EventCallback<string> OnOutput { get; set; }
 
 	/// <summary>
-	/// Puts a bulk run on the application-wide work queue. The host owns the queue, so a run started
-	/// here waits behind whatever the dashboard — or another tab — already has in flight, and gains a
-	/// stop button of its own.
+	/// Asks the host to fan a rule's fix out across its affected repositories, one lane per repository.
+	/// A category or "fix everything" run is expressed as one request per rule it covers, so each rule
+	/// still runs to completion independently of the others.
 	/// </summary>
 	[Parameter]
 	[EditorRequired]
-	public EventCallback<QueuedWork> OnEnqueue { get; set; }
+	public EventCallback<BulkRuleRequest> OnEnqueue { get; set; }
 
 	// What the currently-loaded view was built for, so OnParametersSet only reloads on a real change.
 	private string? _loadedOrganization;
@@ -292,6 +293,7 @@
 	protected override void OnInitialized()
 	{
 		LoadView();
+		Runner.ItemCompleted += OnItemCompleted;
 	}
 
 	/// <summary>
@@ -313,22 +315,39 @@
 	}
 
 	/// <summary>
-	/// Called as each repository's fix lands. Writes the freshly re-assessed row back to the cache and
-	/// rebuilds the view, so a rule stops listing repositories it has just been fixed in — while the
-	/// run is still going, rather than after it finishes.
+	/// Ticks a repository off once its commit-and-push lands, and rebuilds the view so a rule stops
+	/// listing repositories that have just been fixed and pushed — while other repositories' lanes are
+	/// still running, rather than only after every one of them finishes.
 	/// </summary>
-	private void OnRepositoryFixed(RepositoryDashboardRow row)
+	/// <remarks>
+	/// A fix and its follow-up push are separate lane items now (see <see cref="WorkFanOut.EnqueueRule"/>),
+	/// so completion is judged by the push: a fix that landed but could not be pushed has not actually
+	/// resolved anything the assessment will still complain about.
+	/// </remarks>
+	private void OnItemCompleted(WorkItem item)
 	{
-		if (row.RepositoryFullName is not null)
+		if (item.Descriptor.Kind != WorkKind.CommitAndPush
+			|| item.State != WorkItemState.Completed
+			|| item.RepositoryFullName is not { Length: > 0 } repositoryFullName)
 		{
-			// Ticked rather than removed: the row goes on its own once the re-assessment says the issue
-			// has gone, and a tick is honest in the meantime — pushed, not yet proven by the guard.
-			_fixedInThisRun.Add(row.RepositoryFullName);
+			return;
 		}
 
-		Cache.UpsertRow(row);
-		LoadView();
-		_ = InvokeAsync(StateHasChanged);
+		// Raised from the runner's own thread, so every touch of component state — including the
+		// _inScope read below — is hopped back onto the circuit first.
+		_ = InvokeAsync(() =>
+		{
+			if (!_inScope.Contains(repositoryFullName))
+			{
+				return;
+			}
+
+			// Ticked rather than removed: the row goes on its own once the re-assessment says the issue
+			// has gone, and a tick is honest in the meantime — pushed, not yet proven by the guard.
+			_fixedInThisRun.Add(repositoryFullName);
+			LoadView();
+			StateHasChanged();
+		});
 	}
 
 
@@ -377,8 +396,7 @@
 
 	public void Dispose()
 	{
-		// Nothing to unsubscribe from: build-guard status is per repository, so it belongs on the
-		// Repositories tree rather than above every issue class (#66).
+		Runner.ItemCompleted -= OnItemCompleted;
 	}
 
 	/// <summary>
@@ -483,9 +501,8 @@
 		_confirm = new PendingConfirm
 		{
 			Title = $"Apply {rule.RuleId} & push — {repos.Count} repos",
-			DedupKey = $"apply-rule:{Organization}:{rule.RuleId}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyRuleAcrossReposAsync(RowsFor(repos), rule.RuleId, log, progress, OnRepositoryFixed, ct)
+			RuleTargets = [(rule.RuleId, repos)]
 		};
 	}
 
@@ -501,21 +518,18 @@
 		_confirm = new PendingConfirm
 		{
 			Title = $"Apply {cat.Category} fixes & push — {repos.Count} repos",
-			DedupKey = $"apply-category:{Organization}:{cat.Category}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyCategoryAcrossReposAsync(RowsFor(repos), cat.Category, log, progress, OnRepositoryFixed, ct)
+			RuleTargets = RuleTargetsFor(cat.IssueClasses)
 		};
 	}
 
 	private void ConfirmApplyRepo(string ruleId, string repoFullName)
 	{
-		var scoped = _rows.Where(r => string.Equals(r.RepositoryFullName, repoFullName, StringComparison.OrdinalIgnoreCase)).ToList();
 		_confirm = new PendingConfirm
 		{
 			Title = $"Apply {ruleId} to {repoFullName}",
-			DedupKey = $"apply-rule:{Organization}:{ruleId}:{repoFullName}",
 			Repos = [repoFullName],
-			Action = (log, progress, ct) => Dashboard.ApplyRuleAcrossReposAsync(scoped, ruleId, log, progress, OnRepositoryFixed, ct)
+			RuleTargets = [(ruleId, [repoFullName])]
 		};
 	}
 
@@ -531,11 +545,21 @@
 		_confirm = new PendingConfirm
 		{
 			Title = $"Fix everything & push — {repos.Count} repos",
-			DedupKey = $"fix-everything:{Organization}:{string.Join(',', repos)}",
 			Repos = repos,
-			Action = (log, progress, ct) => Dashboard.ApplyEverythingAcrossReposAsync(RowsFor(repos), log, progress, OnRepositoryFixed, ct)
+			RuleTargets = RuleTargetsFor(_view!.AllIssueClasses)
 		};
 	}
+
+	/// <summary>
+	/// One rule/repositories pair per auto-remediable rule in <paramref name="rules"/>, each fanned out
+	/// as its own <see cref="BulkRuleRequest"/> — a category or "fix everything" run is many rules, and
+	/// each has to reach its own set of lanes rather than being squeezed into one rule's request.
+	/// </summary>
+	private List<(string RuleId, IReadOnlyList<string> RepositoryFullNames)> RuleTargetsFor(IEnumerable<IssueClassGroup> rules)
+		=> [.. rules
+			.Where(rule => rule.HasAutomatedRemediation)
+			.Select(rule => (rule.RuleId, BulkApplyScope.ForRule(rule, _inScope)))
+			.Where(target => target.Item2.Count > 0)];
 
 	private void CancelConfirm() => _confirm = null;
 
@@ -543,27 +567,22 @@
 	{
 		var pending = _confirm;
 		_confirm = null;
-		if (pending is null)
+		if (pending is null || string.IsNullOrEmpty(Organization))
 		{
 			return;
 		}
 
-		// Handed to the queue rather than run here: these runs commit and push across many
-		// repositories, and must not overlap anything else touching the same working trees.
-		await OnEnqueue.InvokeAsync(new QueuedWork
+		// Each rule is fanned out independently — the host queues one item per repository per rule, on
+		// that repository's own lane — rather than run here: these fixes commit and push, and must not
+		// overlap anything else touching the same working trees.
+		foreach (var (ruleId, repositoryFullNames) in pending.RuleTargets)
 		{
-			Title = pending.Title,
-			Organization = Organization,
-			DedupKey = pending.DedupKey,
-			Run = RunAsync
-		});
-
-		async Task RunAsync(IProgress<string> progress, CancellationToken cancellationToken)
-		{
-			var outcome = await pending.Action(Append, progress, cancellationToken);
-			Append($"— Done: {outcome.PushedCount} pushed, {outcome.FailedCount} failed{(outcome.StoppedOnFailure ? " (stopped on failure)" : "")}.");
-			LoadView();
-			await InvokeAsync(StateHasChanged);
+			await OnEnqueue.InvokeAsync(new BulkRuleRequest(
+				Organization,
+				ruleId,
+				repositoryFullNames,
+				Push: true,
+				Title: $"Fix {ruleId} — {repositoryFullNames.Count} repo{(repositoryFullNames.Count == 1 ? "" : "s")}"));
 		}
 	}
 
@@ -611,10 +630,12 @@
 	private sealed class PendingConfirm
 	{
 		public required string Title { get; init; }
-
-		/// <summary>Identifies a request that would repeat one already waiting in the queue.</summary>
-		public required string DedupKey { get; init; }
 		public required IReadOnlyList<string> Repos { get; init; }
-		public required Func<Action<string>, IProgress<string>, CancellationToken, Task<BulkApplyOutcome>> Action { get; init; }
+
+		/// <summary>
+		/// One entry per rule this confirmation covers, each fanned out as its own
+		/// <see cref="BulkRuleRequest"/> when confirmed.
+		/// </summary>
+		public required IReadOnlyList<(string RuleId, IReadOnlyList<string> RepositoryFullNames)> RuleTargets { get; init; }
 	}
 }

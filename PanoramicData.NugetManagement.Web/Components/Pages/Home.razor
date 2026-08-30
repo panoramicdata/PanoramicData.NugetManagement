@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @page "/{PackageId?}"
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.Extensions.Options
@@ -17,7 +17,9 @@
 @inject IdeDetectionService IdeDetection
 @inject LocalFileSystemDataProvider FileSystemDataProvider
 @inject LocalRepoService LocalRepo
-@inject WorkQueueService WorkQueue
+@inject WorkLaneService Lanes
+@inject WorkFanOut FanOut
+@inject WorkRunnerService Runner
 @inject RegressionGuardService RegressionGuard
 @inject UiConsoleLogSink LogSink
 @implements IDisposable
@@ -79,14 +81,9 @@ else
 								<div class="filter-error">@_treeFilterError</div>
 							}
 						</div>
-						@* The tree and the work queue share the space below the filter, and the user decides how it
-						   is divided. The splitter stays mounted whether or not there is work outstanding: tearing
-						   it down would rebuild the tree every time a job starts, and the handle would only exist
-						   while the queue was busy — too late to position it. See SyncNavSplitterAsync. *@
+						@* The tree fills the whole area below the filter now that work hangs off the node it
+						   acts on rather than in a queue pane of its own. *@
 						<div class="nav-split-area">
-							<PDSplitter @ref="_navSplitter" Direction="SplitDirection.Vertical" GutterSize="4" ExpandToMin="true"
-								CssClass="nav-split">
-								<PDSplitPanel Size="3" MinSize="120" CssClass="spa-panel nav-tree-pane">
 									<div class="nav-tree-scroll">
 										<PDTree @ref="_navTree"
 												TItem="NavItem"
@@ -174,42 +171,34 @@ else
 															<button type="button" class="nav-org-action-btn @(_currentView == NavView.Settings && _selectedOrganization == node.Data!.Organization ? "active" : "")" title="Organization settings" @onclick="() => NavigateToSettingsAsync(node.Data!.Organization)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
 														</span>
 													}
+													@if (node.Data?.WorkItemId is { Length: > 0 } workItemId)
+													{
+														<span class="nav-work-item">
+															@if (node.Data.WorkItemProgress is { Length: > 0 } workProgress)
+															{
+																<span class="nav-work-progress">@workProgress</span>
+															}
+															@if (node.Data.WorkItemState == WorkItemState.Running)
+															{
+																<button type="button" class="nav-org-action-btn" title="Stop, reverting anything half-applied" @onclick="() => Lanes.Cancel(workItemId)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
+															}
+															else if (node.Data.WorkItemState == WorkItemState.Pending)
+															{
+																<button type="button" class="nav-org-action-btn" title="Remove from the queue" @onclick="() => Lanes.Remove(workItemId)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-xmark"></i></button>
+															}
+														</span>
+													}
+													else if (node.Data?.LaneKey is { Length: > 0 } laneKey && node.Data.WorkItemId is null)
+													{
+														<span class="nav-org-actions">
+															@* On the organisation's work node this stops every lane beneath it, which is
+															   what replaces stopping a bulk action that used to be one item. *@
+															<button type="button" class="nav-org-action-btn" title="@(node.Data.RepositoryFullName is null ? "Stop all work in this organisation" : "Stop all work on this repository")" @onclick="() => StopLane(node.Data)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
+														</span>
+													}
 												</NodeTemplate>
 											</PDTree>
 									</div>
-								</PDSplitPanel>
-								<PDSplitPanel Size="1" MinSize="0" CssClass="spa-panel nav-queue-pane">
-									@* Always rendered, and always the lower half of the nav splitter. When idle the pane is
-									   collapsed to nothing, so this costs the tree only the gutter — but the gutter stays,
-									   which is what lets the queue be dragged open (empty or not) whenever you want it. *@
-									<div class="nav-queue">
-										<div class="nav-queue-head">
-											<i class="fas fa-list-check"></i>
-											<span>Work queue</span>
-											<span class="nav-queue-count">@WorkQueue.Items.Count</span>
-										</div>
-										@foreach (var item in WorkQueue.Items)
-										{
-											<div class="nav-queue-item @(item.State == WorkItemState.Running || item.State == WorkItemState.Cancelling ? "running" : null)" @key="item.Id">
-												<i class="fas @QueueItemIcon(item) nav-queue-icon"></i>
-												<span class="nav-queue-title" title="@item.Title">@item.Title</span>
-												@if (item.Progress is { Length: > 0 } progress)
-												{
-													<span class="nav-queue-progress">@progress</span>
-												}
-												@if (item.State == WorkItemState.Running)
-												{
-													<button type="button" class="nav-queue-btn" title="Stop, reverting anything half-applied" @onclick="() => WorkQueue.Cancel(item.Id)"><i class="fas fa-stop"></i></button>
-												}
-												else if (item.State == WorkItemState.Pending)
-												{
-													<button type="button" class="nav-queue-btn" title="Remove from the queue" @onclick="() => WorkQueue.Remove(item.Id)"><i class="fas fa-xmark"></i></button>
-												}
-											</div>
-										}
-									</div>
-								</PDSplitPanel>
-							</PDSplitter>
 						</div>
 						<div class="nav-footer">
 							<a href="/ci-template" class="nav-footer-link">
@@ -817,19 +806,24 @@ else
 
 	// === Navigation state ===
 	private PDTree<NavItem>? _navTree;
-	private PDSplitter? _navSplitter;
-	// Percentage of the sidebar the work queue gets when it is open. Seeded with a sensible
-	// default and then replaced by wherever the user last dragged the gutter to, so collapsing
-	// and reopening returns to their position rather than to ours.
-	private double _navQueueSizePercent = 25;
-	private bool _navSplitterSynced;
-	private bool _navQueueWasBusy;
 	private NavView _currentView = NavView.Home;
 	private bool _userMenuOpen;
 	// True when the org (root) node is the current focus (org overview / org settings),
 	// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
 	private bool _orgSelected;
-	private bool _isCloningAll;
+
+	/// <summary>
+	/// Whether a clone run is under way — the discovery step or any repository it fanned out to
+	/// actually cloning — so the org node can show a spinner and its stop button in place of the
+	/// clone-picker button.
+	/// </summary>
+	/// <remarks>
+	/// Derived live from the lanes rather than tracked as a field: cloning used to be one item this
+	/// circuit awaited and could clear a field for when it finished; now it is however many lane items
+	/// <see cref="WorkFanOut.EnqueueClone"/> fanned out, each finishing independently of this component.
+	/// </remarks>
+	private bool _isCloningAll => _cloningOrganization.Length > 0;
+
 	// Read before a budget-consuming action so the warning can be accurate. Deliberately not surfaced
 	// as a permanent counter: normal dashboard use never approaches the hourly limit, so a visible
 	// count was noise. The warning below speaks up only when an action would actually eat into it.
@@ -841,16 +835,44 @@ else
 	private string? _cloneCandidatesError;
 	private bool _hidePrivateRepositories = true;
 	private List<RepositoryCloneCandidate> _cloneCandidates = [];
-	// Which organisation the clone dialog is listing, and which one a clone run is working through,
-	// so the stop button only appears on the organisation actually cloning.
+	// Which organisation the clone dialog is listing.
 	private string _cloneDialogOrganization = string.Empty;
-	private string _cloningOrganization = string.Empty;
-	// The organisation a rediscover/re-assess run is scoped to, or null when the run covers them all.
-	// Drives which organisation node shows the progress spinner.
-	private string? _busyOrganization;
-	// True only while the package list is being re-read and displayed — the phase in which the nodes
-	// on screen may be replaced. Cleared before assessment begins, which is why dimming ends there.
-	private bool _isDiscovering;
+
+	/// <summary>
+	/// The organisation a clone run is currently working through, so the stop button only appears on
+	/// the organisation actually cloning. Empty when no clone is running.
+	/// </summary>
+	private string _cloningOrganization
+		=> Lanes.Lanes
+			.Where(lane => lane.IsRunning && lane.Items.Exists(i => i.Descriptor.Kind is WorkKind.DiscoverCloneTargets or WorkKind.Clone))
+			.Select(lane => lane.Organization ?? string.Empty)
+			.FirstOrDefault() ?? string.Empty;
+
+	/// <summary>
+	/// The organisation a rediscover, re-assess or refresh run is scoped to, or null when the run
+	/// covers every organisation or nothing is running. Drives which organisation node shows the
+	/// progress spinner.
+	/// </summary>
+	/// <remarks>
+	/// Derived live from the lanes: this used to be a field the circuit that started the run cleared
+	/// when it finished, but the run now finishes on whichever lane picked it up, independently of any
+	/// particular circuit still being open to clear anything.
+	/// </remarks>
+	private string? _busyOrganization
+		=> Lanes.Lanes
+			.Where(lane => lane.IsRunning && lane.Items.Exists(i => i.Descriptor.Kind is
+				WorkKind.RediscoverOrganization or WorkKind.DiscoverReassessTargets or WorkKind.RefreshAll))
+			.Select(lane => lane.Organization)
+			.FirstOrDefault();
+
+	/// <summary>
+	/// True only while a rediscovery's package list is being re-read from NuGet — the phase in which
+	/// the nodes on screen may be replaced. False once that hands off to the re-assessment fan-out,
+	/// which runs as separate, per-repository lane items rather than under this same item.
+	/// </summary>
+	private bool _isDiscovering
+		=> Lanes.Lanes.Any(lane => lane.IsRunning
+			&& lane.Items.Exists(i => i.Descriptor.Kind is WorkKind.RediscoverOrganization or WorkKind.RefreshAll));
 	// Add-organisation prompt state.
 	private bool _addOrgDialogOpen;
 	private string _addOrgName = string.Empty;
@@ -888,7 +910,17 @@ else
 	private bool _localOnly;
 
 	// === Dashboard state ===
-	private bool _isLoading;
+
+	/// <summary>
+	/// Whether a rediscover, re-assess or refresh run is under way somewhere in the estate. Display
+	/// only, now that the lanes decide what may run: it drives the top-level spinner and the dimming
+	/// of nodes being rebuilt underneath the user.
+	/// </summary>
+	private bool _isLoading
+		=> Lanes.Lanes.Any(lane => lane.IsRunning
+			&& lane.Items.Exists(i => i.Descriptor.Kind is
+				WorkKind.RediscoverOrganization or WorkKind.DiscoverReassessTargets or WorkKind.RefreshAll));
+
 	private string _progressMessage = string.Empty;
 	// Keeps the progress indicator visible briefly (showing "Done") after a refresh completes.
 	private bool _showDone;
@@ -908,8 +940,6 @@ else
 	private bool _consoleVisible = true;
 	private bool _consoleScrollPending;
 	private int _consoleRenderQueued;
-	// The console each queued item's output belongs to, captured when it was enqueued.
-	private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _consoleNodeKeyByWorkItemId = new();
 	private ElementReference _consoleElement;
 	private string _selectedNodeKey = "root";
 	// Concurrent because log lines are appended from the assessment tasks, which may reach a node the
@@ -952,7 +982,9 @@ else
 		}
 
 		_isAuthenticated = true;
-		WorkQueue.Changed += OnWorkQueueChanged;
+		Lanes.Changed += OnLanesChanged;
+		Runner.ItemCompleted += OnItemCompleted;
+		_laneChangeDebounce.Elapsed += OnLaneChangeDebounceElapsed;
 		RegressionGuard.StatusesChanged += OnGuardStatusesChanged;
 		LogSink.LineWritten += OnLogLineWritten;
 		_userName = httpContext.User.Identity.Name ?? "User";
@@ -1037,7 +1069,7 @@ else
 			// Stale or empty cache: rediscover everything. Done here rather than in OnInitializedAsync
 			// so the tree and the progress indicator are already painted — the run is then visibly
 			// under way instead of the page appearing to hang before it has drawn anything.
-			if (Cache.IsStale && !IsQueueBusy)
+			if (Cache.IsStale && !IsRepositoryBusy(_selectedRow?.RepositoryFullName))
 			{
 				await RefreshAsync();
 			}
@@ -1054,71 +1086,6 @@ else
 			{
 				// Element may not exist yet
 			}
-		}
-
-		await SyncNavSplitterAsync();
-	}
-
-	/// <summary>
-	/// Opens the work queue pane when work arrives and closes it again when the queue drains,
-	/// leaving the gutter itself in place throughout.
-	/// </summary>
-	/// <remarks>
-	/// The pane is sized here rather than by CSS because the two have to coexist: an !important
-	/// override that collapsed an idle pane would also override split.js while the user was
-	/// dragging it, so an empty queue could never be pulled open. Driving split.js's own sizes
-	/// instead leaves the gutter working at all times.
-	/// </remarks>
-	private async Task SyncNavSplitterAsync()
-	{
-		if (_navSplitter is null)
-		{
-			return;
-		}
-
-		var busy = WorkQueue.Items.Count > 0;
-		if (_navSplitterSynced && busy == _navQueueWasBusy)
-		{
-			return;
-		}
-
-		var first = !_navSplitterSynced;
-		_navSplitterSynced = true;
-		_navQueueWasBusy = busy;
-
-		try
-		{
-			if (busy)
-			{
-				// Only open a pane that is actually shut. Someone who has already dragged the queue
-				// open should not have it jump to our size the moment a job starts.
-				var sizes = first ? Array.Empty<double>() : await _navSplitter.GetSizesAsync();
-				if (sizes.Length != 2 || sizes[1] < 5)
-				{
-					await _navSplitter.SetSizesAsync([100 - _navQueueSizePercent, _navQueueSizePercent]);
-				}
-			}
-			else
-			{
-				// Remember where the gutter was before collapsing, but ignore a queue that was already
-				// closed — otherwise draining while collapsed would record 0 and the next job would
-				// open the pane to nothing.
-				if (!first)
-				{
-					var sizes = await _navSplitter.GetSizesAsync();
-					if (sizes.Length == 2 && sizes[1] >= 5)
-					{
-						_navQueueSizePercent = sizes[1];
-					}
-				}
-
-				await _navSplitter.SetSizesAsync([100, 0]);
-			}
-		}
-		catch (JSException)
-		{
-			// split.js not initialised yet (or the circuit is going down) — the next render retries.
-			_navSplitterSynced = false;
 		}
 	}
 
@@ -2084,16 +2051,17 @@ else
 
 	private void CancelCloneAll()
 	{
-		var running = WorkQueue.Running;
-		if (running is not null && running.DedupKey.StartsWith("clone:", StringComparison.Ordinal))
+		if (_cloningOrganization.Length > 0)
 		{
 			AppendConsole("⏹️ Stopping after the current repository...");
-			WorkQueue.Cancel(running.Id);
+			Lanes.CancelLane($"org:{_cloningOrganization.ToLowerInvariant()}");
 		}
 	}
 
 	/// <summary>
-	/// Clones the selected repositories, one at a time, reporting progress to the console.
+	/// Queues discovery of the selected clone candidates, which fans out into one clone per repository
+	/// once it runs. See <see cref="WorkExecutors.DiscoverCloneTargetsAsync"/> for the <c>fullNames</c>
+	/// contract this descriptor must match.
 	/// </summary>
 	private void CloneSelectedRepositories()
 	{
@@ -2105,11 +2073,19 @@ else
 
 		var organization = _cloneDialogOrganization;
 		_cloneDialogOpen = false;
-		EnqueueWork(
-			$"Clone {targets.Count} repositories — {organization}",
-			organization,
+
+		var title = $"Clone {targets.Count} repositories — {organization}";
+		var queued = Lanes.Enqueue(
+			title,
+			WorkDescriptor.ForOrganization(
+				WorkKind.DiscoverCloneTargets,
+				organization,
+				("fullNames", string.Join(',', targets.Select(t => t.FullName)))),
 			$"clone:{organization}:{string.Join(',', targets.Select(t => t.FullName))}",
-			(progress, cancellationToken) => CloneSelectedRepositoriesCoreAsync(targets, organization, progress, cancellationToken));
+			step: null,
+			_selectedNodeKey);
+
+		AppendConsole(queued is null ? $"↩️ {title} is already queued." : $"⏳ Queued: {title}");
 	}
 
 	/// <summary>
@@ -2858,15 +2834,15 @@ else
 			case NavView.Issues:
 				@* Embedded so it drops its own page header. Organization is required: without it the
 				   component shows nothing rather than every organisation's repositories. *@
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueRequestedWork" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueBulkRule" />
 				break;
 			case NavView.IssueCategoryDetail:
 				@* The hierarchy itself now lives in the sidebar; this panel shows the selected
 				   category's rules with their affected repositories and bulk actions. *@
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueRequestedWork" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueBulkRule" />
 				break;
 			case NavView.IssueRuleDetail:
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueRequestedWork" />
+				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueBulkRule" />
 				break;
 			default:
 				@RenderGettingStarted()
@@ -3631,11 +3607,14 @@ else
 			return;
 		}
 
-		EnqueueWork(
+		var queued = Lanes.Enqueue(
 			"Refresh every organisation",
-			null,
+			WorkDescriptor.ForOrganization(WorkKind.RefreshAll, null),
 			"refresh:*",
-			RefreshCoreAsync);
+			step: null,
+			_selectedNodeKey);
+
+		AppendConsole(queued is null ? "↩️ Refresh every organisation is already queued." : "⏳ Queued: Refresh every organisation");
 	}
 
 	private async Task RefreshTableAsync()
@@ -3751,7 +3730,9 @@ else
 	/// browser tab closes the buttons here too.
 	/// </summary>
 	private WorkflowStep? FirstQueuedStep
-		=> WorkflowGate.FirstBlockedStep(WorkQueue.Items, _selectedRow?.RepositoryFullName);
+		=> _selectedRow?.RepositoryFullName is { Length: > 0 } name
+			? WorkflowGate.FirstBlockedStep(Lanes.ItemsFor($"repo:{name.ToLowerInvariant()}"), name)
+			: null;
 
 	/// <summary>
 	/// Whether a toolbar step is closed because it, or something before it, is queued for this
@@ -3833,14 +3814,7 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
-			$"Re-assess {_selectedRow.RepositoryName}",
-			_selectedRow.Organization,
-			$"reassess:{_selectedRow.RepositoryFullName}",
-			(_, cancellationToken) => ReassessAllCoreAsync(capturedRow, cancellationToken),
-			WorkflowStep.Reassess,
-			_selectedRow.RepositoryFullName);
+		QueueForSelectedRepository(WorkKind.Reassess, $"Re-assess {_selectedRow.RepositoryName}", WorkflowStep.Reassess);
 
 		return Task.CompletedTask;
 	}
@@ -3865,11 +3839,15 @@ else
 			return;
 		}
 
-		EnqueueWork(
-			$"Rediscover {organization}",
-			organization,
+		var title = $"Rediscover {organization}";
+		var queued = Lanes.Enqueue(
+			title,
+			WorkDescriptor.ForOrganization(WorkKind.RediscoverOrganization, organization),
 			$"rediscover:{organization}",
-			(progress, cancellationToken) => RediscoverOrganizationCoreAsync(organization, existingForOrg, progress, cancellationToken));
+			step: null,
+			_selectedNodeKey);
+
+		AppendConsole(queued is null ? $"↩️ {title} is already queued." : $"⏳ Queued: {title}");
 	}
 
 	/// <summary>
@@ -3899,14 +3877,18 @@ else
 			return;
 		}
 
-		// Confirmation happens on the click; the run itself goes on the queue, because a dialog
-		// appearing when the item finally starts would block the queue on an answer nobody is
+		// Confirmation happens on the click; the run itself goes on the lane, because a dialog
+		// appearing when the item finally starts would block the lane on an answer nobody is
 		// waiting to give.
-		EnqueueWork(
-			$"Re-assess {organization ?? "every organisation"} — {assessable.Count} repos",
-			organization,
+		var title = $"Re-assess {organization ?? "every organisation"} — {assessable.Count} repos";
+		var queued = Lanes.Enqueue(
+			title,
+			WorkDescriptor.ForOrganization(WorkKind.DiscoverReassessTargets, organization),
 			$"reassess:{organization ?? "*"}",
-			(progress, cancellationToken) => ReassessOrganizationCoreAsync(organization, assessable, scope, progress, cancellationToken));
+			step: null,
+			_selectedNodeKey);
+
+		AppendConsole(queued is null ? $"↩️ {title} is already queued." : $"⏳ Queued: {title}");
 	}
 
 	private async Task ReassessCategoryAsync(AssessmentCategory category)
@@ -3968,14 +3950,7 @@ else
 			return;
 		}
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
-			$"Fix {_selectedRow.RepositoryFullName}",
-			_selectedRow.Organization,
-			$"fix-all:{_selectedRow.RepositoryFullName}",
-			(progress, cancellationToken) => FixAllCoreAsync(capturedRow, progress, cancellationToken),
-			WorkflowStep.Fix,
-			_selectedRow.RepositoryFullName);
+		QueueForSelectedRepository(WorkKind.FixAll, $"Fix {_selectedRow.RepositoryFullName}", WorkflowStep.Fix);
 	}
 
 	private async Task FixCategoryAsync(AssessmentCategory category)
@@ -3996,12 +3971,11 @@ else
 			return;
 		}
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
+		QueueForSelectedRepository(
+			WorkKind.FixCategory,
 			$"Fix {category} — {_selectedRow.RepositoryFullName}",
-			_selectedRow.Organization,
-			$"fix-category:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}:{category}",
-			(progress, cancellationToken) => FixCategoryCoreAsync(capturedRow, category, progress, cancellationToken));
+			step: null,
+			("category", category.ToString()));
 	}
 
 	private async Task FixSingleRuleAsync(RuleResult result)
@@ -4026,71 +4000,52 @@ else
 			return;
 		}
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
+		QueueForSelectedRepository(
+			WorkKind.FixRule,
 			$"Fix {result.RuleId} — {_selectedRow.RepositoryFullName}",
-			_selectedRow.Organization,
-			$"fix-rule:{_selectedRow.RepositoryFullName ?? _selectedRow.RepositoryFullName}:{result.RuleId}",
-			(progress, cancellationToken) => FixSingleRuleCoreAsync(capturedRow, result, progress, cancellationToken));
+			step: null,
+			("ruleId", result.RuleId));
 	}
 
 	// === Build / Test / Git Sync / Publish ===
 
-	private async Task BuildAsync()
+	private Task BuildAsync()
 	{
 		if (_selectedRow is null)
 		{
-			return;
+			return Task.CompletedTask;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
-			$"Build {_selectedRow.RepositoryFullName}",
-			_selectedRow.Organization,
-			$"build:{_selectedRow.RepositoryFullName}",
-			(progress, cancellationToken) => BuildCoreAsync(capturedRow, progress, cancellationToken),
-			WorkflowStep.Build,
-			_selectedRow.RepositoryFullName);
+		QueueForSelectedRepository(WorkKind.Build, $"Build {_selectedRow.RepositoryFullName}", WorkflowStep.Build);
+		return Task.CompletedTask;
 	}
 
-	private async Task RunTestsAsync()
+	private Task RunTestsAsync()
 	{
 		if (_selectedRow is null)
 		{
-			return;
+			return Task.CompletedTask;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
-			$"Test {_selectedRow.RepositoryFullName}",
-			_selectedRow.Organization,
-			$"test:{_selectedRow.RepositoryFullName}",
-			(progress, cancellationToken) => RunTestsCoreAsync(capturedRow, progress, cancellationToken),
-			WorkflowStep.Test,
-			_selectedRow.RepositoryFullName);
+		QueueForSelectedRepository(WorkKind.Test, $"Test {_selectedRow.RepositoryFullName}", WorkflowStep.Test);
+		return Task.CompletedTask;
 	}
 
-	private async Task GitSyncAsync()
+	private Task GitSyncAsync()
 	{
 		if (_selectedRow is null)
 		{
-			return;
+			return Task.CompletedTask;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
-			$"Git sync {_selectedRow.RepositoryFullName}",
-			_selectedRow.Organization,
-			$"sync:{_selectedRow.RepositoryFullName}",
-			(progress, cancellationToken) => GitSyncCoreAsync(capturedRow, progress, cancellationToken),
-			WorkflowStep.GitSync,
-			_selectedRow.RepositoryFullName);
+		QueueForSelectedRepository(WorkKind.GitSync, $"Git sync {_selectedRow.RepositoryFullName}", WorkflowStep.GitSync);
+		return Task.CompletedTask;
 	}
 
 	private async Task AppendDirtyWorkingTreePreviewAsync()
@@ -4114,23 +4069,17 @@ else
 		}
 	}
 
-	private async Task RunPublishAsync()
+	private Task RunPublishAsync()
 	{
 		if (_selectedRow is null)
 		{
-			return;
+			return Task.CompletedTask;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
-			$"Publish {_selectedRow.RepositoryFullName}",
-			_selectedRow.Organization,
-			$"publish:{_selectedRow.RepositoryFullName}",
-			(progress, cancellationToken) => RunPublishCoreAsync(capturedRow, progress, cancellationToken),
-			WorkflowStep.Publish,
-			_selectedRow.RepositoryFullName);
+		QueueForSelectedRepository(WorkKind.Publish, $"Publish {_selectedRow.RepositoryFullName}", WorkflowStep.Publish);
+		return Task.CompletedTask;
 	}
 
 	// === AI prompt methods ===
@@ -4309,7 +4258,7 @@ else
 
 	private string GetFixAllTooltip()
 	{
-		if (IsQueueBusy)
+		if (IsRepositoryBusy(_selectedRow?.RepositoryFullName))
 		{
 			return "Will be queued behind the work already running";
 		}
@@ -4334,7 +4283,7 @@ else
 
 	private string GetFixCategoryTooltip(AssessmentCategory category)
 	{
-		if (IsQueueBusy)
+		if (IsRepositoryBusy(_selectedRow?.RepositoryFullName))
 		{
 			return "Will be queued behind the work already running";
 		}
@@ -4345,7 +4294,7 @@ else
 
 	private string GetFixSingleTooltip()
 	{
-		if (IsQueueBusy)
+		if (IsRepositoryBusy(_selectedRow?.RepositoryFullName))
 		{
 			return "Will be queued behind the work already running";
 		}
@@ -4518,7 +4467,7 @@ else
 
 	private string GetSyncTooltip()
 	{
-		if (IsQueueBusy)
+		if (IsRepositoryBusy(_selectedRow?.RepositoryFullName))
 		{
 			return "Will be queued behind the work already running";
 		}
@@ -4603,10 +4552,15 @@ else
 		AppendConsole(line);
 	}
 
-	// === Work queue ===
+	// === Work lanes ===
 
-	/// <summary>Whether anything is running or waiting, so a click now queues rather than starts.</summary>
-	private bool IsQueueBusy => WorkQueue.Items.Count > 0;
+	/// <summary>
+	/// Whether this repository has work outstanding, so a click now queues rather than starts. Its own
+	/// work only: work on another repository never closes this one's buttons.
+	/// </summary>
+	private bool IsRepositoryBusy(string? repositoryFullName)
+		=> repositoryFullName is { Length: > 0 } name
+			&& Lanes.ItemsFor($"repo:{name.ToLowerInvariant()}").Count > 0;
 
 	/// <summary>
 	/// Throws away whatever a stopped fix had written into a clone, and says how much went. Not
@@ -4629,110 +4583,123 @@ else
 		await Dashboard.RefreshGitStatusAsync(row, CancellationToken.None);
 	}
 
-	private static string QueueItemIcon(WorkItem item) => item.State switch
-	{
-		WorkItemState.Running => "fa-circle-notch fa-spin",
-		WorkItemState.Cancelling => "fa-rotate-left fa-spin",
-		_ => "fa-clock"
-	};
-
 	/// <summary>
-	/// Puts an operation on the application-wide queue and starts the pump. Nothing runs immediately:
-	/// if something else is in flight — in this tab or another — the item waits its turn in the panel
-	/// under the navigation tree.
+	/// Queues one piece of work against the selected repository's lane.
 	/// </summary>
-	private void EnqueueWork(
-		string title,
-		string? organization,
-		string dedupKey,
-		Func<IProgress<string>, CancellationToken, Task> run,
-		WorkflowStep? step = null,
-		string? repositoryFullName = null)
+	/// <param name="kind">Which work this is.</param>
+	/// <param name="title">What the user sees in the tree and console.</param>
+	/// <param name="step">The workflow step this queues, or null when it is not one.</param>
+	/// <param name="parameters">The few extras the kind needs, such as <c>category</c> or <c>ruleId</c>.</param>
+	private void QueueForSelectedRepository(WorkKind kind, string title, WorkflowStep? step = null, params (string Name, string Value)[] parameters)
 	{
-		var item = WorkQueue.Enqueue(title, organization, dedupKey, this, run, step, repositoryFullName);
-		if (item is null)
+		if (_selectedRow?.RepositoryFullName is not { Length: > 0 } repositoryFullName)
 		{
-			// Folded into an identical pending item. Said out loud, because a button that appears to do
-			// nothing is worse than one that queues a second pass. The console it was folded into keeps
-			// its own node — the fold produced no new work to report.
-			AppendConsole($"↩️ {title} is already queued.");
 			return;
 		}
 
-		// Recorded now rather than read when the item runs: the queue may not reach it for minutes, by
-		// which time the selection has moved and the run's output would land in an unrelated console.
-		_consoleNodeKeyByWorkItemId[item.Id] = _selectedNodeKey;
+		var queued = Lanes.Enqueue(
+			title,
+			WorkDescriptor.ForRepository(kind, _selectedRow.Organization, repositoryFullName, parameters),
+			$"{kind}:{repositoryFullName}:{string.Join(',', parameters.Select(p => p.Value))}",
+			step,
+			// Recorded now rather than read when the item runs: the lane may not reach it for minutes,
+			// by which time the selection has moved and the output would land in an unrelated console.
+			_selectedNodeKey);
 
-		AppendConsole(WorkQueue.Running is null ? $"▶️ {title}" : $"⏳ Queued: {title}");
-		_ = PumpQueueAsync();
+		AppendConsole(queued is null ? $"↩️ {title} is already queued." : $"⏳ Queued: {title}");
 	}
 
 	/// <summary>
-	/// Runs whatever this circuit owns at the head of the queue, one item at a time, until the head is
-	/// something it cannot run. Re-entrant by design: a call while an item is executing claims nothing
-	/// and returns, which is what makes the queue single-flight.
+	/// Stops a work node's lane — or, on an organisation's work node, every lane beneath it.
 	/// </summary>
-	private async Task PumpQueueAsync()
+	private void StopLane(NavItem node)
 	{
-		while (WorkQueue.TryDequeueForExecution(this, out var item))
+		if (node.RepositoryFullName is { Length: > 0 })
 		{
-			Exception? error = null;
-
-			// Stamped on this method's asynchronous flow, which the item's own work and everything it
-			// logs runs inside. That — not the current selection — is what decides where its output
-			// appears, so a run started on one node stays there however far the user navigates. Set
-			// inside this async method, so it cannot escape into the caller that fired the pump.
-			UiConsoleScope.NodeKey = _consoleNodeKeyByWorkItemId.TryGetValue(item.Id, out var nodeKey)
-				? nodeKey
-				: _selectedNodeKey;
-
-			try
-			{
-				var progress = new Progress<string>(line => WorkQueue.ReportProgress(item, line));
-				await item.Run(progress, WorkQueue.Token(item.Id) ?? CancellationToken.None);
-			}
-			catch (OperationCanceledException ex)
-			{
-				error = ex;
-				AppendConsole($"⏹️ Stopped: {item.Title}");
-			}
-			catch (Exception ex)
-			{
-				error = ex;
-				AppendConsole($"⛔ {item.Title}: {ex.Message}");
-			}
-			finally
-			{
-				WorkQueue.Complete(item, error);
-				_consoleNodeKeyByWorkItemId.TryRemove(item.Id, out _);
-			}
-
-			await SafeStateHasChangedAsync();
+			Lanes.CancelLane(node.LaneKey!);
+			return;
 		}
+
+		Lanes.CancelUnder(node.Organization);
 	}
 
 	/// <summary>
-	/// Queues work a child component asked for. Its output goes to the console like everything else,
-	/// so a queued bulk run reads the same as one started from the toolbar.
+	/// Queues a bulk rule action fanned out across its repositories, as requested by <see cref="IssuesView"/>.
 	/// </summary>
-	private void EnqueueRequestedWork(QueuedWork work)
-		=> EnqueueWork(work.Title, work.Organization, work.DedupKey, async (progress, cancellationToken) =>
-		{
-			try
-			{
-				await work.Run(progress, cancellationToken);
-			}
-			finally
-			{
-				// The rows the run re-assessed are the ones the tree counts, so it has to be rebuilt or
-				// it keeps reporting failures the run has just fixed. Once at the end rather than per
-				// repository: rebuilding tears down every node and re-expands them, which flickers.
-				_rows = Cache.GetCachedRows() ?? _rows;
-				await ReloadTreePreservingExpansionAsync();
-			}
-		}, work.Step, work.RepositoryFullName);
+	private void EnqueueBulkRule(BulkRuleRequest request)
+	{
+		var queued = FanOut.EnqueueRule(
+			request.Organization, request.RuleId, request.RepositoryFullNames, request.Push, _selectedNodeKey);
 
-	private void OnWorkQueueChanged() => _ = SafeStateHasChangedAsync();
+		AppendConsole($"⏳ Queued {request.Title} across {queued} repositor{(queued == 1 ? "y" : "ies")}.");
+	}
+
+	/// <summary>
+	/// Debounces <see cref="WorkLaneService.Changed"/>. Twenty lanes reporting progress would otherwise
+	/// rebuild the tree far faster than anyone can read it, so a burst of changes collapses into one
+	/// reload 250 ms after the last of them.
+	/// </summary>
+	private readonly System.Timers.Timer _laneChangeDebounce = new(250) { AutoReset = false };
+
+	/// <summary>Restarts the debounce timer whenever a lane changes. Called from any thread.</summary>
+	private void OnLanesChanged()
+	{
+		_laneChangeDebounce.Stop();
+		_laneChangeDebounce.Start();
+	}
+
+	/// <summary>
+	/// Reloads the tree once the debounce timer elapses. Runs on the timer's own thread, so the reload
+	/// and re-render are hopped back onto the circuit via <c>InvokeAsync</c>.
+	/// </summary>
+	private void OnLaneChangeDebounceElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+		=> _ = InvokeAsync(async () =>
+		{
+			await ReloadTreePreservingExpansionAsync();
+			await SafeStateHasChangedAsync();
+		});
+
+	/// <summary>
+	/// Refreshes the selected repository's row and the tree when any lane item completes, and — for a
+	/// step completing on the selected repository — restores the workflow-step badge state that used to
+	/// be written inline by the toolbar's own build/test/commit bodies before those moved into
+	/// <see cref="WorkExecutors"/>.
+	/// </summary>
+	private void OnItemCompleted(WorkItem item)
+	{
+		_rows = Cache.GetCachedRows() ?? _rows;
+
+		if (item.Step is { } step
+			&& _selectedRow?.RepositoryFullName is { Length: > 0 } selected
+			&& string.Equals(item.RepositoryFullName, selected, StringComparison.OrdinalIgnoreCase))
+		{
+			switch (item.State)
+			{
+				case WorkItemState.Completed:
+					_completedSteps.Add(step);
+					_failedSteps.Remove(step);
+					if (_lastFailedWorkflowStep == step)
+					{
+						_lastFailedWorkflowStep = null;
+					}
+
+					break;
+
+				case WorkItemState.Failed:
+					_failedSteps.Add(step);
+					_completedSteps.Remove(step);
+					_lastFailedWorkflowStep = step;
+					break;
+
+				default:
+					// Cancelled: a stopped step neither succeeded nor failed, and its changes were
+					// reverted, so the badge state is left exactly as it was.
+					break;
+			}
+		}
+
+		_ = InvokeAsync(async () => await ReloadTreePreservingExpansionAsync());
+	}
 
 	/// <summary>
 	/// The number of repositories an issue-hierarchy node covers, or null for nodes where a count
@@ -5578,34 +5545,29 @@ else
 		return $"Copy AI prompt for {remainingCount} remaining issue{(remainingCount == 1 ? "" : "s")}";
 	}
 
-	private async Task CommitAndPushAsync()
+	private Task CommitAndPushAsync()
 	{
 		if (_selectedRow is null)
 		{
-			return;
+			return Task.CompletedTask;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
-		var capturedRow = _selectedRow;
-		EnqueueWork(
-			$"Commit & push {_selectedRow.RepositoryFullName}",
-			_selectedRow.Organization,
-			$"commit-push:{_selectedRow.RepositoryFullName}",
-			(progress, cancellationToken) => CommitAndPushCoreAsync(capturedRow, progress, cancellationToken),
-			WorkflowStep.CommitAndPush,
-			_selectedRow.RepositoryFullName);
+		QueueForSelectedRepository(WorkKind.CommitAndPush, $"Commit & push {_selectedRow.RepositoryFullName}", WorkflowStep.CommitAndPush);
+		return Task.CompletedTask;
 	}
 
 	public void Dispose()
 	{
-		// This circuit executes its own queued work, so it cannot leave any behind: pending items are
-		// dropped and a running one is cancelled, which reverts whatever it had half-applied. The
-		// running task itself outlives the component long enough to unwind and report completion.
-		WorkQueue.Changed -= OnWorkQueueChanged;
+		// Work itself now belongs to the application, not this circuit: closing the tab must not
+		// cancel a lane, only stop this circuit listening to it.
+		Lanes.Changed -= OnLanesChanged;
+		Runner.ItemCompleted -= OnItemCompleted;
 		RegressionGuard.StatusesChanged -= OnGuardStatusesChanged;
 		LogSink.LineWritten -= OnLogLineWritten;
-		WorkQueue.RemoveOwnedBy(this);
+		_laneChangeDebounce.Elapsed -= OnLaneChangeDebounceElapsed;
+		_laneChangeDebounce.Dispose();
 		_autoRefreshTimer?.Dispose();
 		_treeFilterDebounce?.Dispose();
 		_doneClearTimer?.Dispose();

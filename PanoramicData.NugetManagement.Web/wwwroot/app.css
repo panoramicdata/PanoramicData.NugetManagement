@@ -1530,14 +1530,6 @@ i + .breadcrumb-link-text {
     min-height: 0;
 }
 
-/* An idle queue is collapsed to zero height by SyncNavSplitterAsync rather than by a rule here:
-   anything strong enough to override the flex-basis split.js writes inline would also override it
-   mid-drag, and the gutter has to keep working so an empty queue can be pulled open. All this pane
-   needs is to disappear cleanly when its height goes to nothing. */
-.nav-queue-pane {
-    overflow: hidden;
-}
-
 /* === RAG health colours for tree icons === */
 .text-success {
     color: var(--success) !important;
@@ -1885,84 +1877,20 @@ i + .breadcrumb-link-text {
     flex-shrink: 0;
 }
 
-/* === Work Queue (sidebar) === */
-/* Sits between the tree and the footer, filling the lower pane of the nav splitter. Its height
-   is the user's to set — drag the gutter above it. See .nav-split-area. */
-.nav-queue {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-}
-
-.nav-queue-head {
-    display: flex;
+/* === Work nodes (sidebar tree) === */
+/* Work now hangs off the node it acts on rather than in a queue pane of its own — see .nav-org-actions
+   for the button styling this shares. */
+.nav-work-item {
+    display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-    position: sticky;
-    top: 0;
-    background: var(--bg-secondary);
-}
-
-.nav-queue-count {
+    gap: 0.3rem;
     margin-left: auto;
-    font-weight: 700;
-    color: var(--text-secondary);
 }
 
-.nav-queue-item {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.25rem 0.6rem;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-}
-
-.nav-queue-item.running {
-    color: var(--text-primary);
-}
-
-.nav-queue-icon {
-    width: 0.9rem;
-    flex-shrink: 0;
-    color: var(--text-muted);
-}
-
-.nav-queue-item.running .nav-queue-icon {
-    color: var(--accent);
-}
-
-/* The title is the part that gives, so progress and the stop button never wrap out of reach. */
-.nav-queue-title {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.nav-queue-progress {
+.nav-work-progress {
     font-size: 0.7rem;
     color: var(--text-muted);
     white-space: nowrap;
-}
-
-.nav-queue-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-muted);
-    padding: 0 0.15rem;
-    flex-shrink: 0;
-}
-
-.nav-queue-btn:hover {
-    color: var(--text-primary);
 }
 
 .nav-footer {

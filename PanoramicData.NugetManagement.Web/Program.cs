@@ -45,9 +45,21 @@ builder.Services.AddSingleton<LocalFileSystemDataProvider>();
 builder.Services.AddSingleton<PackageDashboardDataProvider>();
 builder.Services.AddSingleton<NavTreeDataProvider>();
 builder.Services.AddSingleton<RegressionGuardService>();
-builder.Services.AddSingleton<WorkQueueService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RegressionGuardService>());
 builder.Services.AddScoped<DashboardService>();
+
+// Per-repository work lanes: one queue-and-runner pair application-wide, replacing the single
+// application-wide work queue that used to serialise every repository behind one another.
+builder.Services.AddSingleton<WorkLaneService>();
+builder.Services.AddSingleton<WorkFanOut>();
+builder.Services.AddSingleton(sp => new WorkQueueStore(
+	WorkQueueStore.DefaultPath(),
+	sp.GetRequiredService<ILogger<WorkQueueStore>>()));
+// Scoped: WorkExecutors resolves DashboardService, which is itself scoped, so each running item needs
+// its own scope rather than sharing the singleton runner's.
+builder.Services.AddScoped<WorkExecutors>();
+builder.Services.AddSingleton<WorkRunnerService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkRunnerService>());
 
 // GitHub OAuth authentication
 var settings = builder.Configuration.GetSection("AppSettings").Get<AppSettings>() ?? new AppSettings();
