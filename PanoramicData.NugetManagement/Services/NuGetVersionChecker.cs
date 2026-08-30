@@ -78,6 +78,9 @@ public class NuGetVersionChecker
 	/// <param name="packageId">The NuGet package ID.</param>
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>The latest stable version string, or null if not found.</returns>
+	[Obsolete("Use GetLatestStableWithPublishedAsync instead. Governance measures freshness from a "
+		+ "release's publication date, so a version without one cannot be judged; this overload "
+		+ "drops it. Nothing in this repository calls it any more.")]
 	public async Task<string?> GetLatestStableVersionAsync(string packageId, CancellationToken cancellationToken = default)
 	{
 		try
@@ -172,6 +175,10 @@ public class NuGetVersionChecker
 	/// <param name="currentVersion">The current version string.</param>
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>A tuple of (IsLatest, LatestVersion).</returns>
+	[Obsolete("Use GetLatestStableWithPublishedAsync instead. This method returns IsLatest = true "
+		+ "when it cannot reach nuget.org — it guesses a pass out of a lookup failure, which is "
+		+ "exactly what the version-floor design forbids: an unknown upstream must be reported as "
+		+ "unknown, never assumed compliant. Nothing in this repository calls it any more.")]
 	public async Task<(bool IsLatest, string? LatestVersion)> IsLatestVersionAsync(
 		string packageId,
 		string currentVersion,
@@ -193,6 +200,10 @@ public class NuGetVersionChecker
 	/// <param name="currentVersion">The current declared version.</param>
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>The version status, or null if the package cannot be evaluated.</returns>
+	[Obsolete("Use GetLatestStableWithPublishedAsync instead, with NuGetVersionCache and "
+		+ "NuGetFloorCatalog for the verdict. This resolves \"latest\" live per package, which is "
+		+ "the per-reference round trip the version-floor design removed. Nothing in this repository "
+		+ "calls it any more.")]
 	public async Task<PackageVersionStatus?> GetVersionStatusAsync(
 		string packageId,
 		string currentVersion,
