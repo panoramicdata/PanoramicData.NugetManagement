@@ -22,12 +22,26 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 		string? organization,
 		IReadOnlyList<RepositoryDashboardRow> rows,
 		string? consoleNodeKey)
-		=> rows.Count(row => lanes.Enqueue(
-			$"Re-assess {row.RepositoryName}",
-			WorkDescriptor.ForRepository(WorkKind.Reassess, organization, row.RepositoryFullName),
-			$"reassess:{row.RepositoryFullName}",
-			WorkflowStep.Reassess,
-			consoleNodeKey) is not null);
+	{
+		var queued = 0;
+
+		foreach (var row in rows)
+		{
+			var item = lanes.Enqueue(
+				$"Re-assess {row.RepositoryName}",
+				WorkDescriptor.ForRepository(WorkKind.Reassess, organization, row.RepositoryFullName),
+				$"reassess:{row.RepositoryFullName}",
+				WorkflowStep.Reassess,
+				consoleNodeKey);
+
+			if (item is not null)
+			{
+				queued++;
+			}
+		}
+
+		return queued;
+	}
 
 	/// <summary>Queues a clone of every given candidate. Returns how many were queued.</summary>
 	/// <param name="organization">The organisation they belong to.</param>
@@ -37,12 +51,26 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 		string organization,
 		IReadOnlyList<RepositoryCloneCandidate> targets,
 		string? consoleNodeKey)
-		=> targets.Count(target => lanes.Enqueue(
-			$"Clone {target.FullName}",
-			WorkDescriptor.ForRepository(WorkKind.Clone, organization, target.FullName),
-			$"clone:{target.FullName}",
-			step: null,
-			consoleNodeKey) is not null);
+	{
+		var queued = 0;
+
+		foreach (var target in targets)
+		{
+			var item = lanes.Enqueue(
+				$"Clone {target.FullName}",
+				WorkDescriptor.ForRepository(WorkKind.Clone, organization, target.FullName),
+				$"clone:{target.FullName}",
+				step: null,
+				consoleNodeKey);
+
+			if (item is not null)
+			{
+				queued++;
+			}
+		}
+
+		return queued;
+	}
 
 	/// <summary>
 	/// Queues one rule's auto-fix against every affected repository, optionally following each fix
@@ -82,12 +110,16 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 			// repository without any coordination: the lane is the ordering.
 			if (push)
 			{
+				// Never folded, unlike the fix it follows. A second push costs nothing — there is simply
+				// nothing to commit — whereas a folded push leaves the repository fixed and unpushed, with
+				// an uncommitted change nobody is tracking. The asymmetry is why this one opts out.
 				lanes.Enqueue(
 					$"Commit & push {repositoryFullName}",
 					WorkDescriptor.ForRepository(WorkKind.CommitAndPush, organization, repositoryFullName),
 					$"commit-push:{repositoryFullName}:{ruleId}",
 					WorkflowStep.CommitAndPush,
-					consoleNodeKey);
+					consoleNodeKey,
+					foldDuplicates: false);
 			}
 		}
 

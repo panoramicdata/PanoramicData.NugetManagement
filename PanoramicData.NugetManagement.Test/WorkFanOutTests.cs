@@ -66,6 +66,30 @@ public class WorkFanOutTests(ITestOutputHelper output) : TestWithOutput(output)
 	}
 
 	[Fact]
+	public void EnqueueRule_CalledTwiceForTheSameRepositoryAndRule_StillQueuesAPushBehindEachFix()
+	{
+		var lanes = new WorkLaneService();
+		var fanOut = new WorkFanOut(lanes);
+
+		fanOut.EnqueueRule("panoramicdata", "TST-06", ["panoramicdata/A"], push: true, consoleNodeKey: null);
+
+		// The fix runs to completion and leaves the lane while its push is still pending behind it —
+		// the exact cross-call shape a re-assessment sweep, or a double-click, produces.
+		lanes.TryStartNext(out var runningFix).Should().BeTrue();
+		runningFix.Descriptor.Kind.Should().Be(WorkKind.FixRule);
+		lanes.Complete(runningFix, error: null);
+
+		// A second sweep re-detects the same violation on the same repository.
+		fanOut.EnqueueRule("panoramicdata", "TST-06", ["panoramicdata/A"], push: true, consoleNodeKey: null);
+
+		var kinds = lanes.ItemsFor("repo:panoramicdata/a").Select(i => i.Descriptor.Kind);
+
+		kinds.Should().Equal(
+			[WorkKind.CommitAndPush, WorkKind.FixRule, WorkKind.CommitAndPush],
+			"a repository must never be left fixed and unpushed");
+	}
+
+	[Fact]
 	public void EnqueueRule_WithoutPush_QueuesOnlyTheFix()
 	{
 		var lanes = new WorkLaneService();
