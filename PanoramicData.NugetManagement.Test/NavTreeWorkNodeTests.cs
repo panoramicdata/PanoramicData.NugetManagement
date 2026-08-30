@@ -84,6 +84,90 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	}
 
 	[Fact]
+	public void OrgWorkNode_OnlyRepositoryLanesHaveItems_StillAppears()
+	{
+		// The spec requires the organisation's work node when its own lane has items OR any repository
+		// beneath it does, and this is why: "Fix everything & push" runs a discovery item on the
+		// organisation lane, fans it out into every repository's lane, and then completes and is
+		// removed. With the narrower "own lane only" rule the node — and with it the "stop all" button
+		// that is the compensation for a bulk action no longer being one thing to stop — would vanish
+		// at the exact moment forty repository lanes filled up.
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		var node = provider.BuildNavItems()
+			.Should().ContainSingle(i => i.Key == NavTreeDataProvider.OrgWorkKey("panoramicdata")).Subject;
+
+		node.ParentKey.Should().Be(NavTreeDataProvider.OrgKey("panoramicdata"));
+		node.Text.Should().Be(
+			"Work (1 below)",
+			"the count must say where the work is — it is not in this lane, and expanding the node will not find it");
+		node.IsLeaf.Should().BeTrue("the organisation lane has nothing of its own to list");
+	}
+
+	[Fact]
+	public void OrgWorkNode_BothLanesHaveItems_CountsThemSeparately()
+	{
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Rediscover", WorkDescriptor.ForOrganization(WorkKind.RediscoverOrganization, "panoramicdata"), "rd", null, null);
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Single(i => i.Key == NavTreeDataProvider.OrgWorkKey("panoramicdata"))
+			.Text.Should().Be("Work (1 here, 1 below)");
+	}
+
+	[Fact]
+	public void OrgWorkNode_NothingAnywhere_IsAbsent()
+	{
+		var provider = NewProvider(new WorkLaneService(), withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Should().NotContain(i => i.Key == NavTreeDataProvider.OrgWorkKey("panoramicdata"));
+	}
+
+	[Fact]
+	public void RepositoryNode_LaneIsRunning_IsMarkedBusy()
+	{
+		// There is deliberately no estate-wide roll-up node: the spec's stated justification is that
+		// activity is found by the spinner on the repository node. That spinner is this flag.
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		lanes.TryStartNext(out _);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Single(i => i.Key == NavTreeDataProvider.RepoKey(Repo))
+			.IsBusy.Should().BeTrue();
+	}
+
+	[Fact]
+	public void RepositoryNode_OnlyPendingItems_IsNotBusy()
+	{
+		// A lane full of pending items is waiting, not working. Spinning for it would make every
+		// repository in the estate spin for the duration of a bulk action, which says nothing.
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Single(i => i.Key == NavTreeDataProvider.RepoKey(Repo))
+			.IsBusy.Should().BeFalse();
+	}
+
+	[Fact]
+	public void RepositoryNode_NoLane_IsNotBusy()
+	{
+		var provider = NewProvider(new WorkLaneService(), withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Single(i => i.Key == NavTreeDataProvider.RepoKey(Repo))
+			.IsBusy.Should().BeFalse();
+	}
+
+	[Fact]
 	public void WorkItemNodes_KeepTheLanesOrderNotAlphabeticalOrder()
 	{
 		var lanes = new WorkLaneService();

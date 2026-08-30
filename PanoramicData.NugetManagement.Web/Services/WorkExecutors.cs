@@ -513,7 +513,7 @@ public sealed class WorkExecutors(
 
 			if (row.IsClonedLocally && row.LocalPath is not null)
 			{
-				await dashboard.AssessLocalRepositoryAsync(row).ConfigureAwait(false);
+				await dashboard.AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
 				await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 				await SayDirtyWorkingTreePreviewAsync(row).ConfigureAwait(false);
 			}
@@ -562,14 +562,14 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			var applied = await dashboard.ApplyRemediationsAsync(row, Say).ConfigureAwait(false);
+			var applied = await dashboard.ApplyRemediationsAsync(row, Say, cancellationToken).ConfigureAwait(false);
 
-			await dashboard.RefreshGitStatusAsync(row).ConfigureAwait(false);
+			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
 			Say($"✅ Applied {applied.Count} remediation(s)");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row).ConfigureAwait(false);
+			await dashboard.AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
 
 			// Report remaining issues that have no auto-fix.
@@ -624,14 +624,14 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			var applied = await dashboard.ApplyCategoryRemediationsAsync(row, category, Say).ConfigureAwait(false);
+			var applied = await dashboard.ApplyCategoryRemediationsAsync(row, category, Say, cancellationToken).ConfigureAwait(false);
 
-			await dashboard.RefreshGitStatusAsync(row).ConfigureAwait(false);
+			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
 			Say($"✅ Applied {applied.Count} remediation(s) for {category}");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row).ConfigureAwait(false);
+			await dashboard.AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
 		}
 		catch (OperationCanceledException)
@@ -693,12 +693,12 @@ public sealed class WorkExecutors(
 			var applied = new List<string>();
 			dashboard.ApplySingleRemediationPublic(row.LocalPath, result, applied, Say);
 
-			await dashboard.RefreshGitStatusAsync(row).ConfigureAwait(false);
+			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
 			Say(applied.Count > 0 ? $"✅ Fixed {result.RuleId}" : $"⚠️ Could not fix {result.RuleId}");
 
 			Say("▶ Re-assessing...");
-			await dashboard.AssessLocalRepositoryAsync(row).ConfigureAwait(false);
+			await dashboard.AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
 		}
 		catch (OperationCanceledException)
@@ -829,6 +829,13 @@ public sealed class WorkExecutors(
 
 			await SayDirtyWorkingTreePreviewAsync(row).ConfigureAwait(false);
 		}
+		catch (OperationCanceledException)
+		{
+			// Stopping is not failing, and every other step says so the same way. Without this rethrow
+			// a stopped sync reports "❌ Error: The operation was canceled" as though something had gone
+			// wrong, instead of the runner's stop line.
+			throw;
+		}
 		catch (Exception ex)
 		{
 			Say($"❌ Error: {ex.Message}");
@@ -857,6 +864,13 @@ public sealed class WorkExecutors(
 			await dashboard.RunPublishAsync(row, Say, cancellationToken).ConfigureAwait(false);
 
 			Say(row.Status == PackageStatus.Published ? "✅ Published" : "❌ Publish failed");
+		}
+		catch (OperationCanceledException)
+		{
+			// Stopping is not failing, and every other step says so the same way. Without this rethrow
+			// a stopped publish reports "❌ Error: The operation was canceled" as though something had
+			// gone wrong, instead of the runner's stop line.
+			throw;
 		}
 		catch (Exception ex)
 		{

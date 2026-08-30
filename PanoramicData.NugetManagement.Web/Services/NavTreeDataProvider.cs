@@ -410,6 +410,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		foreach (var row in visibleRows.OrderBy(r => r.RepositoryFullName, StringComparer.OrdinalIgnoreCase))
 		{
 			var repoKey = RepoKey(row.RepositoryFullName);
+			var repoLaneKey = RepositoryLaneKey(row.RepositoryFullName);
 			var repoIssues = row.TotalFailures;
 			var repoHasErrors = row.TotalCriticals > 0 || row.TotalErrors > 0;
 			var repoHasWarnings = row.TotalWarnings > 0;
@@ -431,6 +432,13 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				IsWorkingTreeDirty = row.IsWorkingTreeClean == false,
 				RepositoryFullName = row.RepositoryFullName,
 				IsExcluded = _runtimeSettings.IsRepositoryExcluded(row.RepositoryFullName),
+				// The spec asserts repository nodes already reflect their lane. They never did — in the
+				// single-queue design IsBusy was rendered on the organisation node alone — and with no
+				// estate-wide roll-up node this spinner is the only place activity on a repository is
+				// visible without expanding its Work node. Running, not merely queued: a lane full of
+				// pending items is waiting, not working, and spinning for it would make the whole tree
+				// spin for the duration of a bulk action.
+				IsBusy = IsRepositoryLaneRunning(repoLaneKey),
 				GuardStateNeedingAttention = guardStates.TryGetValue(row.RepositoryFullName, out var guardState)
 					? guardState
 					: null
@@ -463,7 +471,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				items,
 				WorkKey(row.RepositoryFullName),
 				repoKey,
-				$"repo:{row.RepositoryFullName.ToLowerInvariant()}",
+				repoLaneKey,
 				organization,
 				row.RepositoryFullName,
 				// Rank 1, between Packages (0) and the categories (2). Explicit rather than
@@ -551,9 +559,22 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	}
 
 	/// <summary>
-	/// Adds a lane's "Work" container and one node per outstanding item, or nothing when the lane is
-	/// empty. An empty container would be a node to open and find nothing in.
+	/// Adds a lane's "Work" container and one node per outstanding item, or nothing when there is
+	/// nothing to show under it. An empty container would be a node to open and find nothing in.
 	/// </summary>
+	/// <remarks>
+	/// An organisation's node is shown when its own lane has items <em>or any repository beneath it
+	/// does</em>, which is not the same rule as a repository's. It has to be: the node's header
+	/// carries the "stop everything below here" button, which is what a fanned-out bulk action is
+	/// stopped with now that it is many items rather than one. A discovery item runs on the
+	/// organisation lane, fans out into forty repository lanes and then completes — so with the
+	/// narrower rule the button would disappear at the exact moment forty lanes started needing it.
+	/// <para>
+	/// Its children are still only the organisation lane's own items. The descendants belong to their
+	/// own repositories' work nodes, which is why the count says where the work actually is rather
+	/// than implying it is all here.
+	/// </para>
+	/// </remarks>
 	private void AddWorkNodes(
 		List<NavItem> items,
 		string workKey,
@@ -564,7 +585,14 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		int sortOrder)
 	{
 		var laneItems = _workLanes?.ItemsFor(laneKey) ?? [];
-		if (laneItems.Count == 0)
+
+		// Only the organisation node rolls up. A repository is the bottom of the hierarchy: there is
+		// nothing beneath it to count.
+		var itemsBelow = repositoryFullName is null
+			? CountWorkItemsUnderOrganisation(organization, laneKey)
+			: 0;
+
+		if (laneItems.Count == 0 && itemsBelow == 0)
 		{
 			return;
 		}
@@ -572,14 +600,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		items.Add(new NavItem
 		{
 			Key = workKey,
-			Text = $"Work ({laneItems.Count})",
+			Text = WorkNodeText(laneItems.Count, itemsBelow),
 			ParentKey = parentKey,
 			IconCss = "fas fa-list-check",
 			View = NavView.None,
 			Organization = organization,
 			RepositoryFullName = repositoryFullName,
 			LaneKey = laneKey,
-			IsLeaf = false,
+			// An organisation node whose own lane is empty has nothing to expand into: its descendants
+			// are listed under their own repositories, not here.
+			IsLeaf = laneItems.Count == 0,
 			SortOrder = sortOrder
 		});
 
@@ -611,6 +641,52 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			});
 		}
 	}
+
+	/// <summary>
+	/// One repository's lane key, as <see cref="WorkDescriptor.LaneKey"/> builds it.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, as <c>owner/name</c>.</param>
+	public static string RepositoryLaneKey(string repositoryFullName)
+		=> $"repo:{repositoryFullName.ToLowerInvariant()}";
+
+	/// <summary>
+	/// Whether a repository is actually working, as opposed to merely having work queued.
+	/// </summary>
+	/// <param name="laneKey">The repository's lane.</param>
+	private bool IsRepositoryLaneRunning(string laneKey)
+		=> (_workLanes?.ItemsFor(laneKey) ?? [])
+			.Any(i => i.State is Models.WorkItemState.Running or Models.WorkItemState.Cancelling);
+
+	/// <summary>
+	/// How much outstanding work sits in the lanes belonging to an organisation, other than in its own
+	/// lane — that is, in its repositories'.
+	/// </summary>
+	/// <param name="organization">The organisation whose descendants to count.</param>
+	/// <param name="ownLaneKey">The organisation's own lane, which is counted separately.</param>
+	private int CountWorkItemsUnderOrganisation(string organization, string ownLaneKey)
+		=> _workLanes is null
+			? 0
+			: _workLanes.Lanes
+				.Where(lane => !string.Equals(lane.Key, ownLaneKey, StringComparison.Ordinal)
+					&& string.Equals(lane.Organization, organization, StringComparison.OrdinalIgnoreCase))
+				.Sum(lane => lane.Items.Count);
+
+	/// <summary>
+	/// The work node's label, saying where the work it covers actually is.
+	/// </summary>
+	/// <remarks>
+	/// A bare total would claim that forty repository items are in this lane, and expanding the node
+	/// to find one discovery item under it would then read as a bug. "Below" is where the stop-all
+	/// button reaches, which is the whole reason the node is shown at all.
+	/// </remarks>
+	/// <param name="ownCount">Items in this node's own lane.</param>
+	/// <param name="itemsBelow">Items in lanes beneath it, which it does not list.</param>
+	private static string WorkNodeText(int ownCount, int itemsBelow) => (ownCount, itemsBelow) switch
+	{
+		(0, var below) => $"Work ({below} below)",
+		(var own, 0) => $"Work ({own})",
+		var (own, below) => $"Work ({own} here, {below} below)"
+	};
 
 	/// <summary>
 	/// Adds the Issues branch for one organisation: category → rule, the "dimensional flip" of the

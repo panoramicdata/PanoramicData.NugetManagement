@@ -1008,8 +1008,10 @@ else
 
 		// Nothing loads automatically on open any more, so this must not claim otherwise: it used to be
 		// set from Cache.IsStale because the auto-refresh timer fired immediately, and leaving it set
-		// would spin the organisation node indefinitely with no run behind it.
-		NavDataProvider.IsLoading = false;
+		// would spin the organisation node indefinitely with no run behind it. Taken from the lanes
+		// rather than hardcoded false, because work restored from the last run may already be loading
+		// by the time this circuit opens.
+		RefreshLaneFlagsSnapshot();
 
 		// Deliberately not awaited: it shells out to git and talks to the network, and the page has no
 		// reason to wait on it. The dialog appears when the answer arrives.
@@ -1342,6 +1344,14 @@ else
 		if (!NavTreeDataProvider.IsRepositoryNode(item))
 		{
 			return item.IconCss;
+		}
+
+		// There is deliberately no estate-wide roll-up node, so this spinner is the only sign that a
+		// repository is working without expanding its Work node to look. It takes precedence over the
+		// health glyph for exactly as long as the lane is running, then the result replaces it.
+		if (item.IsBusy)
+		{
+			return "fas fa-circle-notch fa-spin";
 		}
 
 		var row = RowForNavItem(item);
@@ -4819,6 +4829,12 @@ else
 			.FirstOrDefault() ?? string.Empty;
 
 		_isCloningAll = _cloningOrganization.Length > 0;
+
+		// Write-only-false since the discovery bodies moved to WorkExecutors: the base set this true in
+		// RefreshCoreAsync, and nothing replaced it, so the tree's "Loading repositories..." placeholder
+		// and the organisation node's own busy flag were permanently off. Set from the same snapshot as
+		// the flags above rather than from a run that now happens somewhere else entirely.
+		NavDataProvider.IsLoading = _isLoading;
 	}
 
 	/// <summary>
