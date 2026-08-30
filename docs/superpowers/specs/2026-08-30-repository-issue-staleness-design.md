@@ -202,8 +202,14 @@ the tree code knows it was a decision.
 
 ## Testing
 
-Unit tests in `PanoramicData.NugetManagement.Test`, against a faked `IGitHubClient`. Run the xunit
-v3 executable directly — `dotnet test` reports "Zero tests ran" in this repository.
+Unit tests in `PanoramicData.NugetManagement.Test`. Run the xunit v3 executable directly —
+`dotnet test` reports "Zero tests ran" in this repository.
+
+The project has no mocking library, and `IGitHubClient` is far too wide to implement by hand. The
+sweep is therefore tested through a narrow port, `IGitHubIssueApi`, declared next to
+`RepositoryIssueService` and implemented by a hand-written fake in the tests — the same seam
+`ICodacyIssueService` already uses. `OctokitGitHubIssueApi` is the one Octokit-facing
+implementation, and is kept thin enough to carry no logic worth testing.
 
 Severity:
 - Exactly 7 days since the last maintainer reply is `Error`; a moment under is `Info`.
