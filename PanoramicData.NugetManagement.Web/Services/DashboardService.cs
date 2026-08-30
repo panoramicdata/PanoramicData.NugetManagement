@@ -414,6 +414,12 @@ public class DashboardService
 			return;
 		}
 
+		// Captured so that a stopped assessment can put them back. A Stop is not a result, and the row
+		// must not be left asserting one — neither the "Assessing" it is about to claim, which would
+		// spin for ever, nor an error the user caused by pressing the button.
+		var statusBeforeAssessing = row.Status;
+		var statusMessageBeforeAssessing = row.StatusMessage;
+
 		row.Status = PackageStatus.Assessing;
 		row.StatusMessage = "Assessing (local)...";
 
@@ -494,6 +500,18 @@ public class DashboardService
 			row.CategorySummaries = BuildCategorySummaries(results);
 			row.Status = PackageStatus.Assessed;
 			row.StatusMessage = $"{row.TotalFailures} issue(s) found (local).";
+		}
+		catch (OperationCanceledException)
+		{
+			// Stopping is not failing. Swallowed by the general catch below, a Stop became a cached RED
+			// repository that outlived the click and hid the real state until the next successful
+			// assessment — and, because nothing was ever thrown, the caller's own cancellation handling
+			// never ran either, so a part-applied fix was left unreverted. The row goes back to what it
+			// was before this pass started: the previous assessment, if there was one, is exactly as
+			// true as it was a moment ago.
+			row.Status = statusBeforeAssessing;
+			row.StatusMessage = statusMessageBeforeAssessing;
+			throw;
 		}
 		catch (Exception ex)
 		{

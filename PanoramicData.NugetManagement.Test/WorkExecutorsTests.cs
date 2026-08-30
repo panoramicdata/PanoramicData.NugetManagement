@@ -200,3 +200,109 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			=> Task.FromResult<string?>(null);
 	}
 }
+
+/// <summary>
+/// Pins the defect the whole-branch re-review found in the cancellation fix: passing a token into
+/// <see cref="DashboardService.AssessLocalRepositoryAsync"/> was useless while that method caught
+/// <see cref="OperationCanceledException"/> along with everything else.
+/// </summary>
+/// <remarks>
+/// Swallowed, a Stop was converted into <c>Status = Error</c> with "Local assessment failed: The
+/// operation was canceled", which the caller then wrote to the cache — so pressing Stop painted the
+/// repository red, and it stayed red until the next successful assessment. Nothing was thrown, so the
+/// caller's own cancellation handling never ran either: no revert, and in a fix-all the remaining-issues
+/// report was evaluated against the stale previous assessment. This is the same "stopping is not
+/// failing" rule the build, test, sync and publish executors already obey.
+/// </remarks>
+public sealed class DashboardServiceCancellationTests(ITestOutputHelper output) : TestWithOutput(output), IDisposable
+{
+	private readonly string _root = Directory.CreateTempSubdirectory("nugetmgmt-assess-cancel-").FullName;
+
+	[Fact]
+	public async Task AssessLocalRepositoryAsync_Cancelled_ThrowsRatherThanRecordingAnError()
+	{
+		var repositoryDirectory = Path.Combine(_root, "panoramicdata", "does-not-exist");
+		Directory.CreateDirectory(repositoryDirectory);
+
+		var row = new RepositoryDashboardRow
+		{
+			RepositoryFullName = "panoramicdata/does-not-exist",
+			Organization = "panoramicdata",
+			LocalPath = repositoryDirectory,
+			IsClonedLocally = true,
+			Status = PackageStatus.Assessed,
+			StatusMessage = "3 issue(s) found (local).",
+			Packages = [new() { PackageId = "Does.Not.Exist", LatestVersion = "1.0.0" }]
+		};
+
+		// Pre-cancelled rather than cancelled mid-flight, for the same reason the build tests are: the
+		// first awaited operation observes it immediately, which is deterministic.
+		using var cancellation = new CancellationTokenSource();
+		await cancellation.CancelAsync();
+
+		var act = () => CreateDashboardService().AssessLocalRepositoryAsync(row, cancellation.Token);
+
+		await act.Should().ThrowAsync<OperationCanceledException>(
+			"the caller's cancellation handling — the revert, and the runner marking the item Cancelled — cannot run if the stop is swallowed here");
+
+		row.Status.Should().NotBe(
+			PackageStatus.Error,
+			"a repository must not be painted red because the user pressed Stop");
+		row.Status.Should().Be(
+			PackageStatus.Assessed,
+			"the row goes back to what it was before the stopped pass — neither an error nor a permanently spinning Assessing");
+		row.StatusMessage.Should().Be("3 issue(s) found (local).");
+	}
+
+	private DashboardService CreateDashboardService()
+	{
+		var appSettings = Options.Create(new AppSettings { LocalReposRoot = _root });
+		var runtimeSettings = new RuntimeSettingsService(appSettings, NullLogger<RuntimeSettingsService>.Instance);
+		var localRepo = new LocalRepoService(runtimeSettings, NullLogger<LocalRepoService>.Instance);
+		var cache = new DashboardCacheService(
+			NullLogger<DashboardCacheService>.Instance,
+			Path.Combine(_root, "dashboard-cache.json"));
+
+		return new DashboardService(
+			new NuGetDiscoveryService(
+				appSettings,
+				new NuspecRepositoryResolver(new NoopHttpClientFactory(), NullLogger<NuspecRepositoryResolver>.Instance),
+				NullLogger<NuGetDiscoveryService>.Instance),
+			new PublishedVersionRefresher(new NoopPublishedVersionSource()),
+			cache,
+			localRepo,
+			new RemediationRegistry(),
+			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
+			runtimeSettings,
+			appSettings,
+			NullLogger<DashboardService>.Instance);
+	}
+
+	/// <inheritdoc />
+	public void Dispose()
+	{
+		try
+		{
+			Directory.Delete(_root, recursive: true);
+		}
+		catch (IOException)
+		{
+			// A locked temp file is not worth failing the test that produced it.
+		}
+
+		GC.SuppressFinalize(this);
+	}
+
+	/// <summary>Never called: a cancelled assessment reaches nothing that talks to NuGet.</summary>
+	private sealed class NoopHttpClientFactory : IHttpClientFactory
+	{
+		public HttpClient CreateClient(string name) => new();
+	}
+
+	/// <summary>Never called: a cancelled assessment reaches nothing that reads published versions.</summary>
+	private sealed class NoopPublishedVersionSource : IPublishedVersionSource
+	{
+		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
+			=> Task.FromResult<string?>(null);
+	}
+}

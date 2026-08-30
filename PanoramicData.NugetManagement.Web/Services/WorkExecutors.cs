@@ -560,9 +560,14 @@ public sealed class WorkExecutors(
 
 		Say("▶ Applying all auto-remediations...");
 
+		// Whether the write phase finished. Everything after it only reads the clone, so a Stop from
+		// that point on has nothing to undo — see the catch below.
+		var remediationCompleted = false;
+
 		try
 		{
 			var applied = await dashboard.ApplyRemediationsAsync(row, Say, cancellationToken).ConfigureAwait(false);
+			remediationCompleted = true;
 
 			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
@@ -593,9 +598,12 @@ public sealed class WorkExecutors(
 		}
 		catch (OperationCanceledException)
 		{
-			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
-			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
+			// Atomic over the WRITE phase only. A remediation stopped part-way is undone, so the clone
+			// is left as it was found rather than carrying half a fix into the next commit — but once
+			// the remediation has landed, the re-assessment that follows only reads the clone, and
+			// throwing away a fix the user asked for because a subsequent read was interrupted would
+			// destroy work they never asked to undo.
+			await RevertIfRemediationIncompleteAsync(row, remediationCompleted).ConfigureAwait(false);
 			throw;
 		}
 		catch (Exception ex)
@@ -622,9 +630,14 @@ public sealed class WorkExecutors(
 		var category = Enum.Parse<AssessmentCategory>(item.Descriptor.Parameter("category")!);
 		Say($"▶ Fixing {category}...");
 
+		// Whether the write phase finished. Everything after it only reads the clone, so a Stop from
+		// that point on has nothing to undo — see the catch below.
+		var remediationCompleted = false;
+
 		try
 		{
 			var applied = await dashboard.ApplyCategoryRemediationsAsync(row, category, Say, cancellationToken).ConfigureAwait(false);
+			remediationCompleted = true;
 
 			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
@@ -636,9 +649,12 @@ public sealed class WorkExecutors(
 		}
 		catch (OperationCanceledException)
 		{
-			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
-			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
+			// Atomic over the WRITE phase only. A remediation stopped part-way is undone, so the clone
+			// is left as it was found rather than carrying half a fix into the next commit — but once
+			// the remediation has landed, the re-assessment that follows only reads the clone, and
+			// throwing away a fix the user asked for because a subsequent read was interrupted would
+			// destroy work they never asked to undo.
+			await RevertIfRemediationIncompleteAsync(row, remediationCompleted).ConfigureAwait(false);
 			throw;
 		}
 		catch (Exception ex)
@@ -688,10 +704,17 @@ public sealed class WorkExecutors(
 
 		Say($"▶ Fixing {result.RuleId}...");
 
+		// Whether the write phase finished. A single remediation is applied synchronously and cannot
+		// be interrupted part-way, so in this executor the flag is only ever false for a Stop observed
+		// before the call — but it is tracked the same way as its two siblings so the three do not
+		// diverge in behaviour that is this easy to get wrong.
+		var remediationCompleted = false;
+
 		try
 		{
 			var applied = new List<string>();
 			dashboard.ApplySingleRemediationPublic(row.LocalPath, result, applied, Say);
+			remediationCompleted = true;
 
 			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
@@ -703,15 +726,47 @@ public sealed class WorkExecutors(
 		}
 		catch (OperationCanceledException)
 		{
-			// Atomic per repository: a fix that was stopped part-way is undone, so the clone is left as
-			// it was found rather than carrying half a remediation into the next commit.
-			await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
+			// Atomic over the WRITE phase only. A remediation stopped part-way is undone, so the clone
+			// is left as it was found rather than carrying half a fix into the next commit — but once
+			// the remediation has landed, the re-assessment that follows only reads the clone, and
+			// throwing away a fix the user asked for because a subsequent read was interrupted would
+			// destroy work they never asked to undo.
+			await RevertIfRemediationIncompleteAsync(row, remediationCompleted).ConfigureAwait(false);
 			throw;
 		}
 		catch (Exception ex)
 		{
 			Say($"❌ Error: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Undoes a stopped fix, but only when the remediation itself did not finish.
+	/// </summary>
+	/// <remarks>
+	/// The atomicity a stopped fix owes the user is over the write phase, not over the whole executor.
+	/// Remediation writes to the clone; the git-status refresh and the re-assessment that follow it
+	/// only read. Reverting after the remediation has landed would discard a fix the user explicitly
+	/// asked for because a subsequent read was interrupted — destroying work they never asked to undo,
+	/// on a path they reached by pressing Stop to save time.
+	/// <para>
+	/// The stop is still reported either way, so the console never goes quiet on a Stop; only the
+	/// discard is conditional.
+	/// </para>
+	/// </remarks>
+	/// <param name="row">The repository that was being fixed.</param>
+	/// <param name="remediationCompleted">
+	/// Whether the write phase ran to completion. False means the clone may hold a partly-written fix.
+	/// </param>
+	private async Task RevertIfRemediationIncompleteAsync(RepositoryDashboardRow row, bool remediationCompleted)
+	{
+		if (remediationCompleted)
+		{
+			Say("⏹️ Stopped after the remediation had been applied — the applied changes are kept.");
+			return;
+		}
+
+		await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
 	}
 
 	/// <summary>

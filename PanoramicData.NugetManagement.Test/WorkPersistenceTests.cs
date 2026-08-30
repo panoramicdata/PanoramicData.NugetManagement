@@ -151,7 +151,7 @@ public class WorkPersistenceTests(ITestOutputHelper output) : TestWithOutput(out
 	}
 
 	[Fact]
-	public void Save_OverAnExistingQueue_ReplacesItAtomically()
+	public void Save_OverAnExistingQueue_ReplacesItWholesale()
 	{
 		var store = new WorkQueueStore(_path, NullLogger<WorkQueueStore>.Instance);
 		store.Save(ServiceWithBuildAndTestQueued().Snapshot());
