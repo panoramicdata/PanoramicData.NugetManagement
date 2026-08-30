@@ -104,7 +104,29 @@ service. They already take `(row, params, IProgress<string>, CancellationToken)`
 is mechanical for the bodies themselves. What has to be untangled is their tail work: several
 of them mutate `_rows` and reload the tree when they finish. That becomes an event the runner
 raises (`ItemCompleted`), which each circuit handles by refreshing its own tree. A component
-that is not open simply does not handle it.
+that is not open simply does not handle it. Their mid-run browser side effects are dealt with
+in section 3a.
+
+### 3a. Side effects that needed a browser
+
+Four work bodies (`FixAllCoreAsync`, `BuildCoreAsync`, `RunTestsCoreAsync`,
+`RunPublishCoreAsync`) do more than repository work: partway through, on finding issues with no
+auto-fix, they call `OpenInIde()` and `AutoCopyAiPromptAsync()` — the latter writing the
+generated AI prompt to the browser clipboard through
+`JS.InvokeVoidAsync("navigator.clipboard.writeText", ...)`.
+
+Neither survives the move off the circuit. There is no clipboard when no tab is open, and
+twenty lanes finishing together would race twenty clipboard writes and twenty IDE launches.
+
+**Both are removed from the work bodies.** The work generates the prompt as it does today and
+stores it on the item (`WorkItem.GeneratedPrompt`), and the existing prompt UI — the copy
+button already bound to `CurrentLastPromptText` — is what the user reaches it through. The
+work never touches the clipboard or launches an IDE.
+
+This is a deliberate behaviour change: fixing a repository no longer opens your editor or
+fills your clipboard on its own. It is the cost of work that runs without a browser attached,
+and it is what makes twenty concurrent lanes tolerable rather than chaotic. `OpenInIde()`
+remains on the toolbar as a button the user presses.
 
 ### 4. Persistence
 
