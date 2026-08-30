@@ -9,6 +9,18 @@ namespace PanoramicData.NugetManagement.Test;
 /// </summary>
 public class SelfAssessmentTests : TestWithOutput
 {
+	/// <summary>
+	/// The rules whose verdict depends on how long ago somebody else published, rather than on
+	/// anything in this repository.
+	/// </summary>
+	/// <remarks>
+	/// A grace period is a clock: a release nobody adopts will eventually breach it and turn this
+	/// suite red with no code change. That is the rule working as intended, but "all rules pass"
+	/// would then be an assertion about the calendar. Their results are printed so drift is still
+	/// visible here.
+	/// </remarks>
+	private static readonly string[] _graceDependentRuleIds = ["PKG-05", "PKG-06", "PKG-07"];
+
 	private readonly RepositoryContext _context;
 
 	/// <summary>
@@ -59,7 +71,14 @@ public class SelfAssessmentTests : TestWithOutput
 			}
 		}
 
-		failures.Should().BeEmpty("this repository should pass all of its own rules");
+		foreach (var graced in failures.Where(r => _graceDependentRuleIds.Contains(r.RuleId)))
+		{
+			Output.WriteLine($"[grace] {graced.RuleId}: {graced.Message}");
+		}
+
+		failures
+			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId))
+			.Should().BeEmpty("this repository should pass all of its own rules");
 	}
 
 	[Fact]
