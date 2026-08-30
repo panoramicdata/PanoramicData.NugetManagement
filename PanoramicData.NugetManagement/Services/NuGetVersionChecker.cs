@@ -112,6 +112,60 @@ public class NuGetVersionChecker
 	}
 
 	/// <summary>
+	/// Gets the latest stable version of a package together with the date it was published.
+	/// </summary>
+	/// <remarks>
+	/// The published date is what the freshness grace period is measured from, so that "you are 89
+	/// days behind a release" is a fact about the release rather than about when this tool first
+	/// happened to look. That keeps the verdict identical on every machine, and unaffected by a
+	/// wiped or freshly cloned cache.
+	/// </remarks>
+	/// <param name="packageId">The NuGet package ID.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>The version and its publication date, or null when neither can be read.</returns>
+	public async Task<(string Version, DateTimeOffset Published)?> GetLatestStableWithPublishedAsync(
+		string packageId,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var metadataResource = await _sourceRepository
+				.GetResourceAsync<PackageMetadataResource>(cancellationToken)
+				.ConfigureAwait(false);
+
+			if (metadataResource is null)
+			{
+				_logger.LogWarning("NuGet source does not provide package metadata; cannot check {PackageId}", packageId);
+				return null;
+			}
+
+			var metadata = await metadataResource.GetMetadataAsync(
+				packageId,
+				includePrerelease: false,
+				includeUnlisted: false,
+				new SourceCacheContext(),
+				NuGet.Common.NullLogger.Instance,
+				cancellationToken).ConfigureAwait(false);
+
+			var latest = metadata
+				.OrderByDescending(m => m.Identity.Version)
+				.FirstOrDefault();
+
+			// A package with no published date cannot be graced, so it is treated as unknown rather
+			// than defaulted to "published today" (which would grant a fresh grace period forever) or
+			// to the epoch (which would fail every repository immediately).
+			return latest?.Published is { } published
+				? (latest.Identity.Version.ToNormalizedString(), published)
+				: null;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to query NuGet for package {PackageId}", packageId);
+			return null;
+		}
+	}
+
+	/// <summary>
 	/// Checks whether the specified version string matches the latest stable version.
 	/// </summary>
 	/// <param name="packageId">The NuGet package ID.</param>
