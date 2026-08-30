@@ -46,6 +46,16 @@ builder.Services.AddSingleton<PackageDashboardDataProvider>();
 builder.Services.AddSingleton<NavTreeDataProvider>();
 builder.Services.AddSingleton<RegressionGuardService>();
 builder.Services.AddSingleton<WorkQueueService>();
+builder.Services.AddSingleton(_ => NuGetVersionCache.Default);
+builder.Services.AddSingleton<NuGetVersionRefresher>(sp =>
+{
+	var checker = new NuGetVersionChecker(sp.GetRequiredService<ILogger<NuGetVersionChecker>>());
+	return new NuGetVersionRefresher(
+		NuGetVersionCache.Default,
+		checker.GetLatestStableWithPublishedAsync,
+		TimeProvider.System,
+		sp.GetRequiredService<ILogger<NuGetVersionRefresher>>());
+});
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RegressionGuardService>());
 builder.Services.AddScoped<DashboardService>();
 

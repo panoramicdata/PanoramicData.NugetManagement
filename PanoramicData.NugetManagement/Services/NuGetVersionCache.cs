@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 
 namespace PanoramicData.NugetManagement.Services;
 
@@ -39,6 +40,15 @@ public sealed class NuGetVersionCache
 
 	private readonly string? _filePath;
 	private readonly ConcurrentDictionary<string, NuGetVersionSnapshot> _snapshots;
+
+	/// <summary>
+	/// Guards <see cref="Update"/>'s read-then-write pair. A <see cref="ConcurrentDictionary{TKey,TValue}"/>
+	/// makes each of <c>TryGetValue</c> and the indexer individually thread-safe, but not the two
+	/// together: a rate-limited refresher runs several lookups for distinct packages concurrently, and
+	/// without this lock two sweeps racing on the same package id could both observe "changed" and
+	/// double-count, or interleave and lose an update.
+	/// </summary>
+	private readonly Lock _updateLock = new();
 
 	private static readonly JsonSerializerOptions _jsonOptions = new()
 	{
@@ -79,14 +89,21 @@ public sealed class NuGetVersionCache
 	/// <returns>True when the stored version changed.</returns>
 	public bool Update(string packageId, string latestVersion, DateTimeOffset published, DateTimeOffset now)
 	{
-		if (_snapshots.TryGetValue(packageId, out var existing)
-			&& string.Equals(existing.LatestVersion, latestVersion, StringComparison.OrdinalIgnoreCase))
+		// The read (TryGetValue) and the write (the indexer) are each individually thread-safe on a
+		// ConcurrentDictionary, but the pair is not atomic. A rate-limited refresher can run several
+		// packages' updates concurrently, so the two steps are serialised here to stop two sweeps on
+		// the same package id from both observing "changed" or from interleaving and losing an update.
+		lock (_updateLock)
 		{
-			return false;
-		}
+			if (_snapshots.TryGetValue(packageId, out var existing)
+				&& string.Equals(existing.LatestVersion, latestVersion, StringComparison.OrdinalIgnoreCase))
+			{
+				return false;
+			}
 
-		_snapshots[packageId] = new NuGetVersionSnapshot(packageId, latestVersion, published, now);
-		return true;
+			_snapshots[packageId] = new NuGetVersionSnapshot(packageId, latestVersion, published, now);
+			return true;
+		}
 	}
 
 	/// <summary>
