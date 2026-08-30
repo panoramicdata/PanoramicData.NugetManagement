@@ -75,7 +75,11 @@ public sealed class WorkRunnerService(
 		store.Save(lanes.Snapshot());
 
 		// Released rather than set: a change while the pump is mid-claim must not be lost, or a lane
-		// would sit ready with nothing to wake it.
+		// would sit ready with nothing to wake it. This check-then-release is a wake-up hint, not a
+		// strict gate: two concurrent QueueChanged events can both observe zero and both release,
+		// taking the count above one. That is harmless — the claim loop above is self-correcting, and
+		// a spurious extra wake just finds nothing to claim and re-blocks — so it costs one no-op pass,
+		// never a missed one.
 		if (_wake.CurrentCount == 0)
 		{
 			_wake.Release();
@@ -91,12 +95,17 @@ public sealed class WorkRunnerService(
 		// is why output still reaches the right console when no tab started it.
 		UiConsoleScope.NodeKey = item.ConsoleNodeKey;
 
-		using var scope = scopeFactory.CreateScope();
-		var executors = scope.ServiceProvider.GetRequiredService<WorkExecutors>();
-		var localRepo = scope.ServiceProvider.GetRequiredService<LocalRepoService>();
-
 		try
 		{
+			// Scope creation and resolution live inside the try, not above it: a DI failure here — a
+			// missing or misconfigured registration, exactly the sort of thing a later wiring task
+			// could get wrong — would otherwise skip the finally below, leave the item stuck Running
+			// for ever, strand its lane, and vanish as an unobserved exception on this fire-and-forget
+			// task with nothing logged and nothing visible to the user.
+			using var scope = scopeFactory.CreateScope();
+			var executors = scope.ServiceProvider.GetRequiredService<WorkExecutors>();
+			var localRepo = scope.ServiceProvider.GetRequiredService<LocalRepoService>();
+
 			// An item that was executing when the process stopped may have left the clone half-written.
 			// Cleaned before it runs again, for the same reason cancellation cleans up: a half-applied
 			// fix must not be built on. CancellationToken.None: this cleanup must not itself be
@@ -129,10 +138,21 @@ public sealed class WorkRunnerService(
 		}
 		finally
 		{
-			// Reached on every exit path — including when ExecuteAsync throws synchronously before
-			// its first await — so an item can never fall out of its lane without freeing it.
+			// Reached on every exit path — including a synchronous throw from ExecuteAsync, and a
+			// throw from scope creation or resolution above — so an item can never fall out of its
+			// lane without freeing it.
 			lanes.Complete(item, error);
-			ItemCompleted?.Invoke(item);
+
+			try
+			{
+				ItemCompleted?.Invoke(item);
+			}
+			catch (Exception ex)
+			{
+				// A subscriber that throws must not take the runner down with it: the item is already
+				// complete and its lane already free, so there is nothing left to unwind.
+				logger.LogError(ex, "A completion subscriber threw for {Title}.", item.Title);
+			}
 		}
 	}
 
