@@ -818,11 +818,15 @@ else
 	/// clone-picker button.
 	/// </summary>
 	/// <remarks>
-	/// Derived live from the lanes rather than tracked as a field: cloning used to be one item this
-	/// circuit awaited and could clear a field for when it finished; now it is however many lane items
-	/// <see cref="WorkFanOut.EnqueueClone"/> fanned out, each finishing independently of this component.
+	/// A cached snapshot rather than a live-derived property: <see cref="WorkLaneService.Lanes"/> takes
+	/// a lock and deep-copies every lane and its items on each access, and this — along with
+	/// <see cref="_cloningOrganization"/>, <see cref="_busyOrganization"/>, <see cref="_isDiscovering"/>
+	/// and <see cref="_isLoading"/> — used to be read fresh per tree node, so a 500-node render took
+	/// 500-odd full lane snapshots under a lock up to twenty runner threads are contending for. All five
+	/// are now refreshed together, once, by <see cref="RefreshLaneFlagsSnapshot"/> whenever the lanes
+	/// actually change, rather than once per render and certainly not once per node.
 	/// </remarks>
-	private bool _isCloningAll => _cloningOrganization.Length > 0;
+	private bool _isCloningAll;
 
 	// Read before a budget-consuming action so the warning can be accurate. Deliberately not surfaced
 	// as a permanent counter: normal dashboard use never approaches the hourly limit, so a visible
@@ -842,37 +846,21 @@ else
 	/// The organisation a clone run is currently working through, so the stop button only appears on
 	/// the organisation actually cloning. Empty when no clone is running.
 	/// </summary>
-	private string _cloningOrganization
-		=> Lanes.Lanes
-			.Where(lane => lane.IsRunning && lane.Items.Exists(i => i.Descriptor.Kind is WorkKind.DiscoverCloneTargets or WorkKind.Clone))
-			.Select(lane => lane.Organization ?? string.Empty)
-			.FirstOrDefault() ?? string.Empty;
+	private string _cloningOrganization = string.Empty;
 
 	/// <summary>
 	/// The organisation a rediscover, re-assess or refresh run is scoped to, or null when the run
 	/// covers every organisation or nothing is running. Drives which organisation node shows the
 	/// progress spinner.
 	/// </summary>
-	/// <remarks>
-	/// Derived live from the lanes: this used to be a field the circuit that started the run cleared
-	/// when it finished, but the run now finishes on whichever lane picked it up, independently of any
-	/// particular circuit still being open to clear anything.
-	/// </remarks>
-	private string? _busyOrganization
-		=> Lanes.Lanes
-			.Where(lane => lane.IsRunning && lane.Items.Exists(i => i.Descriptor.Kind is
-				WorkKind.RediscoverOrganization or WorkKind.DiscoverReassessTargets or WorkKind.RefreshAll))
-			.Select(lane => lane.Organization)
-			.FirstOrDefault();
+	private string? _busyOrganization;
 
 	/// <summary>
 	/// True only while a rediscovery's package list is being re-read from NuGet — the phase in which
 	/// the nodes on screen may be replaced. False once that hands off to the re-assessment fan-out,
 	/// which runs as separate, per-repository lane items rather than under this same item.
 	/// </summary>
-	private bool _isDiscovering
-		=> Lanes.Lanes.Any(lane => lane.IsRunning
-			&& lane.Items.Exists(i => i.Descriptor.Kind is WorkKind.RediscoverOrganization or WorkKind.RefreshAll));
+	private bool _isDiscovering;
 	// Add-organisation prompt state.
 	private bool _addOrgDialogOpen;
 	private string _addOrgName = string.Empty;
@@ -916,10 +904,7 @@ else
 	/// only, now that the lanes decide what may run: it drives the top-level spinner and the dimming
 	/// of nodes being rebuilt underneath the user.
 	/// </summary>
-	private bool _isLoading
-		=> Lanes.Lanes.Any(lane => lane.IsRunning
-			&& lane.Items.Exists(i => i.Descriptor.Kind is
-				WorkKind.RediscoverOrganization or WorkKind.DiscoverReassessTargets or WorkKind.RefreshAll));
+	private bool _isLoading;
 
 	private string _progressMessage = string.Empty;
 	// Keeps the progress indicator visible briefly (showing "Done") after a refresh completes.
@@ -985,6 +970,10 @@ else
 		Lanes.Changed += OnLanesChanged;
 		Runner.ItemCompleted += OnItemCompleted;
 		_laneChangeDebounce.Elapsed += OnLaneChangeDebounceElapsed;
+		// Work restored from a previous run may already be executing by the time this circuit opens,
+		// so the flags start from a real snapshot rather than from "nothing running" until the first
+		// change arrives.
+		RefreshLaneFlagsSnapshot();
 		RegressionGuard.StatusesChanged += OnGuardStatusesChanged;
 		LogSink.LineWritten += OnLogLineWritten;
 		_userName = httpContext.User.Identity.Name ?? "User";
@@ -2049,12 +2038,18 @@ else
 		}
 	}
 
+	/// <summary>
+	/// Stops a clone run. Cancels every lane under the organisation, not just the discovery item's own
+	/// — discovery's whole job is to fan its targets out onto per-repository lanes and it completes in
+	/// milliseconds, so by the time this button is visible the organisation's own lane is already empty
+	/// and cancelling only that would stop nothing.
+	/// </summary>
 	private void CancelCloneAll()
 	{
 		if (_cloningOrganization.Length > 0)
 		{
 			AppendConsole("⏹️ Stopping after the current repository...");
-			Lanes.CancelLane($"org:{_cloningOrganization.ToLowerInvariant()}");
+			Lanes.CancelUnder(_cloningOrganization);
 		}
 	}
 
@@ -2085,7 +2080,7 @@ else
 			step: null,
 			_selectedNodeKey);
 
-		AppendConsole(queued is null ? $"↩️ {title} is already queued." : $"⏳ Queued: {title}");
+		AppendConsole(DescribeQueued(queued, title));
 	}
 
 	/// <summary>
@@ -3614,7 +3609,7 @@ else
 			step: null,
 			_selectedNodeKey);
 
-		AppendConsole(queued is null ? "↩️ Refresh every organisation is already queued." : "⏳ Queued: Refresh every organisation");
+		AppendConsole(DescribeQueued(queued, "Refresh every organisation"));
 	}
 
 	private async Task RefreshTableAsync()
@@ -3847,7 +3842,7 @@ else
 			step: null,
 			_selectedNodeKey);
 
-		AppendConsole(queued is null ? $"↩️ {title} is already queued." : $"⏳ Queued: {title}");
+		AppendConsole(DescribeQueued(queued, title));
 	}
 
 	/// <summary>
@@ -3888,7 +3883,7 @@ else
 			step: null,
 			_selectedNodeKey);
 
-		AppendConsole(queued is null ? $"↩️ {title} is already queued." : $"⏳ Queued: {title}");
+		AppendConsole(DescribeQueued(queued, title));
 	}
 
 	private async Task ReassessCategoryAsync(AssessmentCategory category)
@@ -4606,7 +4601,31 @@ else
 			// by which time the selection has moved and the output would land in an unrelated console.
 			_selectedNodeKey);
 
-		AppendConsole(queued is null ? $"↩️ {title} is already queued." : $"⏳ Queued: {title}");
+		AppendConsole(DescribeQueued(queued, title));
+	}
+
+	/// <summary>
+	/// What to say in the console for a just-enqueued item: folded into an existing one, alone in its
+	/// lane and so about to start, or genuinely waiting behind something else in the same lane.
+	/// </summary>
+	/// <remarks>
+	/// With one lane per repository, starting immediately is now the common case — a repository with
+	/// nothing else outstanding runs the moment it is queued, unlike the single application-wide queue
+	/// this replaced, where "queued" was true of nearly everything. Saying "Queued" regardless would
+	/// describe every click as a wait even when there was none.
+	/// </remarks>
+	/// <param name="item">The item <see cref="WorkLaneService.Enqueue"/> returned, or null if it folded.</param>
+	/// <param name="title">The title it was queued under.</param>
+	private string DescribeQueued(WorkItem? item, string title)
+	{
+		if (item is null)
+		{
+			return $"↩️ {title} is already queued.";
+		}
+
+		return Lanes.ItemsFor(item.LaneKey).Count == 1
+			? $"▶️ {title}"
+			: $"⏳ Queued: {title}";
 	}
 
 	/// <summary>
@@ -4626,8 +4645,41 @@ else
 	/// <summary>
 	/// Queues a bulk rule action fanned out across its repositories, as requested by <see cref="IssuesView"/>.
 	/// </summary>
+	/// <summary>
+	/// Queues one rule of a bulk action fanned out across its repositories, or — when
+	/// <see cref="BulkRuleRequest.RuleId"/> is null — the trailing commit-and-push a multi-rule sweep
+	/// sends once every rule has been fanned out. That case is queued here rather than through
+	/// <see cref="WorkFanOut"/>, since it fixes nothing and <see cref="WorkFanOut.EnqueueRule"/> pairs
+	/// its push with a specific rule's fix.
+	/// </summary>
 	private void EnqueueBulkRule(BulkRuleRequest request)
 	{
+		if (request.RuleId is null)
+		{
+			var pushed = 0;
+			foreach (var repositoryFullName in request.RepositoryFullNames)
+			{
+				// Never folded: this is the one push a whole sweep's fixes land behind, so a repeat
+				// request finding one already pending must still queue its own — a fold here would
+				// silently drop the push for whichever rule enqueued second.
+				var item = Lanes.Enqueue(
+					$"Commit & push {repositoryFullName}",
+					WorkDescriptor.ForRepository(WorkKind.CommitAndPush, request.Organization, repositoryFullName),
+					$"commit-push:{repositoryFullName}",
+					WorkflowStep.CommitAndPush,
+					_selectedNodeKey,
+					foldDuplicates: false);
+
+				if (item is not null)
+				{
+					pushed++;
+				}
+			}
+
+			AppendConsole($"⏳ Queued {request.Title} across {pushed} repositor{(pushed == 1 ? "y" : "ies")}.");
+			return;
+		}
+
 		var queued = FanOut.EnqueueRule(
 			request.Organization, request.RuleId, request.RepositoryFullNames, request.Push, _selectedNodeKey);
 
@@ -4655,9 +4707,49 @@ else
 	private void OnLaneChangeDebounceElapsed(object? sender, System.Timers.ElapsedEventArgs e)
 		=> _ = InvokeAsync(async () =>
 		{
+			RefreshLaneFlagsSnapshot();
 			await ReloadTreePreservingExpansionAsync();
 			await SafeStateHasChangedAsync();
 		});
+
+	/// <summary>
+	/// Refreshes <see cref="_isLoading"/>, <see cref="_isDiscovering"/>, <see cref="_busyOrganization"/>,
+	/// <see cref="_isCloningAll"/> and <see cref="_cloningOrganization"/> from a single read of
+	/// <see cref="WorkLaneService.Lanes"/>.
+	/// </summary>
+	/// <remarks>
+	/// <see cref="WorkLaneService.Lanes"/> takes a lock and deep-copies every lane and its items on each
+	/// access. These five flags used to be properties re-deriving that snapshot independently, which
+	/// meant a 500-node tree render — each node reading one or more of them — took 500-odd full lane
+	/// snapshots under a lock that up to twenty runner threads are contending on for every progress
+	/// report. Called once whenever the lanes actually change, rather than once per node or even once
+	/// per render, so the flags are always at most one debounce cycle stale — the same staleness the
+	/// tree itself already tolerates.
+	/// </remarks>
+	private void RefreshLaneFlagsSnapshot()
+	{
+		var lanes = Lanes.Lanes;
+
+		_isLoading = lanes.Any(lane => lane.IsRunning
+			&& lane.Items.Exists(i => i.Descriptor.Kind is
+				WorkKind.RediscoverOrganization or WorkKind.DiscoverReassessTargets or WorkKind.RefreshAll));
+
+		_isDiscovering = lanes.Any(lane => lane.IsRunning
+			&& lane.Items.Exists(i => i.Descriptor.Kind is WorkKind.RediscoverOrganization or WorkKind.RefreshAll));
+
+		_busyOrganization = lanes
+			.Where(lane => lane.IsRunning && lane.Items.Exists(i => i.Descriptor.Kind is
+				WorkKind.RediscoverOrganization or WorkKind.DiscoverReassessTargets or WorkKind.RefreshAll))
+			.Select(lane => lane.Organization)
+			.FirstOrDefault();
+
+		_cloningOrganization = lanes
+			.Where(lane => lane.IsRunning && lane.Items.Exists(i => i.Descriptor.Kind is WorkKind.DiscoverCloneTargets or WorkKind.Clone))
+			.Select(lane => lane.Organization ?? string.Empty)
+			.FirstOrDefault() ?? string.Empty;
+
+		_isCloningAll = _cloningOrganization.Length > 0;
+	}
 
 	/// <summary>
 	/// Refreshes the selected repository's row and the tree when any lane item completes, and — for a
@@ -4665,41 +4757,52 @@ else
 	/// be written inline by the toolbar's own build/test/commit bodies before those moved into
 	/// <see cref="WorkExecutors"/>.
 	/// </summary>
+	/// <remarks>
+	/// Keyed off <see cref="WorkItem.Succeeded"/>, not <see cref="WorkItem.State"/>: a failed build or a
+	/// refused push completes normally rather than throwing, so <c>State</c> alone reads a failed build
+	/// as a success. <c>Succeeded</c> is the executor stating the outcome explicitly.
+	/// <para>
+	/// Raised from the runner's own thread — never the circuit's — so the whole body, including the
+	/// <c>_rows</c> reassignment and every mutation of the step-tracking sets below, is hopped onto the
+	/// circuit via <c>InvokeAsync</c> before it touches anything. Mutating a plain
+	/// <c>HashSet&lt;WorkflowStep&gt;</c> off-thread, with the renderer possibly enumerating it at the
+	/// same moment, is exactly the kind of thing that only breaks once twenty lanes are finishing
+	/// concurrently.
+	/// </para>
+	/// </remarks>
 	private void OnItemCompleted(WorkItem item)
-	{
-		_rows = Cache.GetCachedRows() ?? _rows;
-
-		if (item.Step is { } step
-			&& _selectedRow?.RepositoryFullName is { Length: > 0 } selected
-			&& string.Equals(item.RepositoryFullName, selected, StringComparison.OrdinalIgnoreCase))
+		=> _ = InvokeAsync(async () =>
 		{
-			switch (item.State)
+			_rows = Cache.GetCachedRows() ?? _rows;
+			RefreshLaneFlagsSnapshot();
+
+			if (item.Step is { } step
+				&& item.Succeeded is { } succeeded
+				&& _selectedRow?.RepositoryFullName is { Length: > 0 } selected
+				&& string.Equals(item.RepositoryFullName, selected, StringComparison.OrdinalIgnoreCase))
 			{
-				case WorkItemState.Completed:
+				if (succeeded)
+				{
 					_completedSteps.Add(step);
 					_failedSteps.Remove(step);
 					if (_lastFailedWorkflowStep == step)
 					{
 						_lastFailedWorkflowStep = null;
 					}
-
-					break;
-
-				case WorkItemState.Failed:
+				}
+				else
+				{
 					_failedSteps.Add(step);
 					_completedSteps.Remove(step);
 					_lastFailedWorkflowStep = step;
-					break;
-
-				default:
-					// Cancelled: a stopped step neither succeeded nor failed, and its changes were
-					// reverted, so the badge state is left exactly as it was.
-					break;
+				}
 			}
-		}
 
-		_ = InvokeAsync(async () => await ReloadTreePreservingExpansionAsync());
-	}
+			// item.Succeeded is null for work that never reports one (most WorkKinds), and for a
+			// cancelled item — a stopped step neither succeeded nor failed, and its changes were
+			// reverted, so the badge state is left exactly as it was in both cases.
+			await ReloadTreePreservingExpansionAsync();
+		});
 
 	/// <summary>
 	/// The number of repositories an issue-hierarchy node covers, or null for nodes where a count

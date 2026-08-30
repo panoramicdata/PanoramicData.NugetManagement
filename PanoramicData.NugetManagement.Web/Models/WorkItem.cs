@@ -102,4 +102,16 @@ public sealed class WorkItem
 	/// pending, and its working tree is cleaned before it is run again.
 	/// </summary>
 	public bool WasInterrupted { get; init; }
+
+	/// <summary>
+	/// Whether the work reported the thing it was asked to do as having succeeded — as distinct from
+	/// whether it ran without throwing.
+	/// </summary>
+	/// <remarks>
+	/// A failed build or a refused push is not an exception: the executor logs it and returns. Deducing
+	/// the outcome from <see cref="State"/> therefore reads a failed build as a success, which is how the
+	/// step badges came to show a green tick on a red build. Executors state the outcome instead.
+	/// Null when the work does not report one.
+	/// </remarks>
+	public bool? Succeeded { get; set; }
 }

@@ -1521,11 +1521,15 @@ i + .breadcrumb-link-text {
     padding: 0.25rem 0;
 }
 
-/* The tree and the work queue split the space between the filter and the footer. This wrapper
-   gives the splitter a definite box to fill; without it .pdsplitter's height: 100% resolves
-   against the whole sidebar and the panes overrun the footer. */
+/* The tree fills the space between the filter and the footer. display:flex/flex-direction:column
+   is load-bearing, not decorative: .nav-tree-scroll below is flex:1;overflow-y:auto, which only
+   sizes and scrolls correctly inside a flex parent — as a direct child of a block container
+   flex:1 is inert, the scroller grows to content instead of clipping, and this element's own
+   overflow:hidden then clips the tail of the list instead of leaving it reachable. */
 .nav-split-area {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     min-height: 0;
 }

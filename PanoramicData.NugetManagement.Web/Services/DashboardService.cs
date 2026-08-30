@@ -1311,75 +1311,14 @@ public class DashboardService
 		return group is null ? string.Empty : CombinedRemediationPromptBuilder.ForCategory(group, onlyNonRemediable);
 	}
 
-	/// <summary>
-	/// Applies a single rule's remediation across every affected repository: sync → reassess →
-	/// apply → commit → push. Stops on the first failure. Only repositories where the rule is failing
-	/// are touched.
-	/// </summary>
-	public Task<BulkApplyOutcome> ApplyRuleAcrossReposAsync(
-		IEnumerable<RepositoryDashboardRow> rows,
-		string ruleId,
-		Action<string>? onOutput = null,
-		IProgress<string>? onProgress = null,
-		Action<RepositoryDashboardRow>? onRepositoryFixed = null,
-		CancellationToken cancellationToken = default)
-	{
-		var affected = rows.Where(r => RepoHasFailingRule(r, ruleId)).ToList();
-		return ApplyAcrossReposAsync(
-			affected,
-			row => ApplySingleRuleAsync(row, ruleId, onOutput),
-			$"chore: apply {ruleId} governance remediation",
-			onOutput,
-			onProgress,
-			onRepositoryFixed,
-			cancellationToken);
-	}
-
-	/// <summary>
-	/// Applies all auto-remediable rules in a category across every affected repository.
-	/// </summary>
-	public Task<BulkApplyOutcome> ApplyCategoryAcrossReposAsync(
-		IEnumerable<RepositoryDashboardRow> rows,
-		AssessmentCategory category,
-		Action<string>? onOutput = null,
-		IProgress<string>? onProgress = null,
-		Action<RepositoryDashboardRow>? onRepositoryFixed = null,
-		CancellationToken cancellationToken = default)
-	{
-		var affected = rows.Where(r => RepoHasFailingCategory(r, category)).ToList();
-		return ApplyAcrossReposAsync(
-			affected,
-			row => ApplyCategoryRemediationsAsync(row, category, onOutput, cancellationToken),
-			$"chore: apply {category} governance remediations",
-			onOutput,
-			onProgress,
-			onRepositoryFixed,
-			cancellationToken);
-	}
-
-	/// <summary>
-	/// Applies every auto-remediable rule across every affected repository (the global "fix everything").
-	/// </summary>
-	public Task<BulkApplyOutcome> ApplyEverythingAcrossReposAsync(
-		IEnumerable<RepositoryDashboardRow> rows,
-		Action<string>? onOutput = null,
-		IProgress<string>? onProgress = null,
-		Action<RepositoryDashboardRow>? onRepositoryFixed = null,
-		CancellationToken cancellationToken = default)
-	{
-		var affected = rows
-			.Where(r => r.RepositoryFullName is not null
-				&& r.Assessment?.RuleResults.Any(rr => !rr.Passed && IsAutoRemediable(rr)) == true)
-			.ToList();
-		return ApplyAcrossReposAsync(
-			affected,
-			row => ApplyRemediationsAsync(row, onOutput, cancellationToken),
-			"chore: apply governance remediations",
-			onOutput,
-			onProgress,
-			onRepositoryFixed,
-			cancellationToken);
-	}
+	// ApplyRuleAcrossReposAsync, ApplyCategoryAcrossReposAsync and ApplyEverythingAcrossReposAsync used
+	// to live here — IssuesView's bulk actions called them directly, sequentially, one repository at a
+	// time. They are gone: a bulk action is now fanned out onto per-repository lanes (see
+	// IssuesView.RunConfirmedAsync and WorkFanOut.EnqueueRule), so nothing calls them any more.
+	// ApplyAcrossReposAsync (below), ApplySingleRuleAsync, RepoHasFailingRule and RepoHasFailingCategory
+	// are left in place despite now having no callers either: removing them cascades into
+	// BulkApplyOutcome/RepoApplyResult/RepoApplyPhase/RepoApplyStatus becoming unused too, which is a
+	// separate call to make.
 
 	private Task<List<string>> ApplySingleRuleAsync(RepositoryDashboardRow row, string ruleId, Action<string>? onOutput)
 	{

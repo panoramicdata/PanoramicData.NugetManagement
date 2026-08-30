@@ -290,6 +290,14 @@
 	/// <summary>Repositories this view has seen a fix pushed for, so rows can show progress mid-run.</summary>
 	private readonly HashSet<string> _fixedInThisRun = new(StringComparer.OrdinalIgnoreCase);
 
+	/// <summary>
+	/// The confirmed bulk run currently being tracked for its completion summary, or null between runs.
+	/// Only one at a time: a second confirm started before the first finishes replaces the tracker
+	/// rather than merging with it, matching how the old, sequential <c>RunConfirmedAsync</c> behaved —
+	/// there was only ever one run in flight because it was awaited end to end.
+	/// </summary>
+	private RunTracker? _activeRun;
+
 	protected override void OnInitialized()
 	{
 		LoadView();
@@ -315,19 +323,19 @@
 	}
 
 	/// <summary>
-	/// Ticks a repository off once its commit-and-push lands, and rebuilds the view so a rule stops
-	/// listing repositories that have just been fixed and pushed — while other repositories' lanes are
-	/// still running, rather than only after every one of them finishes.
+	/// Ticks a repository off once its commit-and-push lands, and — once every repository the active
+	/// confirmed run covers has reported one — writes the run's completion summary, exactly as the old,
+	/// sequential <c>RunConfirmedAsync</c> used to when it finished.
 	/// </summary>
 	/// <remarks>
 	/// A fix and its follow-up push are separate lane items now (see <see cref="WorkFanOut.EnqueueRule"/>),
-	/// so completion is judged by the push: a fix that landed but could not be pushed has not actually
-	/// resolved anything the assessment will still complain about.
+	/// so completion — for the tick and for the run tally alike — is judged by the push: a fix that
+	/// landed but could not be pushed has not actually resolved anything the assessment will still
+	/// complain about.
 	/// </remarks>
 	private void OnItemCompleted(WorkItem item)
 	{
 		if (item.Descriptor.Kind != WorkKind.CommitAndPush
-			|| item.State != WorkItemState.Completed
 			|| item.RepositoryFullName is not { Length: > 0 } repositoryFullName)
 		{
 			return;
@@ -337,15 +345,40 @@
 		// _inScope read below — is hopped back onto the circuit first.
 		_ = InvokeAsync(() =>
 		{
-			if (!_inScope.Contains(repositoryFullName))
+			if (item.Succeeded == true && _inScope.Contains(repositoryFullName))
 			{
-				return;
+				// Ticked rather than removed: the row goes on its own once the re-assessment says the
+				// issue has gone, and a tick is honest in the meantime — pushed, not yet proven by the
+				// guard.
+				_fixedInThisRun.Add(repositoryFullName);
+				LoadView();
 			}
 
-			// Ticked rather than removed: the row goes on its own once the re-assessment says the issue
-			// has gone, and a tick is honest in the meantime — pushed, not yet proven by the guard.
-			_fixedInThisRun.Add(repositoryFullName);
-			LoadView();
+			if (_activeRun is { } run && run.Pending.Remove(repositoryFullName))
+			{
+				switch (item.Succeeded)
+				{
+					case true:
+						run.Pushed++;
+						break;
+					case false:
+						run.Failed++;
+						break;
+					default:
+						// Cancelled: neither pushed nor failed, so it is left out of both counts —
+						// counting it as a failure would blame the stop on the rule that queued it.
+						run.Cancelled++;
+						break;
+				}
+
+				if (run.Pending.Count == 0)
+				{
+					Append($"— Done: {run.Pushed} pushed, {run.Failed} failed"
+						+ (run.Cancelled > 0 ? $", {run.Cancelled} stopped." : "."));
+					_activeRun = null;
+				}
+			}
+
 			StateHasChanged();
 		});
 	}
@@ -469,16 +502,6 @@
 	private List<RepositoryDashboardRow> SelectedRows()
 		=> [.. _rows.Where(r => r.RepositoryFullName is not null && _inScope.Contains(r.RepositoryFullName))];
 
-	/// <summary>
-	/// The rows for a computed target set, in the order the run will visit them. The count the user
-	/// approved and the repositories the run touches come from the same list.
-	/// </summary>
-	private List<RepositoryDashboardRow> RowsFor(IReadOnlyList<string> repositoryFullNames)
-	{
-		var targets = repositoryFullNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
-		return [.. _rows.Where(r => r.RepositoryFullName is not null && targets.Contains(r.RepositoryFullName))];
-	}
-
 	private bool IsRepoSelected(string? name) => name is not null && _inScope.Contains(name);
 
 	private int SelectedAffected(IssueClassGroup rule)
@@ -502,7 +525,8 @@
 		{
 			Title = $"Apply {rule.RuleId} & push — {repos.Count} repos",
 			Repos = repos,
-			RuleTargets = [(rule.RuleId, repos)]
+			RuleTargets = [(rule.RuleId, repos)],
+			PushPerRule = true
 		};
 	}
 
@@ -519,7 +543,8 @@
 		{
 			Title = $"Apply {cat.Category} fixes & push — {repos.Count} repos",
 			Repos = repos,
-			RuleTargets = RuleTargetsFor(cat.IssueClasses)
+			RuleTargets = RuleTargetsFor(cat.IssueClasses),
+			PushPerRule = false
 		};
 	}
 
@@ -529,7 +554,8 @@
 		{
 			Title = $"Apply {ruleId} to {repoFullName}",
 			Repos = [repoFullName],
-			RuleTargets = [(ruleId, [repoFullName])]
+			RuleTargets = [(ruleId, [repoFullName])],
+			PushPerRule = true
 		};
 	}
 
@@ -546,7 +572,8 @@
 		{
 			Title = $"Fix everything & push — {repos.Count} repos",
 			Repos = repos,
-			RuleTargets = RuleTargetsFor(_view!.AllIssueClasses)
+			RuleTargets = RuleTargetsFor(_view!.AllIssueClasses),
+			PushPerRule = false
 		};
 	}
 
@@ -567,10 +594,24 @@
 	{
 		var pending = _confirm;
 		_confirm = null;
-		if (pending is null || string.IsNullOrEmpty(Organization))
+		if (pending is null)
 		{
 			return;
 		}
+
+		if (string.IsNullOrEmpty(Organization))
+		{
+			// Should not be reachable — the whole panel shows nothing without an organisation — but a
+			// confirmed dialog that silently queues nothing is worse than one that says why.
+			Append("⚠️ No organisation selected — nothing was queued.");
+			return;
+		}
+
+		// Tracked from here rather than awaited to completion: the fan-out below only queues the work,
+		// it does not run it, so there is nothing left in this method to await once every request has
+		// been sent. OnItemCompleted watches for the rest and writes the summary this method used to
+		// write itself when its own sequential loop finished.
+		_activeRun = new RunTracker { Pending = new HashSet<string>(pending.Repos, StringComparer.OrdinalIgnoreCase) };
 
 		// Each rule is fanned out independently — the host queues one item per repository per rule, on
 		// that repository's own lane — rather than run here: these fixes commit and push, and must not
@@ -581,8 +622,22 @@
 				Organization,
 				ruleId,
 				repositoryFullNames,
-				Push: true,
+				Push: pending.PushPerRule,
 				Title: $"Fix {ruleId} — {repositoryFullNames.Count} repo{(repositoryFullNames.Count == 1 ? "" : "s")}"));
+		}
+
+		if (!pending.PushPerRule)
+		{
+			// One commit-and-push per repository, queued once every rule above has been fanned out onto
+			// it. The lane is FIFO, so this lands behind the last fix for each repository and commits
+			// the lot together — atomic per repository, without any coordination between the rules that
+			// led to it.
+			await OnEnqueue.InvokeAsync(new BulkRuleRequest(
+				Organization,
+				RuleId: null,
+				pending.Repos,
+				Push: true,
+				Title: $"Commit & push {pending.Repos.Count} repo{(pending.Repos.Count == 1 ? "" : "s")}"));
 		}
 	}
 
@@ -637,5 +692,33 @@
 		/// <see cref="BulkRuleRequest"/> when confirmed.
 		/// </summary>
 		public required IReadOnlyList<(string RuleId, IReadOnlyList<string> RepositoryFullNames)> RuleTargets { get; init; }
+
+		/// <summary>
+		/// Whether each rule above pushes on its own once fixed (true — a single-rule apply, one fix and
+		/// one push, exactly as before) or every rule fans out with no push and <see cref="Repos"/> gets
+		/// one trailing commit-and-push afterwards (false — a category or "fix everything" sweep, where
+		/// pushing after every rule would turn a twelve-rule sweep across forty repositories into up to
+		/// 480 commits instead of 40).
+		/// </summary>
+		public required bool PushPerRule { get; init; }
+	}
+
+	/// <summary>
+	/// Tracks one confirmed run's completion, so a run made of many independent lane items can still
+	/// report the one-line summary the old, sequential, single-loop <c>RunConfirmedAsync</c> used to.
+	/// </summary>
+	private sealed class RunTracker
+	{
+		/// <summary>The repositories the run covers whose commit-and-push has not yet reported in.</summary>
+		public required HashSet<string> Pending { get; init; }
+
+		/// <summary>How many repositories were committed and pushed successfully.</summary>
+		public int Pushed { get; set; }
+
+		/// <summary>How many repositories' commit-and-push failed or was refused.</summary>
+		public int Failed { get; set; }
+
+		/// <summary>How many repositories' commit-and-push was stopped before it could report either way.</summary>
+		public int Cancelled { get; set; }
 	}
 }

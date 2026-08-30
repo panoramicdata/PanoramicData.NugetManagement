@@ -134,16 +134,19 @@ public sealed class WorkExecutors(
 			if (row.Status == PackageStatus.BuildSucceeded)
 			{
 				Say("✅ Build succeeded");
+				item.Succeeded = true;
 			}
 			else
 			{
 				Say("❌ Build failed");
 				item.GeneratedPrompt = DashboardService.GenerateConciseWorkflowFailurePrompt(row, "build", output);
+				item.Succeeded = false;
 			}
 		}
 		catch (Exception ex)
 		{
 			Say($"❌ Error: {ex.Message}");
+			item.Succeeded = false;
 		}
 	}
 
@@ -759,16 +762,19 @@ public sealed class WorkExecutors(
 			if (row.Status == PackageStatus.TestsPassed)
 			{
 				Say("✅ Tests passed");
+				item.Succeeded = true;
 			}
 			else
 			{
 				Say("❌ Tests failed");
 				item.GeneratedPrompt = DashboardService.GenerateConciseWorkflowFailurePrompt(row, "test", output);
+				item.Succeeded = false;
 			}
 		}
 		catch (Exception ex)
 		{
 			Say($"❌ Error: {ex.Message}");
+			item.Succeeded = false;
 		}
 	}
 
@@ -869,6 +875,7 @@ public sealed class WorkExecutors(
 			{
 				Say("✅ Changes committed and pushed");
 				cache.UpsertRow(row);
+				item.Succeeded = true;
 
 				if (row.CurrentBranch is not null)
 				{
@@ -879,6 +886,7 @@ public sealed class WorkExecutors(
 			{
 				Say("❌ Commit and push failed");
 				cache.UpsertRow(row);
+				item.Succeeded = false;
 
 				if (push.WasRefused)
 				{
@@ -892,6 +900,7 @@ public sealed class WorkExecutors(
 		catch (Exception ex)
 		{
 			Say($"❌ Error: {ex.Message}");
+			item.Succeeded = false;
 		}
 	}
 
