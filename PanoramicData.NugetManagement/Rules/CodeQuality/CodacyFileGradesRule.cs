@@ -109,7 +109,7 @@ public sealed class CodacyFileGradesRule : RuleBase
 
 		var named = string.Join(", ", belowMinimum
 			.Take(_messageFileLimit)
-			.Select(entry => $"{entry.File.Path} ({entry.Level})"));
+			.Select(entry => $"{entry.File.Path} ({Describe(entry.File, entry.Level)})"));
 
 		var message = belowMinimum.Count > _messageFileLimit
 			? $"{belowMinimum.Count} file(s) graded below {codacy.MinimumLevel}: {named}, and {belowMinimum.Count - _messageFileLimit} more."
@@ -132,6 +132,8 @@ public sealed class CodacyFileGradesRule : RuleBase
 						["grade_letter"] = entry.Level.ToString(),
 						["grade"] = entry.File.Grade,
 						["total_issues"] = entry.File.TotalIssues,
+						["duplication_percent"] = entry.File.Duplication,
+						["number_of_clones"] = entry.File.NumberOfClones,
 						["complexity"] = entry.File.Complexity,
 						["lines_of_code"] = entry.File.LinesOfCode
 					})
@@ -151,26 +153,47 @@ public sealed class CodacyFileGradesRule : RuleBase
 		var detail = new StringBuilder();
 		detail.AppendLine($"Codacy grades these files in `{context.FullName}` below `{minimumLevel}` on `{context.DefaultBranch}`:");
 		detail.AppendLine();
-		detail.AppendLine("| File | Grade | Score | Issues | Complexity | Lines |");
-		detail.AppendLine("| --- | --- | --- | --- | --- | --- |");
+		detail.AppendLine("| File | Grade | Score | Issues | Duplication | Clones | Complexity | Lines |");
+		detail.AppendLine("| --- | --- | --- | --- | --- | --- | --- | --- |");
 
 		foreach (var (file, level) in belowMinimum)
 		{
 			detail.AppendLine(
 				$"| `{file.Path}` | {level} | {file.Grade}/100 | {file.TotalIssues} | "
+				+ $"{(file.Duplication is null ? "—" : $"{file.Duplication}%")} | "
+				+ $"{file.NumberOfClones?.ToString() ?? "—"} | "
 				+ $"{file.Complexity?.ToString() ?? "—"} | {file.LinesOfCode?.ToString() ?? "—"} |");
 		}
 
 		detail.AppendLine();
 		detail.AppendLine(
 			"A file's grade is not its issue count: Codacy also folds duplication and complexity into it, "
-			+ "so a file listing zero issues can still grade F. Where the issue count is zero, look for "
-			+ "duplicated blocks first — repeated test setup and copy-pasted fixtures are the usual cause. "
-			+ "The per-file breakdown, including the duplication percentage, is on the file's page in Codacy.");
+			+ "so a file listing zero issues can still grade F. Where duplication is the figure driving the "
+			+ "grade, the fix is to factor out the repeated blocks — repeated test setup and copy-pasted "
+			+ "fixtures are the usual cause.");
 		detail.AppendLine();
 		detail.AppendLine("This is reported for information and does not affect compliance.");
 
 		return detail.ToString();
+	}
+
+	/// <summary>
+	/// Describes a file's grade and, where Codacy measured one, the thing driving it. A grade with no
+	/// cause attached is what made "minimum file grade F, total issues 0" unanswerable.
+	/// </summary>
+	private static string Describe(CodacyFileGrade file, CodacyLevel level)
+	{
+		// Duplication is reported ahead of issues because it is the component a reader cannot infer:
+		// the issue count is already on Codacy's issues page, and its being zero is exactly what makes
+		// a poor grade look like a mistake.
+		if (file.Duplication is > 0)
+		{
+			return $"{level}, {file.Duplication}% duplication";
+		}
+
+		return file.TotalIssues > 0
+			? $"{level}, {file.TotalIssues} issue(s)"
+			: level.ToString();
 	}
 
 	/// <summary>

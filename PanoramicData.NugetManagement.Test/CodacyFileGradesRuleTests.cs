@@ -52,7 +52,7 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 		// Codacy issues page reading zero. The finding has to say what is wrong and where.
 		var result = await Rule(Report(
 			File("src/A.cs", "A"),
-			File("Sample.Test/TaiTests.cs", "F", grade: 0, totalIssues: 0, complexity: 3, linesOfCode: 41)))
+			File("Sample.Test/TaiTests.cs", "F", grade: 0, totalIssues: 0, complexity: 3, linesOfCode: 41, duplication: 36, numberOfClones: 5)))
 			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
 
 		result.Message.Should().Contain("Sample.Test/TaiTests.cs");
@@ -61,6 +61,29 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 		result.Advisory.Detail.Should().Contain("41");
 		result.Advisory.Data.Should().ContainKey("files_below_minimum");
 		result.Advisory.Data["files_below_minimum"].Should().Be(1);
+	}
+
+	[Fact]
+	public async Task NamesDuplicationAsTheCause_WhenThatIsWhatDrivesTheGrade()
+	{
+		// The whole reason CQ-06 exists: a reader looking at a Codacy issues page reading zero needs
+		// to be told the grade came from duplication, or the finding looks like a mistake.
+		var result = await Rule(Report(
+			File("Sample.Test/TaiTests.cs", "F", grade: 0, totalIssues: 0, duplication: 36, numberOfClones: 5)))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Message.Should().Contain("36% duplication");
+		result.Advisory!.Detail.Should().Contain("36%");
+		result.Advisory.Data["files"].Should().NotBeNull();
+	}
+
+	[Fact]
+	public async Task NamesTheIssueCountAsTheCause_WhenTheGradeComesFromIssues()
+	{
+		var result = await Rule(Report(File("src/Messy.cs", "D", totalIssues: 7)))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Message.Should().Contain("7 issue(s)");
 	}
 
 	[Fact]
@@ -133,7 +156,9 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 		int grade = 100,
 		int totalIssues = 0,
 		int? complexity = null,
-		int? linesOfCode = null)
+		int? linesOfCode = null,
+		int? duplication = null,
+		int? numberOfClones = null)
 		=> new()
 		{
 			Path = path,
@@ -141,6 +166,8 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 			Grade = grade,
 			TotalIssues = totalIssues,
 			Complexity = complexity,
+			Duplication = duplication,
+			NumberOfClones = numberOfClones,
 			LinesOfCode = linesOfCode
 		};
 

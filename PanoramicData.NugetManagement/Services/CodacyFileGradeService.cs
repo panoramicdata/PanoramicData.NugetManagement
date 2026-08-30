@@ -75,6 +75,8 @@ public sealed class CodacyFileGradeService : ICodacyFileGradeService
 					Grade = file.Grade,
 					TotalIssues = file.TotalIssues,
 					Complexity = file.Complexity,
+					Duplication = file.Duplication,
+					NumberOfClones = file.NumberOfClones,
 					LinesOfCode = file.LinesOfCode
 				}));
 

@@ -29,6 +29,15 @@ public sealed class CodacyFileGrade
 	/// <summary>The file's cyclomatic complexity, where Codacy measured one.</summary>
 	public int? Complexity { get; init; }
 
+	/// <summary>
+	/// The percentage of the file Codacy considers duplicated, where it measured duplication. Often
+	/// the whole reason for a poor grade on a file that has no issues at all.
+	/// </summary>
+	public int? Duplication { get; init; }
+
+	/// <summary>The number of duplicated blocks Codacy found in the file.</summary>
+	public int? NumberOfClones { get; init; }
+
 	/// <summary>The file's line count, where Codacy measured one.</summary>
 	public int? LinesOfCode { get; init; }
 
