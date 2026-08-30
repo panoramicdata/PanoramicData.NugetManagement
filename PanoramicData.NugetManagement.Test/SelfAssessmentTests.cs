@@ -98,7 +98,14 @@ public class SelfAssessmentTests : TestWithOutput
 			}
 		}
 
-		failures.Should().BeEmpty("all Critical- and Error-severity rules must pass on this repository");
+		foreach (var graced in failures.Where(r => _graceDependentRuleIds.Contains(r.RuleId)))
+		{
+			Output.WriteLine($"[grace] {graced.RuleId}: {graced.Message}");
+		}
+
+		failures
+			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId))
+			.Should().BeEmpty("all Critical- and Error-severity rules must pass on this repository");
 	}
 
 	[Fact]
@@ -138,7 +145,22 @@ public class SelfAssessmentTests : TestWithOutput
 
 		Output.WriteLine($"Passed: {assessment.PassedCount}/{ruleResults.Count}");
 		Output.WriteLine($"Critical: {assessment.CriticalCount}, Errors: {assessment.ErrorCount}, Warnings: {assessment.WarningCount}, Info: {assessment.InfoCount}");
-		assessment.IsCompliant.Should().BeTrue("the repository should have zero Critical- or Error-severity failures");
+
+		// assessment.IsCompliant is a single computed bool, so the grace-dependent exclusion can't be
+		// applied to it directly the way it is to a List<RuleResult> elsewhere in this file. Recompute
+		// the same Critical/Error-failure check from ruleResults instead, with the exclusion folded in.
+		var criticalOrErrorFailures = ruleResults
+			.Where(r => !r.Passed && r.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error)
+			.ToList();
+
+		foreach (var graced in criticalOrErrorFailures.Where(r => _graceDependentRuleIds.Contains(r.RuleId)))
+		{
+			Output.WriteLine($"[grace] {graced.RuleId}: {graced.Message}");
+		}
+
+		criticalOrErrorFailures
+			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId))
+			.Should().BeEmpty("the repository should have zero Critical- or Error-severity failures outside the grace-dependent rules");
 	}
 
 	private static string? FindRepoRoot(string startDir)

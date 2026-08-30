@@ -33,6 +33,19 @@ namespace PanoramicData.NugetManagement.Test;
 /// with a null path that never writes to the committed file"), so this test binary never performs
 /// disk I/O against either committed file, regardless of test order or parallelism.
 /// </para>
+/// <para>
+/// This buys freedom from disk I/O, not freedom from shared state: the two stores installed here are
+/// each a single instance, shared by every rule-evaluating test in the process for the whole run, in
+/// memory, exactly like <see cref="RuleRegistry.Rules"/> itself. There is no
+/// <c>[CollectionBehavior(DisablesTestParallelization = true)]</c> in this project, so one test's
+/// <c>Observe</c> call (for example <see cref="GitHubIntegrationTests"/> assessing the live
+/// <c>main</c> branch, which can pin a package higher than this worktree does) can raise the shared
+/// in-memory floor before another test in the same run reads it. Any assertion over a whole
+/// assessment's pass/fail outcome must therefore still exclude the floor- and grace-dependent rules
+/// (PKG-05/06/07) rather than assume this fixture makes their result depend only on the repository
+/// under test — see the <c>_graceDependentRuleIds</c> filtering in <see cref="SelfAssessmentTests"/>
+/// and <see cref="GitHubIntegrationTests"/>.
+/// </para>
 /// </remarks>
 internal static class RuleAssessmentIsolation
 {
