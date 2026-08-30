@@ -4643,9 +4643,6 @@ else
 	}
 
 	/// <summary>
-	/// Queues a bulk rule action fanned out across its repositories, as requested by <see cref="IssuesView"/>.
-	/// </summary>
-	/// <summary>
 	/// Queues one rule of a bulk action fanned out across its repositories, or — when
 	/// <see cref="BulkRuleRequest.RuleId"/> is null — the trailing commit-and-push a multi-rule sweep
 	/// sends once every rule has been fanned out. That case is queued here rather than through
@@ -4776,7 +4773,8 @@ else
 			_rows = Cache.GetCachedRows() ?? _rows;
 			RefreshLaneFlagsSnapshot();
 
-			if (item.Step is { } step
+			if (item.State is not (WorkItemState.Cancelled or WorkItemState.Cancelling)
+				&& item.Step is { } step
 				&& item.Succeeded is { } succeeded
 				&& _selectedRow?.RepositoryFullName is { Length: > 0 } selected
 				&& string.Equals(item.RepositoryFullName, selected, StringComparison.OrdinalIgnoreCase))
@@ -4798,9 +4796,12 @@ else
 				}
 			}
 
-			// item.Succeeded is null for work that never reports one (most WorkKinds), and for a
-			// cancelled item — a stopped step neither succeeded nor failed, and its changes were
-			// reverted, so the badge state is left exactly as it was in both cases.
+			// A stopped step neither succeeded nor failed, and its changes were reverted, so the badge
+			// state is left exactly as it was — guarded on State as well as on Succeeded being null,
+			// so a badge can never be moved by a cancelled item even if some future executor forgot to
+			// leave Succeeded unset on that path. Executors rethrow OperationCanceledException ahead of
+			// any catch that states an outcome, precisely so Succeeded stays null here; this guard is
+			// the belt to that braces.
 			await ReloadTreePreservingExpansionAsync();
 		});
 

@@ -143,6 +143,13 @@ public sealed class WorkExecutors(
 				item.Succeeded = false;
 			}
 		}
+		catch (OperationCanceledException)
+		{
+			// Stopping is not failing. Rethrown so the runner marks the item Cancelled and logs
+			// the stop, and so the step badge is left alone rather than painted red for work the
+			// user chose to end.
+			throw;
+		}
 		catch (Exception ex)
 		{
 			Say($"❌ Error: {ex.Message}");
@@ -771,6 +778,13 @@ public sealed class WorkExecutors(
 				item.Succeeded = false;
 			}
 		}
+		catch (OperationCanceledException)
+		{
+			// Stopping is not failing. Rethrown so the runner marks the item Cancelled and logs
+			// the stop, and so the step badge is left alone rather than painted red for work the
+			// user chose to end.
+			throw;
+		}
 		catch (Exception ex)
 		{
 			Say($"❌ Error: {ex.Message}");
@@ -896,6 +910,13 @@ public sealed class WorkExecutors(
 						push.RefusalReason);
 				}
 			}
+		}
+		catch (OperationCanceledException)
+		{
+			// Stopping is not failing. Rethrown so the runner marks the item Cancelled and logs
+			// the stop, and so the step badge is left alone rather than painted red for work the
+			// user chose to end.
+			throw;
 		}
 		catch (Exception ex)
 		{

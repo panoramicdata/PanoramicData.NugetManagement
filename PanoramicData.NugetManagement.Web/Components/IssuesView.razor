@@ -345,7 +345,13 @@
 		// _inScope read below — is hopped back onto the circuit first.
 		_ = InvokeAsync(() =>
 		{
-			if (item.Succeeded == true && _inScope.Contains(repositoryFullName))
+			// Guarded on State as well as on Succeeded, belt and braces: executors rethrow
+			// OperationCanceledException ahead of any catch that states an outcome, precisely so a
+			// stopped push never reports Succeeded == false, but a stopped push must not tick the row
+			// or count as a failure even if some future executor got that wrong.
+			var cancelled = item.State is WorkItemState.Cancelled or WorkItemState.Cancelling;
+
+			if (!cancelled && item.Succeeded == true && _inScope.Contains(repositoryFullName))
 			{
 				// Ticked rather than removed: the row goes on its own once the re-assessment says the
 				// issue has gone, and a tick is honest in the meantime — pushed, not yet proven by the
@@ -356,19 +362,19 @@
 
 			if (_activeRun is { } run && run.Pending.Remove(repositoryFullName))
 			{
-				switch (item.Succeeded)
+				if (cancelled)
 				{
-					case true:
-						run.Pushed++;
-						break;
-					case false:
-						run.Failed++;
-						break;
-					default:
-						// Cancelled: neither pushed nor failed, so it is left out of both counts —
-						// counting it as a failure would blame the stop on the rule that queued it.
-						run.Cancelled++;
-						break;
+					// Neither pushed nor failed, so it is left out of both counts — counting it as a
+					// failure would blame the stop on the rule that queued it.
+					run.Cancelled++;
+				}
+				else if (item.Succeeded == true)
+				{
+					run.Pushed++;
+				}
+				else
+				{
+					run.Failed++;
 				}
 
 				if (run.Pending.Count == 0)

@@ -89,6 +89,56 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 		item.State.Should().Be(WorkItemState.Pending, "ExecuteAsync itself never advances State — that is WorkRunnerService's job");
 	}
 
+	/// <summary>
+	/// Pins the round-2 regression: <see cref="LocalRepoService.RunCommandWithStreamingAsync"/> kills
+	/// the process and rethrows <see cref="OperationCanceledException"/> when the token is signalled,
+	/// and <see cref="WorkExecutors.BuildAsync"/> used to let that fall into its general
+	/// <c>catch (Exception ex)</c>, which states <c>Succeeded = false</c> — turning a stop into a
+	/// recorded failure and arming "Fix with AI" for work the user chose to end, which is exactly what
+	/// addendum A9.1 said must never happen. The executor must now rethrow the cancellation ahead of
+	/// that catch, leaving <see cref="WorkItem.Succeeded"/> untouched (null).
+	/// </summary>
+	[Fact]
+	public async Task BuildAsync_CancelledBuild_DoesNotStateFailure()
+	{
+		var repoDirectory = Path.Combine(_root, "panoramicdata", "does-not-exist");
+		Directory.CreateDirectory(repoDirectory);
+
+		var executors = CreateExecutors(out var cache);
+		cache.SetRows(
+		[
+			new RepositoryDashboardRow
+			{
+				RepositoryFullName = Repository,
+				Organization = "panoramicdata",
+				Packages = [new() { PackageId = "Does.Not.Exist", LatestVersion = "1.0.0" }]
+			}
+		]);
+
+		var item = new WorkItem
+		{
+			Id = "1",
+			Title = "Build",
+			Descriptor = WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repository),
+			DedupKey = $"build:{Repository}",
+			Step = WorkflowStep.Build
+		};
+
+		// Pre-cancelled rather than cancelled mid-flight: WaitForExitAsync observes it as soon as it is
+		// awaited, which is deterministic — a race to cancel a real dotnet build process mid-run would
+		// not be.
+		using var cancellation = new CancellationTokenSource();
+		await cancellation.CancelAsync();
+
+		var act = () => executors.ExecuteAsync(item, new Progress<string>(), cancellation.Token);
+
+		await act.Should().ThrowAsync<OperationCanceledException>(
+			"the executor must rethrow so the runner marks the item Cancelled rather than swallowing the stop");
+
+		item.Succeeded.Should().BeNull(
+			"a stop is not a failure — Succeeded must be left exactly as it was, for OnItemCompleted's badge logic to leave the step's badge alone");
+	}
+
 	private WorkExecutors CreateExecutors(out DashboardCacheService cache)
 	{
 		var appSettings = Options.Create(new AppSettings { LocalReposRoot = _root });
