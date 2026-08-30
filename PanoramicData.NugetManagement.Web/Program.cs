@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using PanoramicData.Blazor.Extensions;
@@ -34,6 +34,8 @@ builder.Services.AddHttpClient(NuspecRepositoryResolver.HttpClientName, client =
 });
 builder.Services.AddSingleton<NuspecRepositoryResolver>();
 builder.Services.AddSingleton<NuGetDiscoveryService>();
+builder.Services.AddSingleton<IPublishedVersionSource, PublishedVersionService>();
+builder.Services.AddSingleton<PublishedVersionRefresher>();
 builder.Services.AddSingleton<LocalRepoService>();
 builder.Services.AddSingleton<DashboardCacheService>();
 builder.Services.AddSingleton<RemediationRegistry>();

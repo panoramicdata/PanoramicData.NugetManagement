@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
@@ -13,6 +13,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public class DashboardService
 {
 	private readonly NuGetDiscoveryService _nuget;
+	private readonly PublishedVersionRefresher _publishedVersions;
 	private readonly DashboardCacheService _cache;
 	private readonly LocalRepoService _localRepo;
 	private readonly RegressionGuardService _regressionGuard;
@@ -25,6 +26,7 @@ public class DashboardService
 	/// </summary>
 	public DashboardService(
 		NuGetDiscoveryService nuget,
+		PublishedVersionRefresher publishedVersions,
 		DashboardCacheService cache,
 		LocalRepoService localRepo,
 		RemediationRegistry remediationRegistry,
@@ -34,6 +36,7 @@ public class DashboardService
 		ILogger<DashboardService> logger)
 	{
 		_nuget = nuget;
+		_publishedVersions = publishedVersions;
 		_cache = cache;
 		_localRepo = localRepo;
 		_regressionGuard = regressionGuard;
@@ -302,6 +305,11 @@ public class DashboardService
 
 		try
 		{
+			// Read what is actually on nuget.org now. Discovery is the only other thing that writes
+			// this, and Re-assess skips discovery, so without this CI-11 compares a fresh tag against
+			// an hours-old version and cannot be talked out of it.
+			await _publishedVersions.RefreshAsync(row, cancellationToken).ConfigureAwait(false);
+
 			var parts = row.RepositoryFullName.Split('/');
 			if (parts.Length != 2)
 			{
@@ -411,6 +419,10 @@ public class DashboardService
 
 		try
 		{
+			// See the note in AssessRepositoryAsync: the published version has to be re-read here too,
+			// or Re-assess can never change CI-11's mind about a release that has landed.
+			await _publishedVersions.RefreshAsync(row, cancellationToken).ConfigureAwait(false);
+
 			var repoIdentity = RepoIdentity(row);
 			if (!string.IsNullOrWhiteSpace(repoIdentity))
 			{
