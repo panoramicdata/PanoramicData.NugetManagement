@@ -64,6 +64,44 @@ public class NuGetVersionCacheTests(ITestOutputHelper output) : TestWithOutput(o
 	public void ANullPathShouldBeAnEmptyInMemoryCache()
 		=> new NuGetVersionCache(null).TryGet("Codacy.Api", out _).Should().BeFalse();
 
+	[Fact]
+	public void ANewVersionShouldBeReportedAsAChangeAndSurviveARestart()
+	{
+		var path = Path.Combine(_directory, NuGetVersionCache.FileName);
+		Directory.CreateDirectory(_directory);
+
+		var cache = new NuGetVersionCache(path);
+		cache.Update("Codacy.Api", "3.0.43", Published, Now).Should().BeTrue();
+		cache.Persist();
+
+		new NuGetVersionCache(path).TryGet("Codacy.Api", out var reloaded).Should().BeTrue();
+		reloaded.LatestVersion.Should().Be("3.0.43");
+	}
+
+	[Fact]
+	public void RefreshingAnUnchangedVersionShouldNotCountAsAChange()
+	{
+		var cache = new NuGetVersionCache(null);
+		cache.Update("Codacy.Api", "3.0.43", Published, Now).Should().BeTrue();
+
+		cache.Update("Codacy.Api", "3.0.43", Published, Now.AddDays(1))
+			.Should().BeFalse("the cache is committed, so a timestamp alone must not dirty the file");
+	}
+
+	[Fact]
+	public void RefreshingAnUnchangedVersionShouldNotMoveItsRefreshedAt()
+	{
+		var cache = new NuGetVersionCache(null);
+		cache.Update("Codacy.Api", "3.0.43", Published, Now);
+		cache.Update("Codacy.Api", "3.0.43", Published, Now.AddDays(1));
+
+		cache.TryGet("Codacy.Api", out var snapshot);
+		snapshot.RefreshedAtUtc.Should().Be(Now, "refreshedAtUtc records what changed, not when we looked");
+	}
+
+	private static readonly DateTimeOffset Published = new(2026, 8, 12, 0, 0, 0, TimeSpan.Zero);
+	private static readonly DateTimeOffset Now = new(2026, 8, 29, 0, 0, 0, TimeSpan.Zero);
+
 	private void WriteFile(string json)
 	{
 		Directory.CreateDirectory(_directory);

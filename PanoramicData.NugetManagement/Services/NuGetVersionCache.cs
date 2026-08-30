@@ -42,8 +42,7 @@ public sealed class NuGetVersionCache
 
 	private static readonly JsonSerializerOptions _jsonOptions = new()
 	{
-		WriteIndented = true,
-		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+		WriteIndented = true
 	};
 
 	/// <summary>
@@ -63,6 +62,58 @@ public sealed class NuGetVersionCache
 	/// <param name="snapshot">The snapshot, when found.</param>
 	public bool TryGet(string packageId, out NuGetVersionSnapshot snapshot)
 		=> _snapshots.TryGetValue(packageId, out snapshot!);
+
+	/// <summary>
+	/// Records what nuget.org reported for a package, and says whether that changed anything.
+	/// </summary>
+	/// <remarks>
+	/// Returns false when the version is the one already held, and leaves
+	/// <see cref="NuGetVersionSnapshot.RefreshedAtUtc"/> untouched in that case. The file is committed,
+	/// so a sweep that stamped a new timestamp on every package each interval would leave the working
+	/// tree permanently modified and bury real version changes in noise.
+	/// </remarks>
+	/// <param name="packageId">The package identifier.</param>
+	/// <param name="latestVersion">The latest stable version nuget.org reports.</param>
+	/// <param name="published">When that version was published.</param>
+	/// <param name="now">The current time, for stamping a genuine change.</param>
+	/// <returns>True when the stored version changed.</returns>
+	public bool Update(string packageId, string latestVersion, DateTimeOffset published, DateTimeOffset now)
+	{
+		if (_snapshots.TryGetValue(packageId, out var existing)
+			&& string.Equals(existing.LatestVersion, latestVersion, StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		_snapshots[packageId] = new NuGetVersionSnapshot(packageId, latestVersion, published, now);
+		return true;
+	}
+
+	/// <summary>
+	/// Writes the cache to its file. Best-effort: a read-only environment simply keeps what it has.
+	/// </summary>
+	public void Persist()
+	{
+		if (string.IsNullOrEmpty(_filePath))
+		{
+			return;
+		}
+
+		try
+		{
+			var ordered = _snapshots
+				.OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
+				.ToDictionary(
+					kvp => kvp.Key,
+					kvp => new Entry(kvp.Value.LatestVersion, kvp.Value.Published, kvp.Value.RefreshedAtUtc));
+
+			File.WriteAllText(_filePath, JsonSerializer.Serialize(ordered, _jsonOptions));
+		}
+		catch
+		{
+			// Read-only environment (for example a deployed server): persistence is best-effort.
+		}
+	}
 
 	/// <summary>An entry as stored on disk, keyed by package id.</summary>
 	private sealed record Entry(
