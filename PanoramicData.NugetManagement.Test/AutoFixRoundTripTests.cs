@@ -161,6 +161,70 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 	}
 
 	[Fact]
+	public async Task CI12_BumpsEverySubActionInEveryWorkflow()
+	{
+		const string codeQlPath = ".github/workflows/codeql.yml";
+		const string workflow = """
+			jobs:
+			  analyze:
+			    steps:
+			      - uses: github/codeql-action/init@v2
+			      - uses: github/codeql-action/analyze@v2
+			""";
+
+		var seedFile = Path.Combine(_root, "seed-action-versions.json");
+		Directory.CreateDirectory(_root);
+		await File.WriteAllTextAsync(
+			seedFile,
+			"""{"github/codeql-action":"v4"}""",
+			TestContext.Current.CancellationToken);
+
+		var previous = ActionVersionCatalog.Default;
+		ActionVersionCatalog.Default = new ActionVersionCatalog(seedFile);
+
+		try
+		{
+			WriteFile(codeQlPath, workflow);
+			var context = WorkflowContext(codeQlPath, workflow);
+
+			var result = await Rule("CI-12").EvaluateAsync(context, TestContext.Current.CancellationToken);
+			result.Passed.Should().BeFalse("the fixture pins v2 while the organization is on v4");
+
+			Apply(result);
+
+			var fixedWorkflow = await File.ReadAllTextAsync(
+				Path.Combine(_root, codeQlPath),
+				TestContext.Current.CancellationToken);
+
+			Output.WriteLine(fixedWorkflow);
+
+			fixedWorkflow.Should().Contain("github/codeql-action/init@v4")
+				.And.Contain("github/codeql-action/analyze@v4")
+				.And.NotContain("@v2", "every usage moves, not just the first");
+
+			var reassessed = await Rule("CI-12")
+				.EvaluateAsync(WorkflowContext(codeQlPath, fixedWorkflow), TestContext.Current.CancellationToken);
+
+			reassessed.Passed.Should().BeTrue("the remediation is supposed to satisfy the rule it came from");
+		}
+		finally
+		{
+			ActionVersionCatalog.Default = previous;
+		}
+	}
+
+	private static RepositoryContext WorkflowContext(string path, string content) => new()
+	{
+		FullName = "panoramicdata/Sample",
+		Name = "Sample",
+		DefaultBranch = "main",
+		CurrentBranch = "main",
+		Options = new RepoOptions(),
+		FilePaths = [path],
+		FileContents = new() { [path] = content }
+	};
+
+	[Fact]
 	public async Task TST05_CreatesAMissingRunnerConfigForEveryTestProject()
 	{
 		var context = TestProjectContext(runnerConfigs: []);

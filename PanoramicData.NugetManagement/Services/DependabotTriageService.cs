@@ -188,15 +188,31 @@ public sealed class DependabotTriageService
 	{
 		var failing = ruleResults
 			.Where(r => !r.Passed)
-			.Select(r => r.RuleId)
-			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+			.GroupBy(r => r.RuleId, StringComparer.OrdinalIgnoreCase)
+			.ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
 		return _rules
-			.Where(rule => failing.Contains(rule.RuleId))
+			.Where(rule => failing.ContainsKey(rule.RuleId))
 			.OfType<IGovernsDependency>()
 			.Cast<IRule>()
 			.FirstOrDefault(rule =>
-				((IGovernsDependency)rule).Governs(dependency) && canRemediate(rule.RuleId))
+				((IGovernsDependency)rule).Governs(dependency)
+				&& WillMove(failing[rule.RuleId], dependency)
+				&& canRemediate(rule.RuleId))
 			?.RuleId;
 	}
+
+	/// <summary>
+	/// Whether this particular failure will move this particular dependency.
+	/// </summary>
+	/// <remarks>
+	/// A rule that claims a whole ecosystem — CI-12 claims every action no other rule owns — is still
+	/// only going to fix what it found wrong. Its failure names those in <c>governed_actions</c>, and
+	/// a dependency missing from that list is not covered by it, however broadly it governs. Rules
+	/// that do not narrow their claim carry no such key and are unaffected.
+	/// </remarks>
+	private static bool WillMove(RuleResult failure, DependencyRef dependency)
+		=> failure.Advisory?.Data.TryGetValue("governed_actions", out var named) is not true
+			|| named is not IEnumerable<string> names
+			|| names.Contains(dependency.Name, StringComparer.OrdinalIgnoreCase);
 }
