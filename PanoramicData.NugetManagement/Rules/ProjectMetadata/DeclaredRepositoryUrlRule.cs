@@ -29,6 +29,9 @@ public partial class DeclaredRepositoryUrlRule : RuleBase
 	/// <inheritdoc />
 	public override AssessmentSeverity Severity => AssessmentSeverity.Error;
 
+	/// <summary>The file a repository declares shared MSBuild properties in.</summary>
+	private const string _directoryBuildProps = "Directory.Build.props";
+
 	[GeneratedRegex(
 		@"^(?:https?://)?(?:www\.)?github\.com/(?<owner>[^/?#\s]+)/(?<name>[^/?#\s]+)/?$",
 		RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
@@ -46,7 +49,14 @@ public partial class DeclaredRepositoryUrlRule : RuleBase
 		var canonical = $"https://github.com/{context.FullName}";
 		var wrong = new List<DeclaredUrl>();
 
-		foreach (var project in projects)
+		// Directory.Build.props as well as the projects: a repository that declares its metadata once
+		// for every project declares its repository URL there too, and a wrong name is exactly as
+		// published from there as it is from a csproj.
+		var files = projects
+			.Concat(context.FileExists(_directoryBuildProps) ? [_directoryBuildProps] : [])
+			.ToList();
+
+		foreach (var project in files)
 		{
 			var content = context.GetFileContent(project);
 
