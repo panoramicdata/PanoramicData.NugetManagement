@@ -113,6 +113,85 @@ public class CiActionVersionFloorRuleTests(ITestOutputHelper output) : TestWithO
 	}
 
 	[Fact]
+	public async Task CoversAClaimedAction_InTheWorkflowsItsOwningRuleCannotRead()
+	{
+		SeedCatalog(new() { ["actions/checkout"] = "v7" });
+
+		var result = await Evaluate(Ctx(
+			(".github/workflows/ci.yml", "jobs:\n  build:\n    steps:\n    - uses: actions/checkout@v7\n"),
+			(".github/workflows/codeql-analysis.yml",
+				"jobs:\n  analyze:\n    steps:\n    - uses: actions/checkout@v3\n")));
+
+		result.Passed.Should().BeFalse(
+			"CI-05 reads ci.yml and nothing else, so a stale checkout in a second workflow belongs to "
+			+ "nobody — which is how two Dependabot pull requests sat for 146 days");
+
+		result.Advisory!.Data["governed_actions"].Should().BeOfType<string[]>()
+			.Which.Should().Contain("actions/checkout");
+	}
+
+	[Fact]
+	public async Task LeavesAClaimedAction_WhereItsOwningRuleCanReachIt()
+	{
+		SeedCatalog(new() { ["actions/checkout"] = "v7" });
+
+		var result = await Evaluate(Ctx(
+			(".github/workflows/ci.yml", "jobs:\n  build:\n    steps:\n    - uses: actions/checkout@v3\n"),
+			(".github/workflows/codeql-analysis.yml",
+				"jobs:\n  analyze:\n    steps:\n    - uses: actions/checkout@v7\n")));
+
+		result.Passed.Should().BeTrue(
+			"the only stale usage is in the file CI-05 reads, and reporting it here as well would "
+			+ "double the failure and the fix");
+	}
+
+	[Fact]
+	public async Task NeverDowngradesAWorkflowThatIsAheadOfTheFloor()
+	{
+		SeedCatalog(new() { ["github/codeql-action"] = "v4" });
+
+		var result = await Evaluate(Ctx(
+			CodeQl("v2"),
+			(".github/workflows/scheduled.yml",
+				"jobs:\n  scan:\n    steps:\n      - uses: github/codeql-action/init@v9\n")));
+
+		var data = result.Advisory!.Data;
+		var patterns = data["patterns"].Should().BeOfType<string[]>().Subject;
+		var replacements = data["replacements"].Should().BeOfType<string[]>().Subject;
+
+		var rewritten = System.Text.RegularExpressions.Regex.Replace(
+			"      - uses: github/codeql-action/init@v2\n      - uses: github/codeql-action/init@v9\n",
+			patterns[0],
+			replacements[0]);
+
+		rewritten.Should().Contain("init@v4", "the one behind the floor moves up to it")
+			.And.Contain("init@v9",
+				"and the one ahead is left alone — a fix that drags a repository backwards to the "
+				+ "average is not a fix");
+	}
+
+	[Theory]
+	[InlineData("v1", true)]
+	[InlineData("v6", true)]
+	[InlineData("v7", false)]
+	[InlineData("v10", false)]
+	[InlineData("v70", false)]
+	public async Task TheRewritePattern_MatchesOnlyVersionsBelowTheFloor(string version, bool shouldMatch)
+	{
+		SeedCatalog(new() { ["actions/cache"] = "v7" });
+
+		var result = await Evaluate(Ctx((".github/workflows/ci.yml",
+			"jobs:\n  build:\n    steps:\n    - uses: actions/cache@v1\n")));
+
+		var pattern = result.Advisory!.Data["patterns"].Should().BeOfType<string[]>().Subject[0];
+
+		System.Text.RegularExpressions.Regex.IsMatch($"uses: actions/cache@{version}", pattern)
+			.Should().Be(shouldMatch,
+				$"a floor of v7 must move {version} only when it is genuinely behind — and a two-digit "
+				+ "major must never be read as its first digit");
+	}
+
+	[Fact]
 	public async Task SkipsAnActionPinnedToACommitSha()
 	{
 		SeedCatalog(new() { ["github/codeql-action"] = "v4" });
