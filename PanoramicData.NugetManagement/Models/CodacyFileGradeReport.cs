@@ -11,6 +11,13 @@ public sealed class CodacyFileGradeReport
 	/// </summary>
 	public required bool IsTracked { get; init; }
 
+	/// <summary>
+	/// Codacy's own name for the repository, set only when it differs from the provider's — Codacy
+	/// keeps the name a repository was added under and does not follow later renames. Null when the
+	/// two agree, which is the ordinary case.
+	/// </summary>
+	public string? CodacyRepositoryName { get; init; }
+
 	/// <summary>Every file Codacy listed for the branch, graded or not.</summary>
 	public IReadOnlyList<CodacyFileGrade> Files { get; init; } = [];
 
