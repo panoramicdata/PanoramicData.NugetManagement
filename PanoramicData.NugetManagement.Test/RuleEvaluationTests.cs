@@ -1523,14 +1523,14 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
-	// ── META-04 ─────────────────────────────────────────────────────────
+	// ── META-04 ───────────────────────────────────────
 
 	[Fact]
-	public async Task META04_ShouldPass_WhenPackageProjectUrlAndIconSet()
+	public async Task META04_ShouldPass_WhenPackageProjectUrlSet()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl><PackageIcon>Logo.png</PackageIcon></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("META-04").EvaluateAsync(context, CancellationToken.None);
@@ -1538,11 +1538,11 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
-	public async Task META04_ShouldFail_WhenPackageProjectUrlOrIconMissing()
+	public async Task META04_ShouldFail_WhenPackageProjectUrlMissing()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>"
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild><PackageIcon>Logo.png</PackageIcon></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("META-04").EvaluateAsync(context, CancellationToken.None);
@@ -1554,11 +1554,50 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl><PackageIcon>Logo.png</PackageIcon></PropertyGroup></Project>",
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl></PropertyGroup></Project>",
 			["ExampleApp/ExampleApp.csproj"] = "<Project><PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup></Project>"
 		});
 
 		var result = await GetRule("META-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	// ── META-05 ───────────────────────────────────────
+
+	[Fact]
+	public async Task META05_ShouldPass_WhenPackageIconSet()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageIcon>Logo.png</PackageIcon></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("META-05").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task META05_ShouldFail_WhenPackageIconMissing()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild><PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("META-05").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task META05_ShouldPass_WhenNonPackableProjectMissingMetadata()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["test-repo/test-repo.csproj"] = "<Project><PropertyGroup><PackageIcon>Logo.png</PackageIcon></PropertyGroup></Project>",
+			["ExampleApp/ExampleApp.csproj"] = "<Project><PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("META-05").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
 	}
 

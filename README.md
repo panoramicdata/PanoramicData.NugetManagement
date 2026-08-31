@@ -23,7 +23,7 @@ PanoramicData.NugetManagement connects to a GitHub organization, examines each r
 - **Licensing** — MIT LICENSE, PackageLicenseExpression, Copyright
 - **README & Badges** — Codacy, NuGet, License badges
 - **Repository Hygiene** — .gitignore, NeutralResourcesLanguage
-- **Project Metadata** — PackageId, RepositoryUrl, Authors, PackageIcon
+- **Project Metadata** — PackageId, RepositoryUrl, Authors, PackageProjectUrl, PackageIcon
 - **Community Health** — SECURITY.md, CONTRIBUTING.md
 - **Dependency Automation** — Dependabot or Renovate
 

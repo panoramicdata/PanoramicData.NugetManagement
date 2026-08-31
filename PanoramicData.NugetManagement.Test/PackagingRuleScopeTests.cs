@@ -91,6 +91,7 @@ public class PackagingRuleScopeTests(ITestOutputHelper output) : TestWithOutput(
 	[InlineData("META-01")]
 	[InlineData("META-02")]
 	[InlineData("META-04")]
+	[InlineData("META-05")]
 	[InlineData("LIC-02")]
 	[InlineData("PKG-01")]
 	[InlineData("PKG-02")]
