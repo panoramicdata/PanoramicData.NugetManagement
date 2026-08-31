@@ -365,9 +365,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Highlight.Api": {
-    "latestVersion": "2.0.39",
-    "published": "2026-08-28T15:20:15.91+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "2.0.45",
+    "published": "2026-08-31T16:34:58.453+01:00",
+    "refreshedAtUtc": "2026-08-31T21:19:19.9350179+00:00"
   },
   "HtmlAgilityPack": {
     "latestVersion": "1.13.0",
@@ -435,9 +435,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "LogicMonitor.Datamart": {
-    "latestVersion": "3.240.5",
-    "published": "2026-08-28T14:05:48.903+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "3.240.11",
+    "published": "2026-08-31T17:04:42.593+01:00",
+    "refreshedAtUtc": "2026-08-31T21:19:19.9350179+00:00"
   },
   "LTAF.Navigator": {
     "latestVersion": "0.1.0",
@@ -930,9 +930,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "MicrosoftDynamics.Api": {
-    "latestVersion": "10.0.28",
-    "published": "2026-08-21T09:39:04.003+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "10.0.34",
+    "published": "2026-08-31T16:46:11.477+01:00",
+    "refreshedAtUtc": "2026-08-31T21:19:19.9350179+00:00"
   },
   "MicrosoftExtensions.Logging.Xunit": {
     "latestVersion": "1.2.1",
@@ -1105,9 +1105,9 @@
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
   "Ollama.Api": {
-    "latestVersion": "1.0.21",
-    "published": "2026-08-30T13:56:59.077+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "1.0.24",
+    "published": "2026-08-31T16:17:23.38+01:00",
+    "refreshedAtUtc": "2026-08-31T21:19:19.9350179+00:00"
   },
   "PanoramicData.Blazor": {
     "latestVersion": "10.0.215",
@@ -1165,9 +1165,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "PanoramicData.NCalcExtensions": {
-    "latestVersion": "6.1.7",
-    "published": "2026-08-20T13:31:50.293+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "6.1.13",
+    "published": "2026-08-31T16:56:19.207+01:00",
+    "refreshedAtUtc": "2026-08-31T21:19:19.9350179+00:00"
   },
   "PanoramicData.NetFlowServer": {
     "latestVersion": "1.0.9",
