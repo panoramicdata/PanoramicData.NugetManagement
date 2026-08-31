@@ -933,6 +933,12 @@ else
 	private string? _selectedPackageId;
 	private AssessmentCategory? _selectedCategory;
 	private string? _selectedRuleId;
+
+	// The lane and item the selection names, for the two work panes. Held rather than looked up from
+	// the node on render: a lane empties while its pane is open, and the pane still has to say so
+	// rather than silently showing a different lane's work.
+	private string? _selectedLaneKey;
+	private string? _selectedWorkItemId;
 	private int? _selectedIssueNumber;
 	private RepositoryDashboardRow? _selectedRow;
 	private string _treeFilterText = string.Empty;
@@ -1142,6 +1148,8 @@ else
 		_selectedCategory = item.Category;
 		_selectedRuleId = item.RuleId;
 		_selectedIssueNumber = item.IssueNumber;
+		_selectedLaneKey = item.LaneKey;
+		_selectedWorkItemId = item.WorkItemId;
 		_selectedNodeKey = item.Key;
 		_orgSelected = IsOrgRootNode(item);
 
@@ -2992,6 +3000,18 @@ else
 			case NavView.RepositoryIssuesDetail:
 				@* The repository's whole inbox, and the place Dependabot triage is started from. *@
 				<RepositoryIssuesView Issues="@(_selectedRow?.OpenIssues ?? [])" RepositoryFullName="@_selectedRow?.RepositoryFullName" />
+				break;
+			case NavView.WorkQueue:
+				@* The lane behind the Work node. An organisation's covers the lanes beneath it too,
+				   which is why the repository column is shown there and not on a repository's own. *@
+				<WorkQueueView Items="@SelectedLaneItems"
+							   Scope="@(_selectedRow?.RepositoryFullName ?? CurrentOrganization)"
+							   ShowsRepository="@(_selectedWorkScopeIsOrganisation)"
+							   OnStop="@(id => Lanes.Cancel(id))"
+							   OnRemove="@(id => Lanes.Remove(id))" />
+				break;
+			case NavView.WorkItemDetail:
+				<WorkItemDetailView Item="@SelectedWorkItem" />
 				break;
 			case NavView.RepositoryIssueDetail:
 				@* Its own component rather than another render method here: this file is already
@@ -4955,6 +4975,55 @@ else
 		=> _selectedIssueNumber is null
 			? null
 			: _selectedRow?.OpenIssues.FirstOrDefault(i => i.Number == _selectedIssueNumber);
+
+	// Whether the selected Work node is an organisation's rather than a repository's. An
+	// organisation's lane key names no repository, which is exactly the distinction the tree makes.
+	private bool _selectedWorkScopeIsOrganisation
+		=> _selectedLaneKey?.StartsWith("org:", StringComparison.Ordinal) == true;
+
+	/// <summary>
+	/// What the selected Work node covers: its own lane, and — for an organisation — the work in the
+	/// lanes beneath it, which is what its count already claims.
+	/// </summary>
+	private IReadOnlyList<WorkItem> SelectedLaneItems
+	{
+		get
+		{
+			if (_selectedLaneKey is not { Length: > 0 } laneKey)
+			{
+				return [];
+			}
+
+			var own = Lanes.ItemsFor(laneKey);
+
+			if (!_selectedWorkScopeIsOrganisation)
+			{
+				return own;
+			}
+
+			var organization = CurrentOrganization;
+
+			return
+			[
+				.. own,
+				.. Lanes.Lanes
+					.Where(lane => !string.Equals(lane.Key, laneKey, StringComparison.Ordinal))
+					.SelectMany(lane => Lanes.ItemsFor(lane.Key))
+					.Where(item => string.Equals(item.Organization, organization, StringComparison.OrdinalIgnoreCase))
+			];
+		}
+	}
+
+	/// <summary>
+	/// The selected work item, or null once it has finished and left the queue — which the pane says
+	/// rather than showing an empty one.
+	/// </summary>
+	private WorkItem? SelectedWorkItem
+		=> _selectedWorkItemId is not { Length: > 0 } id
+			? null
+			: Lanes.Lanes
+				.SelectMany(lane => Lanes.ItemsFor(lane.Key))
+				.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
 
 	/// <summary>
 	/// Names the packages whose nuspec could not be read, after a discovery.

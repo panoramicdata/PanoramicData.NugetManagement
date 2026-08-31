@@ -1,0 +1,120 @@
+@using PanoramicData.NugetManagement.Web.Models
+@using PanoramicData.NugetManagement.Web.Services
+@implements IDisposable
+
+@* One work item: what it is, and everything it has said. For a model-backed fix that transcript is
+   the session itself, streamed as it arrives. *@
+
+@if (Item is null)
+{
+	<div class="alert alert-secondary">
+		That work has finished and left the queue.
+	</div>
+}
+else
+{
+	<div class="mb-3">
+		<h4><i class="@StateIcon"></i> @Item.Title</h4>
+		<div class="text-muted">@(Item.RepositoryFullName ?? Item.Organization)</div>
+	</div>
+
+	<p class="work-explanation">@WorkDescription.For(Item)</p>
+
+	<div class="mb-3 small text-muted">
+		<span class="me-3"><strong>State:</strong> @Item.State</span>
+		@if (Item.Progress is { Length: > 0 } progress)
+		{
+			<span class="me-3"><strong>Progress:</strong> @progress</span>
+		}
+		@if (Item.Succeeded is { } succeeded)
+		{
+			<span class="me-3"><strong>Outcome:</strong> @(succeeded ? "succeeded" : "failed")</span>
+		}
+	</div>
+
+	@if (IsAi)
+	{
+		<div class="form-check form-switch mb-2">
+			<input class="form-check-input" type="checkbox" id="show-thinking" checked="@_showThinking"
+				   @onchange="ToggleThinking" />
+			<label class="form-check-label small text-muted" for="show-thinking">
+				Show the model's thinking
+			</label>
+		</div>
+	}
+
+	@if (Lines.Count == 0)
+	{
+		<div class="alert alert-secondary">
+			Nothing said yet.
+			@if (Item.State == WorkItemState.Pending)
+			{
+				<span>This item is waiting for its lane.</span>
+			}
+		</div>
+	}
+	else
+	{
+		<div class="work-transcript">
+			@foreach (var line in Lines)
+			{
+				<div class="work-line work-line-@line.Kind.ToString().ToLowerInvariant()">@line.Text</div>
+			}
+		</div>
+	}
+}
+
+@code {
+	/// <summary>
+	/// How often the pane redraws while the item is running. A streamed turn arrives token by token,
+	/// and rendering per token would put a hundred round trips a second down the circuit.
+	/// </summary>
+	private const int RefreshMilliseconds = 200;
+
+	private System.Timers.Timer? _refresh;
+	private bool _showThinking = true;
+
+	/// <summary>The item to show, or null when it has left the queue.</summary>
+	[Parameter]
+	public WorkItem? Item { get; set; }
+
+	private bool IsAi => Item is not null && WorkDescription.IsAi(Item.Descriptor.Kind);
+
+	private IReadOnlyList<WorkLine> Lines
+	{
+		get
+		{
+			var lines = Item?.Transcript.Snapshot() ?? [];
+
+			return _showThinking
+				? lines
+				: [.. lines.Where(line => line.Kind != WorkLineKind.Thinking)];
+		}
+	}
+
+	private string StateIcon => Item?.State switch
+	{
+		WorkItemState.Running => "fas fa-circle-notch fa-spin text-info",
+		WorkItemState.Cancelling => "fas fa-rotate-left fa-spin text-warning",
+		_ => "fas fa-clock text-muted"
+	};
+
+	protected override void OnInitialized()
+	{
+		// Its own timer rather than the lane-changed event: that one debounces into a tree rebuild,
+		// and a stream of tokens is not a reason to rebuild the tree.
+		_refresh = new System.Timers.Timer(RefreshMilliseconds) { AutoReset = true };
+		_refresh.Elapsed += async (_, _) => await InvokeAsync(StateHasChanged);
+		_refresh.Start();
+	}
+
+	public void Dispose()
+	{
+		_refresh?.Stop();
+		_refresh?.Dispose();
+		_refresh = null;
+	}
+
+	private void ToggleThinking(ChangeEventArgs args)
+		=> _showThinking = args.Value as bool? ?? true;
+}

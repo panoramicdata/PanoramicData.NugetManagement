@@ -717,7 +717,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			Text = WorkNodeText(laneItems.Count, itemsBelow),
 			ParentKey = parentKey,
 			IconCss = NavHealthRollup.Icon("fas fa-list-check", workStatus),
-			View = NavView.None,
+			View = NavView.WorkQueue,
 			Organization = organization,
 			RepositoryFullName = repositoryFullName,
 			LaneKey = laneKey,
@@ -744,7 +744,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					Models.WorkItemState.Cancelling => "fas fa-rotate-left fa-spin",
 					_ => "fas fa-clock"
 				},
-				View = NavView.None,
+				View = NavView.WorkItemDetail,
 				Organization = organization,
 				RepositoryFullName = repositoryFullName,
 				LaneKey = laneKey,
@@ -783,7 +783,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					Models.WorkItemState.Cancelling => "fas fa-rotate-left fa-spin",
 					_ => "fas fa-clock"
 				},
-				View = NavView.None,
+				View = NavView.WorkItemDetail,
 				Organization = organization,
 				RepositoryFullName = itemRepositoryFullName,
 				LaneKey = RepositoryLaneKey(itemRepositoryFullName),

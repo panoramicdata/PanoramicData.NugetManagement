@@ -252,5 +252,22 @@ public enum NavView
 	/// page both already use — with the branch sharing it, nothing could tell "the estate" apart from
 	/// "an organisation" to scope a bulk action by.
 	/// </remarks>
-	Repositories
+	Repositories,
+
+	/// <summary>
+	/// One lane's queue: what is running, what is waiting, and how far each has got.
+	/// </summary>
+	/// <remarks>
+	/// Shared by a repository's Work node and an organisation's, which ask the same question of
+	/// different scopes. A repository's node is permanent and sorts first, so this is the most
+	/// reachable pane in the application; with <see cref="None"/> it rendered the getting-started
+	/// placeholder, which reads as nothing having been selected.
+	/// </remarks>
+	WorkQueue,
+
+	/// <summary>
+	/// One work item: what it is doing, why it was queued, and everything it has said — including a
+	/// model's session, streamed as it happens.
+	/// </summary>
+	WorkItemDetail
 }

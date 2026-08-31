@@ -81,6 +81,18 @@ public sealed class WorkItem
 	/// </summary>
 	public string? RepositoryFullName => Descriptor.RepositoryFullName;
 
+	/// <summary>
+	/// Everything this item has said, which is what its own pane renders.
+	/// </summary>
+	/// <remarks>
+	/// As well as the shared console, not instead of it. The console answers "what is this application
+	/// doing"; the transcript answers "what did this item do", which is a different question the
+	/// console cannot answer once two items have interleaved into it. Not persisted: a transcript
+	/// belongs to a run, and <see cref="PersistedWorkItem"/> restores work to be done rather than work
+	/// already narrated.
+	/// </remarks>
+	public WorkTranscript Transcript { get; } = new();
+
 	/// <summary>Where the item has got to.</summary>
 	public WorkItemState State { get; set; } = WorkItemState.Pending;
 

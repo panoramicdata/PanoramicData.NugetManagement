@@ -48,6 +48,48 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 		node.IsLeaf.Should().BeTrue("there is nothing beneath it to open");
 	}
 
+	/// <summary>
+	/// The Work node is permanent and first under every repository, which makes it the most clickable
+	/// node in the tree. With NavView.None it selected cleanly and rendered the getting-started
+	/// placeholder, so the most reachable node in the application looked like nothing had been
+	/// selected at all.
+	/// </summary>
+	[Fact]
+	public void WorkNode_HasAViewOfItsOwn()
+	{
+		var provider = NewProvider(new WorkLaneService(), withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Single(i => i.Key == NavTreeDataProvider.WorkKey(Repo))
+			.View.Should().Be(NavView.WorkQueue);
+	}
+
+	[Fact]
+	public void WorkItemNode_HasAViewOfItsOwn()
+	{
+		var lanes = new WorkLaneService();
+		var item = lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null)!;
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Where(i => i.WorkItemId == item.Id)
+			.Should().NotBeEmpty()
+			.And.OnlyContain(i => i.View == NavView.WorkItemDetail,
+				"an item mirrored under its organisation has to open the same pane as the original");
+	}
+
+	[Fact]
+	public void OrganisationWorkNode_HasTheSameViewAsARepositorys()
+	{
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		provider.BuildNavItems()
+			.Single(i => i.Key == NavTreeDataProvider.OrgWorkKey("panoramicdata"))
+			.View.Should().Be(NavView.WorkQueue, "it is the same question asked of a wider scope");
+	}
+
 	[Fact]
 	public void WorkNode_IsTheFirstChildOfTheRepository()
 	{

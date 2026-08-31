@@ -61,7 +61,8 @@ public sealed class AiFixSession(
 	IChatModel model,
 	AiFixToolbox toolbox,
 	AiFixOptions options,
-	Action<string> onOutput)
+	Action<string> onOutput,
+	Action<AiStreamDelta>? onDelta = null)
 {
 	/// <summary>
 	/// The tools described to the model, in the order they are most likely to be needed.
@@ -185,7 +186,7 @@ public sealed class AiFixSession(
 			cancellationToken.ThrowIfCancellationRequested();
 
 			var next = await model
-				.NextAsync(request.SystemPrompt, conversation, ToolSpecs, cancellationToken)
+				.NextAsync(request.SystemPrompt, conversation, ToolSpecs, onDelta, cancellationToken)
 				.ConfigureAwait(false);
 
 			if (next.ToolCalls.Count == 0)

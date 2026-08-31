@@ -83,6 +83,11 @@ public sealed class WorkExecutors(
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
 	public async Task ExecuteAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
 	{
+		// Held for the duration of the run so Say can reach it. Safe as an instance field because
+		// WorkRunnerService resolves a fresh scope — and therefore a fresh WorkExecutors — for every
+		// item, so two lanes running together never share one.
+		_running = item;
+
 		try
 		{
 			await DispatchAsync(item, progress, cancellationToken).ConfigureAwait(false);
@@ -141,16 +146,25 @@ public sealed class WorkExecutors(
 			_ => throw new NotSupportedException($"No executor for {item.Descriptor.Kind}.")
 		};
 
+	/// <summary>The item currently running, so <see cref="Say"/> can reach its transcript.</summary>
+	private WorkItem? _running;
+
 	/// <summary>
-	/// Says something in the console the item was queued from.
+	/// Says something in the console the item was queued from, and in the item's own transcript.
 	/// </summary>
 	/// <remarks>
-	/// Logged rather than written into a buffer: the work has no console of its own, and the UI
-	/// console subscribes to this category. The line is passed as an argument rather than as the
-	/// template so braces in a path or a git message are not read as structured-logging placeholders.
+	/// Both, not either. The UI console subscribes to this logging category and answers "what is this
+	/// application doing"; the transcript answers "what did this item do", which the console stops
+	/// being able to answer the moment two lanes interleave into it. The line is passed as an argument
+	/// rather than as the template so braces in a path or a git message are not read as
+	/// structured-logging placeholders.
 	/// </remarks>
 	/// <param name="line">The line to say.</param>
-	private void Say(string line) => logger.LogInformation("{ConsoleLine}", line);
+	private void Say(string line)
+	{
+		_running?.Transcript.Append(WorkLineKind.Output, line);
+		logger.LogInformation("{ConsoleLine}", line);
+	}
 
 	/// <summary>
 	/// Notes that a restored item names a repository the estate no longer has, so its body is skipped.
@@ -875,7 +889,10 @@ public sealed class WorkExecutors(
 					MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
 					MaxAttempts = ollama.MaxAttemptsPerRule
 				},
-				Say);
+				Say,
+				// Straight into this item's transcript rather than through Say: a token is a fragment,
+				// not a line, and the shared console has no way to render a hundred of them a second.
+				AiTranscriptSink.For(item.Transcript));
 
 			var request = new AiFixRequest(
 				row.RepositoryFullName,

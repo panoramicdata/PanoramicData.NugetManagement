@@ -1,0 +1,32 @@
+/* The transcript. Monospaced, because most of it is command output and tool calls, and a model's
+   thinking is subdued so a long deliberation cannot be mistaken for a long answer. */
+
+.work-explanation {
+	max-width: 70ch;
+}
+
+.work-transcript {
+	font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+	font-size: 0.85rem;
+	line-height: 1.45;
+	max-height: 60vh;
+	overflow-y: auto;
+	overflow-x: auto;
+	padding: 0.75rem;
+	border-radius: 0.375rem;
+	background-color: rgba(0, 0, 0, 0.25);
+}
+
+.work-line {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.work-line-thinking {
+	opacity: 0.6;
+	font-style: italic;
+}
+
+.work-line-model {
+	color: var(--bs-info, #0dcaf0);
+}

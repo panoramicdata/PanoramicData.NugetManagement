@@ -40,6 +40,7 @@ public class AiFixSessionTests(ITestOutputHelper output) : TestWithOutput(output
 			string systemPrompt,
 			IReadOnlyList<AiMessage> conversation,
 			IReadOnlyList<AiToolSpec> tools,
+			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
 			SystemPrompts.Add(systemPrompt);
@@ -57,12 +58,77 @@ public class AiFixSessionTests(ITestOutputHelper output) : TestWithOutput(output
 		}
 	}
 
+	/// <summary>
+	/// A model that emits a scripted set of stream deltas before answering, and records whether it was
+	/// given anywhere to send them.
+	/// </summary>
+	private sealed class StreamingModel(params AiStreamDelta[] deltas) : IChatModel
+	{
+		public bool WasGivenASink { get; private set; }
+
+		public Task<AiModelTurn> NextAsync(
+			string systemPrompt,
+			IReadOnlyList<AiMessage> conversation,
+			IReadOnlyList<AiToolSpec> tools,
+			Action<AiStreamDelta>? onDelta,
+			CancellationToken cancellationToken)
+		{
+			WasGivenASink = onDelta is not null;
+
+			foreach (var delta in deltas)
+			{
+				onDelta?.Invoke(delta);
+			}
+
+			return Task.FromResult(new AiModelTurn(null, [Call("finish", ("summary", "done"))]));
+		}
+	}
+
+	/// <summary>
+	/// The session has to hand the model somewhere to stream to, and pass what arrives straight out.
+	/// Without this the pane can only show a session after it has finished, which for a 27b model
+	/// grinding through an agentic loop is most of the reason to watch it at all.
+	/// </summary>
+	[Fact]
+	public async Task RunAsync_ForwardsTheModelsStreamedDeltas()
+	{
+		var model = new StreamingModel(
+			new AiStreamDelta(AiDeltaKind.Thinking, "the rule wants a SECURITY.md"),
+			new AiStreamDelta(AiDeltaKind.Content, "writing it now"));
+
+		var streamed = new List<AiStreamDelta>();
+		var session = NewSession(model, onDelta: streamed.Add);
+
+		await session.RunAsync(Request(), PassesOnAttempt(1), TestContext.Current.CancellationToken);
+
+		model.WasGivenASink.Should().BeTrue("a session that keeps the sink to itself streams nowhere");
+		streamed.Should().Equal([
+			new AiStreamDelta(AiDeltaKind.Thinking, "the rule wants a SECURITY.md"),
+			new AiStreamDelta(AiDeltaKind.Content, "writing it now")]);
+	}
+
+	/// <summary>
+	/// A session with nowhere to stream must still run. Every existing caller passes no sink.
+	/// </summary>
+	[Fact]
+	public async Task RunAsync_WithNoSink_StillRuns()
+	{
+		var session = NewSession(new ScriptedModel(Turn(Call("finish", ("summary", "done")))));
+
+		var outcome = await session.RunAsync(Request(), PassesOnAttempt(1), TestContext.Current.CancellationToken);
+
+		outcome.Succeeded.Should().BeTrue();
+	}
+
 	private static AiToolCall Call(string name, params (string Name, string Value)[] arguments)
 		=> new(name, arguments.ToDictionary(a => a.Name, a => a.Value, StringComparer.Ordinal));
 
 	private static AiModelTurn Turn(params AiToolCall[] calls) => new(null, calls);
 
-	private AiFixSession NewSession(IChatModel model, AiFixOptions? options = null)
+	private AiFixSession NewSession(
+		IChatModel model,
+		AiFixOptions? options = null,
+		Action<AiStreamDelta>? onDelta = null)
 	{
 		Directory.CreateDirectory(_clone);
 
@@ -70,7 +136,8 @@ public class AiFixSessionTests(ITestOutputHelper output) : TestWithOutput(output
 			model,
 			new AiFixToolbox(_clone),
 			options ?? new AiFixOptions { MaxTurnsPerAttempt = 6, MaxAttempts = 3 },
-			_log.Add);
+			_log.Add,
+			onDelta);
 	}
 
 	private static AiFixRequest Request() => new(

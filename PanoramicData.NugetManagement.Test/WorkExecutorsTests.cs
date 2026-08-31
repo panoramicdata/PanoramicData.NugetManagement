@@ -139,6 +139,46 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			"a stop is not a failure — Succeeded must be left exactly as it was, for OnItemCompleted's badge logic to leave the step's badge alone");
 	}
 
+	/// <summary>
+	/// Every line an executor says has to land in the item's own transcript as well as the shared
+	/// console. Without it a work item's pane has nothing to render, and two items running together
+	/// interleave into the one console with no way to tell whose line is whose.
+	/// </summary>
+	[Fact]
+	public async Task ExecuteAsync_WritesWhatItSaysToTheItemsOwnTranscript()
+	{
+		var repoDirectory = Path.Combine(_root, "panoramicdata", "does-not-exist");
+		Directory.CreateDirectory(repoDirectory);
+
+		var executors = CreateExecutors(out var cache);
+		cache.SetRows(
+		[
+			new RepositoryDashboardRow
+			{
+				RepositoryFullName = Repository,
+				Organization = "panoramicdata",
+				Packages = [new() { PackageId = "Does.Not.Exist", LatestVersion = "1.0.0" }]
+			}
+		]);
+
+		var item = new WorkItem
+		{
+			Id = "1",
+			Title = "Build",
+			Descriptor = WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repository),
+			DedupKey = $"build:{Repository}",
+			Step = WorkflowStep.Build
+		};
+
+		await executors.ExecuteAsync(item, new Progress<string>(), CancellationToken.None);
+
+		var lines = item.Transcript.Snapshot();
+
+		lines.Should().NotBeEmpty("an item with an empty transcript has nothing for its pane to show");
+		lines.Select(line => line.Text).Should().Contain(text => text.Contains("Building", StringComparison.Ordinal));
+		lines.Should().OnlyContain(line => line.Kind == WorkLineKind.Output);
+	}
+
 	private WorkExecutors CreateExecutors(out DashboardCacheService cache)
 	{
 		var appSettings = Options.Create(new AppSettings { LocalReposRoot = _root });

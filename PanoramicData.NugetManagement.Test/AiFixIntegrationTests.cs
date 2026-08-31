@@ -49,16 +49,29 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 	{
 		using var client = CreateClient();
 
+		// With a sink, so this also covers the streaming path — the one piece of the model port that
+		// cannot be tested without a server, since Ollama.Api builds its own HttpClient and there is
+		// nowhere to hang a stub handler.
+		var streamed = new List<AiStreamDelta>();
+
 		var turn = await CreateModel(client)
 			.NextAsync(
 				"Answer in one word.",
 				[new AiMessage("user", "Say the word ready.")],
 				[],
+				streamed.Add,
 				TestContext.Current.CancellationToken)
 			.ConfigureAwait(true);
 
 		Output.WriteLine($"Model said: {turn.Text}");
+		Output.WriteLine($"Streamed {streamed.Count} fragment(s), "
+			+ $"{streamed.Count(d => d.Kind == AiDeltaKind.Thinking)} of them thinking.");
+
 		turn.Should().NotBeNull();
+		streamed.Should().NotBeEmpty("a streamed turn that reports no fragments is not streaming");
+		string.Concat(streamed.Where(d => d.Kind == AiDeltaKind.Content).Select(d => d.Text))
+			.Should().Be(turn.Text ?? string.Empty,
+				"the fragments have to add up to the answer, or the pane and the result disagree");
 	}
 
 	/// <summary>
@@ -76,6 +89,7 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 				AiFixPrompt.SystemPrompt,
 				[new AiMessage("user", "List the files in this repository. Use the list_files tool.")],
 				AiFixSession.ToolSpecs,
+				null,
 				TestContext.Current.CancellationToken)
 			.ConfigureAwait(true);
 
