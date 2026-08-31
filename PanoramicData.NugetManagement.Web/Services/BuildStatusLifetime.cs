@@ -26,6 +26,11 @@ public static class BuildStatusLifetime
 		WorkKind.FixAll,
 		WorkKind.FixCategory,
 		WorkKind.FixRule,
+
+		// A model rewrote files in that tree, and it is the kind of writer whose work most deserves
+		// rebuilding before anyone believes a green badge over it. Invalidating even on failure is right:
+		// a failed attempt reverts the clone, and a revert changes the tree as surely as a fix does.
+		WorkKind.FixWithAiRule,
 		WorkKind.GitSync,
 		WorkKind.Clone
 	];
