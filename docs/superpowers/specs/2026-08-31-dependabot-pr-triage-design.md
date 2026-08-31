@@ -200,10 +200,39 @@ project serialises on the marker and re-checks immediately before creating.
 
 ## UI
 
-Issue nodes gain the verdict as a badge — "no auto-fix" on `ValidUncovered`, "superseded" on
-`AlreadySatisfied` — and `RepositoryIssueView.razor` shows the parsed proposal.
-`NavHealthRollup` and the staleness bands are unchanged: the verdict is extra information, not a new
-severity.
+**Fix is the only button that fixes things, and it fixes everything under the selected node.** An
+earlier draft of this gave triage a button of its own, which was wrong: a second control for each kind
+of fixing is how a toolbar stops being readable, and how somebody ends up hunting for the one that
+applies.
+
+`FixScope` maps the selection to what Fix does:
+
+| Selected | Fix does |
+|---|---|
+| A repository, or a package in it | applies the remediations **and** triages the inbox, queued in that order on the one lane |
+| Its Issues branch, or one pull request | triages only — no failing rule sits beneath a pull request |
+| A category or a rule | applies remediations only, as before |
+| Anything else | nothing, and the button is hidden |
+
+The remediations are queued first deliberately: a remediation that moves a version is what turns a
+still-valid pull request into one triage can close.
+
+The two halves are gated separately. Applying remediations needs a clean clone on `main`; triaging
+needs neither, because it reads the repository and writes only to GitHub. So a repository with no
+auto-remediable rule failure but an open Dependabot backlog still has an enabled Fix — which the old
+single gate would have greyed out.
+
+The button's visibility derives from `FixScope`, not from a literal list of views. That list is what
+made Fix vanish from the repository view once before, and it is what left the Issues branch rendering
+the getting-started placeholder: it was built with `NavView.None`, so it selected cleanly and showed
+nothing. It now has `NavView.RepositoryIssuesDetail` and `RepositoryIssuesView.razor`, which lists the
+inbox with each item's verdict.
+
+Issue nodes carry the verdict as a badge — "No auto-fix" on `ValidUncovered`, "Superseded" on
+`AlreadySatisfied`, "Auto-fix covers it" on `ValidCovered` — with the reason on hover. Only
+`ValidUncovered` is coloured to ask for attention, because it is the only verdict nothing else will
+act on. `NavHealthRollup` and the staleness bands are unchanged: the verdict is extra information, not
+a new severity.
 
 ## Actual behaviour on Athonet.Api
 
