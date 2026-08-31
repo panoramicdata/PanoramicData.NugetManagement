@@ -422,13 +422,15 @@ else
 								<span class="@FlowChevronCss(WorkflowStep.Reassess)">›</span>
 							}
 
+							@* The one button that fixes things, shown wherever there is something beneath the
+							   selection to fix. FixScope decides what that means, so a view is added there
+							   rather than to a list here — a literal list is what made this button vanish
+							   before. Note: a Razor comment cannot go between a component's attributes; it
+							   compiles and then throws at render as an unknown parameter name. *@
 							<PDToolbarButton Key="fix"
 											 Text="Fix"
 											 IconCssClass="fas fa-wrench"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Fix)"
-											 @* One Fix button, wherever there is something beneath the selection to fix. FixScope
-											    decides what that means; adding views to this list without adding them there would
-											    show a button that does nothing. *@
 											 IsVisible="@(FixScope.For(_currentView).HasAnything && _selectedRow is not null)"
 											 IsEnabled="@IsFixEnabled()"
 											 ToolTip="@GatedTooltip(WorkflowStep.Fix, GetFixAllTooltip())"
