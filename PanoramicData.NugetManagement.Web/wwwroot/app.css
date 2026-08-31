@@ -121,49 +121,12 @@ html, body {
     border-color: var(--accent) !important;
 }
 
-.tree-node-dirty {
-    color: #8b5a2b !important;
-}
-
-/* Locally-cloned repo marker: a small branch glyph after the health cube. */
-.tree-node-local::after {
-    content: "\f126"; /* Font Awesome fa-code-branch */
-    font-family: "Font Awesome 6 Free";
-    font-weight: 900;
-    font-size: 0.7em;
-    margin-left: 4px;
-    vertical-align: middle;
-    color: var(--accent);
-    opacity: 0.85;
-}
-
-/* Local-clone sync state colours the branch glyph: amber if behind/ahead of origin,
-   muted grey if the sync state is unknown. Placed after .tree-node-local::after so
-   the (equal-specificity) colour override wins by source order. */
-.tree-node-out-of-sync::after {
-    color: var(--warning);
-}
-
-.tree-node-sync-unknown::after {
-    color: var(--text-muted);
-}
-
-/* A repo being assessed uses a spinner icon (fa-spin). fa-spin rotates the whole <i>, which would
-   also spin the branch (::after) decoration on locally-cloned repos. Keep the branch static and
-   visible by moving the spin off the element onto just the spinner glyph (::before). */
-.fa-spin.tree-node-local {
-    animation: none !important;
-}
-
-.fa-spin.tree-node-local::before {
-    display: inline-block;
-    animation: nav-spinner-spin 2s infinite linear;
-}
-
-@keyframes nav-spinner-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
+/* The clone, dirty-tree and sync-state decorations that used to hang off the health glyph lived
+   here. They are badges on the right of the node now — see .nav-node-state — so that the glyph
+   answers only "how does this repository score against the rules". Removed rather than left
+   dormant: dead rules describing a reversed decision are read as though they were still in force.
+   The spin-the-glyph-not-the-decoration workaround went with them, and its keyframes with it:
+   fa-spin can rotate the whole element again now that nothing is attached to it. */
 
 /* "Local only" filter toggle — right-aligned under the repo filter box. */
 .nav-tree-local-toggle {
@@ -2280,6 +2243,34 @@ i + .breadcrumb-link-text {
     position: relative;
     left: -1px;
     top: 1px;
+}
+
+/* Git and build state, right-aligned just before the exclusion control. Separate marks rather than
+   extra colours on the health glyph on the left: neither is a rule failure, and one glyph that could
+   mean either means neither. */
+.nav-node-state {
+    margin-left: auto;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* The state badges have already taken up the slack. Leaving the actions with their own auto margin
+   would split the free space between the two groups and strand the badges mid-row. */
+.nav-node-state + .nav-org-actions {
+    margin-left: 0;
+}
+
+.nav-state-badge {
+    font-size: 0.72rem;
+    line-height: 1;
+}
+
+/* A muted badge on the blue selection highlight is all but invisible. */
+.nav-tree-scroll .pdtreenode_content.selected .nav-state-badge.text-muted {
+    color: #ffffff;
+    opacity: 0.7;
 }
 
 .nav-org-action-btn {

@@ -130,6 +130,26 @@ public class NavItem
 	public bool IsWorkingTreeDirty { get; init; }
 
 	/// <summary>
+	/// Whether the repository is cloned locally, for the git badge on a repository node.
+	/// </summary>
+	public bool IsClonedLocally { get; init; }
+
+	/// <summary>
+	/// Whether the local branch is in step with origin, or null when that has never been established.
+	/// </summary>
+	public bool? IsSyncedWithOrigin { get; init; }
+
+	/// <summary>
+	/// What the last local build of this repository did, or null when that is not known.
+	/// </summary>
+	/// <remarks>
+	/// Rendered as a badge of its own on the right of the node, never folded into
+	/// <see cref="HealthStatus"/> or <see cref="IconCss"/>: failing to build is not failing a rule,
+	/// and a red glyph that could mean either is a glyph that means neither.
+	/// </remarks>
+	public RepositoryBuildState? BuildState { get; init; }
+
+	/// <summary>
 	/// Whether this node should show a busy/loading spinner (e.g. the org node while
 	/// the repository list is still being discovered/assessed).
 	/// </summary>
@@ -221,5 +241,16 @@ public enum NavView
 	/// One repository's whole inbox: every open issue and pull request, what the last Dependabot
 	/// triage pass concluded about each, and the action that starts another.
 	/// </summary>
-	RepositoryIssuesDetail
+	RepositoryIssuesDetail,
+
+	/// <summary>
+	/// The whole estate: every repository in the organisation with its health, its git state and
+	/// whether it builds, and a toolbar whose every step acts on all of them at once.
+	/// </summary>
+	/// <remarks>
+	/// A view of its own rather than <see cref="Home"/>, which the organisation node and the landing
+	/// page both already use — with the branch sharing it, nothing could tell "the estate" apart from
+	/// "an organisation" to scope a bulk action by.
+	/// </remarks>
+	Repositories
 }
