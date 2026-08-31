@@ -57,6 +57,24 @@ public class OctokitGitHubWriteApi(IGitHubClient github) : IGitHubWriteApi
 
 	/// <inheritdoc />
 	/// <remarks>
+	/// Closed as "not planned" rather than "completed": the gap it described turned out not to be one,
+	/// which is not the same as it having been fixed, and the distinction survives in the timeline.
+	/// </remarks>
+	public async Task CloseIssueAsync(
+		string owner,
+		string name,
+		int number,
+		CancellationToken cancellationToken)
+		=> await _github.Issue
+			.Update(owner, name, number, new IssueUpdate
+			{
+				State = ItemState.Closed,
+				StateReason = ItemStateReason.NotPlanned
+			})
+			.ConfigureAwait(false);
+
+	/// <inheritdoc />
+	/// <remarks>
 	/// Closed through the issue endpoint rather than the pull request one: a pull request is an issue,
 	/// closing is the same state change, and this avoids needing a second permission surface. The
 	/// branch is deliberately left in place — Dependabot owns it and tidies its own.

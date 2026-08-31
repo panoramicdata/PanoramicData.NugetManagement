@@ -17,6 +17,13 @@ public partial class CiSetupDotnetVersionRule : RuleBase, IGovernsDependency
 		=> dependency == new DependencyRef(DependencyEcosystem.GitHubActions, "actions/setup-dotnet");
 
 	/// <inheritdoc />
+	/// <remarks>
+	/// One action, and a failure of this rule is always a failure about that action, so there is
+	/// nothing to narrow: whatever it governs, it moves.
+	/// </remarks>
+	public bool WillMove(RuleResult failure, DependencyRef dependency) => Governs(dependency);
+
+	/// <inheritdoc />
 	public override string RuleName => "CI uses latest setup-dotnet and SDK";
 
 	/// <inheritdoc />

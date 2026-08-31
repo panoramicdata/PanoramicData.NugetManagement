@@ -8,9 +8,19 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// </summary>
 /// <param name="Closed">Pull requests closed as already satisfied.</param>
 /// <param name="Covered">Still-valid pull requests a remediation will handle.</param>
-/// <param name="Uncovered">Still-valid pull requests nothing can handle, which raised issues.</param>
+/// <param name="Uncovered">Still-valid pull requests that exposed a gap, and so raised issues.</param>
+/// <param name="Idle">
+/// Still-valid pull requests whose dependency is governed by a rule that is not failing for it now.
+/// Nothing is queued to move them, and nothing is wrong with the rule set either, so they are
+/// reported and left alone.
+/// </param>
 /// <param name="Unrecognised">Pull requests left alone.</param>
-public sealed record DependabotTriageOutcome(int Closed, int Covered, int Uncovered, int Unrecognised);
+public sealed record DependabotTriageOutcome(
+	int Closed,
+	int Covered,
+	int Uncovered,
+	int Idle,
+	int Unrecognised);
 
 /// <summary>
 /// Carries out what triage decided: closes the redundant pull requests and raises an issue for each
@@ -67,9 +77,14 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 		var (owner, name) = Split(repositoryFullName);
 		var closed = 0;
 		var covered = 0;
+		var idle = 0;
 		var unrecognised = 0;
 
 		var uncovered = new Dictionary<DependencyRef, List<UncoveredDependencySighting>>();
+
+		// Dependencies this pass found a fix for, or found already done. Any gap issue standing against
+		// one of them is answering a question that is no longer open, so it is retracted below.
+		var resolved = new Dictionary<DependencyRef, string>();
 
 		foreach (var triage in triages)
 		{
@@ -81,10 +96,31 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 					await CloseAsync(writeApi, owner, name, triage, onOutput, cancellationToken)
 						.ConfigureAwait(false);
 					closed++;
+
+					if (triage.Proposal is { } satisfied)
+					{
+						resolved[satisfied.Dependency] =
+							$"{repositoryFullName} now declares it at or above the proposed version";
+					}
+
 					break;
 
 				case DependabotVerdict.ValidCovered:
 					covered++;
+					onOutput($"↺ #{triage.Issue.Number} left open: {triage.Reason}");
+
+					if (triage.Proposal is { } covering && triage.CoveringRuleId is { } coveringRuleId)
+					{
+						resolved[covering.Dependency] =
+							$"{coveringRuleId} governs it and its remediation will move it";
+					}
+
+					break;
+
+				// Governed, but no failure of that rule is queued to move it today. Said out loud and
+				// otherwise left alone: it is not a gap, and an issue for it would be noise.
+				case DependabotVerdict.ValidUncovered when !triage.IsRuleSetGap:
+					idle++;
 					onOutput($"↺ #{triage.Issue.Number} left open: {triage.Reason}");
 					break;
 
@@ -115,18 +151,33 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 			cancellationToken.ThrowIfCancellationRequested();
 
 			onOutput(
-				$"🐛 No remediation governs {dependency.Name} — raising or updating the gap issue for it "
-				+ $"({sightings.Count} pull request(s)).");
+				$"🐛 Nothing here can ever move {dependency.Name} — raising or updating the gap issue "
+				+ $"for it ({sightings.Count} pull request(s)).");
 
 			await uncoveredIssues
 				.ReportAsync(readApi, writeApi, dependency, sightings, cancellationToken)
 				.ConfigureAwait(false);
 		}
 
+		foreach (var (dependency, reason) in resolved)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var retracted = await uncoveredIssues
+				.RetractAsync(readApi, writeApi, dependency, reason, cancellationToken)
+				.ConfigureAwait(false);
+
+			if (retracted is { } number)
+			{
+				onOutput($"✅ Closing gap issue #{number} for {dependency.Name}: {reason}.");
+			}
+		}
+
 		return new DependabotTriageOutcome(
 			closed,
 			covered,
 			uncovered.Sum(entry => entry.Value.Count),
+			idle,
 			unrecognised);
 	}
 

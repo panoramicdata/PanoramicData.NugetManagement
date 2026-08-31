@@ -21,6 +21,8 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 
 		public List<int> Closed { get; } = [];
 
+		public List<int> ClosedIssues { get; } = [];
+
 		public List<(string Title, string Body)> Created { get; } = [];
 
 		public Task<int> CreateIssueAsync(
@@ -54,13 +56,41 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 			Closed.Add(number);
 			return Task.CompletedTask;
 		}
+
+		public Task CloseIssueAsync(
+			string owner, string name, int number, CancellationToken cancellationToken)
+		{
+			Calls.Add($"close-issue:{number}");
+			ClosedIssues.Add(number);
+			return Task.CompletedTask;
+		}
 	}
 
-	private sealed class NoOpenIssues : IGitHubIssueApi
+	/// <summary>The number a standing gap issue is given, when a test wants one to exist.</summary>
+	private const int _gapIssueNumber = 42;
+
+	/// <summary>
+	/// The issues already open against this application's own repository. Empty unless a test says a
+	/// gap issue is standing for some dependency, in which case one carrying that dependency's marker
+	/// is returned — which is what retraction has to find.
+	/// </summary>
+	private sealed class NoOpenIssues(string? gapIssueFor = null) : IGitHubIssueApi
 	{
 		public Task<IReadOnlyList<GitHubOpenItem>> GetOpenItemsAsync(
 			string owner, string name, CancellationToken cancellationToken)
-			=> Task.FromResult<IReadOnlyList<GitHubOpenItem>>([]);
+			=> Task.FromResult<IReadOnlyList<GitHubOpenItem>>(gapIssueFor is null
+				? []
+				: [
+					new GitHubOpenItem(
+						_gapIssueNumber,
+						"No auto-remediation for something",
+						false,
+						$"https://github.com/panoramicdata/PanoramicData.NugetManagement/issues/{_gapIssueNumber}",
+						"davidnmbond",
+						new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+						UncoveredDependencyIssueService.MarkerFor(
+							new DependencyRef(DependencyEcosystem.GitHubActions, gapIssueFor)))
+				]);
 
 		public Task<IReadOnlyList<GitHubIssueComment>> GetRepositoryCommentsPageAsync(
 			string owner, string name, int pageNumber, CancellationToken cancellationToken)
@@ -75,7 +105,9 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 		int number,
 		DependabotVerdict verdict,
 		string dependencyName = "github/codeql-action",
-		DependencyEcosystem ecosystem = DependencyEcosystem.GitHubActions)
+		DependencyEcosystem ecosystem = DependencyEcosystem.GitHubActions,
+		bool isRuleSetGap = true,
+		string? coveringRuleId = null)
 	{
 		var url = $"https://github.com/{_repository}/pull/{number}";
 
@@ -99,7 +131,13 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 				null,
 				url);
 
-		return new DependabotTriage(issue, proposal, verdict, "because this test says so", null);
+		return new DependabotTriage(
+			issue,
+			proposal,
+			verdict,
+			"because this test says so",
+			coveringRuleId,
+			IsRuleSetGap: verdict == DependabotVerdict.ValidUncovered && isRuleSetGap);
 	}
 
 	/// <summary>
@@ -109,11 +147,12 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 	private sealed record Subject(
 		DependabotTriageRunner Runner,
 		RecordingWriteApi Write,
-		List<string> Log)
+		List<string> Log,
+		IGitHubIssueApi Read)
 	{
 		public Task<DependabotTriageOutcome> RunAsync(params DependabotTriage[] triages)
 			=> Runner.RunAsync(
-				new NoOpenIssues(),
+				Read,
 				Write,
 				_repository,
 				triages,
@@ -121,14 +160,14 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 				TestContext.Current.CancellationToken);
 	}
 
-	private static Subject NewSubject()
+	private static Subject NewSubject(string? openGapIssueFor = null)
 	{
 		var write = new RecordingWriteApi();
 
 		var runner = new DependabotTriageRunner(
 			new UncoveredDependencyIssueService("panoramicdata/PanoramicData.NugetManagement"));
 
-		return new Subject(runner, write, []);
+		return new Subject(runner, write, [], new NoOpenIssues(openGapIssueFor));
 	}
 
 	[Fact]
@@ -225,15 +264,69 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 	}
 
 	[Fact]
+	public async Task ValidUncovered_ThatIsNotARuleSetGap_RaisesNothing()
+	{
+		var subject = NewSubject();
+
+		await subject.RunAsync(Triage(5, DependabotVerdict.ValidUncovered, isRuleSetGap: false));
+
+		subject.Write.Created.Should().BeEmpty(
+			"a rule governs it and will fail when it should, so an issue for the interval in between "
+			+ "is noise nobody asked for");
+		subject.Log.Should().Contain(line => line.Contains("#5"),
+			"it is still said out loud, so the pull request is not silently ignored");
+	}
+
+	[Fact]
+	public async Task AGapIssue_IsRetractedOnceSomethingCoversTheDependency()
+	{
+		var subject = NewSubject(openGapIssueFor: "github/codeql-action");
+
+		await subject.RunAsync(Triage(5, DependabotVerdict.ValidCovered, coveringRuleId: "CI-12"));
+
+		subject.Write.ClosedIssues.Should().Equal([_gapIssueNumber],
+			"an issue a machine raised and only a human can close accumulates until the list is "
+			+ "distrusted");
+		subject.Write.Comments.Should().ContainSingle()
+			.Which.Body.Should().Contain("CI-12", "the retraction says what changed");
+	}
+
+	[Fact]
+	public async Task AGapIssue_IsRetractedOnceThePullRequestIsAlreadySatisfied()
+	{
+		var subject = NewSubject(openGapIssueFor: "github/codeql-action");
+
+		await subject.RunAsync(Triage(5, DependabotVerdict.AlreadySatisfied));
+
+		subject.Write.ClosedIssues.Should().Equal([_gapIssueNumber]);
+	}
+
+	[Fact]
+	public async Task AGapIssueForAnotherDependency_IsLeftAlone()
+	{
+		var subject = NewSubject(openGapIssueFor: "actions/checkout");
+
+		await subject.RunAsync(Triage(5, DependabotVerdict.ValidCovered, coveringRuleId: "CI-12"));
+
+		subject.Write.ClosedIssues.Should().BeEmpty("only this dependency's gap has been answered");
+	}
+
+	[Fact]
 	public async Task TheOutcomeCountsEachVerdict()
 	{
 		var subject = NewSubject();
 
-		var outcome = await subject.RunAsync(Triage(1, DependabotVerdict.Unrecognised), Triage(3, DependabotVerdict.AlreadySatisfied), Triage(4, DependabotVerdict.ValidCovered), Triage(5, DependabotVerdict.ValidUncovered));
+		var outcome = await subject.RunAsync(
+			Triage(1, DependabotVerdict.Unrecognised),
+			Triage(3, DependabotVerdict.AlreadySatisfied),
+			Triage(4, DependabotVerdict.ValidCovered),
+			Triage(5, DependabotVerdict.ValidUncovered),
+			Triage(6, DependabotVerdict.ValidUncovered, "SomePackage", DependencyEcosystem.NuGet, isRuleSetGap: false));
 
 		outcome.Closed.Should().Be(1);
 		outcome.Covered.Should().Be(1);
 		outcome.Uncovered.Should().Be(1);
+		outcome.Idle.Should().Be(1);
 		outcome.Unrecognised.Should().Be(1);
 	}
 

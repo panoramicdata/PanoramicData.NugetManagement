@@ -42,6 +42,8 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 
 		public List<(int Number, string Body)> BodyUpdates { get; } = [];
 
+		public List<int> ClosedIssues { get; } = [];
+
 		public Task<int> CreateIssueAsync(
 			string owner, string name, string title, string body,
 			IReadOnlyList<string> labels, CancellationToken cancellationToken)
@@ -71,6 +73,13 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 		public Task ClosePullRequestAsync(
 			string owner, string name, int number, CancellationToken cancellationToken)
 			=> Task.CompletedTask;
+
+		public Task CloseIssueAsync(
+			string owner, string name, int number, CancellationToken cancellationToken)
+		{
+			ClosedIssues.Add(number);
+			return Task.CompletedTask;
+		}
 	}
 
 	private static UncoveredDependencySighting Sighting(

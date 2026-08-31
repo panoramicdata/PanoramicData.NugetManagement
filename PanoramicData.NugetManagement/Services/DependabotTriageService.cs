@@ -18,12 +18,24 @@ namespace PanoramicData.NugetManagement.Services;
 /// The failing rule whose remediation covers this, when the verdict is
 /// <see cref="DependabotVerdict.ValidCovered"/>; otherwise null.
 /// </param>
+/// <param name="IsRuleSetGap">
+/// Whether this is a gap in the rule set rather than a rule that simply has nothing to say today.
+/// </param>
+/// <remarks>
+/// <see cref="IsRuleSetGap"/> is what decides whether an issue is raised. Both it and
+/// <see cref="DependabotVerdict.ValidUncovered"/> mean "no fix is coming for this right now", but only
+/// one of them is somebody's work: a dependency no rule governs, or one governed by rules that cannot
+/// see where it is declared, will never be fixed until a human writes something. A governed dependency
+/// whose rule is merely passing needs no issue — the rule will fail when it should, and raising an
+/// issue for the interval in between is how one triage pass produced twenty issues nobody asked for.
+/// </remarks>
 public sealed record DependabotTriage(
 	RepositoryIssue Issue,
 	DependabotProposal? Proposal,
 	DependabotVerdict Verdict,
 	string Reason,
-	string? CoveringRuleId);
+	string? CoveringRuleId,
+	bool IsRuleSetGap = false);
 
 /// <summary>
 /// Decides what to do about each of a repository's open Dependabot pull requests.
@@ -103,21 +115,52 @@ public sealed class DependabotTriageService
 
 		var coveringRuleId = CoveringRuleId(proposal.Dependency, ruleResults, canRemediate);
 
-		return coveringRuleId is null
-			? new DependabotTriage(
-				issue,
-				proposal,
-				DependabotVerdict.ValidUncovered,
-				$"Still outstanding, and no rule enforces a minimum version of "
-					+ $"{proposal.Dependency.Name}, so nothing here can fix it automatically.",
-				null)
-			: new DependabotTriage(
+		if (coveringRuleId is not null)
+		{
+			return new DependabotTriage(
 				issue,
 				proposal,
 				DependabotVerdict.ValidCovered,
 				$"Still outstanding, and {coveringRuleId} is failing with a remediation that will move "
 					+ $"{proposal.Dependency.Name} at least this far.",
 				coveringRuleId);
+		}
+
+		// Nothing will move it today. Whether that is a gap in the rule set or a rule that has nothing
+		// to say today is a different question, and only the first is anybody's work.
+		var governingRuleId = GoverningRuleId(proposal.Dependency, canRemediate);
+
+		if (governingRuleId is null)
+		{
+			return new DependabotTriage(
+				issue,
+				proposal,
+				DependabotVerdict.ValidUncovered,
+				$"Still outstanding, and no rule governs {proposal.Dependency.Name} at all, so nothing "
+					+ "here can fix it automatically.",
+				null,
+				IsRuleSetGap: true);
+		}
+
+		if (!IsObserved(proposal.Dependency, packages, actionUsages))
+		{
+			return new DependabotTriage(
+				issue,
+				proposal,
+				DependabotVerdict.ValidUncovered,
+				$"Still outstanding, and {governingRuleId} claims {proposal.Dependency.Name} but never "
+					+ "reads where it is declared, so no failure of it can ever move this.",
+				null,
+				IsRuleSetGap: true);
+		}
+
+		return new DependabotTriage(
+			issue,
+			proposal,
+			DependabotVerdict.ValidUncovered,
+			$"Still outstanding, and {governingRuleId} governs {proposal.Dependency.Name} but is not "
+				+ "failing for it at the moment, so nothing is queued to move it right now.",
+			null);
 	}
 
 	/// <summary>
@@ -196,23 +239,50 @@ public sealed class DependabotTriageService
 			.OfType<IGovernsDependency>()
 			.Cast<IRule>()
 			.FirstOrDefault(rule =>
-				((IGovernsDependency)rule).Governs(dependency)
-				&& WillMove(failing[rule.RuleId], dependency)
+				((IGovernsDependency)rule).WillMove(failing[rule.RuleId], dependency)
 				&& canRemediate(rule.RuleId))
 			?.RuleId;
 	}
 
 	/// <summary>
-	/// Whether this particular failure will move this particular dependency.
+	/// The id of a rule that governs this dependency and has a remediation, whether or not it is
+	/// currently failing, or null when nothing governs it.
 	/// </summary>
 	/// <remarks>
-	/// A rule that claims a whole ecosystem — CI-12 claims every action no other rule owns — is still
-	/// only going to fix what it found wrong. Its failure names those in <c>governed_actions</c>, and
-	/// a dependency missing from that list is not covered by it, however broadly it governs. Rules
-	/// that do not narrow their claim carry no such key and are unaffected.
+	/// The counterpart to <see cref="CoveringRuleId"/>: that one answers "is a fix coming for this",
+	/// this one answers "is this anybody's job". A dependency with an answer here is not a gap in the
+	/// rule set, however long its rule stays green.
 	/// </remarks>
-	private static bool WillMove(RuleResult failure, DependencyRef dependency)
-		=> failure.Advisory?.Data.TryGetValue("governed_actions", out var named) is not true
-			|| named is not IEnumerable<string> names
-			|| names.Contains(dependency.Name, StringComparer.OrdinalIgnoreCase);
+	private string? GoverningRuleId(DependencyRef dependency, Func<string, bool> canRemediate)
+		=> _rules
+			.OfType<IGovernsDependency>()
+			.Cast<IRule>()
+			.FirstOrDefault(rule =>
+				((IGovernsDependency)rule).Governs(dependency)
+				&& canRemediate(rule.RuleId))
+			?.RuleId;
+
+	/// <summary>
+	/// Whether the repository declares this dependency anywhere the scanners read.
+	/// </summary>
+	/// <remarks>
+	/// A rule can only fail for what it can see. <c>nbgv</c> is claimed by the package rules - they
+	/// claim every NuGet package - but is declared in <c>.config/dotnet-tools.json</c>, which
+	/// <see cref="PackageReferenceScanner"/> does not read, so no failure of theirs can ever name it.
+	/// Governed but unobserved is a gap, and a more durable one than an ungoverned dependency: the
+	/// rule that claims it will never fail for it, so nothing will surface it on its own.
+	/// </remarks>
+	private static bool IsObserved(
+		DependencyRef dependency,
+		List<PackageVersionReference> packages,
+		List<ActionUsage> actionUsages)
+		=> dependency.Ecosystem switch
+		{
+			DependencyEcosystem.NuGet => packages.Any(p => string.Equals(
+				p.PackageId, dependency.Name, StringComparison.OrdinalIgnoreCase)),
+			DependencyEcosystem.GitHubActions => actionUsages.Any(u => string.Equals(
+				u.Action, dependency.Name, StringComparison.OrdinalIgnoreCase)),
+			_ => false
+		};
+
 }

@@ -60,6 +60,24 @@ public interface IGitHubWriteApi
 		CancellationToken cancellationToken);
 
 	/// <summary>
+	/// Closes an issue.
+	/// </summary>
+	/// <param name="owner">The repository owner.</param>
+	/// <param name="name">The repository name.</param>
+	/// <param name="number">The issue number.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// Separate from <see cref="ClosePullRequestAsync"/> even though GitHub models both as issues,
+	/// because the two are different decisions with different blast radii: one ends somebody's pull
+	/// request, the other retracts an issue this application raised itself.
+	/// </remarks>
+	Task CloseIssueAsync(
+		string owner,
+		string name,
+		int number,
+		CancellationToken cancellationToken);
+
+	/// <summary>
 	/// Closes a pull request, leaving its branch alone.
 	/// </summary>
 	/// <param name="owner">The repository owner.</param>

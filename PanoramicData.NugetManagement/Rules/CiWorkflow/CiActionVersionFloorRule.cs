@@ -32,6 +32,11 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 	/// </summary>
 	private const string _noHardcodedFloor = "v0";
 
+	/// <summary>
+	/// The advisory key naming the actions a failure of this rule will move.
+	/// </summary>
+	private const string _governedActionsKey = "governed_actions";
+
 	private static readonly string[] _workflowGlobs = [".github/workflows/*.yml", ".github/workflows/*.yaml"];
 
 	/// <inheritdoc />
@@ -56,6 +61,16 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 	public bool Governs(DependencyRef dependency)
 		=> dependency.Ecosystem == DependencyEcosystem.GitHubActions
 			&& !ClaimedElsewhere(dependency.Name);
+
+	/// <inheritdoc />
+	/// <remarks>
+	/// This rule claims a whole ecosystem but only moves what it found behind, and the failure names
+	/// those in <c>governed_actions</c>. An action missing from that list is not moved by this failure,
+	/// however broadly the rule governs.
+	/// </remarks>
+	public bool WillMove(RuleResult failure, DependencyRef dependency)
+		=> Governs(dependency)
+			&& AdvisoryNames.Contains(failure, _governedActionsKey, dependency.Name);
 
 	/// <summary>
 	/// Whether some other rule already enforces a minimum version of this action.
@@ -173,7 +188,7 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 					["globs"] = _workflowGlobs,
 					["patterns"] = behind.Select(b => PatternFor(b.Action, b.Floor)).ToArray(),
 					["replacements"] = behind.Select(b => $"${{1}}{b.Floor}").ToArray(),
-					["governed_actions"] = behind.Select(b => b.Action).ToArray()
+					[_governedActionsKey] = behind.Select(b => b.Action).ToArray()
 				}
 			}));
 	}

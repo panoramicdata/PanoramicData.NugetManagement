@@ -22,6 +22,16 @@ namespace PanoramicData.NugetManagement.Rules;
 /// </remarks>
 public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 {
+	/// <summary>
+	/// The advisory key naming the packages a failure of one of these rules will move.
+	/// </summary>
+	/// <remarks>
+	/// Separate from <c>behind_estate</c> and <c>behind_upstream</c>, which carry a rendered sentence
+	/// per finding for a human to read. Triage needs the bare identifiers, and parsing them back out of
+	/// prose is the kind of coupling that breaks the moment the wording improves.
+	/// </remarks>
+	public const string GovernedPackagesKey = "governed_packages";
+
 	/// <inheritdoc />
 	/// <remarks>
 	/// Every NuGet package, because these rules act on whatever the repository declares rather than on
@@ -30,6 +40,22 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 	/// </remarks>
 	public bool Governs(DependencyRef dependency)
 		=> dependency.Ecosystem == DependencyEcosystem.NuGet;
+
+	/// <inheritdoc />
+	/// <remarks>
+	/// <see cref="Governs"/> claims the whole ecosystem, but a failure moves only the packages it
+	/// named, so the claim has to be narrowed to those. Without this, a failure about one package
+	/// reports every other NuGet pull request as covered by a fix that never touches it — and those
+	/// pull requests then wait indefinitely for it, with no gap issue raised because they look handled.
+	/// <para>
+	/// A package the scanner never reads can never be named here, which is the honest answer for one
+	/// declared somewhere these rules do not look — <c>nbgv</c> in <c>.config/dotnet-tools.json</c>
+	/// being the case that prompted this.
+	/// </para>
+	/// </remarks>
+	public bool WillMove(RuleResult failure, DependencyRef dependency)
+		=> Governs(dependency)
+			&& AdvisoryNames.Contains(failure, GovernedPackagesKey, dependency.Name);
 
 	private readonly NuGetVersionCache _cache;
 	private readonly NuGetFloorCatalog _floors;
@@ -90,6 +116,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 		var behindEstate = new List<string>();
 		var behindUpstream = new List<string>();
 		var pending = new List<string>();
+		var governed = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
 		var now = _timeProvider.GetUtcNow();
 
 		foreach (var reference in packageReferences)
@@ -111,6 +138,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 				&& NuGetVersionChecker.ClassifyUpdateLevel(current, floorVersion) == TargetUpdateLevel)
 			{
 				behindEstate.Add($"{reference.PackageId} {current.ToNormalizedString()} → {floor} ({reference.FilePath})");
+				governed.Add(reference.PackageId);
 				continue;
 			}
 
@@ -128,6 +156,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 			if (age.TotalDays > GraceDays)
 			{
 				behindUpstream.Add($"{entry}, published {age.Days} days ago");
+				governed.Add(reference.PackageId);
 			}
 			else
 			{
@@ -165,6 +194,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 					["remediation_type"] = "update_package_versions",
 					["behind_estate"] = behindEstate.ToArray(),
 					["behind_upstream"] = behindUpstream.ToArray(),
+					[GovernedPackagesKey] = governed.ToArray(),
 					["grace_days"] = GraceDays
 				}
 			}));

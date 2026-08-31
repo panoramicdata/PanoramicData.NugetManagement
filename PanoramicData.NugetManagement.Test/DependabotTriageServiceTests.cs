@@ -1,4 +1,5 @@
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 
 namespace PanoramicData.NugetManagement.Test;
@@ -73,6 +74,26 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 		}
 	};
 
+	/// <summary>
+	/// A failing result from a package rule. These claim every NuGet package and move the ones they
+	/// named, so the names are what a test has to supply for a failure to cover anything.
+	/// </summary>
+	private static RuleResult FailingNamingPackages(string ruleId, params string[] packages) => new()
+	{
+		RuleId = ruleId,
+		RuleName = ruleId,
+		Category = AssessmentCategory.NuGetHygiene,
+		Severity = AssessmentSeverity.Error,
+		Passed = false,
+		Message = "failing, for this test",
+		Advisory = new RuleAdvisory
+		{
+			Summary = "Update the packages this names",
+			Detail = "Update the packages this names.",
+			Data = new() { [NuGetPackageUpdateRuleBase.GovernedPackagesKey] = packages }
+		}
+	};
+
 	/// <summary>Triages one pull request, with every governing rule remediable unless stated.</summary>
 	private static DependabotTriage TriageOne(
 		RepositoryIssue issue,
@@ -112,7 +133,7 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 		var triage = TriageOne(
 			PullRequest(1, "Bump refit from 6.3.2 to 7.2.22"),
 			Ctx(Packages("refit", "6.3.2")),
-			[Failing("PKG-07")]);
+			[FailingNamingPackages("PKG-07", "refit")]);
 
 		triage.Verdict.Should().Be(DependabotVerdict.ValidCovered);
 		triage.CoveringRuleId.Should().Be("PKG-07");
@@ -128,6 +149,45 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 				"a rule that is not failing will not be remediated, so it cannot cover this");
 
 	[Fact]
+	public void PackageDeclaredBelowTarget_WithNoFailingRule_IsNotARuleSetGap()
+		=> TriageOne(
+				PullRequest(1, "Bump refit from 6.3.2 to 7.2.22"),
+				Ctx(Packages("refit", "6.3.2")),
+				ruleResults: [])
+			.IsRuleSetGap.Should().BeFalse(
+				"the package rules govern every NuGet package and can see this one, so a pass today is "
+				+ "a rule with nothing to say rather than a gap for somebody to fill");
+
+	[Fact]
+	public void APackageRuleFailingAboutAnotherPackage_DoesNotCoverThisOne()
+	{
+		var triage = TriageOne(
+			PullRequest(1, "Bump refit from 6.3.2 to 7.2.22"),
+			Ctx(Packages("refit", "6.3.2")),
+			[FailingNamingPackages("PKG-07", "Newtonsoft.Json")]);
+
+		triage.Verdict.Should().Be(DependabotVerdict.ValidUncovered,
+			"the failure will move Newtonsoft.Json and nothing else, so reporting this as covered "
+			+ "would leave it waiting for a fix that never touches it");
+		triage.CoveringRuleId.Should().BeNull();
+	}
+
+	[Fact]
+	public void ADependencyDeclaredWhereNoScannerReads_IsARuleSetGap()
+	{
+		// nbgv lives in .config/dotnet-tools.json, which PackageReferenceScanner does not read. The
+		// package rules claim it all the same, so "governed" alone would hide it forever.
+		var triage = TriageOne(
+			PullRequest(1, "Bump nbgv from 3.9.50 to 3.10.94"),
+			Ctx(Packages("refit", "7.2.22")));
+
+		triage.Verdict.Should().Be(DependabotVerdict.ValidUncovered);
+		triage.IsRuleSetGap.Should().BeTrue(
+			"no failure of the rule that claims it can ever name a package the scanner never sees");
+		triage.Reason.Should().Contain("never reads where it is declared");
+	}
+
+	[Fact]
 	public void PackageDeclaredInTwoPlaces_OneBehind_IsNotSatisfied()
 	{
 		var context = Ctx(
@@ -135,7 +195,10 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 			("src/Sample.csproj",
 				"""<Project><ItemGroup><PackageReference Include="refit" Version="6.3.2" /></ItemGroup></Project>"""));
 
-		TriageOne(PullRequest(1, "Bump refit from 6.3.2 to 7.2.22"), context, [Failing("PKG-07")])
+		TriageOne(
+				PullRequest(1, "Bump refit from 6.3.2 to 7.2.22"),
+				context,
+				[FailingNamingPackages("PKG-07", "refit")])
 			.Verdict.Should().Be(DependabotVerdict.ValidCovered,
 				"one declaration left behind means the bump still has work to do");
 	}

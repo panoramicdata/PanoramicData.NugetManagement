@@ -25,6 +25,13 @@ public class CiWorkflowMatchesMerakiRule : RuleBase, IGovernsDependency
 	public bool Governs(DependencyRef dependency) => _governed.Contains(dependency);
 
 	/// <inheritdoc />
+	/// <remarks>
+	/// The remediation replaces the whole workflow with the template, so any failure of this rule
+	/// carries both governed actions to the template's versions. Nothing to narrow.
+	/// </remarks>
+	public bool WillMove(RuleResult failure, DependencyRef dependency) => Governs(dependency);
+
+	/// <inheritdoc />
 	public override string RuleName => "CI workflow matches Meraki.Api standard";
 
 	/// <inheritdoc />

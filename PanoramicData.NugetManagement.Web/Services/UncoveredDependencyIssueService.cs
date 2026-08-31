@@ -63,6 +63,18 @@ public sealed class UncoveredDependencyIssueService(string targetRepositoryFullN
 		new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
+	/// The markers this process has established have no open gap issue, because it looked and found
+	/// none or because it closed the one there was.
+	/// </summary>
+	/// <remarks>
+	/// Retraction asks about every dependency a pass found covered or already satisfied, and an
+	/// estate-wide sweep asks for hundreds of them. Without this, each question is another read of the
+	/// same issue list. A marker recorded here can only be wrong in the direction of not closing an
+	/// issue raised elsewhere mid-sweep, which the next pass closes instead.
+	/// </remarks>
+	private readonly HashSet<string> _noOpenIssue = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
 	/// The title of the issue that tracks a dependency's missing remediation.
 	/// </summary>
 	/// <param name="dependency">The uncovered dependency.</param>
@@ -123,6 +135,7 @@ public sealed class UncoveredDependencyIssueService(string targetRepositoryFullN
 						.ConfigureAwait(false);
 
 					_raised[marker] = (number, body);
+					_noOpenIssue.Remove(marker);
 
 					return;
 				}
@@ -146,6 +159,76 @@ public sealed class UncoveredDependencyIssueService(string targetRepositoryFullN
 				.ConfigureAwait(false);
 
 			_raised[marker] = (known.Number, updated);
+		}
+		finally
+		{
+			_gate.Release();
+		}
+	}
+
+	/// <summary>
+	/// Closes a dependency's gap issue, if it has one, now that something covers it.
+	/// </summary>
+	/// <param name="readApi">For finding the issue.</param>
+	/// <param name="writeApi">For commenting and closing.</param>
+	/// <param name="dependency">The dependency that is no longer a gap.</param>
+	/// <param name="reason">Why it is no longer a gap, in a fragment that completes a sentence.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>The number of the issue closed, or null when there was none to close.</returns>
+	/// <remarks>
+	/// The counterpart to <see cref="ReportAsync"/>, and the half that was missing: an issue raised by
+	/// a machine and closeable only by a human accumulates until somebody distrusts the whole list.
+	/// Only issues carrying this application's own marker are touched, so a human's issue about the
+	/// same dependency is never closed from here.
+	/// </remarks>
+	public async Task<int?> RetractAsync(
+		IGitHubIssueApi readApi,
+		IGitHubWriteApi writeApi,
+		DependencyRef dependency,
+		string reason,
+		CancellationToken cancellationToken)
+	{
+		var (owner, name) = Split(targetRepositoryFullName);
+		var marker = MarkerFor(dependency);
+
+		await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+		try
+		{
+			if (_noOpenIssue.Contains(marker))
+			{
+				return null;
+			}
+
+			var found = await FindAsync(readApi, owner, name, marker, cancellationToken)
+				.ConfigureAwait(false);
+
+			if (found is null)
+			{
+				_noOpenIssue.Add(marker);
+				return null;
+			}
+
+			await writeApi
+				.CommentAsync(
+					owner,
+					name,
+					found.Number,
+					$"Closing: `{dependency.Name}` is no longer an uncovered gap — {reason}.\n\n"
+						+ "Raised and retracted by Dependabot triage.",
+					cancellationToken)
+				.ConfigureAwait(false);
+
+			await writeApi
+				.CloseIssueAsync(owner, name, found.Number, cancellationToken)
+				.ConfigureAwait(false);
+
+			// What this process remembered about the issue is now wrong: it is closed, and a later
+			// sighting has to raise a fresh one rather than append to it.
+			_raised.Remove(marker);
+			_noOpenIssue.Add(marker);
+
+			return found.Number;
 		}
 		finally
 		{
@@ -182,12 +265,18 @@ public sealed class UncoveredDependencyIssueService(string targetRepositoryFullN
 			marker,
 			string.Empty,
 			$"Dependabot is raising version bumps for `{dependency.Name}` "
-				+ $"({Slug(dependency.Ecosystem)}) that this application judges valid but cannot fix: no "
-				+ "rule enforces a minimum version of it, so no remediation moves it.",
+				+ $"({Slug(dependency.Ecosystem)}) that this application judges valid but cannot fix. No "
+				+ "rule that governs this dependency can ever move it: either none governs it at all, or "
+				+ "the one that claims it never reads the file it is declared in.",
+			string.Empty,
+			"This is a standing gap rather than a snapshot. A dependency whose rule is merely passing "
+				+ "today does not appear here — that rule will fail when it should, and no issue is needed "
+				+ "for the interval in between.",
 			string.Empty,
 			"Either add a rule that governs this dependency and a remediation for it, or decide the gap "
 				+ "is deliberate and close this issue. Until one or the other happens, every pull request "
-				+ "below has to be handled by hand.",
+				+ "below has to be handled by hand. Triage closes this issue itself once a rule starts "
+				+ "covering the dependency.",
 			string.Empty,
 			"Seen in:",
 			string.Empty,
