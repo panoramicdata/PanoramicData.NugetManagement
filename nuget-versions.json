@@ -320,9 +320,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Google.Protobuf": {
-    "latestVersion": "3.36.0",
-    "published": "2026-08-20T17:31:21.687+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "3.36.1",
+    "published": "2026-08-31T23:38:20.13+01:00",
+    "refreshedAtUtc": "2026-08-31T23:00:22.4790729+00:00"
   },
   "GraphQL.Client": {
     "latestVersion": "6.1.0",

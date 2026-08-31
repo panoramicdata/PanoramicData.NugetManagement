@@ -1083,9 +1083,16 @@ public class DashboardService
 	}
 
 	/// <summary>
-	/// Syncs a local repository with remote (fetch, pull --rebase, push).
+	/// Syncs a local repository with remote (fetch, pull --rebase, push). Returns whether the clone
+	/// ended up in step with origin.
 	/// </summary>
-	public async Task GitSyncAsync(
+	/// <remarks>
+	/// The result matters to callers that write to the clone afterwards: a failure here can mean there
+	/// is no clone at all — a clone into a directory that already exists and is not empty fails — and
+	/// remediations create the directories they write into, so a caller that carries on regardless
+	/// fills a bare directory with plausible-looking files belonging to no repository.
+	/// </remarks>
+	public async Task<bool> GitSyncAsync(
 		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
@@ -1095,7 +1102,7 @@ public class DashboardService
 		{
 			row.Status = PackageStatus.Error;
 			row.StatusMessage = "Cannot determine repo name.";
-			return;
+			return false;
 		}
 
 		var isClonedLocally = _localRepo.IsClonedLocally(repoIdentity);
@@ -1107,7 +1114,7 @@ public class DashboardService
 				row.Status = PackageStatus.Error;
 				row.StatusMessage = "No repository known for this package.";
 				onOutput?.Invoke($"❌ {row.RepositoryFullName}: no repository is known for this package, so there is nothing to clone.");
-				return;
+				return false;
 			}
 
 			onOutput?.Invoke($"Cloning {row.RepositoryFullName}...");
@@ -1117,7 +1124,7 @@ public class DashboardService
 				row.Status = PackageStatus.Error;
 				row.StatusMessage = "Git sync failed.";
 				onOutput?.Invoke(cloneOutput);
-				return;
+				return false;
 			}
 
 			row.IsClonedLocally = true;
@@ -1130,7 +1137,7 @@ public class DashboardService
 			// somebody else's history into what this row believes is its checkout.
 			row.Status = PackageStatus.Error;
 			row.StatusMessage = "Local folder holds a different repository.";
-			return;
+			return false;
 		}
 
 		row.Status = PackageStatus.GitSyncing;
@@ -1142,6 +1149,8 @@ public class DashboardService
 
 		row.Status = success ? PackageStatus.GitSynced : PackageStatus.Error;
 		row.StatusMessage = success ? "Synced with remote." : "Git sync failed.";
+
+		return success;
 	}
 
 	/// <summary>
@@ -1568,8 +1577,36 @@ public class DashboardService
 					continue;
 				}
 
-				// Guardrail: never commit onto a stale clone — sync, then reassess the fresh tree.
-				await GitSyncAsync(row, onOutput, cancellationToken).ConfigureAwait(false);
+				// Guardrail: never commit onto a stale clone — sync, then reassess the fresh tree. The
+				// sync is also what clones a repository being remediated for the first time, so its
+				// failure has to stop the repository here: carrying on would apply the remediation to
+				// whatever the path happens to be, up to and including a directory that is not a clone.
+				if (!await GitSyncAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
+				{
+					outcome.Results.Add(new RepoApplyResult
+					{
+						RepositoryFullName = name,
+						Status = RepoApplyStatus.Skipped,
+						Message = "Skipped: the local clone could not be synced with origin."
+					});
+					continue;
+				}
+
+				// The gate again, now unconditionally: the check above is skipped for a row with no
+				// clone, and the sync was supposed to produce one. Remediations create the directories
+				// they write into, so without this a bare directory gets filled with files belonging to
+				// no repository, and nothing notices until the push refuses to touch it.
+				if (!await VerifyWritableCloneAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
+				{
+					outcome.Results.Add(new RepoApplyResult
+					{
+						RepositoryFullName = name,
+						Status = RepoApplyStatus.Skipped,
+						Message = "Skipped: the local clone is not in a state it is safe to write to."
+					});
+					continue;
+				}
+
 				await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
 
 				phase = RepoApplyPhase.Applying;

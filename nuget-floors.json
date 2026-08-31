@@ -225,7 +225,7 @@
   "NUnit": "4.6.1",
   "NUnit3TestAdapter": "6.3.0",
   "Octokit": "14.0.0",
-  "Ollama.Api": "1.0.13",
+  "Ollama.Api": "1.0.24",
   "PanoramicData.Blazor": "10.0.215",
   "PanoramicData.ChartMagic": "9.1.26",
   "PanoramicData.DeepCloner": "1.0.8",

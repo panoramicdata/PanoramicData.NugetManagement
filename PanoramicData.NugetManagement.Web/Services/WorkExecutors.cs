@@ -1269,9 +1269,9 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			await dashboard.GitSyncAsync(row, Say, cancellationToken).ConfigureAwait(false);
+			var synced = await dashboard.GitSyncAsync(row, Say, cancellationToken).ConfigureAwait(false);
 
-			Say(row.Status == PackageStatus.GitSynced ? "✅ Git sync complete" : "❌ Git sync failed");
+			Say(synced ? "✅ Git sync complete" : "❌ Git sync failed");
 			cache.UpsertRow(row);
 
 			if (row.CurrentBranch is not null)
