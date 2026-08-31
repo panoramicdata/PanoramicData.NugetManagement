@@ -177,6 +177,38 @@ public class RuntimeSettingsService
 		}
 	}
 
+	/// <summary>
+	/// The Ollama configuration, never null: an unconfigured installation gets defaults whose
+	/// <see cref="OllamaOptions.IsConfigured"/> is false, so callers ask that rather than checking for
+	/// null.
+	/// </summary>
+	public OllamaOptions Ollama
+	{
+		get
+		{
+			lock (_lock)
+			{
+				return _runtimeSettings.Ollama ?? new OllamaOptions();
+			}
+		}
+	}
+
+	/// <summary>
+	/// Sets the Ollama configuration and persists it.
+	/// </summary>
+	/// <param name="value">The new configuration; numeric fields are clamped to workable ranges.</param>
+	public void SetOllama(OllamaOptions value)
+	{
+		ArgumentNullException.ThrowIfNull(value);
+
+		lock (_lock)
+		{
+			_runtimeSettings.Ollama = value.Normalised();
+		}
+
+		SaveToDisk();
+	}
+
 	/// <summary>Sets the lane concurrency cap and persists it.</summary>
 	/// <param name="value">The new cap; values below one are clamped.</param>
 	public void SetMaxConcurrentLanes(int value)
@@ -434,6 +466,7 @@ public class RuntimeSettingsService
 					IncludeInfoInAiPrompt = _runtimeSettings.IncludeInfoInAiPrompt,
 					AllowPublishWithoutTests = _runtimeSettings.AllowPublishWithoutTests,
 					MaxConcurrentLanes = _runtimeSettings.MaxConcurrentLanes,
+					Ollama = _runtimeSettings.Ollama,
 					Organizations = [.. _runtimeSettings.Organizations],
 					ExcludedRepositories = [.. _runtimeSettings.ExcludedRepositories]
 				};
@@ -488,6 +521,11 @@ public class RuntimeSettings
 	/// applied per repository would be forgotten in exactly the repository it was set on.
 	/// </remarks>
 	public bool AllowPublishWithoutTests { get; set; }
+
+	/// <summary>
+	/// Where the local model is and how hard to work it, or null when none is configured.
+	/// </summary>
+	public OllamaOptions? Ollama { get; set; }
 
 	/// <summary>
 	/// How many repository lanes may run at once. Defaults to 20.
