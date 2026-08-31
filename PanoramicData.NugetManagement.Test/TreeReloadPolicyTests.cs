@@ -3,69 +3,95 @@ using PanoramicData.NugetManagement.Web.Services;
 namespace PanoramicData.NugetManagement.Test;
 
 /// <summary>
-/// Tests for <see cref="TreeReloadPolicy"/>: progress must not rebuild the tree, and the node set must
-/// still catch up once the work that changed it has finished.
+/// Tests for <see cref="TreeReloadPolicy"/>: progress must not rebuild the tree, but the queue's own
+/// contents must appear as they change — the work nodes are the one part of the tree whose structure
+/// is the information.
 /// </summary>
 public class TreeReloadPolicyTests(ITestOutputHelper output) : TestWithOutput(output)
 {
 	[Fact]
-	public void ProgressWhileWorkRuns_NeverRebuilds()
+	public void ProgressOnTheSameQueue_NeverRebuilds()
 	{
 		var policy = new TreeReloadPolicy();
+		policy.ObserveAndShouldReload(["a", "b"]);
 
-		policy.ObserveAndShouldReload(anyRunning: true).Should().BeFalse("the first report merely starts the run");
-		policy.ObserveAndShouldReload(anyRunning: true).Should().BeFalse();
-		policy.ObserveAndShouldReload(anyRunning: true).Should().BeFalse(
+		policy.ObserveAndShouldReload(["a", "b"]).Should().BeFalse();
+		policy.ObserveAndShouldReload(["a", "b"]).Should().BeFalse(
 			"a rebuild per progress report is the flicker: it replaces the DOM subtree under every node");
 	}
 
 	[Fact]
-	public void WhenTheLastLaneFinishes_ItRebuildsOnce()
-	{
-		var policy = new TreeReloadPolicy();
-
-		policy.ObserveAndShouldReload(anyRunning: true).Should().BeFalse();
-
-		policy.ObserveAndShouldReload(anyRunning: false).Should().BeTrue(
-			"the results are in, and the node set they produce may be entirely different");
-
-		policy.ObserveAndShouldReload(anyRunning: false).Should().BeFalse(
-			"and only once — nothing has changed since");
-	}
-
-	[Fact]
-	public void ChangesWithNoWorkRunningAtAll_DoNotRebuild()
+	public void TheFirstObservationRebuilds_SoTheQueueAppearsAtAll()
 		=> new TreeReloadPolicy()
-			.ObserveAndShouldReload(anyRunning: false)
-			.Should().BeFalse("there was no run to produce new results");
+			.ObserveAndShouldReload(["a"])
+			.Should().BeTrue();
 
 	[Fact]
-	public void ASecondRun_RebuildsAgainWhenItFinishes()
+	public void WorkBeingQueued_Rebuilds()
 	{
 		var policy = new TreeReloadPolicy();
+		policy.ObserveAndShouldReload(["a"]);
 
-		policy.ObserveAndShouldReload(anyRunning: true);
-		policy.ObserveAndShouldReload(anyRunning: false).Should().BeTrue();
-
-		policy.ObserveAndShouldReload(anyRunning: true).Should().BeFalse();
-		policy.ObserveAndShouldReload(anyRunning: false).Should().BeTrue();
+		policy.ObserveAndShouldReload(["a", "b"]).Should().BeTrue(
+			"a queued item is a new node, and no amount of re-rendering invents one");
 	}
 
 	[Fact]
-	public void AWholeBurstAndFinish_RebuildsExactlyOnce()
+	public void WorkFinishing_Rebuilds()
+	{
+		var policy = new TreeReloadPolicy();
+		policy.ObserveAndShouldReload(["a", "b"]);
+
+		policy.ObserveAndShouldReload(["a"]).Should().BeTrue("its node has to go, and its results are in");
+	}
+
+	[Fact]
+	public void TheLastItemFinishing_Rebuilds()
+	{
+		var policy = new TreeReloadPolicy();
+		policy.ObserveAndShouldReload(["a"]);
+
+		policy.ObserveAndShouldReload([]).Should().BeTrue(
+			"everything a finished run changed — assessments, counts, findings — lands here");
+	}
+
+	[Fact]
+	public void OrderOfTheSameItems_IsNotAChange()
+	{
+		var policy = new TreeReloadPolicy();
+		policy.ObserveAndShouldReload(["a", "b"]);
+
+		policy.ObserveAndShouldReload(["b", "a"]).Should().BeFalse(
+			"the lanes are snapshotted in whatever order they enumerate; that is not news");
+	}
+
+	[Fact]
+	public void AQuietQueue_NeverRebuilds()
+	{
+		var policy = new TreeReloadPolicy();
+		policy.ObserveAndShouldReload([]);
+
+		policy.ObserveAndShouldReload([]).Should().BeFalse();
+		policy.ObserveAndShouldReload([]).Should().BeFalse();
+	}
+
+	[Fact]
+	public void ABurstOfProgressThenCompletion_RebuildsOncePerRealChange()
 	{
 		var policy = new TreeReloadPolicy();
 		var reloads = 0;
 
-		// Twenty lanes reporting repeatedly, then the last one finishing.
-		foreach (var running in Enumerable.Repeat(true, 50).Append(false))
+		// Enqueued, then fifty progress reports, then finished.
+		foreach (var queue in Enumerable
+			.Repeat<IReadOnlyList<string>>(["a"], 51)
+			.Append<IReadOnlyList<string>>([]))
 		{
-			if (policy.ObserveAndShouldReload(running))
+			if (policy.ObserveAndShouldReload(queue))
 			{
 				reloads++;
 			}
 		}
 
-		reloads.Should().Be(1);
+		reloads.Should().Be(2, "once when it appeared and once when it went — not fifty-one times");
 	}
 }

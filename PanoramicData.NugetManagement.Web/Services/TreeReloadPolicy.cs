@@ -9,31 +9,44 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// changes <em>during</em> a run has to reach the screen by re-rendering the node template against live
 /// state instead — which is how the repository spinners and health glyphs already work.
 /// <para>
-/// What the template cannot do is change the set of nodes. A finished run can produce an entirely
-/// different one: repositories appear, assessments turn into different failing rules, closed Dependabot
-/// pull requests stop being findings. So the tree is rebuilt exactly once, on the transition from
-/// "something is running" to "nothing is" — one rebuild per run instead of one every 250 milliseconds
-/// for its duration.
+/// The distinction that matters is not "is work running" but "did the set of nodes change". Progress
+/// reports arrive many times a second and change no node's existence: a running item's spinner and its
+/// "repo 8 of 47" are template-driven. Queueing an item and finishing one do change it — a work node
+/// appears or goes, and a finished run leaves different assessments, counts and findings behind. So the
+/// rebuild follows the composition of the queue, and a burst of fifty progress reports on one item
+/// costs nothing.
 /// </para>
 /// <para>
-/// Not thread-safe, and does not need to be: it is only ever consulted from the debounce handler, which
+/// Not thread-safe, and does not need to be: it is only consulted from the debounce handler, which
 /// marshals onto the renderer's own context.
 /// </para>
 /// </remarks>
 public sealed class TreeReloadPolicy
 {
-	private bool _wasRunning;
+	private HashSet<string>? _lastQueue;
 
 	/// <summary>
-	/// Records the current state of the lanes and says whether the tree should now be rebuilt.
+	/// Records what is currently queued and says whether the tree should now be rebuilt.
 	/// </summary>
-	/// <param name="anyRunning">Whether any lane is currently running work.</param>
-	/// <returns>True exactly once per run, as the last lane finishes.</returns>
-	public bool ObserveAndShouldReload(bool anyRunning)
+	/// <param name="workItemIds">The ids of every outstanding work item, in any order.</param>
+	/// <returns>True when the set differs from the last observation, including the first one.</returns>
+	public bool ObserveAndShouldReload(IReadOnlyList<string> workItemIds)
 	{
-		var justWentIdle = _wasRunning && !anyRunning;
-		_wasRunning = anyRunning;
+		var current = new HashSet<string>(workItemIds, StringComparer.Ordinal);
 
-		return justWentIdle;
+		// The first observation always rebuilds: whatever is queued at that point has never been drawn.
+		if (_lastQueue is null)
+		{
+			_lastQueue = current;
+			return true;
+		}
+
+		if (_lastQueue.SetEquals(current))
+		{
+			return false;
+		}
+
+		_lastQueue = current;
+		return true;
 	}
 }

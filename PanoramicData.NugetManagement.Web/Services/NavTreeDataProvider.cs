@@ -110,6 +110,18 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	public static string WorkItemKey(string workItemId) => $"work-item:{workItemId}";
 
 	/// <summary>
+	/// Builds the key for a work item as it appears under an organisation's own Work node.
+	/// </summary>
+	/// <param name="workItemId">The work item.</param>
+	/// <remarks>
+	/// Distinct from <see cref="WorkItemKey"/> because the same item appears twice: once under the
+	/// repository whose lane it is on, and once under the organisation rolling that lane up. Two tree
+	/// nodes sharing a key is a bug in the tree itself, so the mirror gets its own namespace while
+	/// keeping the item's identity in <see cref="NavItem.WorkItemId"/> — which is what stopping it uses.
+	/// </remarks>
+	public static string OrgWorkItemKey(string workItemId) => $"work-org-item:{workItemId}";
+
+	/// <summary>
 	/// The key of the always-expanded top-level container. Unlike the other container nodes it is
 	/// selectable, because selecting it shows the estate overview.
 	/// </summary>
@@ -692,9 +704,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			Organization = organization,
 			RepositoryFullName = repositoryFullName,
 			LaneKey = laneKey,
-			// An organisation node whose own lane is empty has nothing to expand into: its descendants
-			// are listed under their own repositories, not here.
-			IsLeaf = laneItems.Count == 0,
+			// Expandable whenever it covers anything at all, its descendants' work included. It used to
+			// be a leaf when its own lane was empty, so an organisation reading "Work (3 below)" could
+			// not be opened to see those three — and the stop-all button on it reached work the tree
+			// would not show.
+			IsLeaf = laneItems.Count == 0 && itemsBelow == 0,
 			SortOrder = sortOrder
 		});
 
@@ -725,7 +739,83 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				SortOrder = index
 			});
 		}
+
+		if (itemsBelow == 0)
+		{
+			return;
+		}
+
+		// The work in the repositories' own lanes, mirrored here. Listed rather than merely counted so
+		// that the node reporting it can be opened to see it, and so the stop-all button on this node
+		// never reaches anything invisible.
+		var below = WorkItemsUnderOrganisation(organization, laneKey);
+
+		for (var index = 0; index < below.Count; index++)
+		{
+			var (itemRepositoryFullName, workItem) = below[index];
+			var shortName = ShortRepositoryName(itemRepositoryFullName);
+
+			items.Add(new NavItem
+			{
+				Key = OrgWorkItemKey(workItem.Id),
+				Text = MirroredWorkText(shortName, workItem.Title),
+				ParentKey = workKey,
+				IconCss = workItem.State switch
+				{
+					Models.WorkItemState.Running => "fas fa-circle-notch fa-spin",
+					Models.WorkItemState.Cancelling => "fas fa-rotate-left fa-spin",
+					_ => "fas fa-clock"
+				},
+				View = NavView.None,
+				Organization = organization,
+				RepositoryFullName = itemRepositoryFullName,
+				LaneKey = RepositoryLaneKey(itemRepositoryFullName),
+				WorkItemId = workItem.Id,
+				WorkItemState = workItem.State,
+				WorkItemProgress = workItem.Progress,
+				IsLeaf = true,
+				// After this node's own items, keeping "here" above "below" as the label describes them.
+				SortOrder = laneItems.Count + index
+			});
+		}
 	}
+
+	/// <summary>
+	/// The outstanding work in an organisation's repositories' lanes, with the repository each item
+	/// belongs to.
+	/// </summary>
+	/// <param name="organization">The organisation whose descendants to gather.</param>
+	/// <param name="ownLaneKey">The organisation's own lane, which is listed separately.</param>
+	private List<(string RepositoryFullName, Models.WorkItem Item)> WorkItemsUnderOrganisation(
+		string organization,
+		string ownLaneKey)
+		=> _workLanes is null
+			? []
+			: [.. _workLanes.Lanes
+				.Where(lane => !string.Equals(lane.Key, ownLaneKey, StringComparison.Ordinal)
+					&& string.Equals(lane.Organization, organization, StringComparison.OrdinalIgnoreCase))
+				.OrderBy(lane => lane.Key, StringComparer.OrdinalIgnoreCase)
+				.SelectMany(lane => lane.Items
+					.Select(item => (item.RepositoryFullName ?? lane.Key, item)))];
+
+	/// <summary>
+	/// A mirrored item's label: the repository, then what the work is.
+	/// </summary>
+	/// <remarks>
+	/// The same title appears under every repository — twelve "Re-assess" items are indistinguishable
+	/// without it. The repository is left off where the title already names it, which most of them do,
+	/// rather than reading "Athonet.Api — Re-assess Athonet.Api".
+	/// </remarks>
+	private static string MirroredWorkText(string repositoryShortName, string title)
+		=> title.Contains(repositoryShortName, StringComparison.OrdinalIgnoreCase)
+			? title
+			: $"{repositoryShortName} — {title}";
+
+	/// <summary>The repository's name without its owner.</summary>
+	private static string ShortRepositoryName(string repositoryFullName)
+		=> repositoryFullName.Contains('/', StringComparison.Ordinal)
+			? repositoryFullName.Split('/')[^1]
+			: repositoryFullName;
 
 	/// <summary>
 	/// One repository's lane key, as <see cref="WorkDescriptor.LaneKey"/> builds it.

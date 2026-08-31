@@ -4943,9 +4943,11 @@ else
 			// instead replaced the DOM under every loaded branch, every 250 ms, for as long as anything
 			// was running: the flicker, and the scrollbar jumping out from under whoever was reading.
 			//
-			// The set of nodes is the one thing the template cannot change, and a finished run can make it
-			// completely different. So the rebuild happens once, as the last lane goes idle.
-			if (_treeReloads.ObserveAndShouldReload(Lanes.RunningLaneCount > 0))
+			// What the template cannot change is which nodes exist. Queueing an item and finishing one do
+			// change that — the work nodes list the queue, and a finished run leaves different
+			// assessments, counts and findings behind — so the rebuild follows the composition of the
+			// queue rather than the arrival of a progress report.
+			if (_treeReloads.ObserveAndShouldReload(OutstandingWorkItemIds()))
 			{
 				await ReloadTreePreservingExpansionAsync();
 			}
@@ -4958,6 +4960,17 @@ else
 	/// Decides when a lane change justifies rebuilding the tree rather than just re-rendering it.
 	/// </summary>
 	private readonly TreeReloadPolicy _treeReloads = new();
+
+	/// <summary>
+	/// The ids of every outstanding work item, across every lane.
+	/// </summary>
+	/// <remarks>
+	/// One <see cref="WorkLaneService.Lanes"/> snapshot, which takes a lock and deep-copies: worth
+	/// saying because reading it per lane instead would contend with up to twenty runner threads
+	/// reporting progress.
+	/// </remarks>
+	private List<string> OutstandingWorkItemIds()
+		=> [.. Lanes.Lanes.SelectMany(lane => lane.Items).Select(item => item.Id)];
 
 	/// <summary>
 	/// Refreshes <see cref="_isLoading"/>, <see cref="_isDiscovering"/>, <see cref="_busyOrganization"/>,

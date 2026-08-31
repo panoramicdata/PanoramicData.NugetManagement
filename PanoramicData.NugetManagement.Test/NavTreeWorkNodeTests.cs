@@ -47,8 +47,11 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 		var item = lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null)!;
 		var provider = NewProvider(lanes, withRepository: Repo);
 
+		// Scoped to the repository's own Work node: the same item is now also mirrored under the
+		// organisation's, so it legitimately appears twice in the tree under two different keys.
 		var node = provider.BuildNavItems()
-			.Should().ContainSingle(i => i.WorkItemId == item.Id).Subject;
+			.Should().ContainSingle(i => i.WorkItemId == item.Id && i.Key == NavTreeDataProvider.WorkItemKey(item.Id))
+			.Subject;
 
 		node.ParentKey.Should().Be(NavTreeDataProvider.WorkKey(Repo));
 		node.Text.Should().Be("Build");
@@ -65,10 +68,13 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 		lanes.ReportProgress(item, "repo 8 of 47");
 		var provider = NewProvider(lanes, withRepository: Repo);
 
-		var node = provider.BuildNavItems().Single(i => i.WorkItemId == item.Id);
+		// Both places the item appears — its repository's Work node and its organisation's — because a
+		// mirror showing stale state would be worse than no mirror.
+		var nodes = provider.BuildNavItems().Where(i => i.WorkItemId == item.Id).ToList();
 
-		node.WorkItemState.Should().Be(WorkItemState.Running);
-		node.WorkItemProgress.Should().Be("repo 8 of 47");
+		nodes.Should().HaveCount(2);
+		nodes.Should().OnlyContain(n => n.WorkItemState == WorkItemState.Running);
+		nodes.Should().OnlyContain(n => n.WorkItemProgress == "repo 8 of 47");
 	}
 
 	[Fact]
@@ -102,8 +108,12 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 		node.ParentKey.Should().Be(NavTreeDataProvider.OrgKey("panoramicdata"));
 		node.Text.Should().Be(
 			"Work (1 below)",
-			"the count must say where the work is — it is not in this lane, and expanding the node will not find it");
-		node.IsLeaf.Should().BeTrue("the organisation lane has nothing of its own to list");
+			"the count must still say where the work is: it is in a repository's lane, not this one");
+
+		// Changed by request: the node used to be a leaf here, so the work it counted could not be seen
+		// from the place that reported it. It now mirrors that work as children — see
+		// OrganisationWorkNode_WithWorkOnlyBeneathIt_ListsThatWork.
+		node.IsLeaf.Should().BeFalse("work it is counting has to be reachable from it");
 	}
 
 	[Fact]
@@ -218,6 +228,64 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	/// Builds a provider over a cache primed with one repository, so each test needs only to describe
 	/// the lane state it cares about.
 	/// </summary>
+	/// <summary>
+	/// The organisation's Work node used to say "Work (3 below)" and be a leaf, so the work it was
+	/// counting could not be seen from where it was reported — the stop-all button reached items the
+	/// tree would not show.
+	/// </summary>
+	[Fact]
+	public void OrganisationWorkNode_WithWorkOnlyBeneathIt_ListsThatWork()
+	{
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		var items = provider.BuildNavItems();
+		var orgWorkKey = NavTreeDataProvider.OrgWorkKey("panoramicdata");
+
+		items.Should().ContainSingle(i => i.Key == orgWorkKey)
+			.Which.IsLeaf.Should().BeFalse("work it is counting has to be reachable from it");
+
+		items.Where(i => i.ParentKey == orgWorkKey)
+			.Should().ContainSingle()
+			.Which.Text.Should().Contain("Build").And.Contain("Athonet.Api",
+				"the same title appears under every repository, so it has to say which one this is");
+	}
+
+	[Fact]
+	public void OrganisationWorkNode_MirroringWork_DoesNotReuseTheRepositoryNodesKeys()
+	{
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		var items = provider.BuildNavItems();
+
+		items.Select(i => i.Key).Should().OnlyHaveUniqueItems(
+			"the same work item appears under its repository and under its organisation, and two tree "
+			+ "nodes sharing a key is a bug in the tree itself");
+	}
+
+	[Fact]
+	public void OrganisationWorkNode_MirroredWork_KeepsTheItemsIdentityForStoppingIt()
+	{
+		var lanes = new WorkLaneService();
+		var item = lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null)!;
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		var orgWorkKey = NavTreeDataProvider.OrgWorkKey("panoramicdata");
+
+		provider.BuildNavItems()
+			.Single(i => i.ParentKey == orgWorkKey)
+			.WorkItemId.Should().Be(item.Id, "stopping it from here must stop the same item");
+	}
+
+	[Fact]
+	public void OrganisationWorkNode_NoWorkAnywhere_IsStillAbsent()
+		=> NewProvider(new WorkLaneService(), withRepository: Repo)
+			.BuildNavItems()
+			.Should().NotContain(i => i.Key == NavTreeDataProvider.OrgWorkKey("panoramicdata"));
+
 	private NavTreeDataProvider NewProvider(WorkLaneService lanes, string withRepository)
 	{
 		var rows = new List<RepositoryDashboardRow>
