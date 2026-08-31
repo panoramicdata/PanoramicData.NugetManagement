@@ -812,6 +812,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 
 		var categories = view?.Categories ?? [];
 
+		// Once anything has been assessed the branch lists the whole catalogue, not just today's
+		// failures: a rule nothing fails is still a rule the estate is held to, and it shows green.
+		// Nothing assessed means no catalogue at all — see AddCleanCatalogue.
+		var showsCatalogue = assessed is { Count: > 0 };
+
 		var issuesStatus = NavHealthRollup.ForIssues(visibleRows, categories.Select(c => c.Severity));
 
 		items.Add(new NavItem
@@ -822,7 +827,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			IconCss = NavHealthRollup.Icon("fas fa-layer-group", issuesStatus),
 			View = NavView.Issues,
 			Organization = organization,
-			IsLeaf = categories.Count == 0,
+			IsLeaf = categories.Count == 0 && !showsCatalogue,
 			SortOrder = 1,
 			IssueCount = categories.Sum(c => c.IssueClasses.Sum(i => i.AffectedRepositoryCount)),
 			HealthStatus = issuesStatus
@@ -874,7 +879,97 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			}
 		}
 
+		if (showsCatalogue)
+		{
+			AddCleanCatalogue(items, organization, issuesKey, categories);
+		}
+
 		return issuesStatus;
+	}
+
+	/// <summary>
+	/// Adds the rest of the rule catalogue to the Issues branch: every category that owns a rule, and
+	/// every rule, that no failure already put there. These are the green ones — nothing fails them.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Only called once something has been assessed. Painting the catalogue green over an organisation
+	/// nobody has assessed would claim a clean bill of health that was never checked — the same
+	/// distinction the repository's own Issues node makes between an empty inbox and an unread one.
+	/// </para>
+	/// <para>
+	/// Failing entries keep the positions they were given above, and these sort after them, so what
+	/// needs attention stays at the top of each list. A rule is matched by id alone: a synthesised
+	/// Dependabot result carries a rule id the registry never had, and belongs in the branch on its
+	/// own terms rather than being paired with a catalogue entry.
+	/// </para>
+	/// </remarks>
+	private static void AddCleanCatalogue(
+		List<NavItem> items,
+		string organization,
+		string issuesKey,
+		IReadOnlyList<IssueCategoryGroup> failing)
+	{
+		var failingRuleIds = failing
+			.SelectMany(category => category.IssueClasses.Select(issueClass => issueClass.RuleId))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		var categoryOrder = failing.Count;
+
+		var catalogue = RuleRegistry.Rules
+			.GroupBy(rule => rule.Category)
+			.OrderBy(group => group.Key.ToString(), StringComparer.OrdinalIgnoreCase);
+
+		foreach (var group in catalogue)
+		{
+			var categoryKey = $"icat:{organization}:{group.Key}";
+			var alreadyListed = failing.FirstOrDefault(category => category.Category == group.Key);
+
+			if (alreadyListed is null)
+			{
+				items.Add(new NavItem
+				{
+					Key = categoryKey,
+					Text = group.Key.ToString(),
+					ParentKey = issuesKey,
+					IconCss = "fas fa-layer-group text-success",
+					View = NavView.IssueCategoryDetail,
+					Organization = organization,
+					Category = group.Key,
+					IsLeaf = false,
+					SortOrder = categoryOrder++,
+					IssueCount = 0,
+					AffectedRepoCount = 0
+				});
+			}
+
+			// Clean rules follow whatever failing ones the category already contributed.
+			var ruleOrder = alreadyListed?.IssueClasses.Count ?? 0;
+
+			foreach (var rule in group.OrderBy(rule => rule.RuleId, StringComparer.OrdinalIgnoreCase))
+			{
+				if (failingRuleIds.Contains(rule.RuleId))
+				{
+					continue;
+				}
+
+				items.Add(new NavItem
+				{
+					Key = $"irule:{organization}:{group.Key}:{rule.RuleId}",
+					Text = $"{rule.RuleId} {rule.RuleName}",
+					ParentKey = categoryKey,
+					IconCss = "fas fa-check-circle text-success",
+					View = NavView.IssueRuleDetail,
+					Organization = organization,
+					Category = group.Key,
+					RuleId = rule.RuleId,
+					IsLeaf = true,
+					SortOrder = ruleOrder++,
+					IssueCount = 0,
+					AffectedRepoCount = 0
+				});
+			}
+		}
 	}
 
 	/// <summary>

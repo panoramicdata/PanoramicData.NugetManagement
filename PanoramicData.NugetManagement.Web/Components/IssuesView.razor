@@ -50,7 +50,9 @@
 	}
 	else if (_view is null || _view.IssueClassCount == 0)
 	{
-		<p class="empty">🎉 No issues found across @_rows.Count assessed repositories.</p>
+		@* Where a green node in the sidebar lands. Reporting the whole estate clean when one rule was
+		   selected would be answering a question nobody asked. *@
+		<p class="empty">@EmptyMessage</p>
 	}
 	else
 	{
@@ -251,6 +253,18 @@
 	/// </summary>
 	[Parameter]
 	public string? FocusRuleId { get; set; }
+
+	/// <summary>
+	/// What "nothing to show" means here, which depends on what the sidebar selected. The Issues
+	/// branch lists every rule, not just the failing ones, so a rule nothing fails is a node people
+	/// click — and it has to say that this rule is clean rather than that the estate is.
+	/// </summary>
+	private string EmptyMessage
+		=> !string.IsNullOrEmpty(FocusRuleId)
+			? $"🎉 No repository fails {FocusRuleId} across {_rows.Count} assessed repositories."
+			: FocusCategory is not null
+				? $"🎉 No repository fails any {FocusCategory} rule across {_rows.Count} assessed repositories."
+				: $"🎉 No issues found across {_rows.Count} assessed repositories.";
 
 	/// <summary>
 	/// Where this component's progress and error lines go. The host owns the console — the one at the
