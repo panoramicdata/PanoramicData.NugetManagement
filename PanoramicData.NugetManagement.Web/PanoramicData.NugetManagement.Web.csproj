@@ -34,6 +34,7 @@
     <ItemGroup>
         <PackageReference Include="AspNet.Security.OAuth.GitHub" />
         <PackageReference Include="Octokit" />
+        <PackageReference Include="Ollama.Api" />
         <PackageReference Include="PanoramicData.Blazor" />
     </ItemGroup>
 
