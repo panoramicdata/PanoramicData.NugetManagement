@@ -3015,16 +3015,32 @@ else
 					<button class="btn btn-primary" @onclick="ReassessAllAsync" disabled="@(_isAssessing || IsStepQueueBlocked(WorkflowStep.Reassess))"><i class="fas fa-sync-alt"></i> Assess Now</button>
 				</div>
 			}
-			else if (row.TotalFailures == 0)
+			@* Asks the two questions separately. TotalFailures adds the stale open issues to the failing
+			   rule count, so a repository with no failing rule but an unanswered inbox used to land in the
+			   branch below and render the "these are the rules you are failing" sentence over nothing at
+			   all. *@
+			else if (row.Assessment.FailedCount == 0 && row.OpenIssues.Count == 0)
 			{
 				<div class="detail-empty detail-pass">
-					<p>✅ All @row.Assessment.RuleResults.Count rules pass!</p>
+					<p>✅ All @row.Assessment.RuleResults.Count rules pass, and nothing is open.</p>
 						<button class="btn" @onclick="ReassessAllAsync" disabled="@(_isAssessing || IsStepQueueBlocked(WorkflowStep.Reassess))"><i class="fas fa-sync-alt"></i> Re-assess</button>
 				</div>
 			}
 			else
 			{
-				<p class="fixes-intro">These are the rules this repository is currently failing. They're grouped by category and ordered by severity, so start with the most serious.</p>
+				@* Fix rewrites files and closes other people's pull requests. What it is about to do is
+				   said here, above everything it will act on, rather than left to be discovered in the
+				   console afterwards. *@
+				<p class="fixes-intro">
+					<strong>@FixScope.Describe(FixScope.For(_currentView), RemediableFailureCount(), DependabotPullRequestCount())</strong>
+					Everything it will act on is listed below.
+				</p>
+
+				@if (row.Assessment.FailedCount > 0)
+				{
+					<p class="fixes-intro">These are the rules this repository is currently failing. They're grouped by category and ordered by severity, so start with the most serious.</p>
+				}
+
 				@foreach (var group in GetGroupedFailures())
 				{
 					<div class="issue-group">
@@ -3080,6 +3096,13 @@ else
 							</div>
 						}
 					</div>
+				}
+
+				@* The other half of what Fix acts on. The same component the Issues branch uses, so the
+				   inbox reads identically wherever it is shown. *@
+				@if (row.OpenIssues.Count > 0)
+				{
+					<RepositoryIssuesView Issues="@row.OpenIssues" RepositoryFullName="@row.RepositoryFullName" />
 				}
 			}
 		</div>
@@ -4305,6 +4328,22 @@ else
 		return _selectedRow.CurrentBranch == "main"
 			&& _selectedRow.IsSyncedWithOrigin != false;
 	}
+
+	/// <summary>
+	/// How many of the selected repository's failing rules have an auto-remediation.
+	/// </summary>
+	private int RemediableFailureCount()
+		=> _selectedRow?.Assessment?.RuleResults
+			.Count(r => !r.Passed && Dashboard.IsAutoRemediable(r)) ?? 0;
+
+	/// <summary>
+	/// How many of the selected repository's open pull requests Dependabot raised.
+	/// </summary>
+	private int DependabotPullRequestCount()
+		=> _selectedRow?.OpenIssues
+			.Count(issue =>
+				issue.IsPullRequest
+				&& string.Equals(issue.AuthorLogin, "dependabot[bot]", StringComparison.OrdinalIgnoreCase)) ?? 0;
 
 	/// <summary>
 	/// Whether there is a Dependabot backlog to triage, and an assessment to judge it against.

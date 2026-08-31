@@ -50,4 +50,42 @@ public static class FixScope
 
 		_ => _nothing
 	};
+
+	/// <summary>
+	/// What pressing Fix will do, in a sentence, for showing next to the button.
+	/// </summary>
+	/// <param name="actions">What Fix does for this selection.</param>
+	/// <param name="remediableRuleCount">How many failing rules have an auto-remediation.</param>
+	/// <param name="dependabotPullRequestCount">How many open pull requests Dependabot raised.</param>
+	/// <remarks>
+	/// Fix rewrites files and closes other people's pull requests, so what it is about to do has to be
+	/// legible before it is pressed rather than discoverable afterwards in the console. A half with
+	/// nothing to do is left out entirely: "and triage 0 pull requests" reads as though something might
+	/// still happen to them.
+	/// </remarks>
+	public static string Describe(
+		FixActions actions,
+		int remediableRuleCount,
+		int dependabotPullRequestCount)
+	{
+		var clauses = new List<string>();
+
+		if (actions.ApplyRemediations && remediableRuleCount > 0)
+		{
+			clauses.Add($"apply {remediableRuleCount} auto-{Plural(remediableRuleCount, "fix", "fixes")}");
+		}
+
+		if (actions.TriageDependabot && dependabotPullRequestCount > 0)
+		{
+			clauses.Add(
+				$"triage {dependabotPullRequestCount} Dependabot pull "
+				+ Plural(dependabotPullRequestCount, "request", "requests"));
+		}
+
+		return clauses.Count == 0
+			? "Fix has nothing to do here."
+			: $"Fix will {string.Join(" and ", clauses)}.";
+	}
+
+	private static string Plural(int count, string one, string many) => count == 1 ? one : many;
 }
