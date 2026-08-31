@@ -136,6 +136,23 @@ public class RepositoryDashboardRow
 	public string? LatestTag { get; set; }
 
 	/// <summary>
+	/// What happened the last time this working tree was built here, or null when that is not known —
+	/// it has never been built in this application, or it has changed since it was.
+	/// </summary>
+	/// <remarks>
+	/// Distinct from <see cref="Status"/>, which is a position in the current workflow and is
+	/// overwritten by the next thing that happens to the repository. This one durable fact answers
+	/// "does this build" across a whole estate, which is the question a bulk remediation raises.
+	/// It takes no part in the repository's health: failing to build is not failing a rule.
+	/// </remarks>
+	public RepositoryBuildState? LastBuildState { get; set; }
+
+	/// <summary>
+	/// When <see cref="LastBuildState"/> was established, or null when it never has been.
+	/// </summary>
+	public DateTimeOffset? LastBuiltAtUtc { get; set; }
+
+	/// <summary>
 	/// The assessment result from the governance rules. Null if not yet assessed.
 	/// </summary>
 	public RepoAssessment? Assessment { get; set; }

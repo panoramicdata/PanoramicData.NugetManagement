@@ -336,7 +336,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			Text = "Repositories",
 			ParentKey = orgKey,
 			IconCss = NavHealthRollup.Icon("fas fa-cubes", reposStatus),
-			View = NavView.Home,
+			View = NavView.Repositories,
 			Organization = organization,
 			IsLeaf = false,
 			SortOrder = 0,
@@ -459,6 +459,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				HasErrors = repoHasErrors,
 				HasWarnings = repoHasWarnings,
 				IsWorkingTreeDirty = row.IsWorkingTreeClean == false,
+				IsClonedLocally = row.IsClonedLocally,
+				IsSyncedWithOrigin = row.IsSyncedWithOrigin,
+				// Carried, never folded into the icon or the roll-up above: a repository that does not
+				// build is not a repository that fails a rule.
+				BuildState = row.LastBuildState,
 				RepositoryFullName = row.RepositoryFullName,
 				IsExcluded = _runtimeSettings.IsRepositoryExcluded(row.RepositoryFullName),
 				// The spec asserts repository nodes already reflect their lane. They never did — in the
@@ -1220,32 +1225,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// replaced by its result as soon as that result lands, without rebuilding the tree — rebuilding
 	/// nodes mid-run is what previously made the tree flicker and the scrollbar jump.
 	/// </remarks>
+	/// <remarks>
+	/// Assessment health and nothing else. Clone state, a dirty tree and drift from origin used to be
+	/// folded in here as extra classes, which made one glyph answer three questions at once and left
+	/// git state colouring what reads as a health indicator. They are badges on the right of the node
+	/// now — see <c>NavItem.IsClonedLocally</c>, <c>IsWorkingTreeDirty</c>, <c>IsSyncedWithOrigin</c>
+	/// and <c>BuildState</c> — so this answers only "how does this repository score against the
+	/// rules".
+	/// </remarks>
 	public static string BuildRepositoryIconCss(RepositoryDashboardRow row)
-	{
-		var icon = GetPackageHealthIcon(row.HealthStatus);
-
-		if (row.IsClonedLocally)
-		{
-			icon += " tree-node-local";
-
-			// Colour the branch glyph by sync state: amber if out of sync, muted if unknown.
-			if (row.IsSyncedWithOrigin == false)
-			{
-				icon += " tree-node-out-of-sync";
-			}
-			else if (row.IsSyncedWithOrigin is null)
-			{
-				icon += " tree-node-sync-unknown";
-			}
-		}
-
-		if (row.IsWorkingTreeClean == false)
-		{
-			icon += " tree-node-dirty";
-		}
-
-		return icon;
-	}
+		=> GetPackageHealthIcon(row.HealthStatus);
 
 	/// <summary>
 	/// Returns a Font Awesome icon class for a rule based on its severity.
