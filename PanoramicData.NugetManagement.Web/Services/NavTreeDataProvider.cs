@@ -795,11 +795,14 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		// One entry per repository, which is what the rules were evaluated against. While a package
 		// stood in for its repository, a repository publishing four of them counted as four affected
 		// repositories against every rule it failed.
+		// Augmented with the open Dependabot pull requests, exactly as DashboardService does when it
+		// builds the same view for the centre panel: the tree's counts and the panel's contents have to
+		// be the same answer, or one of them is lying.
 		var assessed = visibleRows?
 			.Where(r => r.Assessment is not null)
 			.Select(r => new AssessedPackage(
 				r.RepositoryFullName,
-				r.Assessment!,
+				DependabotIssueSynthesizer.Augment(r),
 				r.RepositoryFullName))
 			.ToList();
 

@@ -1011,8 +1011,15 @@ public class DashboardService
 	/// <summary>
 	/// Checks if a specific failed rule can be auto-remediated via the registry.
 	/// </summary>
+	/// <remarks>
+	/// A synthesised Dependabot finding is always actionable: its fix is a triage pass, which is always
+	/// available and needs neither a clone nor an advisory. It has no <see cref="Remediations.IRemediation"/>
+	/// and never will — that interface is synchronous and writes to the filesystem, and closing a pull
+	/// request is neither — so asking the registry about it would answer "no" and hide the action.
+	/// </remarks>
 	public bool IsAutoRemediable(RuleResult result)
-		=> RemediationRegistry.CanRemediate(result);
+		=> DependabotIssueSynthesizer.IsSynthetic(result.RuleId)
+			|| RemediationRegistry.CanRemediate(result);
 
 	/// <summary>
 	/// Public entry point for applying a single remediation from outside the service.
@@ -1439,9 +1446,15 @@ public class DashboardService
 	{
 		// Pass the package id through: a repository hosting several packages appears once per package
 		// under a rule, and this is what tells those occurrences apart in the issue tree.
+		//
+		// Augmented so that open Dependabot pull requests appear here too, one node per dependency —
+		// otherwise a backlog spread across the estate can only be cleared a repository at a time.
 		var entries = rows
 			.Where(r => r.RepositoryFullName is not null && r.Assessment is not null)
-			.Select(r => new AssessedPackage(r.RepositoryFullName, r.Assessment!, r.RepositoryFullName));
+			.Select(r => new AssessedPackage(
+				r.RepositoryFullName,
+				DependabotIssueSynthesizer.Augment(r),
+				r.RepositoryFullName));
 		return IssueCentricViewBuilder.Build(entries, IsAutoRemediable);
 	}
 

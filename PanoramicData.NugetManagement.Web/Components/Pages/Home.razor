@@ -4823,6 +4823,24 @@ else
 			return;
 		}
 
+		// A synthesised Dependabot finding has no remediation to apply — its fix is a triage pass. The
+		// dependency the node is about does not narrow the work: triage judges a repository's whole
+		// inbox at once, so one item per repository is both correct and the smallest thing that can run.
+		if (DependabotIssueSynthesizer.IsSynthetic(request.RuleId))
+		{
+			var triaged = FanOut.EnqueueTriageDependabot(
+				request.Organization,
+				[.. request.RepositoryFullNames
+					.Select(name => _rows.FirstOrDefault(r =>
+						string.Equals(r.RepositoryFullName, name, StringComparison.OrdinalIgnoreCase)))
+					.Where(row => row is not null)
+					.Select(row => row!)],
+				_selectedNodeKey);
+
+			AppendConsole($"⏳ Queued Dependabot triage across {triaged} repositor{(triaged == 1 ? "y" : "ies")}.");
+			return;
+		}
+
 		var queued = FanOut.EnqueueRule(
 			request.Organization, request.RuleId, request.RepositoryFullNames, request.Push, _selectedNodeKey);
 
