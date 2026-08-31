@@ -1819,6 +1819,78 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	[Fact]
+	public async Task TFM01_ShouldExemptAnAnalyzerProject_WhenExtendedAnalyzerRulesAreEnforced()
+	{
+		// A compiler extension has to stay on netstandard2.0 to load into the .NET Framework compiler
+		// host; rewriting it to the latest framework broke Meraki.Api's build outright.
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Gen/Gen.csproj"] = "<Project><PropertyGroup><TargetFramework>netstandard2.0</TargetFramework><EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("TFM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task TFM01_ShouldExemptAnAnalyzerProject_WhenItReferencesRoslynOnNetStandard()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Gen/Gen.csproj"] = "<Project><PropertyGroup><TargetFramework>netstandard2.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include=\"Microsoft.CodeAnalysis.CSharp\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TFM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task TFM01_ShouldExemptAnAnalyzerProject_WhenConsumedAsAnAnalyzerElsewhere()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Gen/Gen.csproj"] = "<Project><PropertyGroup><TargetFramework>netstandard2.0</TargetFramework></PropertyGroup></Project>",
+			["Src/Src.csproj"] = $"<Project><PropertyGroup><TargetFramework>{Standards.LatestTargetFramework}</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include=\"..\\Gen\\Gen.csproj\" OutputItemType=\"Analyzer\" ReferenceOutputAssembly=\"false\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TFM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task TFM01_ShouldStillFailTheOtherProjects_WhenAnAnalyzerIsExempt()
+	{
+		// The exemption is per project, not per repository: the five projects that should be on the
+		// latest framework still have to be.
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Gen/Gen.csproj"] = "<Project><PropertyGroup><TargetFramework>netstandard2.0</TargetFramework><EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules></PropertyGroup></Project>",
+			["Src/Src.csproj"] = "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("TFM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+
+		// The remediation rewrites whatever is in "projects", so the exemption has to hold there too or
+		// the report passes while the autofix still breaks the build.
+		var projects = result.Advisory!.Data["projects"].Should().BeOfType<string[]>().Subject;
+		projects.Should().Equal("Src/Src.csproj");
+	}
+
+	[Fact]
+	public async Task TFM01_ShouldNotExemptANonAnalyzerReferencingRoslyn()
+	{
+		// A tool may use Roslyn and still belong on the latest framework.
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Tool/Tool.csproj"] = "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include=\"Microsoft.CodeAnalysis.CSharp\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TFM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
 	// ── TST-01 ──────────────────────────────────────────────────────────
 
 	[Fact]
