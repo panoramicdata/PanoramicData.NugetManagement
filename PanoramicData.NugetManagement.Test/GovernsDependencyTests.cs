@@ -50,6 +50,22 @@ public class GovernsDependencyTests(ITestOutputHelper output) : TestWithOutput(o
 			"a NuGet update rule cannot move an action's version");
 	}
 
+	[Theory]
+	[InlineData("actions/checkout")]
+	[InlineData("actions/setup-dotnet")]
+	[InlineData("actions/upload-artifact")]
+	[InlineData("github/codeql-action")]
+	[InlineData("actions/cache")]
+	public void EveryAction_IsClaimedByExactlyOneRule(string action)
+		=> RuleRegistry.Rules
+			.OfType<IGovernsDependency>()
+			.Where(rule => rule.Governs(Action(action)))
+			.Cast<IRule>()
+			.Select(rule => rule.RuleId)
+			.Should().ContainSingle(
+				"triage takes the first governing rule it finds, so two claims on one action would make "
+				+ "coverage depend on registry order");
+
 	[Fact]
 	public void PresenceOnlyRule_DoesNotGovernAnything()
 		=> Rule("COM-04").Should().NotBeAssignableTo<IGovernsDependency>(

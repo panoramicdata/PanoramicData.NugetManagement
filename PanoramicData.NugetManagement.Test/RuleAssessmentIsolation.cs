@@ -57,5 +57,8 @@ internal static class RuleAssessmentIsolation
 	{
 		NuGetVersionCache.Default = new NuGetVersionCache(null);
 		NuGetFloorCatalog.Default = new NuGetFloorCatalog(null);
+		// CI-12 observes every action in every workflow of every repository a test assesses, so
+		// without this the committed action-versions.json would gain an entry for each one.
+		ActionVersionCatalog.Default = new ActionVersionCatalog(null);
 	}
 }

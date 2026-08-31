@@ -52,6 +52,27 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 		Message = "failing, for this test"
 	};
 
+	/// <summary>
+	/// A failing result from a rule that governs a whole ecosystem but will only move the dependencies
+	/// it names — as CI-12 does, claiming every action no other rule owns while fixing only the ones
+	/// actually behind.
+	/// </summary>
+	private static RuleResult FailingNaming(string ruleId, params string[] actions) => new()
+	{
+		RuleId = ruleId,
+		RuleName = ruleId,
+		Category = AssessmentCategory.CiCd,
+		Severity = AssessmentSeverity.Error,
+		Passed = false,
+		Message = "failing, for this test",
+		Advisory = new RuleAdvisory
+		{
+			Summary = "Update the actions this names",
+			Detail = "Update the actions this names.",
+			Data = new() { ["governed_actions"] = actions }
+		}
+	};
+
 	/// <summary>Triages one pull request, with every governing rule remediable unless stated.</summary>
 	private static DependabotTriage TriageOne(
 		RepositoryIssue issue,
@@ -157,6 +178,28 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 				[Failing("CI-05"), Failing("COM-04")])
 			.Verdict.Should().Be(DependabotVerdict.ValidUncovered,
 				"COM-04 only checks the workflow exists, and CI-05 governs a different action");
+
+	[Fact]
+	public void EcosystemWideRule_CoversTheActionItsFailureNames()
+	{
+		var triage = TriageOne(
+			PullRequest(5, "Bump github/codeql-action from 2 to 4"),
+			Ctx(Workflow(_codeQlPath, "github/codeql-action/init@v2")),
+			[FailingNaming("CI-12", "github/codeql-action")]);
+
+		triage.Verdict.Should().Be(DependabotVerdict.ValidCovered);
+		triage.CoveringRuleId.Should().Be("CI-12");
+	}
+
+	[Fact]
+	public void EcosystemWideRule_DoesNotCoverAnActionItsFailureDoesNotName()
+		=> TriageOne(
+				PullRequest(6, "Bump actions/cache from 3 to 4"),
+				Ctx(Workflow(_ciPath, "actions/cache@v3", "github/codeql-action/init@v2")),
+				[FailingNaming("CI-12", "github/codeql-action")])
+			.Verdict.Should().Be(DependabotVerdict.ValidUncovered,
+				"the fix will rewrite codeql-action and nothing else, so calling this covered would "
+				+ "leave the pull request open forever waiting on a fix that never touches it");
 
 	[Fact]
 	public void GoverningRuleFailsButHasNoRemediation_IsUncovered()
