@@ -441,12 +441,12 @@ else
 							   two are disjoint by construction: Fix does what a deterministic remediation can do, and
 							   this does only what nothing else can. AiFixCandidates is the same complement that
 							   decides what gets queued, so the button is absent exactly when it would do nothing. *@
-							<PDToolbarButton Key="fix-local"
-											 Text="Fix Locally"
+							<PDToolbarButton Key="fix-with-ai"
+											 Text="Fix with AI"
 											 IconCssClass="fas fa-robot"
 											 IsVisible="@(_selectedRow is not null && AiFixCandidateCount() > 0)"
-											 IsEnabled="@IsFixLocallyEnabled()"
-											 ToolTip="@GetFixLocallyTooltip()"
+											 IsEnabled="@IsFixWithAiEnabled()"
+											 ToolTip="@GetFixWithAiTooltip()"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -2293,6 +2293,10 @@ else
 
 	private void NavigateToAppSettings()
 	{
+		// Refilled on each visit, so the page always opens showing what is stored rather than whatever was
+		// half-typed and abandoned last time.
+		LoadOllamaDraft();
+
 		_currentView = NavView.AppSettings;
 		_selectedRow = null;
 		_selectedPackageId = null;
@@ -2505,11 +2509,11 @@ else
 			case "fix":
 				await FixAllAsync();
 				break;
+			case "fix-in-ide":
+				await FixInIdeAsync();
+				break;
 			case "fix-with-ai":
 				await FixWithAiAsync();
-				break;
-			case "fix-local":
-				await FixLocallyWithModelAsync();
 				break;
 			case "open-ide":
 				OpenInIde();
@@ -3375,6 +3379,83 @@ else
 				</div>
 			</div>
 
+			<h3 class="settings-section">Ollama Config</h3>
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				The local model behind <strong>Fix with AI</strong>, which fixes the rules that have no
+				automatic remediation. Runs on your own hardware, so it costs nothing and needs no IDE — and
+				it is far weaker than a frontier model, so every fix is checked against the rule that asked
+				for it and reverted if it does not satisfy it.
+			</p>
+			<div class="settings-form">
+				<div class="form-group">
+					<label>Base URL</label>
+					<input type="text" @bind="_ollamaDraft.BaseUrl" placeholder="http://pdl-rune-02.panoramicdata.com:11434" />
+					<span class="settings-hint">Include the scheme and port. Nothing is offered until this and a model are set.</span>
+				</div>
+				<div class="form-group">
+					<label>API key (optional)</label>
+					<input type="password" @bind="_ollamaDraft.ApiKey" placeholder="Leave empty for a local server" />
+					@* Said plainly rather than implied by the input type: masking the field protects it from
+					   somebody reading over a shoulder, and from nothing else. *@
+					<span class="settings-hint">
+						Leave empty for a local instance, which needs none. Stored in plain text in this
+						machine's settings file — anyone who can read that file can read the key.
+					</span>
+				</div>
+				<div class="form-group">
+					<label>Model</label>
+					<input type="text" @bind="_ollamaDraft.Model" placeholder="qwen3.8:27b" />
+					<span class="settings-hint">Must be pulled on that server already; an unpulled model fails with "model not found".</span>
+				</div>
+				<div class="form-group">
+					<label>Context window</label>
+					<input type="number" @bind="_ollamaDraft.ContextWindow" />
+					<span class="settings-hint">
+						Sent with every call. Ollama's own default is often far smaller than the model supports,
+						and a silently truncated conversation looks like a model that has forgotten the task.
+					</span>
+				</div>
+				<div class="form-group">
+					<label>Request timeout (ms)</label>
+					<input type="number" @bind="_ollamaDraft.RequestTimeoutMs" />
+				</div>
+				<div class="form-group">
+					<label>Concurrent fixes</label>
+					<input type="number" @bind="_ollamaDraft.MaxConcurrency" />
+					<span class="settings-hint">
+						How many fixes may talk to the model at once. One box serving one model rarely wants
+						more than one; this is what stops an estate-wide sweep flattening it.
+					</span>
+				</div>
+				<div class="form-group">
+					<label>Turns per attempt</label>
+					<input type="number" @bind="_ollamaDraft.MaxTurnsPerAttempt" />
+					<span class="settings-hint">Tool calls allowed before an attempt is abandoned.</span>
+				</div>
+				<div class="form-group">
+					<label>Attempts per rule</label>
+					<input type="number" @bind="_ollamaDraft.MaxAttemptsPerRule" />
+					<span class="settings-hint">
+						After each attempt the rule is re-evaluated and its own failure message is fed back.
+						This is the retry budget for that.
+					</span>
+				</div>
+				@* settings-path-row rather than a new class: it already lays controls out in a row, and
+				   inventing settings-actions would have rendered unstyled. *@
+				<div class="settings-path-row">
+					<button class="btn btn-sm btn-primary" @onclick="SaveOllamaSettings">
+						<i class="fas fa-save"></i> Save
+					</button>
+					<button class="btn btn-sm" @onclick="TestOllamaConnection" disabled="@_isTestingOllama">
+						<i class="@(_isTestingOllama ? "fas fa-spinner fa-spin" : "fas fa-plug")"></i> Test
+					</button>
+					@if (_ollamaStatus is { Length: > 0 })
+					{
+						<span class="settings-hint">@_ollamaStatus</span>
+					}
+				</div>
+			</div>
+
 			<h3 class="settings-section">Stray clones</h3>
 			<p style="color: var(--text-secondary); font-size: 0.85rem;">
 				Clone folders belonging to no organisation you manage. A package can declare a repository
@@ -3827,7 +3908,12 @@ else
 		WorkflowStep.GitSync => "Git Sync",
 		WorkflowStep.Reassess => "Re-assess",
 		WorkflowStep.Fix => "Fix",
-		WorkflowStep.FixWithAi => "Fix with AI",
+
+		// "Fix in IDE" rather than "Fix with AI": what distinguishes this step is that it hands the
+		// problem to a frontier model in an editor, and "Fix with AI" now belongs to the local model that
+		// does the work here without one. The enum member keeps its name — WorkflowStep is persisted in
+		// the work queue, so renaming it would strand items queued by an earlier build.
+		WorkflowStep.FixWithAi => "Fix in IDE",
 		WorkflowStep.Build => "Build",
 		WorkflowStep.Test => "Test",
 		WorkflowStep.CommitAndPush => "Commit & Push",
@@ -3885,6 +3971,100 @@ else
 	}
 
 	/// <summary>
+	/// The Ollama settings as edited on the settings page, before Save.
+	/// </summary>
+	/// <remarks>
+	/// A copy rather than the live settings object: typing a partial URL should not disable the Fix with
+	/// AI button on every keystroke, and abandoning the page should change nothing.
+	/// </remarks>
+	private OllamaOptions _ollamaDraft = new();
+
+	/// <summary>What the last Save or Test said, shown beside the buttons.</summary>
+	private string? _ollamaStatus;
+
+	private bool _isTestingOllama;
+
+	/// <summary>
+	/// Fills the draft from what is stored, so the page opens showing the current configuration.
+	/// </summary>
+	private void LoadOllamaDraft()
+	{
+		var stored = RuntimeSettings.Ollama;
+
+		_ollamaDraft = new OllamaOptions
+		{
+			BaseUrl = stored.BaseUrl,
+			ApiKey = stored.ApiKey,
+			Model = stored.Model,
+			ContextWindow = stored.ContextWindow,
+			RequestTimeoutMs = stored.RequestTimeoutMs,
+			MaxConcurrency = stored.MaxConcurrency,
+			MaxTurnsPerAttempt = stored.MaxTurnsPerAttempt,
+			MaxAttemptsPerRule = stored.MaxAttemptsPerRule
+		};
+
+		_ollamaStatus = null;
+	}
+
+	private void SaveOllamaSettings()
+	{
+		RuntimeSettings.SetOllama(_ollamaDraft);
+
+		// Read back rather than echoing the draft: the setter clamps, so this is the only honest way to
+		// show what was actually stored.
+		LoadOllamaDraft();
+
+		_ollamaStatus = RuntimeSettings.Ollama.IsConfigured
+			? "Saved."
+			: "Saved, but incomplete — a base URL and a model are both needed before Fix with AI appears.";
+	}
+
+	/// <summary>
+	/// Asks the configured server for its model list, which proves the address, the key and the model
+	/// name in one call and without generating anything.
+	/// </summary>
+	private async Task TestOllamaConnection()
+	{
+		if (!_ollamaDraft.IsConfigured)
+		{
+			_ollamaStatus = "Set a base URL and a model first.";
+			return;
+		}
+
+		_isTestingOllama = true;
+		_ollamaStatus = null;
+
+		try
+		{
+			using var client = new Ollama.Api.OllamaClient(new Ollama.Api.OllamaClientOptions
+			{
+				Uri = new Uri(_ollamaDraft.BaseUrl!),
+				ApiKey = _ollamaDraft.ApiKey,
+				Timeout = TimeSpan.FromSeconds(30)
+			});
+
+			var tags = await client.Models.GetTagsAsync(CancellationToken.None);
+			var names = tags.Models?.Select(m => m.Name).ToList() ?? [];
+
+			_ollamaStatus = names.Any(name =>
+				string.Equals(name, _ollamaDraft.Model, StringComparison.OrdinalIgnoreCase))
+				? $"Connected. {_ollamaDraft.Model} is available."
+				: $"Connected, but {_ollamaDraft.Model} is not pulled on that server. Available: "
+					+ $"{(names.Count == 0 ? "none" : string.Join(", ", names.Take(10)))}.";
+		}
+		catch (Exception ex)
+		{
+			// Shown rather than logged: whoever is filling this form is the person who can fix a wrong
+			// address, and sending them to the console for the reason would be unkind.
+			_ollamaStatus = $"Could not connect: {ex.Message}";
+		}
+		finally
+		{
+			_isTestingOllama = false;
+		}
+	}
+
+	/// <summary>
 	/// How many of the selected repository's failing rules the local model could attempt.
 	/// </summary>
 	private int AiFixCandidateCount()
@@ -3897,7 +4077,7 @@ else
 	/// Requires a configured server as well as candidates: offering it without one queues items that can
 	/// only fail, which reads as the feature being broken rather than unconfigured.
 	/// </remarks>
-	private bool IsFixLocallyEnabled()
+	private bool IsFixWithAiEnabled()
 		=> AiFixCandidateCount() > 0
 			&& RuntimeSettings.Ollama.IsConfigured
 			&& !IsStepQueueBlocked(WorkflowStep.Fix);
@@ -3905,7 +4085,7 @@ else
 	/// <summary>
 	/// What pressing it will do, said before it is pressed.
 	/// </summary>
-	private string GetFixLocallyTooltip()
+	private string GetFixWithAiTooltip()
 	{
 		var count = AiFixCandidateCount();
 		var ollama = RuntimeSettings.Ollama;
@@ -3924,7 +4104,7 @@ else
 	/// This one runs on the configured Ollama server instead, which costs nothing and needs no IDE — and
 	/// is far weaker, which is why every fix is checked against the rule that asked for it.
 	/// </remarks>
-	private Task FixLocallyWithModelAsync()
+	private Task FixWithAiAsync()
 	{
 		if (_selectedRow is null)
 		{
@@ -5841,7 +6021,7 @@ else
 		StateHasChanged();
 	}
 
-	private async Task FixWithAiAsync()
+	private async Task FixInIdeAsync()
 	{
 		if (_selectedRow is null)
 		{
@@ -5875,7 +6055,7 @@ else
 		}
 	}
 
-	private bool IsFixWithAiEnabled()
+	private bool IsFixInIdeEnabled()
 	{
 		if (_selectedRow is null || _isRunning)
 		{
@@ -5967,7 +6147,7 @@ else
 		return "Clone if needed, then fetch, pull --rebase, push";
 	}
 
-	private string GetFixWithAiTooltip()
+	private string GetFixInIdeTooltip()
 	{
 		if (_selectedRow is null)
 		{
