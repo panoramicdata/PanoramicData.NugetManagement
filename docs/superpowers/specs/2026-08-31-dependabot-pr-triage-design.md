@@ -78,6 +78,10 @@ the only granularity `action-versions.json` records.
 A SHA-pinned usage (`@abc123 # v4`) is not readable as a version. It counts as **not** satisfied, so
 nothing is closed on the strength of a version we could not read.
 
+A usage of a sub-action — `github/codeql-action/init@v2` — is a usage of the repository
+`github/codeql-action`, which is what Dependabot versions. The scanner attributes it there and keeps
+the sub-path alongside.
+
 ## Coverage
 
 A valid pull request is **covered** when some *failing* rule governs its dependency and
@@ -201,25 +205,37 @@ Issue nodes gain the verdict as a badge — "no auto-fix" on `ValidUncovered`, "
 `NavHealthRollup` and the staleness bands are unchanged: the verdict is extra information, not a new
 severity.
 
-## Expected behaviour on Athonet.Api
+## Actual behaviour on Athonet.Api
+
+Measured against the local clone once the implementation was working, not predicted:
 
 | PR | Verdict | Why |
 |---|---|---|
-| #1 refit 6.3.2 to 7.2.22 | `ValidCovered` | NuGetHygiene update remediations |
-| #2 setup-dotnet 1 to 5 | `ValidCovered` | `CiSetupDotnetVersionRemediation`, which pushes v6 |
-| #3 checkout 3 to 6 | `ValidCovered` | `CiActionsCheckoutVersionRemediation`, which pushes v7 |
-| #4 download-artifact 4 to 8 | `ValidCovered` *if* `CiWorkflowMatchesMerakiRule` is failing | no rule checks this action's version on its own; it is only carried by the whole-workflow replacement, whose template pins v8 |
+| #1 refit 6.3.2 to 7.2.22 | `AlreadySatisfied` | `Directory.Packages.props` already declares 7.2.22 or better |
+| #2 setup-dotnet 1 to 5 | `ValidCovered` via CI-06 | `codeql-analysis.yml` still uses `@v1`, and CI-06 is failing |
+| #3 checkout 3 to 6 | `ValidCovered` via CI-05 | `codeql-analysis.yml` still uses `@v3`, and CI-05 is failing |
+| #4 download-artifact 4 to 8 | `AlreadySatisfied` | `ci.yml` already uses `@v8` |
 | #5 codeql-action 2 to 4 | `ValidUncovered` | `CodeQlWorkflowRule` is presence-only, so nothing enforces a version |
-| #6 upload-artifact 4 to 7 | `ValidCovered` | `CiWorkflowMatchesMerakiRule` checks it against the learned floor |
+| #6 upload-artifact 4 to 7 | `AlreadySatisfied` | `ci.yml` already uses `@v7` |
 
-So the first pass raises at least one issue here — the codeql-action gap — fixes four or five pull
-requests' worth of drift, and the following pass closes those as already satisfied.
+So the first pass **closes three**, leaves **two** to the existing fix pipeline, and raises **one**
+issue here — for `github/codeql-action`.
 
-`#4` is the case worth watching: a repository whose workflow otherwise matches the template would
-leave that action un-governed and the pull request uncovered, raising a second issue here for
-`actions/download-artifact`. That is the right outcome — the floor in `action-versions.json` is real
-but nothing independently enforces it — and it is exactly the kind of gap this feature exists to
-find.
+Three of the six were already stale, which is the point: they are the "old" pull requests the feature
+was asked for. An earlier draft of this document predicted `ValidCovered` for those three, on the
+assumption that the workflows were as far behind as the pull request titles implied. They were not.
+Reading the declared versions rather than trusting the title is the whole mechanism.
+
+Two things the real repository taught the implementation:
+
+- **Sub-action paths.** Athonet declares `github/codeql-action/init@v2` and
+  `github/codeql-action/analyze@v2`, but Dependabot bumps the repository `github/codeql-action`. A
+  sub-action has no version of its own, so `ActionUsageScanner` attributes the usage to the
+  repository and keeps the sub-path separately. Without this, a repository already on v4 could never
+  be shown to satisfy a bump to v4, because the two names would never match.
+- **The lowest usage really does decide.** `checkout` is at `@v6` in `ci.yml` and `@v3` in
+  `codeql-analysis.yml`. Taking the highest, or the first found, would have closed #3 while a real
+  workflow sat on v3.
 
 ## Testing
 

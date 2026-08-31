@@ -40,11 +40,34 @@ else
 
 		<dt class="col-sm-3">Severity</dt>
 		<dd class="col-sm-9"><span class="@SeverityColour">@Severity</span></dd>
+
+		@if (Issue.TriageVerdict is { } verdict)
+		{
+			<dt class="col-sm-3">Dependabot triage</dt>
+			<dd class="col-sm-9">
+				<span class="badge @TriageBadgeClass">@TriageLabel(verdict)</span>
+				@if (Issue.TriageReason is { Length: > 0 } reason)
+				{
+					<div class="text-muted small mt-1">@reason</div>
+				}
+			</dd>
+		}
 	</dl>
 
 	<a class="btn btn-outline-primary" href="@Issue.HtmlUrl" target="_blank" rel="noopener">
 		<i class="fab fa-github"></i> Open on GitHub
 	</a>
+
+	@if (OnTriageRequested.HasDelegate)
+	{
+		<button class="btn btn-outline-secondary ms-2" @onclick="OnTriageRequested">
+			<i class="fas fa-gavel"></i> Triage Dependabot for this repository
+		</button>
+		<div class="text-muted small mt-2">
+			Classifies every open Dependabot pull request here, closes the ones this repository has
+			already outgrown, and raises an issue for anything valid that no auto-fix covers.
+		</div>
+	}
 }
 
 @code {
@@ -55,6 +78,13 @@ else
 	/// <summary>The repository the item belongs to, as "owner/name".</summary>
 	[Parameter]
 	public string? RepositoryFullName { get; set; }
+
+	/// <summary>
+	/// Queues Dependabot triage for this repository. The button is hidden when nothing is listening,
+	/// so this panel stays usable in a context that cannot queue work.
+	/// </summary>
+	[Parameter]
+	public EventCallback OnTriageRequested { get; set; }
 
 	private AssessmentSeverity Severity
 		=> Issue?.SeverityAt(DateTimeOffset.UtcNow) ?? AssessmentSeverity.Info;
@@ -67,5 +97,28 @@ else
 		AssessmentSeverity.Critical or AssessmentSeverity.Error => "text-danger",
 		AssessmentSeverity.Warning => "text-warning",
 		_ => "text-info"
+	};
+
+	/// <summary>
+	/// What a verdict means to somebody looking at the pull request, rather than its enum name.
+	/// </summary>
+	private static string TriageLabel(DependabotVerdict verdict) => verdict switch
+	{
+		DependabotVerdict.AlreadySatisfied => "Superseded — closing",
+		DependabotVerdict.ValidCovered => "Valid — an auto-fix covers this",
+		DependabotVerdict.ValidUncovered => "Valid — no auto-fix available",
+		_ => "Not recognised — left alone"
+	};
+
+	/// <summary>
+	/// Uncovered is the one worth a human's attention: it is the only verdict nothing else will act
+	/// on, so it is the only one coloured as a warning.
+	/// </summary>
+	private string TriageBadgeClass => Issue?.TriageVerdict switch
+	{
+		DependabotVerdict.ValidUncovered => "bg-warning text-dark",
+		DependabotVerdict.ValidCovered => "bg-info text-dark",
+		DependabotVerdict.AlreadySatisfied => "bg-secondary",
+		_ => "bg-light text-dark"
 	};
 }

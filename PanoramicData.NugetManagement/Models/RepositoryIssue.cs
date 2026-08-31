@@ -48,6 +48,24 @@ public class RepositoryIssue
 	public DateTimeOffset? LastMaintainerReplyUtc { get; init; }
 
 	/// <summary>
+	/// What the last Dependabot triage pass concluded about this item, or null when triage has not
+	/// judged it — which covers plain issues, items raised by anyone else, and any item in a
+	/// repository triage has not run against yet.
+	/// </summary>
+	/// <remarks>
+	/// Settable, and stamped after the item is built rather than passed to its constructor: the verdict
+	/// is not a property of the pull request, it is the conclusion of a later pass over it, and it goes
+	/// stale as the repository changes. Persisted with the cached row so the tree can show it without
+	/// re-triaging on every render.
+	/// </remarks>
+	public DependabotVerdict? TriageVerdict { get; set; }
+
+	/// <summary>
+	/// Why triage reached <see cref="TriageVerdict"/>, in a sentence, or null when it reached none.
+	/// </summary>
+	public string? TriageReason { get; set; }
+
+	/// <summary>
 	/// The instant the staleness clock starts: the last maintainer reply, or the moment the item was
 	/// opened when there has never been one. An item nobody has answered has been waiting since it
 	/// was raised.

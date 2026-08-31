@@ -6,7 +6,15 @@ namespace PanoramicData.NugetManagement.Services;
 /// <summary>
 /// One <c>uses:</c> step, reduced to the action it names and the major version it pins.
 /// </summary>
-/// <param name="Action">The action, as <c>owner/name</c>.</param>
+/// <param name="Action">
+/// The action's repository, as <c>owner/name</c> — never including a sub-action path. A usage of
+/// <c>github/codeql-action/init</c> is a usage of <c>github/codeql-action</c>, because that is the
+/// repository Dependabot versions and bumps; its sub-actions have no versions of their own.
+/// </param>
+/// <param name="SubPath">
+/// The sub-action within the repository, such as <c>init</c>, or null for a plain action. Kept
+/// because anything rewriting the <c>uses:</c> line needs the whole of it back.
+/// </param>
 /// <param name="VersionSpec">The spec exactly as written, e.g. <c>v3.1.2</c> or a commit SHA.</param>
 /// <param name="MajorVersion">
 /// The major version the spec pins, or null when the spec is not a version at all — a commit SHA,
@@ -15,6 +23,7 @@ namespace PanoramicData.NugetManagement.Services;
 /// <param name="WorkflowPath">The workflow the step appears in.</param>
 public sealed record ActionUsage(
 	string Action,
+	string? SubPath,
 	string VersionSpec,
 	int? MajorVersion,
 	string WorkflowPath);
@@ -49,12 +58,9 @@ public static partial class ActionUsageScanner
 			foreach (var match in UsesStep().Matches(content).Cast<Match>())
 			{
 				var spec = match.Groups["spec"].Value;
+				var (action, subPath) = SplitRepository(match.Groups["action"].Value);
 
-				usages.Add(new ActionUsage(
-					match.Groups["action"].Value,
-					spec,
-					MajorOf(spec),
-					path));
+				usages.Add(new ActionUsage(action, subPath, spec, MajorOf(spec), path));
 			}
 		}
 
@@ -82,6 +88,24 @@ public static partial class ActionUsageScanner
 		return matching.Count == 0 || matching.Any(u => u.MajorVersion is null)
 			? null
 			: matching.Min(u => u.MajorVersion);
+	}
+
+	/// <summary>
+	/// Splits <c>owner/name/sub/path</c> into the repository and everything after it.
+	/// </summary>
+	/// <remarks>
+	/// A sub-action has no version of its own: <c>github/codeql-action/init@v4</c> is version 4 of the
+	/// <c>github/codeql-action</c> repository. Attributing the usage to the full path instead would mean
+	/// a repository already on v4 could never be shown to satisfy a bump to v4, because the name
+	/// Dependabot uses and the name the workflow writes would never match.
+	/// </remarks>
+	private static (string Repository, string? SubPath) SplitRepository(string uses)
+	{
+		var segments = uses.Split('/');
+
+		return segments.Length <= 2
+			? (uses, null)
+			: ($"{segments[0]}/{segments[1]}", string.Join('/', segments[2..]));
 	}
 
 	/// <summary>

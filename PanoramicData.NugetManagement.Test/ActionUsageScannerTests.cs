@@ -67,6 +67,40 @@ public class ActionUsageScannerTests(ITestOutputHelper output) : TestWithOutput(
 	}
 
 	[Fact]
+	public void Scan_SubActionPath_IsAttributedToItsRepository()
+	{
+		var usages = ActionUsageScanner.Scan(Ctx(
+			(".github/workflows/codeql.yml",
+				"steps:\n    - uses: github/codeql-action/init@v2\n"
+				+ "    - uses: github/codeql-action/analyze@v2\n")));
+
+		usages.Select(u => u.Action).Should().AllBe("github/codeql-action",
+			"Dependabot bumps the action's repository, and its sub-actions move with it — so a usage "
+			+ "of github/codeql-action/init has to answer for github/codeql-action");
+
+		usages.Select(u => u.SubPath).Should().BeEquivalentTo(["init", "analyze"],
+			"which sub-action it was is still worth keeping, for anything that has to edit the line");
+	}
+
+	[Fact]
+	public void LowestMajorOf_SubActionPaths_AnswerForTheirRepository()
+	{
+		var usages = ActionUsageScanner.Scan(Ctx(
+			(".github/workflows/codeql.yml",
+				"steps:\n    - uses: github/codeql-action/init@v4\n"
+				+ "    - uses: github/codeql-action/analyze@v4\n")));
+
+		ActionUsageScanner.LowestMajorOf(usages, "github/codeql-action").Should().Be(4,
+			"a repository already on v4 must not be reported as failing to satisfy a bump to v4");
+	}
+
+	[Fact]
+	public void Scan_PlainActionHasNoSubPath()
+		=> ActionUsageScanner
+			.Scan(Ctx((".github/workflows/ci.yml", "steps:\n    - uses: actions/checkout@v7\n")))
+			.Should().ContainSingle().Which.SubPath.Should().BeNull();
+
+	[Fact]
 	public void Scan_IgnoresFilesOutsideTheWorkflowsFolder()
 		=> ActionUsageScanner
 			.Scan(Ctx(("README.md", "example:\n    - uses: actions/checkout@v1\n")))

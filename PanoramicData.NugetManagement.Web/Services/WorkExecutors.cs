@@ -435,12 +435,20 @@ public sealed class WorkExecutors(
 				.ToList();
 
 			var queued = 0;
+			var triaged = 0;
 			foreach (var group in assessable.GroupBy(r => r.Organization))
 			{
-				queued += fanOut.EnqueueReassess(group.Key, [.. group], item.ConsoleNodeKey);
+				var rows = group.ToList();
+				queued += fanOut.EnqueueReassess(group.Key, rows, item.ConsoleNodeKey);
+
+				// Queued after the re-assessment, on the same lanes, so each triage sees the assessment
+				// it needs. Only the whole-estate refresh does this: a plain re-assess stays read-only,
+				// because "assess everything" should not silently close anybody's pull requests.
+				triaged += fanOut.EnqueueTriageDependabot(group.Key, rows, item.ConsoleNodeKey);
 			}
 
-			Say($"✅ Refreshed {freshRows.Count} packages, queued {queued} of {assessable.Count} repositories to re-assess.");
+			Say($"✅ Refreshed {freshRows.Count} packages, queued {queued} of {assessable.Count} "
+				+ $"repositories to re-assess and {triaged} to triage for Dependabot.");
 		}
 		catch (Exception ex)
 		{
@@ -897,10 +905,8 @@ public sealed class WorkExecutors(
 			+ $"{outcome.Covered} awaiting an existing fix, {outcome.Uncovered} with no fix available, "
 			+ $"{outcome.Unrecognised} left alone.");
 
-		// The closed ones have left the open list, so what the tree shows is now out of date.
-		row.OpenIssues = [.. row.OpenIssues.Where(issue =>
-			!triages.Any(t => t.Issue.Number == issue.Number
-				&& t.Verdict == DependabotVerdict.AlreadySatisfied))];
+		// The closed ones have left the open list, and the survivors now carry their verdicts.
+		row.OpenIssues = [.. DependabotTriageRunner.Restamp(row.OpenIssues, triages)];
 
 		cache.UpsertRow(row);
 	}

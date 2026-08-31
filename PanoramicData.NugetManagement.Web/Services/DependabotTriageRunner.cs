@@ -131,6 +131,45 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	}
 
 	/// <summary>
+	/// The open items as they stand after a triage pass: each judged item carrying its verdict, and the
+	/// closed ones gone.
+	/// </summary>
+	/// <param name="issues">The repository's open items as they were before the pass.</param>
+	/// <param name="triages">The verdicts reached.</param>
+	/// <remarks>
+	/// The closed ones are dropped here rather than waiting for the next refresh to notice, because the
+	/// tree would otherwise go on showing pull requests this application has just closed — and the
+	/// staleness clock on them would keep running.
+	/// </remarks>
+	public static IReadOnlyList<RepositoryIssue> Restamp(
+		IReadOnlyList<RepositoryIssue> issues,
+		IReadOnlyList<DependabotTriage> triages)
+	{
+		var byNumber = triages.ToDictionary(t => t.Issue.Number);
+		var remaining = new List<RepositoryIssue>();
+
+		foreach (var issue in issues)
+		{
+			if (!byNumber.TryGetValue(issue.Number, out var triage))
+			{
+				remaining.Add(issue);
+				continue;
+			}
+
+			if (triage.Verdict == DependabotVerdict.AlreadySatisfied)
+			{
+				continue;
+			}
+
+			issue.TriageVerdict = triage.Verdict;
+			issue.TriageReason = triage.Reason;
+			remaining.Add(issue);
+		}
+
+		return remaining;
+	}
+
+	/// <summary>
 	/// Explains, then closes. In that order, so a human who finds the pull request closed has
 	/// something to read — and so a failure to close still leaves the explanation behind.
 	/// </summary>

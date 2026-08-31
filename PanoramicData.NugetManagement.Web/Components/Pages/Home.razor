@@ -2859,7 +2859,7 @@ else
 			case NavView.RepositoryIssueDetail:
 				@* Its own component rather than another render method here: this file is already
 				   enormous, and IssuesView sets the precedent for a self-contained panel. *@
-				<RepositoryIssueView Issue="@SelectedRepositoryIssue" RepositoryFullName="@_selectedRow?.RepositoryFullName" />
+				<RepositoryIssueView Issue="@SelectedRepositoryIssue" RepositoryFullName="@_selectedRow?.RepositoryFullName" OnTriageRequested="TriageDependabotAsync" />
 				break;
 			default:
 				@RenderGettingStarted()
@@ -3832,6 +3832,31 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		QueueForSelectedRepository(WorkKind.Reassess, $"Re-assess {_selectedRow.RepositoryName}", WorkflowStep.Reassess);
+
+		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// Queues Dependabot triage for the selected repository: closes the pull requests it has outgrown
+	/// and raises an issue for each valid one no auto-fix covers.
+	/// </summary>
+	/// <remarks>
+	/// Queued rather than run inline, like every other repository action, so it takes its turn on that
+	/// repository's lane behind anything already in flight — including a re-assessment, whose result it
+	/// depends on.
+	/// </remarks>
+	private Task TriageDependabotAsync()
+	{
+		if (_selectedRow is null)
+		{
+			return Task.CompletedTask;
+		}
+
+		EnsureSelectedRowIsCurrent();
+
+		QueueForSelectedRepository(
+			WorkKind.TriageDependabot,
+			$"Triage Dependabot for {_selectedRow.RepositoryName}");
 
 		return Task.CompletedTask;
 	}

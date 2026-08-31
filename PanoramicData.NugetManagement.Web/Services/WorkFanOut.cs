@@ -43,6 +43,42 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 		return queued;
 	}
 
+	/// <summary>
+	/// Queues Dependabot triage for every given repository. Returns how many were queued.
+	/// </summary>
+	/// <param name="organization">The organisation they belong to.</param>
+	/// <param name="rows">The repositories to triage.</param>
+	/// <param name="consoleNodeKey">The console the output belongs to.</param>
+	/// <remarks>
+	/// Queued separately from, and after, the re-assessment. Lanes run in order and a repository has
+	/// one lane, so a triage queued after that repository's re-assessment is guaranteed to see the
+	/// assessment it depends on — without any explicit dependency mechanism.
+	/// </remarks>
+	public int EnqueueTriageDependabot(
+		string? organization,
+		IReadOnlyList<RepositoryDashboardRow> rows,
+		string? consoleNodeKey)
+	{
+		var queued = 0;
+
+		foreach (var row in rows)
+		{
+			var item = lanes.Enqueue(
+				$"Triage Dependabot for {row.RepositoryName}",
+				WorkDescriptor.ForRepository(WorkKind.TriageDependabot, organization, row.RepositoryFullName),
+				$"triagedependabot:{row.RepositoryFullName}",
+				null,
+				consoleNodeKey);
+
+			if (item is not null)
+			{
+				queued++;
+			}
+		}
+
+		return queued;
+	}
+
 	/// <summary>Queues a clone of every given candidate. Returns how many were queued.</summary>
 	/// <param name="organization">The organisation they belong to.</param>
 	/// <param name="targets">The repositories to clone.</param>
