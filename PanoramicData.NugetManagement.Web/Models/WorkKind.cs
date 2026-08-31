@@ -31,6 +31,18 @@ public enum WorkKind
 	/// <summary>Run one repository's tests.</summary>
 	Test,
 
+	/// <summary>
+	/// Classify one repository's open Dependabot pull requests, close the ones it has outgrown, and
+	/// raise an issue for each dependency nothing here can fix.
+	/// </summary>
+	/// <remarks>
+	/// Its own kind rather than a tail on <see cref="FixAll"/>: it is the only work that mutates
+	/// GitHub, so it is worth being separately queueable, separately cancellable, and its own row in
+	/// the queue. Lanes run in order, so queueing it after <see cref="Reassess"/> on the same lane is
+	/// all the sequencing it needs.
+	/// </remarks>
+	TriageDependabot,
+
 	/// <summary>Pull and push one repository.</summary>
 	GitSync,
 

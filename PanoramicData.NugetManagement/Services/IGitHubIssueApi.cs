@@ -9,13 +9,20 @@ namespace PanoramicData.NugetManagement.Services;
 /// <param name="HtmlUrl">The GitHub web address of the item.</param>
 /// <param name="AuthorLogin">The login of whoever opened it.</param>
 /// <param name="CreatedAtUtc">When it was opened.</param>
+/// <param name="Body">
+/// The item's body, where the caller needs it. Optional because the staleness sweep — the original
+/// and still the main consumer — never reads it, and fetching it for hundreds of items would be
+/// waste. Dependabot triage does need it: it identifies an already-raised gap issue by a hidden
+/// marker in the body.
+/// </param>
 public record GitHubOpenItem(
 	int Number,
 	string Title,
 	bool IsPullRequest,
 	string HtmlUrl,
 	string AuthorLogin,
-	DateTimeOffset CreatedAtUtc);
+	DateTimeOffset CreatedAtUtc,
+	string? Body = null);
 
 /// <summary>
 /// One comment, reduced to the three facts the staleness measure needs.

@@ -77,4 +77,14 @@ public class AppSettings
 	/// Generate one at https://github.com/settings/tokens (Tokens (classic)).
 	/// </summary>
 	public string? GitHubPat { get; set; }
+
+	/// <summary>
+	/// The repository that gets an issue when Dependabot raises a valid pull request no remediation
+	/// covers — that is, this application's own repository.
+	/// </summary>
+	/// <remarks>
+	/// Configurable rather than hardcoded, because a fork or a differently-named deployment should
+	/// file its missing-remediation work against itself, not against ours.
+	/// </remarks>
+	public string GovernanceIssueRepository { get; set; } = "panoramicdata/PanoramicData.NugetManagement";
 }

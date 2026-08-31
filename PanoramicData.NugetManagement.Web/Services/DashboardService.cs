@@ -286,6 +286,87 @@ public class DashboardService
 	}
 
 	/// <summary>
+	/// The per-repository assessment options, as configured for this installation.
+	/// </summary>
+	/// <remarks>
+	/// One place, because three callers now need the same answer — the two assessment paths and
+	/// Dependabot triage — and an option added to one of them but not the others would assess the
+	/// same repository differently depending on which path reached it.
+	/// </remarks>
+	private RepoOptions BuildRepoOptions()
+	{
+		var repoOptions = new RepoOptions
+		{
+			ExpectedLicense = _settings.ExpectedLicense,
+			ExpectedCopyrightHolder = _settings.CopyrightHolder,
+			NuGetUser = _settings.NuGetUser,
+		};
+
+		if (!string.IsNullOrEmpty(_settings.CodacyApiToken))
+		{
+			repoOptions.Codacy = new CodacyOptions
+			{
+				ApiToken = _settings.CodacyApiToken
+			};
+		}
+
+		return repoOptions;
+	}
+
+	/// <summary>
+	/// Builds the repository context Dependabot triage reads declared versions from, preferring the
+	/// local clone when there is one.
+	/// </summary>
+	/// <param name="row">The repository to read.</param>
+	/// <param name="github">A client for the remote path.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// The same choice the two assessment paths make, and for the same reason: a cloned repository can
+	/// be read from disk for nothing, and only a repository with no clone needs the network.
+	/// </remarks>
+	public async Task<RepositoryContext> BuildContextAsync(
+		RepositoryDashboardRow row,
+		IGitHubClient github,
+		CancellationToken cancellationToken = default)
+	{
+		var repoOptions = BuildRepoOptions();
+
+		using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+
+		if (row is { IsClonedLocally: true, LocalPath: not null })
+		{
+			return new LocalRepositoryContextBuilder(
+					loggerFactory.CreateLogger<LocalRepositoryContextBuilder>())
+				.Build(
+					row.LocalPath,
+					row.RepositoryFullName,
+					repoOptions,
+					"main",
+					row.CurrentBranch,
+					row.LatestTag,
+					row.PrimaryPackage?.LatestVersion);
+		}
+
+		var parts = row.RepositoryFullName.Split('/');
+
+		if (parts.Length != 2)
+		{
+			throw new InvalidOperationException(
+				$"'{row.RepositoryFullName}' is not an owner/name repository.");
+		}
+
+		var repository = await github.Repository.Get(parts[0], parts[1]).ConfigureAwait(false);
+
+		using var contextBuilder = new RepositoryContextBuilder(
+			github,
+			loggerFactory.CreateLogger<RepositoryContextBuilder>());
+
+		return await contextBuilder
+			.BuildAsync(repository, repoOptions, cancellationToken)
+			.ConfigureAwait(false);
+	}
+
+	/// <summary>
 	/// Assesses a single repository against all governance rules using GitHub API.
 	/// </summary>
 	public async Task AssessRepositoryAsync(
@@ -319,20 +400,7 @@ public class DashboardService
 			}
 
 			var repo = await github.Repository.Get(parts[0], parts[1]).ConfigureAwait(false);
-			var repoOptions = new RepoOptions
-			{
-				ExpectedLicense = _settings.ExpectedLicense,
-				ExpectedCopyrightHolder = _settings.CopyrightHolder,
-				NuGetUser = _settings.NuGetUser,
-			};
-
-			if (!string.IsNullOrEmpty(_settings.CodacyApiToken))
-			{
-				repoOptions.Codacy = new CodacyOptions
-				{
-					ApiToken = _settings.CodacyApiToken
-				};
-			}
+			var repoOptions = BuildRepoOptions();
 
 			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 			using var contextBuilder = new RepositoryContextBuilder(github, loggerFactory.CreateLogger<RepositoryContextBuilder>());
@@ -514,20 +582,7 @@ public class DashboardService
 				? row.Assessment?.DefaultBranch ?? "main"
 				: detectedDefaultBranch;
 
-			var repoOptions = new RepoOptions
-			{
-				ExpectedLicense = _settings.ExpectedLicense,
-				ExpectedCopyrightHolder = _settings.CopyrightHolder,
-				NuGetUser = _settings.NuGetUser,
-			};
-
-			if (!string.IsNullOrEmpty(_settings.CodacyApiToken))
-			{
-				repoOptions.Codacy = new CodacyOptions
-				{
-					ApiToken = _settings.CodacyApiToken
-				};
-			}
+			var repoOptions = BuildRepoOptions();
 
 			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 			var localBuilder = new LocalRepositoryContextBuilder(loggerFactory.CreateLogger<LocalRepositoryContextBuilder>());

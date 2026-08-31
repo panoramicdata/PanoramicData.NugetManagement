@@ -1,6 +1,7 @@
 ﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.Options;
 using PanoramicData.Blazor.Extensions;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Components;
@@ -39,6 +40,11 @@ builder.Services.AddSingleton<PublishedVersionRefresher>();
 builder.Services.AddSingleton<LocalRepoService>();
 builder.Services.AddSingleton<DashboardCacheService>();
 builder.Services.AddSingleton<RemediationRegistry>();
+// Singletons, because triage runs on many repository lanes at once and what stops one gap becoming
+// one issue per repository is state shared between them.
+builder.Services.AddSingleton(sp => new UncoveredDependencyIssueService(
+	sp.GetRequiredService<IOptions<AppSettings>>().Value.GovernanceIssueRepository));
+builder.Services.AddSingleton<DependabotTriageRunner>();
 builder.Services.AddSingleton<RuntimeSettingsService>();
 builder.Services.AddSingleton<IdeDetectionService>();
 builder.Services.AddSingleton<LocalFileSystemDataProvider>();

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
 
 namespace PanoramicData.NugetManagement.Web.Services;
@@ -34,6 +35,14 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// Where the work narrates itself. The UI console mirrors this category, so a line logged here
 /// reaches the console the item was queued from without the work knowing that console exists.
 /// </param>
+/// <param name="remediations">
+/// Which rules can be fixed automatically. Dependabot triage asks this to tell a pull request an
+/// existing remediation will handle from one that needs a remediation written.
+/// </param>
+/// <param name="triageRunner">
+/// Carries out what triage decided. Injected rather than constructed per item so that many
+/// repository lanes finding the same gap still produce one issue between them.
+/// </param>
 public sealed class WorkExecutors(
 	DashboardService dashboard,
 	DashboardCacheService cache,
@@ -42,7 +51,9 @@ public sealed class WorkExecutors(
 	WorkFanOut fanOut,
 	GitHubTokenProvider gitHubTokens,
 	IHttpContextAccessor httpContextAccessor,
-	ILogger<WorkExecutors> logger)
+	ILogger<WorkExecutors> logger,
+	Remediations.RemediationRegistry remediations,
+	DependabotTriageRunner triageRunner)
 {
 	/// <summary>Every kind this service knows how to run.</summary>
 	/// <remarks>
@@ -52,6 +63,7 @@ public sealed class WorkExecutors(
 	public static IReadOnlySet<WorkKind> SupportedKinds { get; } = new HashSet<WorkKind>
 	{
 		WorkKind.Clone, WorkKind.Reassess, WorkKind.FixAll, WorkKind.FixCategory, WorkKind.FixRule,
+		WorkKind.TriageDependabot,
 		WorkKind.Build, WorkKind.Test, WorkKind.GitSync, WorkKind.CommitAndPush, WorkKind.Publish,
 		WorkKind.RediscoverOrganization, WorkKind.DiscoverReassessTargets,
 		WorkKind.DiscoverCloneTargets, WorkKind.RefreshAll
@@ -69,6 +81,7 @@ public sealed class WorkExecutors(
 			WorkKind.FixAll => FixAllAsync(item, progress, cancellationToken),
 			WorkKind.FixCategory => FixCategoryAsync(item, progress, cancellationToken),
 			WorkKind.FixRule => FixRuleAsync(item, progress, cancellationToken),
+			WorkKind.TriageDependabot => TriageDependabotAsync(item, progress, cancellationToken),
 			WorkKind.Build => BuildAsync(item, progress, cancellationToken),
 			WorkKind.Test => TestAsync(item, progress, cancellationToken),
 			WorkKind.GitSync => GitSyncAsync(item, progress, cancellationToken),
@@ -804,6 +817,92 @@ public sealed class WorkExecutors(
 			: "⚠️ Could not revert the part-applied changes — check the clone by hand.");
 
 		await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Classifies one repository's open Dependabot pull requests and acts on the verdicts.
+	/// </summary>
+	/// <remarks>
+	/// The only work that mutates GitHub. Every intended comment and close is said before it is made,
+	/// so this item's output is the audit trail for it.
+	/// <para>
+	/// Needs a current assessment, because coverage is decided from which rules are failing. Without
+	/// one it says so and stops, rather than guessing that nothing is failing and closing on that
+	/// basis — an unassessed repository would otherwise look like one where nothing is covered, and
+	/// raise a gap issue for every dependency Dependabot had ever mentioned.
+	/// </para>
+	/// </remarks>
+	/// <param name="item">The item naming the repository to triage.</param>
+	/// <param name="progress">Unused: triage reports no sub-steps.</param>
+	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
+	private async Task TriageDependabotAsync(
+		WorkItem item,
+		IProgress<string> progress,
+		CancellationToken cancellationToken)
+	{
+		var row = RowFor(item);
+
+		if (row is null)
+		{
+			SayRepositoryGone(item);
+			return;
+		}
+
+		if (row.Assessment is null)
+		{
+			Say($"⚠️ {row.RepositoryFullName} has no assessment yet — assess it first, then triage.");
+			return;
+		}
+
+		if (!row.OpenIssuesKnown)
+		{
+			Say($"⚠️ {row.RepositoryFullName}'s open pull requests are not known — re-assess it first.");
+			return;
+		}
+
+		var dependabotPullRequests = row.OpenIssues
+			.Where(issue => issue.IsPullRequest)
+			.ToList();
+
+		if (dependabotPullRequests.Count == 0)
+		{
+			Say($"✅ {row.RepositoryFullName} has no open pull requests to triage.");
+			return;
+		}
+
+		Say($"▶ Triaging {dependabotPullRequests.Count} open pull request(s) for {row.RepositoryFullName}...");
+
+		var github = await CreateGitHubClientAsync().ConfigureAwait(false);
+		var context = await dashboard
+			.BuildContextAsync(row, github, cancellationToken)
+			.ConfigureAwait(false);
+
+		var triages = new DependabotTriageService().Triage(
+			dependabotPullRequests,
+			context,
+			row.Assessment.RuleResults,
+			ruleId => remediations.Get(ruleId) is not null);
+
+		var outcome = await triageRunner
+			.RunAsync(
+				new OctokitGitHubIssueApi(github),
+				new OctokitGitHubWriteApi(github),
+				row.RepositoryFullName,
+				triages,
+				Say,
+				cancellationToken)
+			.ConfigureAwait(false);
+
+		Say($"✅ {row.RepositoryFullName}: closed {outcome.Closed}, "
+			+ $"{outcome.Covered} awaiting an existing fix, {outcome.Uncovered} with no fix available, "
+			+ $"{outcome.Unrecognised} left alone.");
+
+		// The closed ones have left the open list, so what the tree shows is now out of date.
+		row.OpenIssues = [.. row.OpenIssues.Where(issue =>
+			!triages.Any(t => t.Issue.Number == issue.Number
+				&& t.Verdict == DependabotVerdict.AlreadySatisfied))];
+
+		cache.UpsertRow(row);
 	}
 
 	/// <summary>

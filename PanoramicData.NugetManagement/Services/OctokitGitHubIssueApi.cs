@@ -37,7 +37,8 @@ public class OctokitGitHubIssueApi(IGitHubClient github) : IGitHubIssueApi
 			issue.PullRequest is not null,
 			issue.HtmlUrl ?? string.Empty,
 			issue.User?.Login ?? string.Empty,
-			issue.CreatedAt))];
+			issue.CreatedAt,
+			issue.Body))];
 	}
 
 	/// <inheritdoc />

@@ -168,7 +168,10 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			new WorkFanOut(lanes),
 			new GitHubTokenProvider(),
 			new HttpContextAccessor(),
-			NullLogger<WorkExecutors>.Instance);
+			NullLogger<WorkExecutors>.Instance,
+			new RemediationRegistry(),
+			new DependabotTriageRunner(
+				new UncoveredDependencyIssueService("panoramicdata/PanoramicData.NugetManagement")));
 	}
 
 	/// <inheritdoc />
