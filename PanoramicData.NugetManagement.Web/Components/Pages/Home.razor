@@ -199,11 +199,14 @@ else
 															}
 														</span>
 													}
-													else if (node.Data?.LaneKey is { Length: > 0 } laneKey && node.Data.WorkItemId is null)
+													else if (node.Data?.LaneKey is { Length: > 0 } laneKey && node.Data.WorkItemId is null && !node.Data.IsLeaf)
 													{
 														<span class="nav-org-actions">
 															@* On the organisation's work node this stops every lane beneath it, which is
-															   what replaces stopping a bulk action that used to be one item. *@
+															   what replaces stopping a bulk action that used to be one item.
+															   Only when something is under it: a repository's work node is permanent, so
+															   without the leaf check every clear repository would offer a stop button
+															   with nothing to stop. *@
 															<button type="button" class="nav-org-action-btn" title="@(node.Data.RepositoryFullName is null ? "Stop all work in this organisation" : "Stop all work on this repository")" @onclick="() => StopLane(node.Data)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
 														</span>
 													}

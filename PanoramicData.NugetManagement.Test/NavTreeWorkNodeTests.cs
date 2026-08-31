@@ -33,11 +33,64 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	}
 
 	[Fact]
-	public void WorkNode_EmptyLane_IsAbsent()
+	public void WorkNode_EmptyLane_IsStillPresentAndGreen()
 	{
+		// Permanent, so that the place work appears is the same place whether or not any is running.
+		// Absent-when-empty meant the node arrived and vanished under the repository, and a reader
+		// looking for "is anything happening here?" had to know that nothing there meant no.
 		var provider = NewProvider(new WorkLaneService(), withRepository: Repo);
 
-		provider.BuildNavItems().Should().NotContain(i => i.Key == NavTreeDataProvider.WorkKey(Repo));
+		var node = provider.BuildNavItems()
+			.Should().ContainSingle(i => i.Key == NavTreeDataProvider.WorkKey(Repo)).Subject;
+
+		node.Text.Should().Be("Work", "with an empty lane there is no count worth reading");
+		node.IconCss.Should().Contain("text-success", "nothing outstanding is the good state, not a neutral one");
+		node.IsLeaf.Should().BeTrue("there is nothing beneath it to open");
+	}
+
+	[Fact]
+	public void WorkNode_IsTheFirstChildOfTheRepository()
+	{
+		var provider = NewProvider(new WorkLaneService(), withRepository: Repo);
+		var items = provider.BuildNavItems();
+
+		var work = items.Single(i => i.Key == NavTreeDataProvider.WorkKey(Repo));
+		var siblings = items
+			.Where(i => i.ParentKey == NavTreeDataProvider.RepoKey(Repo) && i.Key != work.Key)
+			.ToList();
+
+		siblings.Should().NotBeEmpty("the assertion below is vacuous without something to sort against");
+		siblings.Should().OnlyContain(
+			sibling => sibling.SortOrder > work.SortOrder,
+			"PDTree tie-breaks alphabetically, so first has to be an explicit rank rather than a lucky name");
+	}
+
+	[Fact]
+	public void WorkNode_QueuedItem_TurnsBlue()
+	{
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		var node = provider.BuildNavItems().Single(i => i.Key == NavTreeDataProvider.WorkKey(Repo));
+
+		node.IconCss.Should().Contain("text-info", "queued work is outstanding work, whether or not it has started");
+		node.IconCss.Should().NotContain("text-success");
+		node.Text.Should().Be("Work (1)");
+	}
+
+	[Fact]
+	public void WorkNode_RunningItem_TurnsBlue()
+	{
+		var lanes = new WorkLaneService();
+		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		lanes.TryStartNext(out _);
+		var provider = NewProvider(lanes, withRepository: Repo);
+
+		var node = provider.BuildNavItems().Single(i => i.Key == NavTreeDataProvider.WorkKey(Repo));
+
+		node.IconCss.Should().Contain("text-info");
+		node.IsLeaf.Should().BeFalse("the item running under it has to be reachable");
 	}
 
 	[Fact]

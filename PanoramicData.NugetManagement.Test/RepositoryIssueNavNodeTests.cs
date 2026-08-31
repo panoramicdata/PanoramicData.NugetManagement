@@ -218,9 +218,11 @@ public class RepositoryIssueNavNodeTests(ITestOutputHelper output) : TestWithOut
 		var tree = Tree(Aged(1, 1));
 		var issues = tree.Single(i => i.Key == NavTreeDataProvider.RepoIssuesKey(Repo));
 
-		issues.SortOrder.Should().Be(1);
+		// Relative, not absolute: the ranks shift whenever another node claims a place under the
+		// repository — the Work node took rank 0 — and what this test is about is the order.
 		tree.Where(i => i.View == NavView.CategoryDetail)
-			.Should().AllSatisfy(c => c.SortOrder.Should().Be(2));
+			.Should().NotBeEmpty()
+			.And.AllSatisfy(c => c.SortOrder.Should().BeGreaterThan(issues.SortOrder));
 	}
 
 	[Fact]
