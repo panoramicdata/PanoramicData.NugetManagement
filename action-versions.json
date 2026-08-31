@@ -1,8 +1,16 @@
 {
   "actions/checkout": "v7",
+  "actions/configure-pages": "v5",
+  "actions/create-release": "v1",
+  "actions/deploy-pages": "v4",
   "actions/download-artifact": "v8",
   "actions/setup-dotnet": "v6",
+  "actions/setup-node": "v4",
   "actions/upload-artifact": "v7",
+  "actions/upload-pages-artifact": "v3",
   "github/codeql-action": "v4",
-  "NuGet/login": "v1"
+  "irongut/CodeCoverageSummary": "v1",
+  "JamesIves/github-pages-deploy-action": "v4",
+  "NuGet/login": "v1",
+  "softprops/action-gh-release": "v1"
 }
