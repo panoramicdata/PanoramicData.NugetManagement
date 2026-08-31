@@ -2198,6 +2198,125 @@ public class RuleEvaluationTests : TestWithOutput
 			.Which.Keys.Should().BeEquivalentTo(["sdk.version", "sdk.rollForward"]);
 	}
 
+	// ── VER-04 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task VER04_ShouldPass_WhenThereIsNoToolManifest()
+	{
+		var context = CreateEmptyContext();
+
+		var result = await GetRule("VER-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task VER04_ShouldPass_WhenTheManifestDeclaresToolsOtherThanNbgv()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".config/dotnet-tools.json"] =
+				"""{"version":1,"isRoot":true,"tools":{"dotnet-ef":{"version":"9.0.0","commands":["dotnet-ef"]}}}"""
+		});
+
+		var result = await GetRule("VER-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue("a real toolchain is none of this rule's business");
+	}
+
+	[Fact]
+	public async Task VER04_ShouldOfferDeletion_WhenNbgvIsTheOnlyTool()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".config/dotnet-tools.json"] =
+				"""{"version":1,"isRoot":true,"tools":{"nbgv":{"version":"3.9.50","commands":["nbgv"]}}}"""
+		});
+
+		var result = await GetRule("VER-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("delete_file");
+		result.Advisory!.Data["file"].Should().Be(".config/dotnet-tools.json");
+	}
+
+	[Fact]
+	public async Task VER04_ShouldOfferDeletion_WhenTheManifestDeclaresNoToolsAtAll()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".config/dotnet-tools.json"] = """{"version":1,"isRoot":true,"tools":{}}"""
+		});
+
+		var result = await GetRule("VER-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("a manifest that declares nothing is left-over noise");
+		result.Advisory!.Data["remediation_type"].Should().Be("delete_file");
+	}
+
+	[Fact]
+	public async Task VER04_ShouldIgnoreACommentThatMerelyMentionsNbgv()
+	{
+		// Publish.ps1 in a migrated repository explains that it deliberately does *not* use the CLI.
+		// Reading that as a usage would withhold the fix from exactly the repositories that earned it.
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".config/dotnet-tools.json"] =
+				"""{"version":1,"isRoot":true,"tools":{"nbgv":{"version":"3.9.50","commands":["nbgv"]}}}""",
+			["Publish.ps1"] = "# so this does not depend on the global 'nbgv' CLI tool\ndotnet build -t:GetBuildVersion\n"
+		});
+
+		var result = await GetRule("VER-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("delete_file");
+	}
+
+	[Fact]
+	public async Task VER04_ShouldWithholdTheAutoFix_WhenAScriptStillInvokesNbgv()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".config/dotnet-tools.json"] =
+				"""{"version":1,"isRoot":true,"tools":{"nbgv":{"version":"3.7.115","commands":["nbgv"]}}}""",
+			["Release.ps1"] = "$nbgvVersion = dotnet nbgv get-version --format json\n"
+		});
+
+		var result = await GetRule("VER-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data.Should().NotContainKey(
+			"remediation_type",
+			"deleting the manifest out from under a script that runs the tool would break the release");
+	}
+
+	[Fact]
+	public async Task VER04_ShouldWithholdTheAutoFix_WhenNbgvSitsAlongsideAnotherTool()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".config/dotnet-tools.json"] =
+				"""{"version":1,"isRoot":true,"tools":{"nbgv":{"version":"3.9.50","commands":["nbgv"]},"dotnet-ef":{"version":"9.0.0","commands":["dotnet-ef"]}}}"""
+		});
+
+		var result = await GetRule("VER-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data.Should().NotContainKey(
+			"remediation_type",
+			"only the nbgv entry should go, and that is an edit this rule will not guess at");
+	}
+
+	[Fact]
+	public async Task VER04_ShouldWithholdTheAutoFix_WhenAWorkflowRestoresTheToolManifest()
+	{
+		// Deleting a manifest a workflow restores turns `dotnet tool restore` into a hard error, and
+		// removing that step as well is a second edit in a second file — not one to guess at.
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".config/dotnet-tools.json"] =
+				"""{"version":1,"isRoot":true,"tools":{"nbgv":{"version":"3.9.50","commands":["nbgv"]}}}""",
+			[".github/workflows/ci.yml"] = "jobs:\n  build:\n    steps:\n      - run: dotnet tool restore\n"
+		});
+
+		var result = await GetRule("VER-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data.Should().NotContainKey("remediation_type");
+	}
+
 	private static IRule GetRule(string ruleId)
 		=> RuleRegistry.Rules.Single(r => r.RuleId == ruleId);
 
