@@ -9,6 +9,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// Tests for CI-12, the generic action version floor: every action in every workflow is held to the
 /// best version the organization uses anywhere, except the few actions a bespoke rule already owns.
 /// </summary>
+[Collection(ActionVersionCatalogCollection.Name)]
 public class CiActionVersionFloorRuleTests(ITestOutputHelper output) : TestWithOutput(output), IDisposable
 {
 	private const string _ruleId = "CI-12";
