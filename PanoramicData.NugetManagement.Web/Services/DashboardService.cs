@@ -54,9 +54,14 @@ public class DashboardService
 	/// pay the cost of every other. When null, every configured organisation is discovered.
 	/// </param>
 	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <param name="github">
+	/// A client for asking GitHub what each declared repository is really called. When null the names
+	/// packages declare are taken at their word, which is what discovery did before.
+	/// </param>
 	public async Task<List<RepositoryDashboardRow>> DiscoverPackagesAsync(
 		string? organization = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		IGitHubClient? github = null)
 	{
 		var organizations = organization is null
 			? _runtimeSettings.Organizations
@@ -64,12 +69,19 @@ public class DashboardService
 
 		var packages = new List<NuGetPackageInfo>();
 
+		using var canonicalLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
+		var canonicalNames = github is null
+			? null
+			: new CanonicalRepositoryLookup(
+				github,
+				canonicalLoggerFactory.CreateLogger<CanonicalRepositoryLookup>());
+
 		// Discover each organisation in turn and concatenate. Sequential rather than parallel: this
 		// runs once at start-up, and NuGet's search API is the shared resource being paged through.
 		foreach (var owner in organizations)
 		{
 			var discovered = await _nuget
-				.DiscoverOrganizationPackagesAsync(owner, cancellationToken)
+				.DiscoverOrganizationPackagesAsync(owner, cancellationToken, canonicalNames)
 				.ConfigureAwait(false);
 
 			packages.AddRange(discovered);
