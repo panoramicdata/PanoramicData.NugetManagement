@@ -38,7 +38,8 @@ public class NuGetDiscoveryService
 	/// </summary>
 	public async Task<List<NuGetPackageInfo>> DiscoverOrganizationPackagesAsync(
 		string? organization = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		ICanonicalRepositoryLookup? canonicalNames = null)
 	{
 		var owner = string.IsNullOrWhiteSpace(organization) ? _settings.NuGetOrganization : organization.Trim();
 		_logger.LogInformation("Discovering NuGet packages for owner '{Owner}'...", owner);
@@ -94,14 +95,31 @@ public class NuGetDiscoveryService
 						result.ProjectUrl?.ToString(),
 						token).ConfigureAwait(false);
 
+					var declaredOwner = GitHubRepositoryUrl.Owner(resolution.RepositoryUrl);
+					var declaredName = GitHubRepositoryUrl.Name(resolution.RepositoryUrl);
+
+					// What the package declared is what somebody typed. What GitHub answers is what the
+					// repository is called, and the Codacy lookup, the clone directory and the clone's
+					// remote all inherit whichever one of those we keep.
+					var canonical = declaredOwner is null || declaredName is null || canonicalNames is null
+						? null
+						: await canonicalNames
+							.GetFullNameAsync(declaredOwner, declaredName, token)
+							.ConfigureAwait(false);
+
+					var canonicalParts = canonical?.Split('/');
+
 					resolved[index] = new NuGetPackageInfo
 					{
 						PackageId = result.Identity.Id,
 						LatestVersion = result.Identity.Version.ToNormalizedString(),
 						Organization = owner,
-						RepositoryUrl = resolution.RepositoryUrl,
-						RepositoryOwner = GitHubRepositoryUrl.Owner(resolution.RepositoryUrl),
-						RepositoryName = GitHubRepositoryUrl.Name(resolution.RepositoryUrl),
+						RepositoryUrl = canonical is null
+							? resolution.RepositoryUrl
+							: $"https://github.com/{canonical}",
+						RepositoryOwner = canonicalParts is { Length: 2 } ? canonicalParts[0] : declaredOwner,
+						RepositoryName = canonicalParts is { Length: 2 } ? canonicalParts[1] : declaredName,
+						DeclaredRepositoryUrl = resolution.RepositoryUrl,
 						ResolutionOutcome = resolution.Outcome,
 						ResolutionError = resolution.Error
 					};
@@ -261,9 +279,15 @@ public class NuGetPackageInfo
 	public required string Organization { get; init; }
 
 	/// <summary>
-	/// The GitHub repository URL extracted from package metadata.
+	/// The GitHub repository URL, canonicalised against GitHub where it could be asked.
 	/// </summary>
 	public string? RepositoryUrl { get; init; }
+
+	/// <summary>
+	/// The repository URL exactly as the package declared it, before canonicalisation. Kept so the
+	/// difference between what a package claims and what the repository is called stays visible.
+	/// </summary>
+	public string? DeclaredRepositoryUrl { get; init; }
 
 	/// <summary>
 	/// The GitHub repository owner extracted from the URL (may differ from the configured

@@ -387,7 +387,10 @@ public sealed class WorkExecutors(
 				.Where(r => string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))
 				.ToList();
 
-			var freshRows = await dashboard.DiscoverPackagesAsync(organization, cancellationToken).ConfigureAwait(false);
+			var freshRows = await dashboard.DiscoverPackagesAsync(
+				organization,
+				cancellationToken,
+				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
 			SayUnreadNuspecs();
 
 			// Carry over assessments already held, so rediscovery does not throw away results for
@@ -479,7 +482,9 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			var freshRows = await dashboard.DiscoverPackagesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+			var freshRows = await dashboard.DiscoverPackagesAsync(
+				cancellationToken: cancellationToken,
+				github: await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
 			SayUnreadNuspecs();
 
 			var existingByRepository = (cache.GetCachedRows() ?? [])
