@@ -44,54 +44,6 @@ public sealed class CodacyIssueService : ICodacyIssueService
 	{
 		using var client = new CodacyClient(new CodacyClientOptions { ApiToken = apiToken });
 
-		try
-		{
-			var issues = await SearchIssuesAsync(client, organizationName, repositoryName, branch, cancellationToken)
-				.ConfigureAwait(false);
-
-			return new CodacyRepositoryReport { IsTracked = true, Issues = issues };
-		}
-		catch (Exception ex) when (CodacyNotFound.Matches(ex))
-		{
-			// Codacy does not have the repository under this name. It may still have it under the name
-			// it was added with: see CodacyRepositoryNameResolver.
-			var codacyName = await CodacyRepositoryNameResolver
-				.ResolveAsync(
-					CodacyRepositoryNameResolver.ForOrganization(client, organizationName),
-					repositoryName,
-					cancellationToken)
-				.ConfigureAwait(false);
-
-			if (codacyName is null)
-			{
-				// Codacy does not track this repository (not added or not yet analysed).
-				return new CodacyRepositoryReport { IsTracked = false };
-			}
-
-			try
-			{
-				var issues = await SearchIssuesAsync(client, organizationName, codacyName, branch, cancellationToken)
-					.ConfigureAwait(false);
-
-				return new CodacyRepositoryReport { IsTracked = true, Issues = issues };
-			}
-			catch (Exception retry) when (CodacyNotFound.Matches(retry))
-			{
-				return new CodacyRepositoryReport { IsTracked = false };
-			}
-		}
-	}
-
-	/// <summary>
-	/// Reads every page of Codacy's open issues for a repository branch.
-	/// </summary>
-	private static async Task<List<CodacyIssue>> SearchIssuesAsync(
-		CodacyClient client,
-		string organizationName,
-		string repositoryName,
-		string? branch,
-		CancellationToken cancellationToken)
-	{
 		var body = new SearchRepositoryIssuesBody();
 		if (!string.IsNullOrWhiteSpace(branch))
 		{
@@ -101,38 +53,46 @@ public sealed class CodacyIssueService : ICodacyIssueService
 		var issues = new List<CodacyIssue>();
 		string? cursor = null;
 
-		do
+		try
 		{
-			var response = await client.Analysis.SearchRepositoryIssuesAsync(
-				Provider.Github,
-				organizationName,
-				repositoryName,
-				body,
-				cursor,
-				PageSize,
-				cancellationToken).ConfigureAwait(false);
-
-			if (response.Data is not null)
+			do
 			{
-				foreach (var issue in response.Data)
+				var response = await client.Analysis.SearchRepositoryIssuesAsync(
+					Provider.Github,
+					organizationName,
+					repositoryName,
+					body,
+					cursor,
+					PageSize,
+					cancellationToken).ConfigureAwait(false);
+
+				if (response.Data is not null)
 				{
-					issues.Add(new CodacyIssue
+					foreach (var issue in response.Data)
 					{
-						FilePath = issue.FilePath ?? string.Empty,
-						Line = issue.LineNumber,
-						Message = issue.Message ?? string.Empty,
-						PatternId = issue.PatternInfo?.Id,
-						Category = issue.PatternInfo?.Category,
-						Severity = issue.PatternInfo?.SeverityLevel.ToString(),
-						Language = issue.Language
-					});
+						issues.Add(new CodacyIssue
+						{
+							FilePath = issue.FilePath ?? string.Empty,
+							Line = issue.LineNumber,
+							Message = issue.Message ?? string.Empty,
+							PatternId = issue.PatternInfo?.Id,
+							Category = issue.PatternInfo?.Category,
+							Severity = issue.PatternInfo?.SeverityLevel.ToString(),
+							Language = issue.Language
+						});
+					}
 				}
+
+				cursor = response.Pagination?.Cursor;
 			}
-
-			cursor = response.Pagination?.Cursor;
+			while (!string.IsNullOrEmpty(cursor));
 		}
-		while (!string.IsNullOrEmpty(cursor));
+		catch (Exception ex) when (CodacyNotFound.Matches(ex))
+		{
+			// Codacy does not track this repository (not added or not yet analysed).
+			return new CodacyRepositoryReport { IsTracked = false };
+		}
 
-		return issues;
+		return new CodacyRepositoryReport { IsTracked = true, Issues = issues };
 	}
 }

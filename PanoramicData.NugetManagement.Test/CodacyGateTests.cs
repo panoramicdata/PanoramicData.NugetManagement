@@ -109,26 +109,6 @@ public class CodacyGateTests(ITestOutputHelper output) : TestWithOutput(output)
 		result.Passed.Should().BeTrue();
 	}
 
-	[Fact]
-	public async Task ShouldPassAndNameTheDrift_WhenCodacyHoldsADifferentCasing()
-	{
-		// Dell.CloudIQ.Api was added to Codacy as Dell.CloudIq.Api and never renamed there. The
-		// assessment works off Codacy's name, and the pass says which name to go and fix.
-		var service = new FakeService(new CodacyFileGradeReport
-		{
-			IsTracked = true,
-			CodacyRepositoryName = "Acme.lib",
-			Files = [Graded("src/Good.cs", "A")]
-		});
-
-		var result = await Rule(service).EvaluateAsync(
-			CreateContext(withBadge: false, withApiToken: true),
-			TestContext.Current.CancellationToken);
-
-		result.Passed.Should().BeTrue();
-		result.Message.Should().Contain("Acme.lib").And.Contain("Acme.Lib");
-	}
-
 	private static CodacyConfiguredRule Rule(ICodacyFileGradeService service) => new(service);
 
 	private static ICodacyFileGradeService Report(bool isTracked, params CodacyFileGrade[] files)

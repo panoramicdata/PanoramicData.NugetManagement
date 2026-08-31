@@ -116,9 +116,8 @@ public class CodacyConfiguredRule : RuleBase
 				{
 					Summary = $"Add {context.FullName} to Codacy at app.codacy.com.",
 					Detail = $"""
-						Codacy answered the file listing for `{context.FullName}` with a 404, and no repository
-						of that name — in any casing — appears in the organization's Codacy repository listing,
-						which is what a repository that was never added looks like.
+						Codacy answered the file listing for `{context.FullName}` with a 404, which is what it
+						returns for a repository that was never added to the organization.
 
 						Add it at https://app.codacy.com/gh/{parts[0]}/dashboard, then let the first analysis
 						of `{context.DefaultBranch}` finish.
@@ -155,12 +154,7 @@ public class CodacyConfiguredRule : RuleBase
 				});
 		}
 
-		return report.CodacyRepositoryName is { } codacyName
-			? Pass(
-				$"Codacy is configured and has analysed {context.DefaultBranch}, under the name "
-				+ $"'{codacyName}' rather than '{parts[1]}' — use Synchronize with provider in the "
-				+ "repository's Codacy settings to bring the name up to date.")
-			: Pass($"Codacy is configured and has analysed {context.DefaultBranch}.");
+		return Pass($"Codacy is configured and has analysed {context.DefaultBranch}.");
 	}
 
 	/// <summary>
