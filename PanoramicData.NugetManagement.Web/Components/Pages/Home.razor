@@ -4936,10 +4936,28 @@ else
 		_ = InvokeAsync(async () =>
 		{
 			RefreshLaneFlagsSnapshot();
-			await ReloadTreePreservingExpansionAsync();
+
+			// Progress re-renders; it does not rebuild. The node template reads live state for the things
+			// that change while work runs — a repository's spinner, its health glyph, the lane's busy
+			// flags — and re-rendering swaps those attributes without moving a single element. Rebuilding
+			// instead replaced the DOM under every loaded branch, every 250 ms, for as long as anything
+			// was running: the flicker, and the scrollbar jumping out from under whoever was reading.
+			//
+			// The set of nodes is the one thing the template cannot change, and a finished run can make it
+			// completely different. So the rebuild happens once, as the last lane goes idle.
+			if (_treeReloads.ObserveAndShouldReload(Lanes.RunningLaneCount > 0))
+			{
+				await ReloadTreePreservingExpansionAsync();
+			}
+
 			await SafeStateHasChangedAsync();
 		});
 	}
+
+	/// <summary>
+	/// Decides when a lane change justifies rebuilding the tree rather than just re-rendering it.
+	/// </summary>
+	private readonly TreeReloadPolicy _treeReloads = new();
 
 	/// <summary>
 	/// Refreshes <see cref="_isLoading"/>, <see cref="_isDiscovering"/>, <see cref="_busyOrganization"/>,

@@ -83,11 +83,23 @@ public class DashboardCacheService
 	/// <summary>
 	/// Gets the cached dashboard rows, or null if no cache exists.
 	/// </summary>
+	/// <remarks>
+	/// A snapshot of the list, not the list itself. The caller walks it outside the lock — a tree
+	/// rebuild is one long enumeration on the UI thread — while up to twenty runner threads upsert and
+	/// remove rows. Handing over the live list meant an append during that walk threw
+	/// <see cref="InvalidOperationException"/>, and an unhandled exception on a render kills the whole
+	/// Blazor circuit rather than just the frame.
+	/// <para>
+	/// Shallow by design: the row objects stay shared, because that is how work in flight reports its
+	/// results — an executor sets <c>row.Assessment</c> and the next render shows it. Only the
+	/// list's own structure is private to the caller.
+	/// </para>
+	/// </remarks>
 	public List<RepositoryDashboardRow>? GetCachedRows()
 	{
 		lock (_lock)
 		{
-			return _cachedRows;
+			return _cachedRows is null ? null : [.. _cachedRows];
 		}
 	}
 
