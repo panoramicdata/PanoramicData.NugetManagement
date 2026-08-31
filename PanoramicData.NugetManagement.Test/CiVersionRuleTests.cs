@@ -9,6 +9,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// passes (including when it is AHEAD of the recommended version), and only genuinely-behind
 /// repositories fail.
 /// </summary>
+[Collection(ActionVersionCatalogCollection.Name)]
 public class CiVersionRuleTests(ITestOutputHelper output) : TestWithOutput(output)
 {
 	// Use an in-memory catalog (null path) so the version-aware rules never write to the committed

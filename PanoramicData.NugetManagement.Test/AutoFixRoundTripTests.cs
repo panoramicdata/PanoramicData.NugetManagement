@@ -11,6 +11,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// Asserting only that a payload exists would not catch a payload that edits nothing, which is what
 /// TST-05 shipped — an <c>add_file</c> type no remediation knew how to apply.
 /// </summary>
+[Collection(ActionVersionCatalogCollection.Name)]
 public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(output), IDisposable
 {
 	// An in-memory catalog (null path) so assessing these fixtures never writes action-versions.json.
