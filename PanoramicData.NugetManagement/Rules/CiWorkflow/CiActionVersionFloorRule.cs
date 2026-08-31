@@ -83,6 +83,10 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 		var behind = new List<(string Action, int Used, string Floor)>();
 		var checkedCount = 0;
 
+		// The one file the bespoke CI rules read. Everything outside it is nobody's but ours, even for
+		// an action one of them claims.
+		var ownedWorkflow = Normalise(CiWorkflowPathResolver.Resolve(context));
+
 		var actions = usages
 			.Select(usage => usage.Action)
 			.Distinct(StringComparer.OrdinalIgnoreCase)
@@ -90,7 +94,21 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 
 		foreach (var action in actions)
 		{
-			if (ClaimedElsewhere(action))
+			// A claimed action is its owning rule's business in the file that rule reads, and ours in
+			// every other workflow — where that rule cannot see it, cannot fail for it, and cannot fix
+			// it. Skipping the action outright is what left actions/checkout@v3 sitting in a repository's
+			// codeql-analysis.yml with two Dependabot pull requests open against it for months.
+			// Note that the remediation's globs still cover every workflow, so fixing a claimed action
+			// outside ci.yml also lifts ci.yml's copy of it. That is deliberate and safe: the pattern
+			// only matches versions below this floor, so it can raise a version but never lower one,
+			// and the owning rule's floor is the greater of its hardcoded default and the same learned
+			// value — so if it wants more, it still fails and takes it the rest of the way.
+			var relevant = ClaimedElsewhere(action)
+				? usages.Where(usage => !string.Equals(
+					Normalise(usage.WorkflowPath), ownedWorkflow, StringComparison.OrdinalIgnoreCase)).ToList()
+				: usages;
+
+			if (!relevant.Any(usage => Matches(usage, action)))
 			{
 				continue;
 			}
@@ -99,7 +117,7 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 
 			// Learning takes the highest usage — the best we manage anywhere is the standard to hold
 			// everyone to. Failing takes the lowest, because one workflow left behind is still work.
-			var highest = usages
+			var highest = relevant
 				.Where(usage => Matches(usage, action))
 				.Select(usage => usage.MajorVersion)
 				.Where(major => major is not null)
@@ -112,7 +130,7 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 
 			// Null when any usage is unreadable — a SHA pin or a branch. Rewriting one of those would
 			// replace a deliberate pin with a floating tag, so the action is left alone entirely.
-			var lowest = ActionUsageScanner.LowestMajorOf(usages, action);
+			var lowest = ActionUsageScanner.LowestMajorOf(relevant, action);
 			if (lowest is null)
 			{
 				continue;
@@ -153,7 +171,7 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 				{
 					["remediation_type"] = "replace_regex_in_files",
 					["globs"] = _workflowGlobs,
-					["patterns"] = behind.Select(b => PatternFor(b.Action)).ToArray(),
+					["patterns"] = behind.Select(b => PatternFor(b.Action, b.Floor)).ToArray(),
 					["replacements"] = behind.Select(b => $"${{1}}{b.Floor}").ToArray(),
 					["governed_actions"] = behind.Select(b => b.Action).ToArray()
 				}
@@ -163,11 +181,36 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 	private static bool Matches(ActionUsage usage, string action)
 		=> string.Equals(usage.Action, action, StringComparison.OrdinalIgnoreCase);
 
+	/// <summary>Path comparison that does not care which slash a context happened to use.</summary>
+	private static string Normalise(string path) => path.Replace('\\', '/');
+
 	/// <summary>
-	/// Matches every pinned version of an action, including its sub-actions: one pattern rewrites
-	/// <c>github/codeql-action/init@v2</c> and <c>github/codeql-action/analyze@v2</c> alike, because
-	/// the sub-actions carry the repository's version rather than one of their own.
+	/// Matches every pinned version of an action that is <em>below</em> the floor, sub-actions
+	/// included: one pattern rewrites <c>github/codeql-action/init@v2</c> and
+	/// <c>github/codeql-action/analyze@v2</c> alike, because the sub-actions carry the repository's
+	/// version rather than one of their own.
 	/// </summary>
-	private static string PatternFor(string action)
-		=> $@"({Regex.Escape(action)}(?:/[A-Za-z0-9_.-]+)*@)v\d+(?:\.\d+)*";
+	/// <remarks>
+	/// The majors below the floor are listed out rather than matched as <c>v\d+</c>, because a pattern
+	/// that matches any version rewrites <em>every</em> version — so a workflow already on v9 would be
+	/// dragged back to a floor of v7 by a fix aimed at a different workflow on v3. A rule that is
+	/// careful to treat being ahead as compliant must not then have a remediation that levels
+	/// everything to the average.
+	/// <para>
+	/// The trailing lookahead is what stops <c>v1</c> matching the first character of <c>v16</c>: with
+	/// the alternation alone, a floor of v7 would rewrite v10 and v70 as though they were behind.
+	/// </para>
+	/// </remarks>
+	/// <param name="action">The action to rewrite.</param>
+	/// <param name="floorSpec">
+	/// The floor, as a spec like <c>v7</c>. Never <c>v0</c> here: a rule that only fails when a usage
+	/// is below the floor cannot fail at a floor of zero, so the alternation is never empty.
+	/// </param>
+	private static string PatternFor(string action, string floorSpec)
+	{
+		var floor = GitHubActionVersion.ParseMajor(floorSpec);
+		var below = string.Join('|', Enumerable.Range(0, floor));
+
+		return $@"({Regex.Escape(action)}(?:/[A-Za-z0-9_.-]+)*@)v(?:{below})(?:\.\d+)*(?![\d.])";
+	}
 }
