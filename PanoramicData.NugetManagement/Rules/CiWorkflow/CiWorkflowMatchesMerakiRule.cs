@@ -5,10 +5,24 @@ namespace PanoramicData.NugetManagement.Rules;
 /// <summary>
 /// Checks that ci.yml matches the Meraki.Api trusted publishing workflow shape.
 /// </summary>
-public class CiWorkflowMatchesMerakiRule : RuleBase
+public class CiWorkflowMatchesMerakiRule : RuleBase, IGovernsDependency
 {
+	/// <summary>
+	/// The actions this rule carries to a known version: <c>actions/upload-artifact</c> is checked
+	/// against the learned floor outright, and <c>actions/download-artifact</c> comes along because
+	/// the remediation replaces the whole workflow with a template that pins it.
+	/// </summary>
+	private static readonly DependencyRef[] _governed =
+	[
+		new(DependencyEcosystem.GitHubActions, "actions/upload-artifact"),
+		new(DependencyEcosystem.GitHubActions, "actions/download-artifact")
+	];
+
 	/// <inheritdoc />
 	public override string RuleId => "CI-08";
+
+	/// <inheritdoc />
+	public bool Governs(DependencyRef dependency) => _governed.Contains(dependency);
 
 	/// <inheritdoc />
 	public override string RuleName => "CI workflow matches Meraki.Api standard";

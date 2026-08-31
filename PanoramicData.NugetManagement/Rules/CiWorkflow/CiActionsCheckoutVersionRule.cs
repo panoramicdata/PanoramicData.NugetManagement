@@ -5,10 +5,14 @@ namespace PanoramicData.NugetManagement.Rules;
 /// <summary>
 /// Checks that the CI workflow uses the latest actions/checkout version.
 /// </summary>
-public class CiActionsCheckoutVersionRule : RuleBase
+public class CiActionsCheckoutVersionRule : RuleBase, IGovernsDependency
 {
 	/// <inheritdoc />
 	public override string RuleId => "CI-05";
+
+	/// <inheritdoc />
+	public bool Governs(DependencyRef dependency)
+		=> dependency == new DependencyRef(DependencyEcosystem.GitHubActions, "actions/checkout");
 
 	/// <inheritdoc />
 	public override string RuleName => "CI uses latest actions/checkout";

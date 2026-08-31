@@ -7,10 +7,14 @@ namespace PanoramicData.NugetManagement.Rules;
 /// Checks that the CI workflow uses the latest actions/setup-dotnet version
 /// and the correct .NET SDK version.
 /// </summary>
-public partial class CiSetupDotnetVersionRule : RuleBase
+public partial class CiSetupDotnetVersionRule : RuleBase, IGovernsDependency
 {
 	/// <inheritdoc />
 	public override string RuleId => "CI-06";
+
+	/// <inheritdoc />
+	public bool Governs(DependencyRef dependency)
+		=> dependency == new DependencyRef(DependencyEcosystem.GitHubActions, "actions/setup-dotnet");
 
 	/// <inheritdoc />
 	public override string RuleName => "CI uses latest setup-dotnet and SDK";

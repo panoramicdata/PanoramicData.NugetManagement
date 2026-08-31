@@ -20,8 +20,17 @@ namespace PanoramicData.NugetManagement.Rules;
 /// strangers published that day, and turned repositories red without a line of code changing.
 /// </para>
 /// </remarks>
-public abstract class NuGetPackageUpdateRuleBase : RuleBase
+public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 {
+	/// <inheritdoc />
+	/// <remarks>
+	/// Every NuGet package, because these rules act on whatever the repository declares rather than on
+	/// a named list. The ecosystem still has to match: no amount of package updating moves a GitHub
+	/// Action's version.
+	/// </remarks>
+	public bool Governs(DependencyRef dependency)
+		=> dependency.Ecosystem == DependencyEcosystem.NuGet;
+
 	private readonly NuGetVersionCache _cache;
 	private readonly NuGetFloorCatalog _floors;
 	private readonly TimeProvider _timeProvider;
