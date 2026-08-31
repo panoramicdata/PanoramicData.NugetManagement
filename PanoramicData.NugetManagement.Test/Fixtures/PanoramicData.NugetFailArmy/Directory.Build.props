@@ -1,5 +1,10 @@
-<Project>
+﻿<Project>
 	<PropertyGroup>
 		<LangVersion>latest</LangVersion>
+		<!-- Miscased on purpose, so META-06 fails. It lives here rather than in the .csproj because
+		     META-02 and META-04 fail on the URL being absent from the project file, and one project
+		     cannot both declare a URL and not declare one. Both rules read the .csproj only, so a
+		     wrong URL here fails META-06 while they go on failing for the absence. -->
+		<RepositoryUrl>https://github.com/panoramicdata/PanoramicData.NugetFailarmy</RepositoryUrl>
 	</PropertyGroup>
 </Project>

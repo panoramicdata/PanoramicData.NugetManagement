@@ -123,6 +123,29 @@ public class DeclaredRepositoryUrlRuleTests(ITestOutputHelper output) : TestWith
 		((string[])result.Advisory.Data["patterns"]).Should().HaveCount(2);
 	}
 
+	[Fact]
+	public async Task Fails_WhenDirectoryBuildPropsCarriesTheWrongName()
+	{
+		// A repository that declares its metadata once, for every project, declares this there too.
+		var files = Csproj(
+			repositoryUrl: "https://github.com/panoramicdata/Dell.CloudIq.Api",
+			packageProjectUrl: null);
+
+		files["Directory.Build.props"] = """
+			<Project>
+			  <PropertyGroup>
+			    <RepositoryUrl>https://github.com/panoramicdata/Dell.CloudIQ.Api</RepositoryUrl>
+			  </PropertyGroup>
+			</Project>
+			""";
+
+		var result = await Evaluate(files);
+
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("Directory.Build.props");
+		((string[])result.Advisory!.Data["globs"]).Should().Contain("Directory.Build.props");
+	}
+
 	private static Task<RuleResult> Evaluate(Dictionary<string, string> files)
 		=> new DeclaredRepositoryUrlRule().EvaluateAsync(
 			Context(files),
