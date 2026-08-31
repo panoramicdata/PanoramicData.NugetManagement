@@ -53,8 +53,13 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 	/// without being added to that list — the button simply vanished, taking the queued, downstream-
 	/// blocking Fix run with it and leaving only the per-category buttons.
 	/// </summary>
+	/// <remarks>
+	/// Fix is no longer in this list. It used to name its views literally and was the button that went
+	/// missing; it now derives them from <see cref="FixScope"/>, so the same guarantee is made by
+	/// <c>FixScopeTests</c> asserting what Fix does on a repository — a real assertion about behaviour
+	/// rather than a search for a string in markup. The two tests below hold that line.
+	/// </remarks>
 	[Theory]
-	[InlineData("fix")]
 	[InlineData("reassess")]
 	public void RepositoryDetailShouldOfferTheWorkflowToolbarButton(string key)
 		=> ReadToolbarButton(key)
@@ -74,36 +79,16 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 			.Should().Be(NavView.RepositoryIssuesDetail,
 				"selecting a repository's Issues branch must show its inbox, not nothing at all");
 
+	/// <summary>
+	/// Fix is the only button that fixes things. Its visibility is driven by
+	/// <see cref="FixScope"/> rather than a hand-maintained list of views, so that a view where Fix
+	/// has work can never be one where the button is absent — the bug this whole area keeps producing.
+	/// </summary>
 	[Fact]
-	public void TheRepositoryIssuesViewShouldOfferDependabotTriage()
-	{
-		var razor = File.ReadAllText(ResolveRepositoryIssuesViewPath());
-
-		razor.Should().Contain("OnTriageRequested",
-			"the inbox is where a Dependabot backlog is looked at, so it is where triage is started");
-	}
-
-	private static string ResolveRepositoryIssuesViewPath()
-	{
-		var directory = AppContext.BaseDirectory;
-		while (directory is not null)
-		{
-			var candidate = Path.Combine(
-				directory,
-				"PanoramicData.NugetManagement.Web",
-				"Components",
-				"RepositoryIssuesView.razor");
-
-			if (File.Exists(candidate))
-			{
-				return candidate;
-			}
-
-			directory = Directory.GetParent(directory)?.FullName;
-		}
-
-		throw new FileNotFoundException("Could not find RepositoryIssuesView.razor by walking up.");
-	}
+	public void TheFixButtonShouldDeriveItsVisibilityFromTheFixScope()
+		=> ReadToolbarButton("fix")
+			.Should().Contain("FixScope.For(_currentView).HasAnything",
+				"a second hand-maintained list of views is how the button goes missing again");
 
 	/// <summary>
 	/// The markup of one PDToolbarButton, from its Key to the end of the element.

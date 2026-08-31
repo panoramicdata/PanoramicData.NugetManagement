@@ -16,16 +16,12 @@
 }
 else
 {
-	<div class="mb-3">
-		<button class="btn btn-primary" @onclick="OnTriageRequested" disabled="@(!OnTriageRequested.HasDelegate)">
-			<i class="fas fa-gavel"></i> Triage Dependabot (@DependabotCount)
-		</button>
-		<div class="text-muted small mt-2">
-			Closes the Dependabot pull requests this repository has already outgrown, leaves the ones an
-			existing auto-fix will handle, and raises an issue against PanoramicData.NugetManagement for
-			anything valid that no auto-fix covers. Every close is written to the console first.
-		</div>
-	</div>
+	<p class="fixes-intro">
+		@DependabotCount of these @(DependabotCount == 1 ? "is" : "are") Dependabot's.
+		<strong>Fix</strong> closes the ones this repository has already outgrown, leaves the ones an
+		existing auto-fix will handle, and raises an issue against PanoramicData.NugetManagement for
+		anything valid that no auto-fix covers. Every close is written to the console first.
+	</p>
 
 	<table class="table table-sm align-middle">
 		<thead>
@@ -74,10 +70,6 @@ else
 	/// <summary>The repository, as "owner/name".</summary>
 	[Parameter]
 	public string? RepositoryFullName { get; set; }
-
-	/// <summary>Queues Dependabot triage for this repository.</summary>
-	[Parameter]
-	public EventCallback OnTriageRequested { get; set; }
 
 	/// <summary>
 	/// How many of the open items Dependabot raised. Shown on the button so the size of the job is

@@ -426,7 +426,10 @@ else
 											 Text="Fix"
 											 IconCssClass="fas fa-wrench"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Fix)"
-											 IsVisible="@(_currentView is NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail && _selectedRow is not null)"
+											 @* One Fix button, wherever there is something beneath the selection to fix. FixScope
+											    decides what that means; adding views to this list without adding them there would
+											    show a button that does nothing. *@
+											 IsVisible="@(FixScope.For(_currentView).HasAnything && _selectedRow is not null)"
 											 IsEnabled="@IsFixEnabled()"
 											 ToolTip="@GatedTooltip(WorkflowStep.Fix, GetFixAllTooltip())"
 											 Click="OnToolbarClick" />
@@ -2858,12 +2861,12 @@ else
 				break;
 			case NavView.RepositoryIssuesDetail:
 				@* The repository's whole inbox, and the place Dependabot triage is started from. *@
-				<RepositoryIssuesView Issues="@(_selectedRow?.OpenIssues ?? [])" RepositoryFullName="@_selectedRow?.RepositoryFullName" OnTriageRequested="TriageDependabotAsync" />
+				<RepositoryIssuesView Issues="@(_selectedRow?.OpenIssues ?? [])" RepositoryFullName="@_selectedRow?.RepositoryFullName" />
 				break;
 			case NavView.RepositoryIssueDetail:
 				@* Its own component rather than another render method here: this file is already
 				   enormous, and IssuesView sets the precedent for a self-contained panel. *@
-				<RepositoryIssueView Issue="@SelectedRepositoryIssue" RepositoryFullName="@_selectedRow?.RepositoryFullName" OnTriageRequested="TriageDependabotAsync" />
+				<RepositoryIssueView Issue="@SelectedRepositoryIssue" RepositoryFullName="@_selectedRow?.RepositoryFullName" />
 				break;
 			default:
 				@RenderGettingStarted()
@@ -3840,31 +3843,6 @@ else
 		return Task.CompletedTask;
 	}
 
-	/// <summary>
-	/// Queues Dependabot triage for the selected repository: closes the pull requests it has outgrown
-	/// and raises an issue for each valid one no auto-fix covers.
-	/// </summary>
-	/// <remarks>
-	/// Queued rather than run inline, like every other repository action, so it takes its turn on that
-	/// repository's lane behind anything already in flight — including a re-assessment, whose result it
-	/// depends on.
-	/// </remarks>
-	private Task TriageDependabotAsync()
-	{
-		if (_selectedRow is null)
-		{
-			return Task.CompletedTask;
-		}
-
-		EnsureSelectedRowIsCurrent();
-
-		QueueForSelectedRepository(
-			WorkKind.TriageDependabot,
-			$"Triage Dependabot for {_selectedRow.RepositoryName}");
-
-		return Task.CompletedTask;
-	}
-
 	private async Task ReassessAllReposAsync() => await ReassessOrganizationAsync(null);
 
 	/// <summary>
@@ -3982,24 +3960,47 @@ else
 		}
 	}
 
+	/// <summary>
+	/// Fixes everything beneath the selected node.
+	/// </summary>
+	/// <remarks>
+	/// The one button that fixes things. What that means depends on what is selected — see
+	/// <see cref="FixScope"/> — and both halves can apply at once: on a repository, the remediations are
+	/// queued first and the Dependabot triage behind them, on the same lane. That order matters, because
+	/// a remediation that moves a version is what turns a still-valid pull request into one triage can
+	/// close.
+	/// </remarks>
 	private async Task FixAllAsync()
 	{
-		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
+		if (_selectedRow is null)
 		{
 			return;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
-		var blockReason = GetFixBlockReason(CanRunMasterToMainAutoFix());
-		if (blockReason is not null)
+		var scope = FixScope.For(_currentView);
+
+		if (scope.ApplyRemediations && CanApplyRemediations())
 		{
-			AppendConsole($"❌ Cannot fix: {blockReason}");
-			StateHasChanged();
-			return;
+			var blockReason = GetFixBlockReason(CanRunMasterToMainAutoFix());
+
+			if (blockReason is not null)
+			{
+				AppendConsole($"❌ Cannot fix: {blockReason}");
+				StateHasChanged();
+				return;
+			}
+
+			QueueForSelectedRepository(WorkKind.FixAll, $"Fix {_selectedRow.RepositoryFullName}", WorkflowStep.Fix);
 		}
 
-		QueueForSelectedRepository(WorkKind.FixAll, $"Fix {_selectedRow.RepositoryFullName}", WorkflowStep.Fix);
+		if (scope.TriageDependabot && CanTriageDependabot())
+		{
+			QueueForSelectedRepository(
+				WorkKind.TriageDependabot,
+				$"Triage Dependabot for {_selectedRow.RepositoryName}");
+		}
 	}
 
 	private async Task FixCategoryAsync(AssessmentCategory category)
@@ -4248,16 +4249,42 @@ else
 
 	// === Git safety guard methods ===
 
+	/// <summary>
+	/// Whether Fix has anything to do for the current selection.
+	/// </summary>
+	/// <remarks>
+	/// Fix does everything beneath the selected node, so it is enabled when EITHER half of that has
+	/// work: a repository with no auto-remediable rule failure but an open Dependabot backlog is still
+	/// something Fix can act on. The two halves have different preconditions — applying remediations
+	/// needs a clean clone on main, triaging pull requests needs neither — so they are asked separately
+	/// rather than sharing one gate.
+	/// </remarks>
 	private bool IsFixEnabled()
 	{
-		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
+		if (_selectedRow is null)
 		{
 			return false;
 		}
 
+		var scope = FixScope.For(_currentView);
+
 		// Checked here rather than at each button: Fix is offered from the toolbar, from each issue
 		// category and from individual rules, and a gate on only one of them is not a gate.
-		if (IsStepQueueBlocked(WorkflowStep.Fix))
+		if (!scope.HasAnything || IsStepQueueBlocked(WorkflowStep.Fix))
+		{
+			return false;
+		}
+
+		return (scope.ApplyRemediations && CanApplyRemediations())
+			|| (scope.TriageDependabot && CanTriageDependabot());
+	}
+
+	/// <summary>
+	/// Whether the failing rules of the selected repository can be auto-remediated right now.
+	/// </summary>
+	private bool CanApplyRemediations()
+	{
+		if (_selectedRow is null || !_selectedRow.IsClonedLocally)
 		{
 			return false;
 		}
@@ -4276,6 +4303,21 @@ else
 		return _selectedRow.CurrentBranch == "main"
 			&& _selectedRow.IsSyncedWithOrigin != false;
 	}
+
+	/// <summary>
+	/// Whether there is a Dependabot backlog to triage, and an assessment to judge it against.
+	/// </summary>
+	/// <remarks>
+	/// No clone and no clean working tree required: triage reads the repository and writes only to
+	/// GitHub. The assessment is required, because coverage is decided from which rules are failing —
+	/// without one, every dependency would look ungoverned and raise a gap issue apiece.
+	/// </remarks>
+	private bool CanTriageDependabot()
+		=> _selectedRow?.Assessment is not null
+			&& _selectedRow.OpenIssuesKnown
+			&& _selectedRow.OpenIssues.Any(issue =>
+				issue.IsPullRequest
+				&& string.Equals(issue.AuthorLogin, "dependabot[bot]", StringComparison.OrdinalIgnoreCase));
 
 	private string? GetFixBlockReason(bool allowBranchMigrationOffMain = false)
 	{

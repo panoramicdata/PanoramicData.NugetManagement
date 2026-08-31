@@ -58,16 +58,6 @@ else
 		<i class="fab fa-github"></i> Open on GitHub
 	</a>
 
-	@if (OnTriageRequested.HasDelegate)
-	{
-		<button class="btn btn-outline-secondary ms-2" @onclick="OnTriageRequested">
-			<i class="fas fa-gavel"></i> Triage Dependabot for this repository
-		</button>
-		<div class="text-muted small mt-2">
-			Classifies every open Dependabot pull request here, closes the ones this repository has
-			already outgrown, and raises an issue for anything valid that no auto-fix covers.
-		</div>
-	}
 }
 
 @code {
@@ -79,12 +69,6 @@ else
 	[Parameter]
 	public string? RepositoryFullName { get; set; }
 
-	/// <summary>
-	/// Queues Dependabot triage for this repository. The button is hidden when nothing is listening,
-	/// so this panel stays usable in a context that cannot queue work.
-	/// </summary>
-	[Parameter]
-	public EventCallback OnTriageRequested { get; set; }
 
 	private AssessmentSeverity Severity
 		=> Issue?.SeverityAt(DateTimeOffset.UtcNow) ?? AssessmentSeverity.Info;
