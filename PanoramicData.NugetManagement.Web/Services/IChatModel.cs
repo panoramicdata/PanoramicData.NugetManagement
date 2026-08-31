@@ -48,10 +48,38 @@ public interface IChatModel
 	/// <param name="systemPrompt">The fixed instructions.</param>
 	/// <param name="conversation">Everything said so far.</param>
 	/// <param name="tools">The tools it may call.</param>
+	/// <param name="onDelta">
+	/// Called as each fragment arrives, or null to be told nothing until the turn is complete. The
+	/// return value is the same either way: this is a window onto the turn, not a different turn.
+	/// </param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	Task<AiModelTurn> NextAsync(
 		string systemPrompt,
 		IReadOnlyList<AiMessage> conversation,
 		IReadOnlyList<AiToolSpec> tools,
+		Action<AiStreamDelta>? onDelta,
 		CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Which channel a streamed fragment arrived on.
+/// </summary>
+public enum AiDeltaKind
+{
+	/// <summary>The model's reasoning, from Ollama's <c>thinking</c> field.</summary>
+	Thinking,
+
+	/// <summary>What the model is saying, from the message content.</summary>
+	Content
+}
+
+/// <summary>
+/// One fragment of a turn, as it arrives.
+/// </summary>
+/// <param name="Kind">Which channel it came from.</param>
+/// <param name="Text">The fragment, often a single token.</param>
+/// <remarks>
+/// A 27b model grinding through an agentic loop takes minutes per attempt. Without this the pane can
+/// only show a session once it is over, which is most of the reason for wanting to watch one.
+/// </remarks>
+public sealed record AiStreamDelta(AiDeltaKind Kind, string Text);

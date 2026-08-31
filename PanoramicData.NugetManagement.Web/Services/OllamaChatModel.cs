@@ -23,6 +23,7 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 		string systemPrompt,
 		IReadOnlyList<AiMessage> conversation,
 		IReadOnlyList<AiToolSpec> tools,
+		Action<AiStreamDelta>? onDelta,
 		CancellationToken cancellationToken)
 	{
 		var messages = new List<ChatMessage>
@@ -49,19 +50,81 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 			Options = contextWindow is null ? null : new GenerateOptions { NumCtx = contextWindow }
 		};
 
+		return onDelta is null
+			? await CompleteAsync(request, cancellationToken).ConfigureAwait(false)
+			: await StreamAsync(request, onDelta, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// One turn, waited for in full.
+	/// </summary>
+	private async Task<AiModelTurn> CompleteAsync(ChatRequest request, CancellationToken cancellationToken)
+	{
 		var response = await client.Chat.ChatAsync(request, cancellationToken).ConfigureAwait(false);
 
-		if (response.Error is { Length: > 0 } error)
+		Throw(response.Error);
+
+		return new AiModelTurn(response.Message?.Content, Calls(response.Message));
+	}
+
+	/// <summary>
+	/// One turn, reported fragment by fragment as it arrives and assembled into the same result.
+	/// </summary>
+	/// <remarks>
+	/// The two channels are kept apart all the way through. Ollama sends a thinking model's reasoning
+	/// on <c>thinking</c> and its answer on <c>content</c>, and gluing them together here would leave
+	/// the pane no way to tell a long think from a long answer.
+	/// <para>
+	/// Tool calls are collected from whichever chunks carry them rather than from the last one: Ollama
+	/// emits them on the chunk that completes them, which is not necessarily the chunk that ends the
+	/// turn.
+	/// </para>
+	/// </remarks>
+	private async Task<AiModelTurn> StreamAsync(
+		ChatRequest request,
+		Action<AiStreamDelta> onDelta,
+		CancellationToken cancellationToken)
+	{
+		var content = new System.Text.StringBuilder();
+		var calls = new List<AiToolCall>();
+
+		await foreach (var chunk in client.Chat.ChatStreamAsync(request, cancellationToken).ConfigureAwait(false))
+		{
+			Throw(chunk.Error);
+
+			if (chunk.Message is not { } message)
+			{
+				continue;
+			}
+
+			if (message.Thinking is { Length: > 0 } thinking)
+			{
+				onDelta(new AiStreamDelta(AiDeltaKind.Thinking, thinking));
+			}
+
+			if (message.Content is { Length: > 0 } fragment)
+			{
+				content.Append(fragment);
+				onDelta(new AiStreamDelta(AiDeltaKind.Content, fragment));
+			}
+
+			calls.AddRange(Calls(message));
+		}
+
+		return new AiModelTurn(content.Length == 0 ? null : content.ToString(), calls);
+	}
+
+	/// <summary>Fails the turn on an error the server reported, which is not an HTTP failure.</summary>
+	private static void Throw(string? error)
+	{
+		if (error is { Length: > 0 })
 		{
 			throw new InvalidOperationException($"Ollama reported: {error}");
 		}
-
-		var calls = response.Message?.ToolCalls?
-			.Select(Translate)
-			.ToList() ?? [];
-
-		return new AiModelTurn(response.Message?.Content, calls);
 	}
+
+	private static List<AiToolCall> Calls(ChatMessage? message)
+		=> message?.ToolCalls?.Select(Translate).ToList() ?? [];
 
 	private static ChatTool Translate(AiToolSpec spec) => new()
 	{

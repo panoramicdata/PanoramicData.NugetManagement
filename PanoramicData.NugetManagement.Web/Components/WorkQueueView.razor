@@ -1,0 +1,127 @@
+@using PanoramicData.NugetManagement.Web.Models
+@using PanoramicData.NugetManagement.Web.Services
+@implements IDisposable
+
+@* One lane's queue. The node in the tree says how many; this says what they are, what each is
+   doing, and how far it has got. *@
+
+<div class="mb-3">
+	<h4><i class="fas fa-list-check"></i> Work</h4>
+	<div class="text-muted">@Scope</div>
+</div>
+
+@if (Items.Count == 0)
+{
+	<div class="alert alert-success">
+		Nothing queued or running. <span class="text-muted">Anything started from the toolbar appears here.</span>
+	</div>
+}
+else
+{
+	<table class="table table-sm align-middle">
+		<thead>
+			<tr>
+				<th></th>
+				<th>Item</th>
+				<th>Doing</th>
+				<th>Progress</th>
+				<th></th>
+			</tr>
+		</thead>
+		<tbody>
+			@foreach (var item in Items)
+			{
+				<tr>
+					<td class="text-nowrap">
+						<i class="@StateIcon(item)"></i>
+						<span class="text-muted ms-1">@item.State</span>
+					</td>
+					<td>
+						<div>@item.Title</div>
+						@if (ShowsRepository && item.RepositoryFullName is { Length: > 0 } repository)
+						{
+							<div class="text-muted small">@repository</div>
+						}
+					</td>
+					<td class="small">@WorkDescription.For(item)</td>
+					<td class="small text-muted">@(item.Progress ?? "—")</td>
+					<td class="text-end text-nowrap">
+						@if (item.State == WorkItemState.Running)
+						{
+							<button type="button" class="btn btn-sm btn-outline-secondary"
+									title="Stop, reverting anything half-applied"
+									@onclick="() => OnStop.InvokeAsync(item.Id)">
+								<i class="fas fa-stop"></i>
+							</button>
+						}
+						else if (item.State == WorkItemState.Pending)
+						{
+							<button type="button" class="btn btn-sm btn-outline-secondary"
+									title="Remove from the queue"
+									@onclick="() => OnRemove.InvokeAsync(item.Id)">
+								<i class="fas fa-xmark"></i>
+							</button>
+						}
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+
+	<p class="text-muted small">
+		Select an item in the tree to watch what it is doing.
+	</p>
+}
+
+@code {
+	/// <summary>How often the pane re-reads the queue while something is running.</summary>
+	private const int RefreshMilliseconds = 500;
+
+	private System.Timers.Timer? _refresh;
+
+	/// <summary>The items in this lane, in the order they will run.</summary>
+	[Parameter]
+	public IReadOnlyList<WorkItem> Items { get; set; } = [];
+
+	/// <summary>What this queue covers: a repository's full name, or an organisation's.</summary>
+	[Parameter]
+	public string? Scope { get; set; }
+
+	/// <summary>
+	/// Whether to name each item's repository. True for an organisation's queue, where the items come
+	/// from many repositories and the title alone does not say which.
+	/// </summary>
+	[Parameter]
+	public bool ShowsRepository { get; set; }
+
+	/// <summary>Stops the running item.</summary>
+	[Parameter]
+	public EventCallback<string> OnStop { get; set; }
+
+	/// <summary>Takes a pending item out of the queue.</summary>
+	[Parameter]
+	public EventCallback<string> OnRemove { get; set; }
+
+	protected override void OnInitialized()
+	{
+		// The pane owns its refresh rather than riding the lane-changed event, which debounces into a
+		// tree rebuild — and rebuilding the tree on a progress path is what makes it flicker.
+		_refresh = new System.Timers.Timer(RefreshMilliseconds) { AutoReset = true };
+		_refresh.Elapsed += async (_, _) => await InvokeAsync(StateHasChanged);
+		_refresh.Start();
+	}
+
+	public void Dispose()
+	{
+		_refresh?.Stop();
+		_refresh?.Dispose();
+		_refresh = null;
+	}
+
+	private static string StateIcon(WorkItem item) => item.State switch
+	{
+		WorkItemState.Running => "fas fa-circle-notch fa-spin text-info",
+		WorkItemState.Cancelling => "fas fa-rotate-left fa-spin text-warning",
+		_ => "fas fa-clock text-muted"
+	};
+}
