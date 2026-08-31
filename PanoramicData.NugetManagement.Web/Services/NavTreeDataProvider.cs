@@ -336,7 +336,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			Text = "Repositories",
 			ParentKey = orgKey,
 			IconCss = NavHealthRollup.Icon("fas fa-cubes", reposStatus),
-			View = NavView.Home,
+			View = NavView.Repositories,
 			Organization = organization,
 			IsLeaf = false,
 			SortOrder = 0,
@@ -459,6 +459,11 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				HasErrors = repoHasErrors,
 				HasWarnings = repoHasWarnings,
 				IsWorkingTreeDirty = row.IsWorkingTreeClean == false,
+				IsClonedLocally = row.IsClonedLocally,
+				IsSyncedWithOrigin = row.IsSyncedWithOrigin,
+				// Carried, never folded into the icon or the roll-up above: a repository that does not
+				// build is not a repository that fails a rule.
+				BuildState = row.LastBuildState,
 				RepositoryFullName = row.RepositoryFullName,
 				IsExcluded = _runtimeSettings.IsRepositoryExcluded(row.RepositoryFullName),
 				// The spec asserts repository nodes already reflect their lane. They never did — in the
@@ -493,7 +498,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				RepositoryFullName = row.RepositoryFullName,
 				IsLeaf = row.Packages.Count == 0,
 				// Ahead of the categories, so the shape reads the same on every repository.
-				SortOrder = 0
+				SortOrder = 1
 			});
 
 			AddWorkNodes(
@@ -503,10 +508,10 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				repoLaneKey,
 				organization,
 				row.RepositoryFullName,
-				// Rank 1, between Packages (0) and the categories (2). Explicit rather than
-				// tie-broken: PDTree falls back to alphabetical order, and "Work" loses that race
-				// against every category name.
-				sortOrder: 1);
+				// Rank 0: first, above Packages (1), Issues (2) and the categories (3). Explicit rather
+				// than tie-broken, because PDTree falls back to alphabetical order and "Work" loses that
+				// race against every other name under a repository.
+				sortOrder: 0);
 
 			foreach (var package in row.Packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))
 			{
@@ -563,7 +568,8 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				Organization = organization,
 				RepositoryFullName = row.RepositoryFullName,
 				IsLeaf = row.OpenIssues.Count == 0,
-				SortOrder = 1
+				// Rank 2, between Packages (1) and the categories (3).
+				SortOrder = 2
 			});
 
 			foreach (var issue in row.OpenIssues)
@@ -623,9 +629,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					RepositoryFullName = row.RepositoryFullName,
 					Category = category,
 					IsLeaf = catFailures.Count == 0,
-					// Rank 2, after Packages (0) and the repo-level Work node (1) — see the comment
-					// beside that node for why this must be explicit rather than tie-broken.
-					SortOrder = 2,
+					// Rank 3, after the repo-level Work node (0), Packages (1) and Issues (2) — see the
+					// comment beside the Work node for why this must be explicit rather than tie-broken.
+					SortOrder = 3,
 					IssueCount = catFailures.Count,
 					HasErrors = catHasErrors,
 					HasWarnings = catHasWarnings
@@ -689,17 +695,28 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			? CountWorkItemsUnderOrganisation(organization, laneKey)
 			: 0;
 
-		if (laneItems.Count == 0 && itemsBelow == 0)
+		// A repository's node is permanent; an organisation's is not. The repository is where a reader
+		// asks "is anything happening here?", and a node that comes and goes answers that only to
+		// someone who already knows the node comes and goes. An organisation has no such fixed place —
+		// it exists to carry the stop-everything-below button, so it appears when there is something to
+		// stop.
+		if (laneItems.Count == 0 && itemsBelow == 0 && repositoryFullName is null)
 		{
 			return;
 		}
+
+		// Green for a clear lane, blue for a lane with anything in it — queued counts, because work
+		// waiting to start is still work this repository is going to do.
+		var workStatus = laneItems.Count == 0 && itemsBelow == 0
+			? PackageHealthStatus.Success
+			: PackageHealthStatus.Info;
 
 		items.Add(new NavItem
 		{
 			Key = workKey,
 			Text = WorkNodeText(laneItems.Count, itemsBelow),
 			ParentKey = parentKey,
-			IconCss = "fas fa-list-check",
+			IconCss = NavHealthRollup.Icon("fas fa-list-check", workStatus),
 			View = NavView.None,
 			Organization = organization,
 			RepositoryFullName = repositoryFullName,
@@ -858,6 +875,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <param name="itemsBelow">Items in lanes beneath it, which it does not list.</param>
 	private static string WorkNodeText(int ownCount, int itemsBelow) => (ownCount, itemsBelow) switch
 	{
+		// Only a repository's permanent node reaches this: an organisation's is not shown when both
+		// counts are zero. "Work (0)" would be a number to read and discard on every repository.
+		(0, 0) => "Work",
 		(0, var below) => $"Work ({below} below)",
 		(var own, 0) => $"Work ({own})",
 		var (own, below) => $"Work ({own} here, {below} below)"
@@ -1220,32 +1240,16 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// replaced by its result as soon as that result lands, without rebuilding the tree — rebuilding
 	/// nodes mid-run is what previously made the tree flicker and the scrollbar jump.
 	/// </remarks>
+	/// <remarks>
+	/// Assessment health and nothing else. Clone state, a dirty tree and drift from origin used to be
+	/// folded in here as extra classes, which made one glyph answer three questions at once and left
+	/// git state colouring what reads as a health indicator. They are badges on the right of the node
+	/// now — see <c>NavItem.IsClonedLocally</c>, <c>IsWorkingTreeDirty</c>, <c>IsSyncedWithOrigin</c>
+	/// and <c>BuildState</c> — so this answers only "how does this repository score against the
+	/// rules".
+	/// </remarks>
 	public static string BuildRepositoryIconCss(RepositoryDashboardRow row)
-	{
-		var icon = GetPackageHealthIcon(row.HealthStatus);
-
-		if (row.IsClonedLocally)
-		{
-			icon += " tree-node-local";
-
-			// Colour the branch glyph by sync state: amber if out of sync, muted if unknown.
-			if (row.IsSyncedWithOrigin == false)
-			{
-				icon += " tree-node-out-of-sync";
-			}
-			else if (row.IsSyncedWithOrigin is null)
-			{
-				icon += " tree-node-sync-unknown";
-			}
-		}
-
-		if (row.IsWorkingTreeClean == false)
-		{
-			icon += " tree-node-dirty";
-		}
-
-		return icon;
-	}
+		=> GetPackageHealthIcon(row.HealthStatus);
 
 	/// <summary>
 	/// Returns a Font Awesome icon class for a rule based on its severity.

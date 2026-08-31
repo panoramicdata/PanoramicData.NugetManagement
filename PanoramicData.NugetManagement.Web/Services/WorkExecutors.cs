@@ -81,7 +81,45 @@ public sealed class WorkExecutors(
 	/// <param name="item">The item to run; its <see cref="WorkItem.Descriptor"/> selects the body.</param>
 	/// <param name="progress">Reports progress lines into the item's tree node.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	public Task ExecuteAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	public async Task ExecuteAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	{
+		try
+		{
+			await DispatchAsync(item, progress, cancellationToken).ConfigureAwait(false);
+		}
+		finally
+		{
+			// In a finally, and so also after a failure or a stop: work that was interrupted half way
+			// through rewriting files has changed the tree just as surely as work that finished, and
+			// the remembered build result describes neither.
+			ForgetBuildStatusIfInvalidated(item);
+		}
+	}
+
+	/// <summary>
+	/// Throws away the repository's remembered build result when the work that just ran could have
+	/// changed what is on disk.
+	/// </summary>
+	/// <param name="item">The item that ran.</param>
+	private void ForgetBuildStatusIfInvalidated(WorkItem item)
+	{
+		if (!BuildStatusLifetime.Invalidates(item.Descriptor.Kind))
+		{
+			return;
+		}
+
+		var row = RowFor(item);
+		if (row is null || row.LastBuildState is null)
+		{
+			return;
+		}
+
+		row.LastBuildState = null;
+		row.LastBuiltAtUtc = null;
+		cache.UpsertRow(row);
+	}
+
+	private Task DispatchAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
 		=> item.Descriptor.Kind switch
 		{
 			WorkKind.Clone => CloneAsync(item, progress, cancellationToken),
@@ -159,7 +197,9 @@ public sealed class WorkExecutors(
 				},
 				cancellationToken).ConfigureAwait(false);
 
-			if (row.Status == PackageStatus.BuildSucceeded)
+			var succeeded = row.Status == PackageStatus.BuildSucceeded;
+
+			if (succeeded)
 			{
 				Say("✅ Build succeeded");
 				item.Succeeded = true;
@@ -170,6 +210,8 @@ public sealed class WorkExecutors(
 				item.GeneratedPrompt = DashboardService.GenerateConciseWorkflowFailurePrompt(row, "build", output);
 				item.Succeeded = false;
 			}
+
+			RememberBuildResult(row, succeeded ? RepositoryBuildState.Succeeded : RepositoryBuildState.Failed);
 		}
 		catch (OperationCanceledException)
 		{
@@ -182,7 +224,24 @@ public sealed class WorkExecutors(
 		{
 			Say($"❌ Error: {ex.Message}");
 			item.Succeeded = false;
+
+			// A build that could not be run is a repository that does not build here, which is what
+			// the badge is asked. Leaving it as not-known would hide it among the never-built.
+			RememberBuildResult(row, RepositoryBuildState.Failed);
 		}
+	}
+
+	/// <summary>
+	/// Records what a build did, so the estate can be read at a glance rather than one repository at
+	/// a time.
+	/// </summary>
+	/// <param name="row">The repository that was built.</param>
+	/// <param name="state">What the build did.</param>
+	private void RememberBuildResult(RepositoryDashboardRow row, RepositoryBuildState state)
+	{
+		row.LastBuildState = state;
+		row.LastBuiltAtUtc = DateTimeOffset.UtcNow;
+		cache.UpsertRow(row);
 	}
 
 	/// <summary>

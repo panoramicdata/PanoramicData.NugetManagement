@@ -33,6 +33,14 @@ public class FailArmyTests : TestWithOutput
 	/// under "PanoramicData.NugetFailArmy". Covered instead by DeprecatedPackageRuleTests.
 	/// </item>
 	/// <item>
+	/// CI-12 holds every action to a floor learned from the estate's own repositories, and this test
+	/// binary substitutes an empty in-memory catalog so it never touches the committed
+	/// action-versions.json. With no floor for any action the fixture uses, nothing can be shown to be
+	/// behind — the same "no data supplied" property as PKG-05/06/07, and for the same reason it must
+	/// not be worked around by seeding the fixture. Covered instead by CiActionVersionFloorRuleTests,
+	/// which seeds a catalog of its own.
+	/// </item>
+	/// <item>
 	/// CI-10 requires a committed nuget-key.txt, but that filename is gitignored by this repository
 	/// (by design, since committing one is exactly what the rule forbids), so the fixture can never
 	/// contain it.
@@ -44,7 +52,8 @@ public class FailArmyTests : TestWithOutput
 	// PKG-10 joins these because it is the precondition for the packaging rules rather than one of
 	// them: the fixture has to declare that it publishes something before those rules apply at all,
 	// and declaring it is exactly what PKG-10 asks for.
-	private static readonly string[] _unfailableRuleIds = ["PKG-05", "PKG-06", "PKG-07", "CI-10", "PKG-10", "PKG-11"];
+	private static readonly string[] _unfailableRuleIds =
+		["PKG-05", "PKG-06", "PKG-07", "CI-10", "CI-12", "PKG-10", "PKG-11"];
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="FailArmyTests"/> class.

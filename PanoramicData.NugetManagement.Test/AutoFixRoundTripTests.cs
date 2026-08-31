@@ -11,6 +11,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// Asserting only that a payload exists would not catch a payload that edits nothing, which is what
 /// TST-05 shipped — an <c>add_file</c> type no remediation knew how to apply.
 /// </summary>
+[Collection(ActionVersionCatalogCollection.Name)]
 public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(output), IDisposable
 {
 	// An in-memory catalog (null path) so assessing these fixtures never writes action-versions.json.
@@ -211,6 +212,39 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 		{
 			ActionVersionCatalog.Default = previous;
 		}
+	}
+
+	[Fact]
+	public async Task VER04_DeletesAToolManifestThatOnlyEverPinnedNbgv()
+	{
+		const string manifestPath = ".config/dotnet-tools.json";
+		const string manifest = """{"version":1,"isRoot":true,"tools":{"nbgv":{"version":"3.9.50","commands":["nbgv"]}}}""";
+
+		WriteFile(manifestPath, manifest);
+
+		var result = await Rule("VER-04")
+			.EvaluateAsync(WorkflowContext(manifestPath, manifest), TestContext.Current.CancellationToken);
+		result.Passed.Should().BeFalse("the fixture pins a tool nothing invokes");
+
+		Apply(result);
+
+		File.Exists(Path.Combine(_root, ".config", "dotnet-tools.json"))
+			.Should().BeFalse("the remediation is a deletion, so the file has to be gone");
+
+		var reassessed = await Rule("VER-04").EvaluateAsync(
+			new RepositoryContext
+			{
+				FullName = "panoramicdata/Sample",
+				Name = "Sample",
+				DefaultBranch = "main",
+				CurrentBranch = "main",
+				Options = new RepoOptions(),
+				FilePaths = [],
+				FileContents = []
+			},
+			TestContext.Current.CancellationToken);
+
+		reassessed.Passed.Should().BeTrue("the remediation is supposed to satisfy the rule it came from");
 	}
 
 	private static RepositoryContext WorkflowContext(string path, string content) => new()

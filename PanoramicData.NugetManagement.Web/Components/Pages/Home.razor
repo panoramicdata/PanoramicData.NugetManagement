@@ -115,6 +115,16 @@ else
 													@* The repository node only. Every node beneath it carries the repository too,
 													   but excluding one from governance is not something a package, a category
 													   or a rule can do. *@
+													@* Git state and build state, on the right, as badges of their own. Neither is a
+													   rule failure, so neither belongs in the health glyph on the left — a red
+													   glyph that could mean "fails a rule" or "does not build" means neither. *@
+													@if (node.Data is not null && NavTreeDataProvider.IsRepositoryNode(node.Data))
+													{
+														<span class="nav-node-state">
+															<i class="fas @RepositoryStateBadges.GitIcon(node.Data) nav-state-badge" title="@RepositoryStateBadges.GitTooltip(node.Data)"></i>
+															<i class="fas @RepositoryStateBadges.BuildIcon(node.Data) nav-state-badge" title="@RepositoryStateBadges.BuildTooltip(node.Data)"></i>
+														</span>
+													}
 													@if (node.Data is not null && NavTreeDataProvider.IsRepositoryNode(node.Data) && node.Data.RepositoryFullName is { Length: > 0 } repositoryFullName)
 													{
 														<span class="nav-org-actions">
@@ -190,11 +200,14 @@ else
 															}
 														</span>
 													}
-													else if (node.Data?.LaneKey is { Length: > 0 } laneKey && node.Data.WorkItemId is null)
+													else if (node.Data?.LaneKey is { Length: > 0 } laneKey && node.Data.WorkItemId is null && !node.Data.IsLeaf)
 													{
 														<span class="nav-org-actions">
 															@* On the organisation's work node this stops every lane beneath it, which is
-															   what replaces stopping a bulk action that used to be one item. *@
+															   what replaces stopping a bulk action that used to be one item.
+															   Only when something is under it: a repository's work node is permanent, so
+															   without the leaf check every clear repository would offer a stop button
+															   with nothing to stop. *@
 															<button type="button" class="nav-org-action-btn" title="@(node.Data.RepositoryFullName is null ? "Stop all work in this organisation" : "Stop all work on this repository")" @onclick="() => StopLane(node.Data)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-stop"></i></button>
 														</span>
 													}
@@ -235,7 +248,7 @@ else
 								<span class="breadcrumb-current">Organisations</span>
 							}
 							@* Org crumb — shown at org level or deeper (repo selected, or org settings) *@
-							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || IsIssueView)
+							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || IsIssueView || IsEstateWide)
 							{
 								<span class="breadcrumb-sep">›</span>
 								@if (_orgSelected && _selectedRow is null && _currentView != NavView.Settings)
@@ -253,6 +266,13 @@ else
 							{
 								<span class="breadcrumb-sep">›</span>
 								<span class="breadcrumb-current">Application settings</span>
+							}
+							@* The estate has no repository crumb of its own to inherit — it stands for all of
+							   them — so it names itself here or the trail stops at the organisation. *@
+							@if (IsEstateWide)
+							{
+								<span class="breadcrumb-sep">›</span>
+								<span class="breadcrumb-current">Repositories</span>
 							}
 							@if (_selectedRow is not null)
 							{
@@ -399,8 +419,8 @@ else
 											 Text="Sync"
 											 IconCssClass="fas fa-arrows-rotate"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.GitSync)"
-											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(IsSyncEnabled() && !IsStepQueueBlocked(WorkflowStep.GitSync))"
+											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
+											 IsEnabled="@(IsEstateWide ? IsLocalStepEnabled(WorkflowStep.GitSync) : (IsSyncEnabled() && !IsStepQueueBlocked(WorkflowStep.GitSync)))"
 											 ToolTip="@GatedTooltip(WorkflowStep.GitSync, GetSyncTooltip())"
 											 Click="OnToolbarClick" />
 
@@ -413,7 +433,7 @@ else
 											 Text="@GetReassessButtonText()"
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
-											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
+											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.Repositories or NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
 											 IsEnabled="@(!IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Reassess))"
 											 ToolTip="@GatedTooltip(WorkflowStep.Reassess, IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
 											 Click="OnToolbarClick" />
@@ -432,7 +452,7 @@ else
 											 Text="Fix"
 											 IconCssClass="fas fa-wrench"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Fix)"
-											 IsVisible="@(FixScope.For(_currentView).HasAnything && _selectedRow is not null)"
+											 IsVisible="@(FixScope.For(_currentView).HasAnything && HasToolbarTarget)"
 											 IsEnabled="@IsFixEnabled()"
 											 ToolTip="@GatedTooltip(WorkflowStep.Fix, GetFixAllTooltip())"
 											 Click="OnToolbarClick" />
@@ -458,8 +478,8 @@ else
 											 Text="Build"
 											 IconCssClass="fas fa-hammer"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Build)"
-											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Build))"
+											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
+											 IsEnabled="@IsLocalStepEnabled(WorkflowStep.Build)"
 											 ToolTip="@GatedTooltip(WorkflowStep.Build, WorkflowStepTooltip("Build the solution"))"
 											 Click="OnToolbarClick" />
 
@@ -472,8 +492,8 @@ else
 											 Text="Test"
 											 IconCssClass="fas fa-flask"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Test)"
-											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Test))"
+											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
+											 IsEnabled="@IsLocalStepEnabled(WorkflowStep.Test)"
 											 ToolTip="@GatedTooltip(WorkflowStep.Test, WorkflowStepTooltip("Run unit tests"))"
 											 Click="OnToolbarClick" />
 
@@ -486,8 +506,8 @@ else
 											 Text="Commit & Push"
 											 IconCssClass="fas fa-cloud-upload-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
-											 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
-											 IsEnabled="@(_selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.CommitAndPush))"
+											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
+											 IsEnabled="@IsLocalStepEnabled(WorkflowStep.CommitAndPush)"
 											 ToolTip="@GatedTooltip(WorkflowStep.CommitAndPush, WorkflowStepTooltip("Commit changes, fetch, rebase and push to origin"))"
 											 Click="OnToolbarClick" />
 
@@ -496,6 +516,9 @@ else
 								<span class="@FlowChevronCss(WorkflowStep.CommitAndPush)">›</span>
 							}
 
+							@* The one step with no estate-wide form. A package pushed to nuget.org cannot be
+							   taken back and its version number can never be reused, so it stays a decision
+							   made one repository at a time — see ToolbarScope.AllowsEstateWide. *@
 							<PDToolbarButton Key="publish"
 										 Text="Publish"
 										 IconCssClass="fas fa-rocket"
@@ -1122,6 +1145,18 @@ else
 		_selectedNodeKey = item.Key;
 		_orgSelected = IsOrgRootNode(item);
 
+		// The estate stands for every repository, not for whichever one happened to be selected before
+		// it. Left set, the previous repository would keep Publish — the one step with no estate-wide
+		// form — visible and pointing at a repository nobody is looking at any more, and the workflow
+		// step badges would go on describing that repository's progress.
+		if (ToolbarScope.IsEstateWide(item.View))
+		{
+			_selectedRow = null;
+			_completedSteps.Clear();
+			_failedSteps.Clear();
+			_lastFailedWorkflowStep = null;
+		}
+
 		// Every node below "Organisations" carries its organisation, so the breadcrumb and the
 		// org-scoped views follow the selection instead of a single configured name.
 		if (!string.IsNullOrEmpty(item.Organization))
@@ -1237,6 +1272,73 @@ else
 	/// </summary>
 	private bool ShowBulkRunButtons
 		=> _currentView == NavView.Dashboard || (_currentView == NavView.Home && _orgSelected);
+
+	/// <summary>
+	/// Whether the selection stands for every repository beneath it rather than for a single one.
+	/// </summary>
+	private bool IsEstateWide => ToolbarScope.IsEstateWide(_currentView);
+
+	/// <summary>
+	/// Whether the toolbar has anything to act on at all: one selected repository, or a whole estate.
+	/// </summary>
+	private bool HasToolbarTarget => _selectedRow is not null || IsEstateWide;
+
+	/// <summary>
+	/// Every repository the Repositories branch covers, before the excluded and un-cloned ones are
+	/// dropped. <see cref="ToolbarScope.Targets"/> does the dropping, so that the number acted on and
+	/// the number skipped can both be reported.
+	/// </summary>
+	private List<RepositoryDashboardRow> EstateCandidates
+		=> [.. _rows.Where(r =>
+			string.Equals(r.Organization, CurrentOrganization, StringComparison.OrdinalIgnoreCase))];
+
+	/// <summary>
+	/// The repositories an estate-wide press of a step would act on.
+	/// </summary>
+	private List<RepositoryDashboardRow> EstateTargets(WorkflowStep step)
+		=> ToolbarScope.Targets(EstateCandidates, step, RuntimeSettings.IsRepositoryExcluded);
+
+	/// <summary>
+	/// Whether a step that works on a local clone can run: for one repository, or for however many the
+	/// estate offers.
+	/// </summary>
+	/// <remarks>
+	/// The out-of-sync block is a property of one selected repository and is deliberately not applied
+	/// estate-wide — one repository behind origin is no reason to refuse to build the other forty-six,
+	/// and each item still checks its own state when it runs.
+	/// </remarks>
+	private bool IsLocalStepEnabled(WorkflowStep step)
+		=> IsEstateWide
+			? EstateTargets(step).Count > 0 && !IsStepQueueBlocked(step)
+			: _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(step);
+
+	/// <summary>
+	/// Queues one item per repository the estate-wide selection covers, and says what it is doing —
+	/// including how many it left out. Acting on twelve of forty-seven without saying so is how a bulk
+	/// action lies about what it did.
+	/// </summary>
+	/// <param name="kind">The work to queue for each repository.</param>
+	/// <param name="step">The workflow step it belongs to.</param>
+	/// <param name="stepName">The step's label, as the button shows it.</param>
+	private void QueueAcrossEstate(WorkKind kind, WorkflowStep step, string stepName)
+	{
+		var candidates = EstateCandidates;
+		var targets = ToolbarScope.Targets(candidates, step, RuntimeSettings.IsRepositoryExcluded);
+
+		AppendConsole(ToolbarScope.Describe(stepName, targets.Count, candidates.Count));
+
+		foreach (var row in targets)
+		{
+			// The same lane key shape QueueForSelectedRepository uses, so an estate-wide press folds
+			// into whatever a single-repository press already queued rather than doubling it.
+			Lanes.Enqueue(
+				$"{stepName} {row.RepositoryFullName}",
+				WorkDescriptor.ForRepository(kind, row.Organization, row.RepositoryFullName),
+				$"{kind}:{row.RepositoryFullName}:",
+				step,
+				_selectedNodeKey);
+		}
+	}
 
 	/// <summary>
 	/// A message awaiting the user's response, rendered as an in-app modal.
@@ -2868,6 +2970,12 @@ else
 			case NavView.AppSettings:
 				@RenderAppSettingsView()
 				break;
+			case NavView.Repositories:
+				@* The whole estate, and the answer to "which of these no longer builds" after a bulk
+				   change. Its own component rather than another render method here: this file is
+				   already enormous, and RepositoryIssuesView sets the precedent. *@
+				<EstateView Rows="@EstateCandidates" Organization="@CurrentOrganization" />
+				break;
 			case NavView.Issues:
 				@* Embedded so it drops its own page header. Organization is required: without it the
 				   component shows nothing rather than every organisation's repositories. *@
@@ -4262,6 +4370,17 @@ else
 	/// </remarks>
 	private async Task FixAllAsync()
 	{
+		if (IsEstateWide)
+		{
+			// Remediations first and triage behind them, per repository, for the reason the remarks
+			// above give: a fix that moves a version is what turns a still-valid pull request into one
+			// triage can close. Two passes rather than one interleaved loop so every repository's fix
+			// is queued before any of its triage, matching the single-repository order exactly.
+			QueueAcrossEstate(WorkKind.FixAll, WorkflowStep.Fix, "Fix");
+			QueueAcrossEstate(WorkKind.TriageDependabot, WorkflowStep.Fix, "Triage Dependabot");
+			return;
+		}
+
 		if (_selectedRow is null)
 		{
 			return;
@@ -4351,6 +4470,12 @@ else
 
 	private Task BuildAsync()
 	{
+		if (IsEstateWide)
+		{
+			QueueAcrossEstate(WorkKind.Build, WorkflowStep.Build, "Build");
+			return Task.CompletedTask;
+		}
+
 		if (_selectedRow is null)
 		{
 			return Task.CompletedTask;
@@ -4364,6 +4489,12 @@ else
 
 	private Task RunTestsAsync()
 	{
+		if (IsEstateWide)
+		{
+			QueueAcrossEstate(WorkKind.Test, WorkflowStep.Test, "Test");
+			return Task.CompletedTask;
+		}
+
 		if (_selectedRow is null)
 		{
 			return Task.CompletedTask;
@@ -4377,6 +4508,12 @@ else
 
 	private Task GitSyncAsync()
 	{
+		if (IsEstateWide)
+		{
+			QueueAcrossEstate(WorkKind.GitSync, WorkflowStep.GitSync, "Git sync");
+			return Task.CompletedTask;
+		}
+
 		if (_selectedRow is null)
 		{
 			return Task.CompletedTask;
@@ -4551,16 +4688,24 @@ else
 	/// </remarks>
 	private bool IsFixEnabled()
 	{
-		if (_selectedRow is null)
-		{
-			return false;
-		}
-
 		var scope = FixScope.For(_currentView);
 
 		// Checked here rather than at each button: Fix is offered from the toolbar, from each issue
 		// category and from individual rules, and a gate on only one of them is not a gate.
 		if (!scope.HasAnything || IsStepQueueBlocked(WorkflowStep.Fix))
+		{
+			return false;
+		}
+
+		// Estate-wide, there is no one repository to ask about remediable rules or a Dependabot inbox.
+		// Having somewhere to run is the gate; each repository's own item decides what to do when it
+		// reaches the front of its lane.
+		if (IsEstateWide)
+		{
+			return EstateTargets(WorkflowStep.Fix).Count > 0;
+		}
+
+		if (_selectedRow is null)
 		{
 			return false;
 		}
@@ -5726,6 +5871,15 @@ else
 					? $"{item.Text} — warning"
 					: $"{item.Text} — informational";
 
+			case NavView.Repositories:
+				// The only container node whose toolbar acts on everything beneath it, which is new
+				// enough behaviour to be worth saying rather than leaving to be discovered by pressing
+				// Build and watching forty lanes start.
+				var buildable = EstateTargets(WorkflowStep.Build).Count;
+				return $"Repositories — every toolbar step runs on all {buildable} cloned, governed "
+					+ $"{(buildable == 1 ? "repository" : "repositories")} at once, except Publish"
+					+ GetRolledUpHealthSuffix(item);
+
 			default:
 				return item.Text + GetRolledUpHealthSuffix(item);
 		}
@@ -6195,6 +6349,12 @@ else
 
 	private Task CommitAndPushAsync()
 	{
+		if (IsEstateWide)
+		{
+			QueueAcrossEstate(WorkKind.CommitAndPush, WorkflowStep.CommitAndPush, "Commit & push");
+			return Task.CompletedTask;
+		}
+
 		if (_selectedRow is null)
 		{
 			return Task.CompletedTask;

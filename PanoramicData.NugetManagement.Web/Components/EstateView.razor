@@ -1,0 +1,124 @@
+@using PanoramicData.NugetManagement.Web.Models
+@using PanoramicData.NugetManagement.Web.Services
+
+@* The whole estate in one table. The sidebar answers "how is this repository doing" one node at a
+   time; this answers "which ones are broken" in one glance, which is the question a bulk change
+   raises the moment it finishes. Broken builds sort to the top for that reason. *@
+
+<div class="mb-3">
+	<h4><i class="fas fa-cubes"></i> Repositories</h4>
+	<div class="text-muted">@Organization</div>
+</div>
+
+@if (Rows.Count == 0)
+{
+	<div class="alert alert-info">
+		No repositories are cached for @Organization. Discover them from the organisation node first.
+	</div>
+}
+else
+{
+	<p class="fixes-intro">
+		Every button in the toolbar acts on all @Rows.Count of these at once, except <strong>Publish</strong>,
+		which stays a decision made one repository at a time. Repositories that are excluded or not
+		cloned locally are left out, and the console says how many.
+	</p>
+
+	<table class="table table-sm align-middle">
+		<thead>
+			<tr>
+				<th></th>
+				<th>Repository</th>
+				<th>Issues</th>
+				<th>Git</th>
+				<th>Build</th>
+			</tr>
+		</thead>
+		<tbody>
+			@foreach (var row in Ordered)
+			{
+				<tr>
+					<td><i class="@NavTreeDataProvider.BuildRepositoryIconCss(row)"></i></td>
+					<td>@row.RepositoryName</td>
+					<td>@(row.TotalFailures == 0 ? "—" : row.TotalFailures.ToString())</td>
+					<td class="text-muted small">@GitSummary(row)</td>
+					<td>
+						<span class="@BuildTextClass(row.LastBuildState)" title="@BuildTooltip(row)">
+							@BuildLabel(row.LastBuildState)
+						</span>
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+@code {
+	/// <summary>The repositories to show.</summary>
+	[Parameter]
+	public IReadOnlyList<RepositoryDashboardRow> Rows { get; set; } = [];
+
+	/// <summary>The organisation they belong to, for the subheading.</summary>
+	[Parameter]
+	public string Organization { get; set; } = string.Empty;
+
+	/// <summary>
+	/// Failed builds first, then never-built, then the ones that build — and alphabetical within
+	/// each. The reason to open this screen is to find what broke, so what broke is at the top.
+	/// </summary>
+	private IEnumerable<RepositoryDashboardRow> Ordered
+		=> Rows
+			.OrderBy(row => row.LastBuildState switch
+			{
+				RepositoryBuildState.Failed => 0,
+				null => 1,
+				_ => 2
+			})
+			.ThenBy(row => row.RepositoryFullName, StringComparer.OrdinalIgnoreCase);
+
+	private static string BuildLabel(RepositoryBuildState? state) => state switch
+	{
+		RepositoryBuildState.Succeeded => "Builds",
+		RepositoryBuildState.Failed => "Fails",
+		_ => "Not known"
+	};
+
+	private static string BuildTextClass(RepositoryBuildState? state) => state switch
+	{
+		RepositoryBuildState.Succeeded => "text-success",
+		RepositoryBuildState.Failed => "text-danger fw-bold",
+		_ => "text-muted"
+	};
+
+	/// <summary>
+	/// When the build result was taken, so an old answer can be told from a fresh one. "Not known"
+	/// covers both never built here and changed since, which are the same thing to a reader: nobody
+	/// can say whether this tree builds.
+	/// </summary>
+	private static string BuildTooltip(RepositoryDashboardRow row)
+		=> row.LastBuiltAtUtc is { } when
+			? $"Built {when.ToLocalTime():yyyy-MM-dd HH:mm}"
+			: "Never built here, or changed since it was";
+
+	private static string GitSummary(RepositoryDashboardRow row)
+	{
+		if (!row.IsClonedLocally)
+		{
+			return "not cloned";
+		}
+
+		var parts = new List<string>();
+
+		if (row.IsWorkingTreeClean == false)
+		{
+			parts.Add("uncommitted changes");
+		}
+
+		if (row.IsSyncedWithOrigin == false)
+		{
+			parts.Add("out of sync");
+		}
+
+		return parts.Count == 0 ? "clean" : string.Join(", ", parts);
+	}
+}
