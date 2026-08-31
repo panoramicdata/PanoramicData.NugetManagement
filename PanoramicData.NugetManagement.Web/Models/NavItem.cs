@@ -215,5 +215,11 @@ public enum NavView
 	/// One open GitHub issue or pull request of a repository: who raised it, when a maintainer last
 	/// replied, and how stale that makes it.
 	/// </summary>
-	RepositoryIssueDetail
+	RepositoryIssueDetail,
+
+	/// <summary>
+	/// One repository's whole inbox: every open issue and pull request, what the last Dependabot
+	/// triage pass concluded about each, and the action that starts another.
+	/// </summary>
+	RepositoryIssuesDetail
 }

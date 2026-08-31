@@ -2856,6 +2856,10 @@ else
 			case NavView.IssueRuleDetail:
 				<IssuesView Embedded="true" Organization="@CurrentOrganization" FocusCategory="_selectedCategory" FocusRuleId="@_selectedRuleId" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueBulkRule" />
 				break;
+			case NavView.RepositoryIssuesDetail:
+				@* The repository's whole inbox, and the place Dependabot triage is started from. *@
+				<RepositoryIssuesView Issues="@(_selectedRow?.OpenIssues ?? [])" RepositoryFullName="@_selectedRow?.RepositoryFullName" OnTriageRequested="TriageDependabotAsync" />
+				break;
 			case NavView.RepositoryIssueDetail:
 				@* Its own component rather than another render method here: this file is already
 				   enormous, and IssuesView sets the precedent for a self-contained panel. *@

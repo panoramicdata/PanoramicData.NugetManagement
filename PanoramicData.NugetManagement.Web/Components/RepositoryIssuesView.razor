@@ -1,0 +1,120 @@
+@using PanoramicData.NugetManagement.Models
+
+@* One repository's inbox. The per-item panel is RepositoryIssueView; this is the branch above it,
+   and the place a Dependabot backlog is actually looked at — so it is where triage is started. *@
+
+<div class="mb-3">
+	<h4><i class="fas fa-comments"></i> Open issues and pull requests</h4>
+	<div class="text-muted">@RepositoryFullName</div>
+</div>
+
+@if (Issues.Count == 0)
+{
+	<div class="alert alert-success">
+		Nothing open. <span class="text-muted">Re-assess the repository to re-read its inbox.</span>
+	</div>
+}
+else
+{
+	<div class="mb-3">
+		<button class="btn btn-primary" @onclick="OnTriageRequested" disabled="@(!OnTriageRequested.HasDelegate)">
+			<i class="fas fa-gavel"></i> Triage Dependabot (@DependabotCount)
+		</button>
+		<div class="text-muted small mt-2">
+			Closes the Dependabot pull requests this repository has already outgrown, leaves the ones an
+			existing auto-fix will handle, and raises an issue against PanoramicData.NugetManagement for
+			anything valid that no auto-fix covers. Every close is written to the console first.
+		</div>
+	</div>
+
+	<table class="table table-sm align-middle">
+		<thead>
+			<tr>
+				<th></th>
+				<th>Item</th>
+				<th>Raised by</th>
+				<th>Waiting</th>
+				<th>Triage</th>
+			</tr>
+		</thead>
+		<tbody>
+			@foreach (var issue in Issues.OrderBy(i => i.Number))
+			{
+				<tr>
+					<td>
+						<i class="@(issue.IsPullRequest ? "fas fa-code-pull-request" : "fas fa-circle-dot") @SeverityColour(issue)"></i>
+					</td>
+					<td>
+						<a href="@issue.HtmlUrl" target="_blank" rel="noopener">#@issue.Number</a>
+						@issue.Title
+					</td>
+					<td class="text-muted">@issue.AuthorLogin</td>
+					<td class="@SeverityColour(issue)">@WholeDaysWaiting(issue) day(s)</td>
+					<td>
+						@if (issue.TriageVerdict is { } verdict)
+						{
+							<span class="badge @BadgeClass(verdict)" title="@issue.TriageReason">@Label(verdict)</span>
+						}
+						else
+						{
+							<span class="text-muted small">Not triaged</span>
+						}
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+@code {
+	/// <summary>The repository's open issues and pull requests.</summary>
+	[Parameter]
+	public IReadOnlyList<RepositoryIssue> Issues { get; set; } = [];
+
+	/// <summary>The repository, as "owner/name".</summary>
+	[Parameter]
+	public string? RepositoryFullName { get; set; }
+
+	/// <summary>Queues Dependabot triage for this repository.</summary>
+	[Parameter]
+	public EventCallback OnTriageRequested { get; set; }
+
+	/// <summary>
+	/// How many of the open items Dependabot raised. Shown on the button so the size of the job is
+	/// obvious before it is started.
+	/// </summary>
+	private int DependabotCount => Issues.Count(issue =>
+		issue.IsPullRequest
+		&& string.Equals(issue.AuthorLogin, "dependabot[bot]", StringComparison.OrdinalIgnoreCase));
+
+	private static int WholeDaysWaiting(RepositoryIssue issue)
+		=> (int)(DateTimeOffset.UtcNow - issue.ClockStartUtc).TotalDays;
+
+	private static string SeverityColour(RepositoryIssue issue)
+		=> issue.SeverityAt(DateTimeOffset.UtcNow) switch
+		{
+			AssessmentSeverity.Critical or AssessmentSeverity.Error => "text-danger",
+			AssessmentSeverity.Warning => "text-warning",
+			_ => "text-info"
+		};
+
+	private static string Label(DependabotVerdict verdict) => verdict switch
+	{
+		DependabotVerdict.AlreadySatisfied => "Superseded",
+		DependabotVerdict.ValidCovered => "Auto-fix covers it",
+		DependabotVerdict.ValidUncovered => "No auto-fix",
+		_ => "Left alone"
+	};
+
+	/// <summary>
+	/// Uncovered is the only verdict nothing else will act on, so it is the only one coloured to ask
+	/// for attention.
+	/// </summary>
+	private static string BadgeClass(DependabotVerdict verdict) => verdict switch
+	{
+		DependabotVerdict.ValidUncovered => "bg-warning text-dark",
+		DependabotVerdict.ValidCovered => "bg-info text-dark",
+		DependabotVerdict.AlreadySatisfied => "bg-secondary",
+		_ => "bg-light text-dark"
+	};
+}

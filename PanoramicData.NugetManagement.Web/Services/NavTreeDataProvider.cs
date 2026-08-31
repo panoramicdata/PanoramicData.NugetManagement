@@ -544,7 +544,10 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				ParentKey = repoKey,
 				IconCss = NavHealthRollup.Icon("fas fa-comments", issueStatus),
 				HealthStatus = issueStatus,
-				View = NavView.None,
+				// Its own view, not None: this is where a Dependabot backlog is read, so it has to be
+				// where triage is started from. With None the node selected cleanly and rendered the
+				// getting-started placeholder, so the action had nowhere to live.
+				View = NavView.RepositoryIssuesDetail,
 				Organization = organization,
 				RepositoryFullName = row.RepositoryFullName,
 				IsLeaf = row.OpenIssues.Count == 0,

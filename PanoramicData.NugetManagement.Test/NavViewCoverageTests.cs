@@ -62,6 +62,50 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 				"a step hidden on the repository view cannot be run from where its issues are read");
 
 	/// <summary>
+	/// The repository's own Issues branch is where its open pull requests are read, so it is where
+	/// Dependabot triage has to be startable from. It was built with NavView.None, which selects
+	/// cleanly and renders nothing — so the triage action existed but had nowhere to be pressed.
+	/// </summary>
+	[Fact]
+	public void TheRepositorysIssuesBranchShouldHaveAViewOfItsOwn()
+		=> BuildTree()
+			.Single(item => item.Key == NavTreeDataProvider.RepoIssuesKey("panoramicdata/Governed.Api"))
+			.View
+			.Should().Be(NavView.RepositoryIssuesDetail,
+				"selecting a repository's Issues branch must show its inbox, not nothing at all");
+
+	[Fact]
+	public void TheRepositoryIssuesViewShouldOfferDependabotTriage()
+	{
+		var razor = File.ReadAllText(ResolveRepositoryIssuesViewPath());
+
+		razor.Should().Contain("OnTriageRequested",
+			"the inbox is where a Dependabot backlog is looked at, so it is where triage is started");
+	}
+
+	private static string ResolveRepositoryIssuesViewPath()
+	{
+		var directory = AppContext.BaseDirectory;
+		while (directory is not null)
+		{
+			var candidate = Path.Combine(
+				directory,
+				"PanoramicData.NugetManagement.Web",
+				"Components",
+				"RepositoryIssuesView.razor");
+
+			if (File.Exists(candidate))
+			{
+				return candidate;
+			}
+
+			directory = Directory.GetParent(directory)?.FullName;
+		}
+
+		throw new FileNotFoundException("Could not find RepositoryIssuesView.razor by walking up.");
+	}
+
+	/// <summary>
 	/// The markup of one PDToolbarButton, from its Key to the end of the element.
 	/// </summary>
 	private static string ReadToolbarButton(string key)
