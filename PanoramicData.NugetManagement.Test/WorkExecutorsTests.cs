@@ -171,7 +171,9 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			NullLogger<WorkExecutors>.Instance,
 			new RemediationRegistry(),
 			new DependabotTriageRunner(
-				new UncoveredDependencyIssueService("panoramicdata/PanoramicData.NugetManagement")));
+				new UncoveredDependencyIssueService("panoramicdata/PanoramicData.NugetManagement")),
+			new OllamaGate(() => 1),
+			new AiPlaybookRegistry());
 	}
 
 	/// <inheritdoc />

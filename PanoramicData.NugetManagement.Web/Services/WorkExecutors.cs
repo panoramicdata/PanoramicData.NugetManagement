@@ -43,6 +43,11 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// Carries out what triage decided. Injected rather than constructed per item so that many
 /// repository lanes finding the same gap still produce one issue between them.
 /// </param>
+/// <param name="ollamaGate">
+/// Bounds how many AI fixes are talking to the model at once. Shared, because the limit is a property
+/// of the server and not of any one item.
+/// </param>
+/// <param name="playbooks">The per-rule instructions an AI fix is prompted with.</param>
 public sealed class WorkExecutors(
 	DashboardService dashboard,
 	DashboardCacheService cache,
@@ -53,7 +58,9 @@ public sealed class WorkExecutors(
 	IHttpContextAccessor httpContextAccessor,
 	ILogger<WorkExecutors> logger,
 	Remediations.RemediationRegistry remediations,
-	DependabotTriageRunner triageRunner)
+	DependabotTriageRunner triageRunner,
+	OllamaGate ollamaGate,
+	AiPlaybookRegistry playbooks)
 {
 	/// <summary>Every kind this service knows how to run.</summary>
 	/// <remarks>
@@ -63,6 +70,7 @@ public sealed class WorkExecutors(
 	public static IReadOnlySet<WorkKind> SupportedKinds { get; } = new HashSet<WorkKind>
 	{
 		WorkKind.Clone, WorkKind.Reassess, WorkKind.FixAll, WorkKind.FixCategory, WorkKind.FixRule,
+		WorkKind.FixWithAiRule,
 		WorkKind.TriageDependabot,
 		WorkKind.Build, WorkKind.Test, WorkKind.GitSync, WorkKind.CommitAndPush, WorkKind.Publish,
 		WorkKind.RediscoverOrganization, WorkKind.DiscoverReassessTargets,
@@ -81,6 +89,7 @@ public sealed class WorkExecutors(
 			WorkKind.FixAll => FixAllAsync(item, progress, cancellationToken),
 			WorkKind.FixCategory => FixCategoryAsync(item, progress, cancellationToken),
 			WorkKind.FixRule => FixRuleAsync(item, progress, cancellationToken),
+			WorkKind.FixWithAiRule => FixWithAiRuleAsync(item, progress, cancellationToken),
 			WorkKind.TriageDependabot => TriageDependabotAsync(item, progress, cancellationToken),
 			WorkKind.Build => BuildAsync(item, progress, cancellationToken),
 			WorkKind.Test => TestAsync(item, progress, cancellationToken),
@@ -697,6 +706,209 @@ public sealed class WorkExecutors(
 		{
 			Say($"❌ Error: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Has the local model fix one rule that no deterministic remediation covers.
+	/// </summary>
+	/// <remarks>
+	/// Runs on the repository's own lane rather than a lane of its own, so that nothing else can be
+	/// writing to the same working tree while the model is. What bounds the load on the model's server is
+	/// <see cref="OllamaGate"/>, which is a separate concern from keeping one clone to one writer.
+	/// <para>
+	/// On failure the clone is reverted. Half-finished edits from a model that misunderstood the task are
+	/// worse than no attempt: somebody has to unpick them, and the transcript in this item's output says
+	/// what was tried either way.
+	/// </para>
+	/// </remarks>
+	/// <param name="item">The item naming the repository and the rule.</param>
+	/// <param name="progress">Unused: the transcript goes to the console.</param>
+	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
+	private async Task FixWithAiRuleAsync(
+		WorkItem item,
+		IProgress<string> progress,
+		CancellationToken cancellationToken)
+	{
+		var row = RowFor(item);
+
+		if (row is null)
+		{
+			SayRepositoryGone(item);
+			return;
+		}
+
+		var ruleId = item.Descriptor.Parameter("ruleId")!;
+		var ollama = runtimeSettings.Ollama;
+
+		if (!ollama.IsConfigured)
+		{
+			Say("⚠️ No Ollama server is configured — set one under Settings, Ollama Config.");
+			return;
+		}
+
+		if (row.LocalPath is null || !row.IsClonedLocally)
+		{
+			Say($"⏭️ {row.RepositoryFullName} is not cloned locally, and the model edits files on disk.");
+			return;
+		}
+
+		var result = row.Assessment?.RuleResults
+			.FirstOrDefault(r => string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+
+		if (result is null || result.Passed)
+		{
+			Say($"⏭️ {ruleId} is no longer failing on {row.RepositoryFullName}.");
+			return;
+		}
+
+		// Fix and Fix with AI are disjoint. A rule that gained a remediation since this item was queued
+		// belongs to Fix now, and doing it here would spend a GPU on work a function can do exactly.
+		if (remediations.Get(ruleId) is not null)
+		{
+			Say($"⏭️ {ruleId} now has an automatic remediation — use Fix instead.");
+			return;
+		}
+
+		var succeeded = false;
+
+		try
+		{
+			// Queued behind whatever else wants the model. Entered before any file is touched, so a wait
+			// for the server never leaves a half-edited clone lying around.
+			Say($"⏳ Waiting for the model ({ollama.Model})...");
+			using var hold = await ollamaGate.EnterAsync(cancellationToken).ConfigureAwait(false);
+
+			using var client = new Ollama.Api.OllamaClient(new Ollama.Api.OllamaClientOptions
+			{
+				Uri = new Uri(ollama.BaseUrl!),
+				ApiKey = ollama.ApiKey,
+				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
+			});
+
+			var toolbox = new AiFixToolbox(
+				row.LocalPath,
+				build: async token =>
+				{
+					await dashboard.BuildAsync(row, Say, token).ConfigureAwait(false);
+					return row.StatusMessage;
+				},
+				test: async token =>
+				{
+					await dashboard.RunTestsAsync(row, Say, token).ConfigureAwait(false);
+					return row.StatusMessage;
+				});
+
+			var playbook = playbooks.For(ruleId);
+
+			Say($"▶ {ruleId} on {row.RepositoryFullName} via {ollama.Model}"
+				+ $"{(playbook is null ? " (no playbook — using the advisory)" : string.Empty)}.");
+
+			var session = new AiFixSession(
+				new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow),
+				toolbox,
+				new AiFixOptions
+				{
+					MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
+					MaxAttempts = ollama.MaxAttemptsPerRule
+				},
+				Say);
+
+			var request = new AiFixRequest(
+				row.RepositoryFullName,
+				ruleId,
+				result.RuleName,
+				AiFixPrompt.BuildTask(result, row.RepositoryFullName, playbook),
+				AiFixPrompt.SystemPrompt);
+
+			var outcome = await session
+				.RunAsync(request, token => ReEvaluateAsync(row, ruleId, token), cancellationToken)
+				.ConfigureAwait(false);
+
+			succeeded = outcome.Succeeded;
+
+			if (succeeded)
+			{
+				// The one rule is re-evaluated rather than the whole repository: it is the only thing that
+				// can have changed, and a full re-assessment here would cost far more than the fix did.
+				var after = await ReEvaluateAsync(row, ruleId, cancellationToken).ConfigureAwait(false);
+				ReplaceRuleResult(row, ruleId, after);
+
+				await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+				cache.UpsertRow(row);
+
+				Say($"✅ {outcome.Summary} Review the working tree before committing — a model wrote it.");
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			Say($"⏹️ Stopped {ruleId} on {row.RepositoryFullName}.");
+			throw;
+		}
+		finally
+		{
+			if (!succeeded)
+			{
+				await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Evaluates one rule against the repository's clone as it now stands.
+	/// </summary>
+	/// <remarks>
+	/// A fresh context each time. A cached one would report the repository as it was before the model
+	/// edited it, so every attempt would look like a failure and the loop would exhaust its retries
+	/// against its own stale reading.
+	/// </remarks>
+	private async Task<AiRuleCheck> ReEvaluateAsync(
+		RepositoryDashboardRow row,
+		string ruleId,
+		CancellationToken cancellationToken)
+	{
+		var github = await CreateGitHubClientAsync().ConfigureAwait(false);
+		var context = await dashboard.BuildContextAsync(row, github, cancellationToken).ConfigureAwait(false);
+
+		var rule = PanoramicData.NugetManagement.Services.RuleRegistry.Rules
+			.First(r => string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+
+		var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
+
+		return new AiRuleCheck(result.Passed, result.Message);
+	}
+
+	/// <summary>
+	/// Swaps one rule's result in the cached assessment, so the tree reflects the fix without a full
+	/// re-assessment.
+	/// </summary>
+	private static void ReplaceRuleResult(RepositoryDashboardRow row, string ruleId, AiRuleCheck check)
+	{
+		if (row.Assessment is null)
+		{
+			return;
+		}
+
+		var index = row.Assessment.RuleResults.FindIndex(r =>
+			string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+
+		if (index < 0)
+		{
+			return;
+		}
+
+		var existing = row.Assessment.RuleResults[index];
+
+		row.Assessment.RuleResults[index] = new PanoramicData.NugetManagement.Models.RuleResult
+		{
+			RuleId = existing.RuleId,
+			RuleName = existing.RuleName,
+			Category = existing.Category,
+			Severity = existing.Severity,
+			IsApplicable = existing.IsApplicable,
+			Passed = check.Passed,
+			Message = check.Message,
+			Advisory = check.Passed ? null : existing.Advisory
+		};
 	}
 
 	/// <summary>

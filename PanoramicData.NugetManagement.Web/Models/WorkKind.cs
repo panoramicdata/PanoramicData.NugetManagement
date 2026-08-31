@@ -25,6 +25,17 @@ public enum WorkKind
 	/// <summary>Apply the auto-remediation of one rule. Parameter: <c>ruleId</c>.</summary>
 	FixRule,
 
+	/// <summary>
+	/// Have the local model fix one rule that has no deterministic remediation. Parameter:
+	/// <c>ruleId</c>.
+	/// </summary>
+	/// <remarks>
+	/// One rule per item deliberately. The prompt stays small, which is most of what makes a 27b model
+	/// succeed; each item is separately stoppable and retryable; and one rule the model cannot manage
+	/// does not take the others down with it.
+	/// </remarks>
+	FixWithAiRule,
+
 	/// <summary>Build one repository.</summary>
 	Build,
 

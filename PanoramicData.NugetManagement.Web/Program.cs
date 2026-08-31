@@ -45,6 +45,11 @@ builder.Services.AddSingleton<RemediationRegistry>();
 builder.Services.AddSingleton(sp => new UncoveredDependencyIssueService(
 	sp.GetRequiredService<IOptions<AppSettings>>().Value.GovernanceIssueRepository));
 builder.Services.AddSingleton<DependabotTriageRunner>();
+// Singletons: the model's server is one server however many repositories are being fixed, and the
+// playbooks are the same for all of them.
+builder.Services.AddSingleton<AiPlaybookRegistry>();
+builder.Services.AddSingleton(sp => new OllamaGate(
+	() => sp.GetRequiredService<RuntimeSettingsService>().Ollama.MaxConcurrency));
 builder.Services.AddSingleton<RuntimeSettingsService>();
 builder.Services.AddSingleton<IdeDetectionService>();
 builder.Services.AddSingleton<LocalFileSystemDataProvider>();

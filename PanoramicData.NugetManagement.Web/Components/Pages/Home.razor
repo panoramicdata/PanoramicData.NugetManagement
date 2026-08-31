@@ -14,6 +14,7 @@
 @inject IJSRuntime JS
 @inject IOptions<AppSettings> SettingsOptions
 @inject RuntimeSettingsService RuntimeSettings
+@inject PanoramicData.NugetManagement.Web.Remediations.RemediationRegistry Remediations
 @inject IdeDetectionService IdeDetection
 @inject LocalFileSystemDataProvider FileSystemDataProvider
 @inject LocalRepoService LocalRepo
@@ -434,6 +435,18 @@ else
 											 IsVisible="@(FixScope.For(_currentView).HasAnything && _selectedRow is not null)"
 											 IsEnabled="@IsFixEnabled()"
 											 ToolTip="@GatedTooltip(WorkflowStep.Fix, GetFixAllTooltip())"
+											 Click="OnToolbarClick" />
+
+							@* A second fixing button, which the one-Fix-button rule would normally forbid — but the
+							   two are disjoint by construction: Fix does what a deterministic remediation can do, and
+							   this does only what nothing else can. AiFixCandidates is the same complement that
+							   decides what gets queued, so the button is absent exactly when it would do nothing. *@
+							<PDToolbarButton Key="fix-local"
+											 Text="Fix Locally"
+											 IconCssClass="fas fa-robot"
+											 IsVisible="@(_selectedRow is not null && AiFixCandidateCount() > 0)"
+											 IsEnabled="@IsFixLocallyEnabled()"
+											 ToolTip="@GetFixLocallyTooltip()"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -2495,6 +2508,9 @@ else
 			case "fix-with-ai":
 				await FixWithAiAsync();
 				break;
+			case "fix-local":
+				await FixLocallyWithModelAsync();
+				break;
 			case "open-ide":
 				OpenInIde();
 				break;
@@ -3864,6 +3880,75 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		QueueForSelectedRepository(WorkKind.Reassess, $"Re-assess {_selectedRow.RepositoryName}", WorkflowStep.Reassess);
+
+		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// How many of the selected repository's failing rules the local model could attempt.
+	/// </summary>
+	private int AiFixCandidateCount()
+		=> _selectedRow is null ? 0 : AiFixCandidates.For(_selectedRow, Remediations).Count;
+
+	/// <summary>
+	/// Whether fixing locally is possible right now.
+	/// </summary>
+	/// <remarks>
+	/// Requires a configured server as well as candidates: offering it without one queues items that can
+	/// only fail, which reads as the feature being broken rather than unconfigured.
+	/// </remarks>
+	private bool IsFixLocallyEnabled()
+		=> AiFixCandidateCount() > 0
+			&& RuntimeSettings.Ollama.IsConfigured
+			&& !IsStepQueueBlocked(WorkflowStep.Fix);
+
+	/// <summary>
+	/// What pressing it will do, said before it is pressed.
+	/// </summary>
+	private string GetFixLocallyTooltip()
+	{
+		var count = AiFixCandidateCount();
+		var ollama = RuntimeSettings.Ollama;
+
+		return !ollama.IsConfigured
+			? "No local model is configured — set one under Settings, Ollama Config."
+			: $"Ask {ollama.Model} to fix {count} rule(s) that have no automatic remediation. "
+				+ "One queued item each; the changes are left in the working tree for you to review.";
+	}
+
+	/// <summary>
+	/// Queues one local-model fix per rule that no deterministic remediation covers.
+	/// </summary>
+	/// <remarks>
+	/// Distinct from <c>FixWithAiAsync</c>, which hands the same problems to a frontier model in an IDE.
+	/// This one runs on the configured Ollama server instead, which costs nothing and needs no IDE — and
+	/// is far weaker, which is why every fix is checked against the rule that asked for it.
+	/// </remarks>
+	private Task FixLocallyWithModelAsync()
+	{
+		if (_selectedRow is null)
+		{
+			return Task.CompletedTask;
+		}
+
+		EnsureSelectedRowIsCurrent();
+
+		var candidates = AiFixCandidates.For(_selectedRow, Remediations);
+
+		if (candidates.Count == 0)
+		{
+			AppendConsole("Nothing here needs the model: every failing rule has an automatic remediation.");
+			return Task.CompletedTask;
+		}
+
+		var queued = FanOut.EnqueueAiFix(
+			_selectedRow.Organization,
+			_selectedRow.RepositoryFullName,
+			candidates,
+			_selectedNodeKey);
+
+		AppendConsole($"⏳ Queued {queued} local-model fix(es) for {_selectedRow.RepositoryName}: "
+			+ $"{string.Join(", ", candidates)}.");
 
 		return Task.CompletedTask;
 	}

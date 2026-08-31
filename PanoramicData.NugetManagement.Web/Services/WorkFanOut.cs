@@ -79,6 +79,55 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 		return queued;
 	}
 
+	/// <summary>
+	/// Queues one AI fix per rule for one repository. Returns how many were queued.
+	/// </summary>
+	/// <param name="organization">The organisation it belongs to.</param>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="ruleIds">The rules to fix, one item each.</param>
+	/// <param name="consoleNodeKey">The console the output belongs to.</param>
+	/// <remarks>
+	/// One item per rule rather than one per repository: the prompt stays small, which is most of what
+	/// makes a small model succeed, and a rule it cannot manage does not take the others with it. They
+	/// share the repository's lane, so they run one at a time against that working tree regardless of how
+	/// many are queued.
+	/// </remarks>
+	public int EnqueueAiFix(
+		string? organization,
+		string repositoryFullName,
+		IReadOnlyList<string> ruleIds,
+		string? consoleNodeKey)
+	{
+		var queued = 0;
+
+		foreach (var ruleId in ruleIds)
+		{
+			var item = lanes.Enqueue(
+				$"Fix {ruleId} with AI in {ShortName(repositoryFullName)}",
+				WorkDescriptor.ForRepository(
+					WorkKind.FixWithAiRule,
+					organization,
+					repositoryFullName,
+					("ruleId", ruleId)),
+				$"aifix:{repositoryFullName}:{ruleId}",
+				null,
+				consoleNodeKey);
+
+			if (item is not null)
+			{
+				queued++;
+			}
+		}
+
+		return queued;
+	}
+
+	/// <summary>The repository's name without its owner, for a title that has to stay readable.</summary>
+	private static string ShortName(string repositoryFullName)
+		=> repositoryFullName.Contains('/', StringComparison.Ordinal)
+			? repositoryFullName.Split('/')[^1]
+			: repositoryFullName;
+
 	/// <summary>Queues a clone of every given candidate. Returns how many were queued.</summary>
 	/// <param name="organization">The organisation they belong to.</param>
 	/// <param name="targets">The repositories to clone.</param>
