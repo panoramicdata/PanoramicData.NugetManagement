@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Remediations;
 using PanoramicData.NugetManagement.Web.Services;
@@ -177,6 +178,87 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 		lines.Should().NotBeEmpty("an item with an empty transcript has nothing for its pane to show");
 		lines.Select(line => line.Text).Should().Contain(text => text.Contains("Building", StringComparison.Ordinal));
 		lines.Should().OnlyContain(line => line.Kind == WorkLineKind.Output);
+	}
+
+	/// <summary>
+	/// A bulk rule fix fans out one item per repository, and one of those repositories may not be
+	/// cloned. FixRuleAsync tested only <c>LocalPath is null</c> — which is a computed path, set
+	/// whether or not anything was ever cloned there — and then wrote through
+	/// <c>ApplySingleRemediationPublic</c>, the one write path that skips
+	/// <c>VerifyWritableCloneAsync</c>.
+	/// </summary>
+	/// <remarks>
+	/// The damage is not the failed fix. Remediations create the directories they write into, so the
+	/// write leaves a directory holding plausible files belonging to no repository — and because
+	/// <c>git clone</c> refuses a target that exists and is not empty, that repository can never be
+	/// cloned again. Seen for real on panoramicdata/ConnectWise.Manage.Api, whose clone directory held
+	/// SECURITY.md, CONTRIBUTING.md, Publish.ps1 and .github, and no .git at all.
+	/// </remarks>
+	[Fact]
+	public async Task FixRuleAsync_WhenTheRepositoryIsNotActuallyCloned_WritesNothing()
+	{
+		var executors = CreateExecutors(out var cache);
+		var localPath = Path.Combine(_root, "panoramicdata", "does-not-exist");
+
+		cache.SetRows(
+		[
+			new RepositoryDashboardRow
+			{
+				RepositoryFullName = Repository,
+				Organization = "panoramicdata",
+				Packages = [new() { PackageId = "Does.Not.Exist", LatestVersion = "1.0.0" }],
+
+				// Exactly the cached state that produced the real failure: a path, and no clone at it.
+				IsClonedLocally = false,
+				LocalPath = localPath,
+				Assessment = new RepoAssessment
+				{
+					RepositoryFullName = Repository,
+					DefaultBranch = "main",
+					AssessedAtUtc = DateTimeOffset.UtcNow,
+					RuleResults =
+					[
+						new RuleResult
+						{
+							RuleId = "COM-01",
+							RuleName = "SECURITY.md exists",
+							Category = AssessmentCategory.CommunityHealth,
+							Severity = AssessmentSeverity.Warning,
+							Passed = false,
+							Message = "SECURITY.md not found at repository root.",
+							Advisory = new RuleAdvisory
+							{
+								Summary = "Create SECURITY.md.",
+								Detail = "Create SECURITY.md with the standard security policy content.",
+								Data = new()
+								{
+									["expected_path"] = "SECURITY.md",
+									["template_content"] = "# Security Policy\n"
+								}
+							}
+						}
+					]
+				}
+			}
+		]);
+
+		var item = new WorkItem
+		{
+			Id = "1",
+			Title = "Fix COM-01",
+			Descriptor = WorkDescriptor.ForRepository(WorkKind.FixRule, "panoramicdata", Repository, ("ruleId", "COM-01")),
+			DedupKey = $"fixrule:{Repository}:COM-01"
+		};
+
+		await executors.ExecuteAsync(item, new Progress<string>(), CancellationToken.None);
+
+		File.Exists(Path.Combine(localPath, "SECURITY.md")).Should().BeFalse(
+			"writing into a directory with no clone in it strands the repository: git clone then refuses "
+			+ "the target for ever, and nothing in the application can recover it");
+
+		Directory.Exists(localPath).Should().BeFalse(
+			"the remediation must not have created the directory either — an empty directory git can "
+			+ "still clone into is only luck, and the next rule in the fan-out would fill it");
 	}
 
 	private WorkExecutors CreateExecutors(out DashboardCacheService cache)

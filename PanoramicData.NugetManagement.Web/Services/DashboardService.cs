@@ -1034,14 +1034,41 @@ public class DashboardService
 			|| RemediationRegistry.CanRemediate(result);
 
 	/// <summary>
-	/// Public entry point for applying a single remediation from outside the service.
+	/// Applies one rule's remediation to a repository, and returns what it changed.
 	/// </summary>
-	public void ApplySingleRemediationPublic(
-		string localPath,
+	/// <param name="row">The repository to write to.</param>
+	/// <param name="failure">The failing rule whose remediation to apply.</param>
+	/// <param name="onOutput">Where to say what happened.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// Through <see cref="VerifyWritableCloneAsync"/>, as every write to a clone must be. This
+	/// replaced a public entry point that took a path and applied straight to it: a bulk rule fix fans
+	/// out one item per repository, and for a repository that was never cloned that path wrote into a
+	/// directory the remediation itself created — leaving files belonging to no repository, and a
+	/// target <c>git clone</c> refuses for ever afterwards because it exists and is not empty.
+	/// </remarks>
+	public async Task<List<string>> ApplyRuleRemediationAsync(
+		RepositoryDashboardRow row,
 		RuleResult failure,
-		List<string> applied,
-		Action<string>? onOutput)
-		=> ApplySingleRemediation(localPath, failure, applied, onOutput);
+		Action<string>? onOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var applied = new List<string>();
+
+		if (row.LocalPath is null)
+		{
+			onOutput?.Invoke($"⚠️ {row.RepositoryFullName} has no local path — cannot apply {failure.RuleId}.");
+			return applied;
+		}
+
+		if (!await VerifyWritableCloneAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
+		{
+			return applied;
+		}
+
+		ApplySingleRemediation(row.LocalPath, failure, applied, onOutput);
+		return applied;
+	}
 
 	/// <summary>
 	/// Applies a single remediation via the registry.
@@ -1514,7 +1541,7 @@ public class DashboardService
 			.FirstOrDefault(rr => !rr.Passed && string.Equals(rr.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
 		if (fresh is not null && row.LocalPath is not null && IsAutoRemediable(fresh))
 		{
-			ApplySingleRemediationPublic(row.LocalPath, fresh, applied, onOutput);
+			ApplySingleRemediation(row.LocalPath, fresh, applied, onOutput);
 		}
 
 		return Task.FromResult(applied);

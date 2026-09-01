@@ -1041,8 +1041,9 @@ public sealed class WorkExecutors(
 
 		try
 		{
-			var applied = new List<string>();
-			dashboard.ApplySingleRemediationPublic(row.LocalPath, result, applied, Say);
+			var applied = await dashboard
+				.ApplyRuleRemediationAsync(row, result, Say, cancellationToken)
+				.ConfigureAwait(false);
 			remediationCompleted = true;
 
 			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
