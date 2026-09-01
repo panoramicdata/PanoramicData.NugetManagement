@@ -1,6 +1,7 @@
-@using PanoramicData.NugetManagement.Web.Models
+﻿@using PanoramicData.NugetManagement.Web.Models
 @using PanoramicData.NugetManagement.Web.Services
 @implements IDisposable
+@inject IJSRuntime JS
 
 @* One work item: what it is, and everything it has said. For a model-backed fix that transcript is
    the session itself, streamed as it arrives. *@
@@ -13,55 +14,57 @@
 }
 else
 {
-	<div class="mb-3">
-		<h4><i class="@StateIcon"></i> @Item.Title</h4>
-		<div class="text-muted">@(Item.RepositoryFullName ?? Item.Organization)</div>
-	</div>
-
-	<p class="work-explanation">@WorkDescription.For(Item)</p>
-
-	<div class="mb-3 small text-muted">
-		<span class="me-3"><strong>State:</strong> @Item.State</span>
-		@if (Item.Progress is { Length: > 0 } progress)
-		{
-			<span class="me-3"><strong>Progress:</strong> @progress</span>
-		}
-		@if (Item.Succeeded is { } succeeded)
-		{
-			<span class="me-3"><strong>Outcome:</strong> @(succeeded ? "succeeded" : "failed")</span>
-		}
-	</div>
-
-	@if (IsAi)
-	{
-		<div class="form-check form-switch mb-2">
-			<input class="form-check-input" type="checkbox" id="show-thinking" checked="@_showThinking"
-				   @onchange="ToggleThinking" />
-			<label class="form-check-label small text-muted" for="show-thinking">
-				Show the model's thinking
-			</label>
+	<div class="work-item-detail">
+		<div class="mb-3">
+			<h4><i class="@StateIcon"></i> @Item.Title</h4>
+			<div class="text-muted">@(Item.RepositoryFullName ?? Item.Organization)</div>
 		</div>
-	}
 
-	@if (Lines.Count == 0)
-	{
-		<div class="alert alert-secondary">
-			Nothing said yet.
-			@if (Item.State == WorkItemState.Pending)
+		<p class="work-explanation">@WorkDescription.For(Item)</p>
+
+		<div class="mb-3 small text-muted">
+			<span class="me-3"><strong>State:</strong> @Item.State</span>
+			@if (Item.Progress is { Length: > 0 } progress)
 			{
-				<span>This item is waiting for its lane.</span>
+				<span class="me-3"><strong>Progress:</strong> @progress</span>
+			}
+			@if (Item.Succeeded is { } succeeded)
+			{
+				<span class="me-3"><strong>Outcome:</strong> @(succeeded ? "succeeded" : "failed")</span>
 			}
 		</div>
-	}
-	else
-	{
-		<div class="work-transcript">
-			@foreach (var line in Lines)
-			{
-				<div class="work-line work-line-@line.Kind.ToString().ToLowerInvariant()">@line.Text</div>
-			}
-		</div>
-	}
+
+		@if (IsAi)
+		{
+			<div class="form-check form-switch mb-2">
+				<input class="form-check-input" type="checkbox" id="show-thinking" checked="@_showThinking"
+					   @onchange="ToggleThinking" />
+				<label class="form-check-label small text-muted" for="show-thinking">
+					Show the model's thinking
+				</label>
+			</div>
+		}
+
+		@if (Lines.Count == 0)
+		{
+			<div class="alert alert-secondary">
+				Nothing said yet.
+				@if (Item.State == WorkItemState.Pending)
+				{
+					<span>This item is waiting for its lane.</span>
+				}
+			</div>
+		}
+		else
+		{
+			<div class="work-transcript" @ref="_transcriptElement">
+				@foreach (var line in Lines)
+				{
+					<div class="work-line work-line-@line.Kind.ToString().ToLowerInvariant()">@line.Text</div>
+				}
+			</div>
+		}
+	</div>
 }
 
 @code {
@@ -73,6 +76,8 @@ else
 
 	private System.Timers.Timer? _refresh;
 	private bool _showThinking = true;
+	private ElementReference _transcriptElement;
+	private int _followedLineCount = -1;
 
 	/// <summary>The item to show, or null when it has left the queue.</summary>
 	[Parameter]
@@ -106,6 +111,33 @@ else
 		_refresh = new System.Timers.Timer(RefreshMilliseconds) { AutoReset = true };
 		_refresh.Elapsed += async (_, _) => await InvokeAsync(StateHasChanged);
 		_refresh.Start();
+	}
+
+	/// <summary>
+	/// Keeps the newest line in view while the reader is following the transcript, and leaves the
+	/// scroll position alone once they have scrolled up to read something.
+	/// </summary>
+	/// <param name="firstRender">Whether this is the component's first render.</param>
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		// Only when the transcript has actually grown. The pane redraws five times a second while an
+		// item runs, and a round trip per redraw buys nothing when nothing has been said.
+		var lineCount = Item is null ? 0 : Lines.Count;
+		if (lineCount == 0 || lineCount == _followedLineCount)
+		{
+			return;
+		}
+
+		_followedLineCount = lineCount;
+
+		try
+		{
+			await JS.InvokeVoidAsync("scrollTail.follow", _transcriptElement);
+		}
+		catch
+		{
+			// The transcript is not in the DOM: the item left the queue, or the circuit is going away.
+		}
 	}
 
 	public void Dispose()
