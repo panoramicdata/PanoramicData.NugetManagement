@@ -1528,6 +1528,10 @@ i + .breadcrumb-link-text {
     border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    /* A flex item's min-height is auto, which is its content: without this the output grows the panel
+       instead of scrolling inside it, and the page scrolls rather than the console. */
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* === SPA Placeholder === */

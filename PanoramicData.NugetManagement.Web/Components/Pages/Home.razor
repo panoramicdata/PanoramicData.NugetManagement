@@ -1124,7 +1124,10 @@ else
 			_consoleScrollPending = false;
 			try
 			{
-				await JS.InvokeVoidAsync("eval", "document.querySelector('.detail-console-output')?.scrollTo(0, document.querySelector('.detail-console-output').scrollHeight)");
+				// Follows only while the reader is at the bottom. Scrolling to the newest line
+				// unconditionally took the console away from anyone reading back through it, and a run
+				// that logs steadily made that happen every few hundred milliseconds.
+				await JS.InvokeVoidAsync("scrollTail.follow", _consoleElement);
 			}
 			catch
 			{

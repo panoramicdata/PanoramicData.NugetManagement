@@ -5,11 +5,23 @@
 	max-width: 70ch;
 }
 
+/* Fills the pane it is given, so the transcript scrolls inside itself rather than lengthening the
+   page. A 60vh transcript plus the heading above it overflowed the panel, which put the outer pane
+   and the transcript in competition: two scrollbars for one stream of lines. */
+.work-item-detail {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
 .work-transcript {
 	font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 	font-size: 0.85rem;
 	line-height: 1.45;
-	max-height: 60vh;
+	/* Takes the height left over, and keeps enough to be worth reading if the heading is tall. */
+	flex: 1;
+	min-height: 8rem;
 	overflow-y: auto;
 	overflow-x: auto;
 	padding: 0.75rem;
