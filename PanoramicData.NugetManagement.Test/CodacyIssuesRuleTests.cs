@@ -95,6 +95,24 @@ public class CodacyIssuesRuleTests(ITestOutputHelper output) : TestWithOutput(ou
 		result.Passed.Should().BeTrue();
 	}
 
+	[Fact]
+	public void IsGradedRemotely_SoAFixIsNeverJudgedByReRunningIt()
+		=> new CodacyIssuesRule(new ThrowingService())
+			.Should().BeAssignableTo<PanoramicData.NugetManagement.Rules.IRemotelyGraded>(
+				"the issue list comes from Codacy's reading of the published branch, so an edit to the "
+				+ "clone cannot change this rule's answer and a fix loop that waits for it never ends");
+
+	/// <summary>
+	/// The marker means "editing a file locally cannot change this rule's answer", and only that. A
+	/// rule that reads the working tree must never carry it, however much of the network it also uses.
+	/// </summary>
+	[Fact]
+	public void RulesThatReadTheWorkingTree_AreNotMarkedRemotelyGraded()
+		=> PanoramicData.NugetManagement.Services.RuleRegistry.Rules
+			.Where(rule => rule is PanoramicData.NugetManagement.Rules.IRemotelyGraded)
+			.Select(rule => rule.RuleId)
+			.Should().BeEquivalentTo(["CQ-05", "CQ-06"]);
+
 	private sealed class FakeService(CodacyRepositoryReport report) : ICodacyIssueService
 	{
 		public Task<CodacyRepositoryReport> GetReportAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)

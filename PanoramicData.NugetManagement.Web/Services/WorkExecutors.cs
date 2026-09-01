@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
 
@@ -816,6 +817,7 @@ public sealed class WorkExecutors(
 		}
 
 		var ruleId = item.Descriptor.Parameter("ruleId")!;
+		var targetPath = item.Descriptor.Parameter("path");
 		var ollama = runtimeSettings.Ollama;
 
 		if (!ollama.IsConfigured)
@@ -878,8 +880,20 @@ public sealed class WorkExecutors(
 
 			var playbook = playbooks.For(ruleId);
 
+			// A rule graded on the published branch cannot answer whether this clone improved, so the
+			// loop is told to stop asking it. Retrying is pointless for the same reason: the correction
+			// fed back would be the same sentence every time.
+			var remotelyGraded = IsRemotelyGraded(ruleId);
+
 			Say($"▶ {ruleId} on {row.RepositoryFullName} via {ollama.Model}"
+				+ $"{(targetPath is { Length: > 0 } ? $", in {targetPath}" : string.Empty)}"
 				+ $"{(playbook is null ? " (no playbook — using the advisory)" : string.Empty)}.");
+
+			if (remotelyGraded)
+			{
+				Say($"ℹ️ {ruleId} is graded on the published branch, so this run is judged on whether the "
+					+ "change builds. Codacy re-grades after you push.");
+			}
 
 			var session = new AiFixSession(
 				new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow),
@@ -887,7 +901,7 @@ public sealed class WorkExecutors(
 				new AiFixOptions
 				{
 					MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
-					MaxAttempts = ollama.MaxAttemptsPerRule
+					MaxAttempts = remotelyGraded ? 1 : ollama.MaxAttemptsPerRule
 				},
 				Say,
 				// Straight into this item's transcript rather than through Say: a token is a fragment,
@@ -898,16 +912,32 @@ public sealed class WorkExecutors(
 				row.RepositoryFullName,
 				ruleId,
 				result.RuleName,
-				AiFixPrompt.BuildTask(result, row.RepositoryFullName, playbook),
+				AiFixPrompt.BuildTask(result, row.RepositoryFullName, playbook, targetPath),
 				AiFixPrompt.SystemPrompt);
 
 			var outcome = await session
-				.RunAsync(request, token => ReEvaluateAsync(row, ruleId, token), cancellationToken)
+				.RunAsync(
+					request,
+					token => remotelyGraded
+						? CheckLocalChangeAsync(row, toolbox, token)
+						: ReEvaluateAsync(row, ruleId, token),
+					cancellationToken)
 				.ConfigureAwait(false);
 
 			succeeded = outcome.Succeeded;
 
-			if (succeeded)
+			if (succeeded && remotelyGraded)
+			{
+				// Deliberately no ReplaceRuleResult: the rule still says what Codacy last told it, and
+				// painting it green here would claim a verdict nothing has issued.
+				await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+				cache.UpsertRow(row);
+
+				Say($"✅ {string.Join(", ", toolbox.FilesWritten)} changed and the build still passes. "
+					+ $"{ruleId} stays as it is until Codacy re-grades the pushed branch — review the "
+					+ "working tree before committing, a model wrote it.");
+			}
+			else if (succeeded)
 			{
 				// The one rule is re-evaluated rather than the whole repository: it is the only thing that
 				// can have changed, and a full re-assessment here would cost far more than the fix did.
@@ -932,6 +962,52 @@ public sealed class WorkExecutors(
 				await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
 			}
 		}
+	}
+
+	/// <summary>
+	/// Whether the rule's verdict comes from a service reading the published branch.
+	/// </summary>
+	private static bool IsRemotelyGraded(string ruleId)
+		=> PanoramicData.NugetManagement.Services.RuleRegistry.Rules
+			.First(r => string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase))
+			is IRemotelyGraded;
+
+	/// <summary>
+	/// The success criterion for a rule that cannot be asked about the working tree: something was
+	/// written, and the repository still builds.
+	/// </summary>
+	/// <remarks>
+	/// A weaker claim than "the rule passes", and honestly so — nothing here can know whether Codacy
+	/// will like the change. It is, though, the whole of what is knowable locally, and it separates the
+	/// two failures that matter: a model that narrated for twelve turns and changed nothing, and one
+	/// that changed something and broke the build. Both are caught; a plausible edit is kept and left
+	/// for a person to read.
+	/// <para>
+	/// Tests are not run. A repository whose tests take ten minutes would spend them on every file of
+	/// every Codacy fix, and a change that compiles is the bar this criterion is honest about clearing.
+	/// </para>
+	/// </remarks>
+	private async Task<AiRuleCheck> CheckLocalChangeAsync(
+		RepositoryDashboardRow row,
+		AiFixToolbox toolbox,
+		CancellationToken cancellationToken)
+	{
+		if (toolbox.FilesWritten.Count == 0)
+		{
+			return new AiRuleCheck(false, "Nothing was written, so nothing changed.");
+		}
+
+		await dashboard.BuildAsync(row, Say, cancellationToken).ConfigureAwait(false);
+
+		var built = row.Status == PackageStatus.BuildSucceeded;
+
+		RememberBuildResult(row, built ? RepositoryBuildState.Succeeded : RepositoryBuildState.Failed);
+
+		return new AiRuleCheck(
+			built,
+			built
+				? $"{toolbox.FilesWritten.Count} file(s) changed and the build succeeded."
+				: $"The build failed after the change: {row.StatusMessage}");
 	}
 
 	/// <summary>

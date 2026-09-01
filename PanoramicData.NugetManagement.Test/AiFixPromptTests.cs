@@ -115,6 +115,82 @@ public class AiFixPromptTests(ITestOutputHelper output) : TestWithOutput(output)
 		task.Should().NotContain("System.String[]");
 	}
 
+	/// <summary>
+	/// The facts a file-grade rule emits: a list of dictionaries, each holding a list of its own.
+	/// </summary>
+	private static Dictionary<string, object> FileFacts() => new()
+	{
+		["files_below_minimum"] = 2,
+		["files"] = new List<Dictionary<string, object?>>
+		{
+			new()
+			{
+				["path"] = "Publish.ps1",
+				["grade_letter"] = "F",
+				["issues"] = new List<Dictionary<string, object?>>
+				{
+					new() { ["line"] = 12L, ["pattern"] = "PSAvoidUsingWriteHost", ["message"] = "Avoid Write-Host." }
+				}
+			},
+			new()
+			{
+				["path"] = "src/VtlParser.cs",
+				["grade_letter"] = "B",
+				["issues"] = new List<Dictionary<string, object?>>
+				{
+					new() { ["line"] = 88L, ["pattern"] = "SonarCSharp_S3776", ["message"] = "Reduce complexity." }
+				}
+			}
+		}
+	};
+
+	[Fact]
+	public void NestedAdvisoryData_ArrivesAsReadableLinesRatherThanTypeNames()
+	{
+		// This is what had the model guessing at issues it had in fact been sent: the whole nested
+		// structure flattened to KeyValuePair.ToString and told it nothing.
+		var task = AiFixPrompt.BuildTask(Failing(data: FileFacts()), "panoramicdata/Sample", null);
+
+		task.Should().Contain("Publish.ps1");
+		task.Should().Contain("PSAvoidUsingWriteHost", "the pattern is what says which nine things Codacy meant");
+		task.Should().Contain("Avoid Write-Host.");
+		task.Should().NotContain("System.Collections", "a type name is not a fact");
+		task.Should().NotContain("[path,", "a flattened KeyValuePair is not a fact either");
+	}
+
+	[Fact]
+	public void WithATargetFile_TheOtherFilesFactsAreDropped()
+	{
+		var task = AiFixPrompt.BuildTask(
+			Failing(data: FileFacts()),
+			"panoramicdata/Sample",
+			playbook: null,
+			targetPath: "Publish.ps1");
+
+		task.Should().Contain("Change this one file and no other: Publish.ps1");
+		task.Should().Contain("PSAvoidUsingWriteHost");
+		task.Should().NotContain("VtlParser", "a small model told about two files will try to fix two files");
+		task.Should().NotContain("Reduce complexity.");
+	}
+
+	[Fact]
+	public void WithATargetThatMatchesNothing_TheFactsAreLeftWhole()
+	{
+		// An empty Facts block would read as "there is nothing to do", which is worse than too much.
+		var task = AiFixPrompt.BuildTask(
+			Failing(data: FileFacts()),
+			"panoramicdata/Sample",
+			playbook: null,
+			targetPath: "NotListed.cs");
+
+		task.Should().Contain("Publish.ps1").And.Contain("VtlParser");
+	}
+
+	[Fact]
+	public void WithNoTargetFile_TheTaskDoesNotClaimThereIsOne()
+		=> AiFixPrompt.BuildTask(Failing(data: FileFacts()), "panoramicdata/Sample", null)
+			.Should().NotContain("Change this one file");
+
 	[Fact]
 	public void TheTask_NamesTheRepositoryAndTheRule()
 	{

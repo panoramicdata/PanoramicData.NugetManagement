@@ -80,36 +80,49 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 	}
 
 	/// <summary>
-	/// Queues one AI fix per rule for one repository. Returns how many were queued.
+	/// Queues one AI fix per target for one repository. Returns how many were queued.
 	/// </summary>
 	/// <param name="organization">The organisation it belongs to.</param>
 	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
-	/// <param name="ruleIds">The rules to fix, one item each.</param>
+	/// <param name="targets">The rules to fix, one item each — or one item per file, where a rule split.</param>
 	/// <param name="consoleNodeKey">The console the output belongs to.</param>
 	/// <remarks>
-	/// One item per rule rather than one per repository: the prompt stays small, which is most of what
+	/// One item per target rather than one per repository: the prompt stays small, which is most of what
 	/// makes a small model succeed, and a rule it cannot manage does not take the others with it. They
 	/// share the repository's lane, so they run one at a time against that working tree regardless of how
 	/// many are queued.
+	/// <para>
+	/// The file, where there is one, is part of the deduplication key as well as the descriptor. Without
+	/// it, queueing three files of one rule would collapse to one item and two of the three would never
+	/// be attempted.
+	/// </para>
 	/// </remarks>
 	public int EnqueueAiFix(
 		string? organization,
 		string repositoryFullName,
-		IReadOnlyList<string> ruleIds,
+		IReadOnlyList<AiFixTarget> targets,
 		string? consoleNodeKey)
 	{
 		var queued = 0;
 
-		foreach (var ruleId in ruleIds)
+		foreach (var target in targets)
 		{
+			var ruleId = target.RuleId;
+
+			var parameters = target.Path is { Length: > 0 } path
+				? new[] { ("ruleId", ruleId), ("path", path) }
+				: [("ruleId", ruleId)];
+
 			var item = lanes.Enqueue(
-				$"Fix {ruleId} with AI in {ShortName(repositoryFullName)}",
+				target.Path is { Length: > 0 } named
+					? $"Fix {ruleId} with AI in {ShortName(repositoryFullName)}: {FileName(named)}"
+					: $"Fix {ruleId} with AI in {ShortName(repositoryFullName)}",
 				WorkDescriptor.ForRepository(
 					WorkKind.FixWithAiRule,
 					organization,
 					repositoryFullName,
-					("ruleId", ruleId)),
-				$"aifix:{repositoryFullName}:{ruleId}",
+					parameters),
+				$"aifix:{repositoryFullName}:{ruleId}:{target.Path ?? string.Empty}",
 				null,
 				consoleNodeKey);
 
@@ -120,6 +133,19 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 		}
 
 		return queued;
+	}
+
+	/// <summary>
+	/// The file's own name, without its folders. A queued item's title has room for one of the two, and
+	/// which file it is matters more than where it sits.
+	/// </summary>
+	private static string FileName(string path)
+	{
+		var normalised = path.Replace('\\', '/');
+
+		return normalised.Contains('/', StringComparison.Ordinal)
+			? normalised.Split('/')[^1]
+			: normalised;
 	}
 
 	/// <summary>The repository's name without its owner, for a title that has to stay readable.</summary>

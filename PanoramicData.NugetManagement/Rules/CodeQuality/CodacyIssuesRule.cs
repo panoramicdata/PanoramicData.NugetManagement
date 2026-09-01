@@ -12,7 +12,7 @@ namespace PanoramicData.NugetManagement.Rules;
 /// and do not fail the compliance gate, unless a hard budget (<see cref="CodacyOptions.MaxIssueCount"/> &gt; 0)
 /// is breached, in which case the result is escalated to <see cref="AssessmentSeverity.Error"/>.
 /// </remarks>
-public sealed class CodacyIssuesRule : RuleBase
+public sealed class CodacyIssuesRule : RuleBase, IRemotelyGraded
 {
 	private readonly ICodacyIssueService _issueService;
 

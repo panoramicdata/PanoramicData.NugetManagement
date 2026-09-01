@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 using System.Text;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Rules;
@@ -49,16 +50,28 @@ public static class AiFixPrompt
 	/// <param name="result">The failing rule result.</param>
 	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
 	/// <param name="playbook">Its playbook, or null to fall back to the advisory.</param>
+	/// <param name="targetPath">
+	/// The one file this session is for, when the failure was split across several. Everything the
+	/// advisory says about the other files is dropped rather than merely de-emphasised: a small model
+	/// told about three files will try to fix three files.
+	/// </param>
 	public static string BuildTask(
 		RuleResult result,
 		string repositoryFullName,
-		IRuleAiPlaybook? playbook)
+		IRuleAiPlaybook? playbook,
+		string? targetPath = null)
 	{
 		var builder = new StringBuilder();
 
 		builder.AppendLine($"Repository: {repositoryFullName}");
 		builder.AppendLine($"Rule: {result.RuleId} — {result.RuleName}");
 		builder.AppendLine();
+
+		if (!string.IsNullOrWhiteSpace(targetPath))
+		{
+			builder.AppendLine($"Change this one file and no other: {targetPath}");
+			builder.AppendLine();
+		}
 
 		// The rule's own message, always. It is the most specific statement of what is wrong that exists,
 		// and it is the same text fed back on a retry, so the model sees one consistent description.
@@ -75,7 +88,7 @@ public static class AiFixPrompt
 			AppendAdvisoryFallback(builder, result.Advisory);
 		}
 
-		AppendData(builder, result.Advisory);
+		AppendData(builder, result.Advisory, targetPath);
 
 		return builder.ToString();
 	}
@@ -146,7 +159,7 @@ public static class AiFixPrompt
 	/// braces, and these values are already the concrete facts — paths, versions, expected content — that
 	/// the fix turns on. Collections are expanded, because <c>System.String[]</c> tells the model nothing.
 	/// </remarks>
-	private static void AppendData(StringBuilder builder, RuleAdvisory? advisory)
+	private static void AppendData(StringBuilder builder, RuleAdvisory? advisory, string? targetPath)
 	{
 		if (advisory is null || advisory.Data.Count == 0)
 		{
@@ -157,8 +170,109 @@ public static class AiFixPrompt
 
 		foreach (var (key, value) in advisory.Data)
 		{
-			builder.AppendLine($"- {key}: {Render(value)}");
+			AppendFact(builder, string.Empty, key, Narrow(value, targetPath));
 		}
+	}
+
+	/// <summary>
+	/// Writes one fact, and anything nested inside it, as indented lines of "key: value".
+	/// </summary>
+	/// <remarks>
+	/// Nesting arrives whether or not it is wanted: CQ-06's <c>files</c> is a list of dictionaries, each
+	/// holding a list of dictionaries of its own. Flattening the lot with <c>ToString</c> produced
+	/// <c>[path, Publish.ps1]</c> and worse, which is how the model came to be guessing at issues it had
+	/// in fact been sent. Indentation is enough structure for a small model and costs a line each.
+	/// </remarks>
+	private static void AppendFact(StringBuilder builder, string indent, string key, object? value)
+	{
+		switch (value)
+		{
+			case IDictionary dictionary:
+				builder.AppendLine($"{indent}{key}:");
+
+				foreach (DictionaryEntry entry in dictionary)
+				{
+					AppendFact(builder, indent + "  ", entry.Key?.ToString() ?? "(none)", entry.Value);
+				}
+
+				return;
+
+			case string or null:
+				builder.AppendLine($"{indent}{key}: {Render(value)}");
+				return;
+
+			case IEnumerable items:
+			{
+				var list = items.Cast<object?>().ToList();
+
+				if (list.Count == 0)
+				{
+					builder.AppendLine($"{indent}{key}: (none)");
+					return;
+				}
+
+				// A list of scalars reads better on one line than as a stack of numbered bullets, and
+				// most advisory data — missing files, package names — is exactly that.
+				if (list.All(item => item is null or string or ValueType))
+				{
+					builder.AppendLine($"{indent}{key}: {string.Join(", ", list.Select(Render))}");
+					return;
+				}
+
+				builder.AppendLine($"{indent}{key}:");
+
+				var index = 1;
+
+				foreach (var item in list)
+				{
+					AppendFact(
+						builder,
+						indent + "  ",
+						index++.ToString(CultureInfo.InvariantCulture),
+						item);
+				}
+
+				return;
+			}
+
+			default:
+				builder.AppendLine($"{indent}{key}: {Render(value)}");
+				return;
+		}
+	}
+
+	/// <summary>
+	/// Drops everything a fact says about files other than this session's.
+	/// </summary>
+	/// <remarks>
+	/// Recognised by shape rather than by key name: a list whose entries are dictionaries carrying a
+	/// <c>path</c> is the form every rule that splits its fix across files already emits, and matching on
+	/// it means a new such rule needs nothing here. A value of any other shape is left alone, and a
+	/// target that matches nothing leaves the list whole rather than emptying it — an empty Facts block
+	/// would tell the model there is nothing to do.
+	/// </remarks>
+	private static object? Narrow(object? value, string? targetPath)
+	{
+		if (string.IsNullOrWhiteSpace(targetPath)
+			|| value is string
+			|| value is not IEnumerable items)
+		{
+			return value;
+		}
+
+		var list = items.Cast<object?>().ToList();
+
+		var matching = list
+			.OfType<IDictionary>()
+			.Where(entry => entry.Contains("path")
+				&& string.Equals(
+					entry["path"]?.ToString()?.Replace('\\', '/'),
+					targetPath.Replace('\\', '/'),
+					StringComparison.OrdinalIgnoreCase))
+			.Cast<object?>()
+			.ToList();
+
+		return matching.Count == 0 ? value : matching;
 	}
 
 	private static string Render(object? value) => value switch

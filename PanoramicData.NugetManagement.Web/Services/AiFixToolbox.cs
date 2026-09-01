@@ -57,6 +57,19 @@ public sealed class AiFixToolbox(
 
 	private readonly string _root = Path.GetFullPath(cloneRoot);
 
+	private readonly HashSet<string> _filesWritten = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// The files this session has written, relative to the clone root.
+	/// </summary>
+	/// <remarks>
+	/// Kept because for some rules it is the only evidence of progress there is. A rule graded by Codacy
+	/// on the published branch cannot answer whether the working tree improved, so the question asked
+	/// instead is whether the model changed anything at all and left it building — and this is the first
+	/// half of that.
+	/// </remarks>
+	public IReadOnlyCollection<string> FilesWritten => _filesWritten;
+
 	/// <summary>
 	/// Executes one tool call.
 	/// </summary>
@@ -141,6 +154,8 @@ public sealed class AiFixToolbox(
 		}
 
 		await File.WriteAllTextAsync(fullPath, content, cancellationToken).ConfigureAwait(false);
+
+		_filesWritten.Add(relativePath);
 
 		return new AiToolResult($"Wrote {relativePath}.");
 	}

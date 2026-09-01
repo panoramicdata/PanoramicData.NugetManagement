@@ -111,6 +111,49 @@ public class AiFixToolboxTests(ITestOutputHelper output) : TestWithOutput(output
 	}
 
 	[Fact]
+	public async Task WriteFile_RecordsWhatItWrote()
+	{
+		// For a rule Codacy grades on the published branch this is the only evidence of progress there
+		// is: the rule cannot be asked whether the clone improved, so the question becomes whether the
+		// model changed anything at all.
+		var toolbox = NewToolbox();
+
+		toolbox.FilesWritten.Should().BeEmpty("nothing has been written yet");
+
+		await toolbox
+			.ExecuteAsync(
+				new AiToolCall("write_file", new Dictionary<string, string>
+				{
+					["path"] = "src\\Sample.csproj",
+					["content"] = "<Project />"
+				}),
+				TestContext.Current.CancellationToken)
+			.ConfigureAwait(true);
+
+		toolbox.FilesWritten.Should().Equal(["src/Sample.csproj"],
+			"the path is recorded as the clone spells it, not as the model typed it");
+	}
+
+	[Fact]
+	public async Task WriteFile_RecordsNothing_WhenThePathIsRefused()
+	{
+		var toolbox = NewToolbox();
+
+		await toolbox
+			.ExecuteAsync(
+				new AiToolCall("write_file", new Dictionary<string, string>
+				{
+					["path"] = "../outside-secret.txt",
+					["content"] = "no"
+				}),
+				TestContext.Current.CancellationToken)
+			.ConfigureAwait(true);
+
+		toolbox.FilesWritten.Should().BeEmpty(
+			"a refused write is not progress, and counting it would call a session that achieved nothing a success");
+	}
+
+	[Fact]
 	public async Task WriteFile_CreatesMissingDirectories()
 	{
 		var toolbox = NewToolbox();

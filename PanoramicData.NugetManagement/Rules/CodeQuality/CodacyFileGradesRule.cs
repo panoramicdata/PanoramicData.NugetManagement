@@ -14,9 +14,10 @@ namespace PanoramicData.NugetManagement.Rules;
 /// no file, gave no cause, and read as a contradiction of the Codacy issues page. Poor file grades
 /// are worth seeing and are not a gate, so this rule never fails a repository.
 /// </remarks>
-public sealed class CodacyFileGradesRule : RuleBase
+public sealed class CodacyFileGradesRule : RuleBase, IRemotelyGraded
 {
 	private readonly ICodacyFileGradeService _fileGradeService;
+	private readonly ICodacyIssueService? _issueService;
 
 	/// <summary>
 	/// The number of files listed in the failure message before it is summarised.
@@ -24,10 +25,20 @@ public sealed class CodacyFileGradesRule : RuleBase
 	private const int _messageFileLimit = 3;
 
 	/// <summary>
+	/// The number of files offered to Fix with AI as targets.
+	/// </summary>
+	/// <remarks>
+	/// Every target becomes a queued item and a session on the shared GPU, so a repository with forty
+	/// poor files must not queue forty. The worst-graded are taken, and the advisory says how many were
+	/// left — a silent truncation would read as "that was all of them".
+	/// </remarks>
+	private const int _targetLimit = 10;
+
+	/// <summary>
 	/// Initializes a new instance of the <see cref="CodacyFileGradesRule"/> class.
 	/// </summary>
 	public CodacyFileGradesRule()
-		: this(new CodacyFileGradeService())
+		: this(new CodacyFileGradeService(), new CodacyIssueService())
 	{
 	}
 
@@ -36,8 +47,24 @@ public sealed class CodacyFileGradesRule : RuleBase
 	/// file grade service (for testing).
 	/// </summary>
 	public CodacyFileGradesRule(ICodacyFileGradeService fileGradeService)
+		: this(fileGradeService, issueService: null)
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="CodacyFileGradesRule"/> class with explicit
+	/// services (for testing).
+	/// </summary>
+	/// <param name="fileGradeService">Supplies the per-file grades this rule reports on.</param>
+	/// <param name="issueService">
+	/// Supplies the issues behind those grades, or null to report grades alone. Separate from the grade
+	/// service because it is a different Codacy endpoint and a different failure: grades that arrive
+	/// without issues are still worth reporting.
+	/// </param>
+	public CodacyFileGradesRule(ICodacyFileGradeService fileGradeService, ICodacyIssueService? issueService)
 	{
 		_fileGradeService = fileGradeService;
+		_issueService = issueService;
 	}
 
 	/// <inheritdoc />
@@ -107,6 +134,15 @@ public sealed class CodacyFileGradesRule : RuleBase
 			return Pass($"All {graded.Count} graded file(s) meet the minimum grade of {codacy.MinimumLevel}.");
 		}
 
+		// The issues behind the grades. Without them the finding says a file is poor and no more, and
+		// whoever acts on it — a person or a model — has to go and guess which nine things Codacy meant.
+		var issuesByFile = await GetIssuesByFileAsync(
+			codacy.ApiToken!,
+			parts[0],
+			parts[1],
+			context.DefaultBranch,
+			cancellationToken).ConfigureAwait(false);
+
 		var named = string.Join(", ", belowMinimum
 			.Take(_messageFileLimit)
 			.Select(entry => $"{entry.File.Path} ({Describe(entry.File, entry.Level)})"));
@@ -118,7 +154,7 @@ public sealed class CodacyFileGradesRule : RuleBase
 		return Fail(message, new RuleAdvisory
 		{
 			Summary = $"Improve {belowMinimum.Count} file(s) graded below {codacy.MinimumLevel} in {context.FullName}.",
-			Detail = BuildDetail(context, codacy.MinimumLevel, belowMinimum),
+			Detail = BuildDetail(context, codacy.MinimumLevel, belowMinimum, issuesByFile),
 			Data = new()
 			{
 				["files_below_minimum"] = belowMinimum.Count,
@@ -126,21 +162,97 @@ public sealed class CodacyFileGradesRule : RuleBase
 				["required_min_grade"] = codacy.MinimumLevel.ToString(),
 				["worst_grade"] = belowMinimum[0].Level.ToString(),
 				["files"] = belowMinimum
-					.Select(entry => new Dictionary<string, object?>
-					{
-						["path"] = entry.File.Path,
-						["grade_letter"] = entry.Level.ToString(),
-						["grade"] = entry.File.Grade,
-						["total_issues"] = entry.File.TotalIssues,
-						["duplication_percent"] = entry.File.Duplication,
-						["number_of_clones"] = entry.File.NumberOfClones,
-						["complexity"] = entry.File.Complexity,
-						["lines_of_code"] = entry.File.LinesOfCode
-					})
+					.Select(entry => BuildFileData(entry.File, entry.Level, IssuesFor(issuesByFile, entry.File.Path)))
 					.ToList()
-			}
+			},
+
+			// One session per file, worst first. The list is capped because each entry costs a queued
+			// item and a turn on the GPU, and BuildDetail says so where the reader can see it.
+			Targets = [.. belowMinimum.Take(_targetLimit).Select(entry => entry.File.Path)]
 		});
 	}
+
+	/// <summary>
+	/// The repository's open issues, grouped by the file they were found in.
+	/// </summary>
+	/// <remarks>
+	/// Failure here is quiet on purpose. The grades are the finding; the issues make it actionable. An
+	/// issues endpoint that is unreachable, or absent because no issue service was supplied, costs the
+	/// detail and nothing else — reporting it would raise a second alarm for a problem CQ-03 already
+	/// owns, and losing the grades over it would be worse still.
+	/// </remarks>
+	private async Task<Dictionary<string, List<CodacyIssue>>> GetIssuesByFileAsync(
+		string apiToken,
+		string organizationName,
+		string repositoryName,
+		string? branch,
+		CancellationToken cancellationToken)
+	{
+		if (_issueService is null)
+		{
+			return [];
+		}
+
+		try
+		{
+			var report = await _issueService
+				.GetReportAsync(apiToken, organizationName, repositoryName, branch, cancellationToken)
+				.ConfigureAwait(false);
+
+			return report.Issues
+				.GroupBy(issue => Normalise(issue.FilePath), StringComparer.OrdinalIgnoreCase)
+				.ToDictionary(
+					group => group.Key,
+					group => group.OrderBy(issue => issue.Line).ToList(),
+					StringComparer.OrdinalIgnoreCase);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			return [];
+		}
+	}
+
+	/// <summary>
+	/// The issues found in one file, or none when Codacy attributed none to it.
+	/// </summary>
+	private static IReadOnlyList<CodacyIssue> IssuesFor(
+		Dictionary<string, List<CodacyIssue>> issuesByFile,
+		string path)
+		=> issuesByFile.TryGetValue(Normalise(path), out var issues) ? issues : [];
+
+	/// <summary>
+	/// One path, one spelling. Codacy returns file paths from two endpoints and they need not agree on
+	/// separators or on a leading "./", and a path that fails to match silently drops a file's issues.
+	/// </summary>
+	private static string Normalise(string path)
+		=> path.Replace('\\', '/').TrimStart('.', '/');
+
+	/// <summary>
+	/// One file's measurements and issues, as the machine-readable half of the advisory.
+	/// </summary>
+	private static Dictionary<string, object?> BuildFileData(
+		CodacyFileGrade file,
+		CodacyLevel level,
+		IReadOnlyList<CodacyIssue> issues)
+		=> new()
+		{
+			["path"] = file.Path,
+			["grade_letter"] = level.ToString(),
+			["grade"] = file.Grade,
+			["total_issues"] = file.TotalIssues,
+			["duplication_percent"] = file.Duplication,
+			["number_of_clones"] = file.NumberOfClones,
+			["complexity"] = file.Complexity,
+			["lines_of_code"] = file.LinesOfCode,
+			["issues"] = issues
+				.Select(issue => new Dictionary<string, object?>
+				{
+					["line"] = issue.Line,
+					["pattern"] = issue.PatternId,
+					["message"] = issue.Message
+				})
+				.ToList()
+		};
 
 	/// <summary>
 	/// Builds the markdown an AI session reads, so it need not re-fetch anything from Codacy.
@@ -148,7 +260,8 @@ public sealed class CodacyFileGradesRule : RuleBase
 	private static string BuildDetail(
 		RepositoryContext context,
 		CodacyLevel minimumLevel,
-		List<(CodacyFileGrade File, CodacyLevel Level)> belowMinimum)
+		List<(CodacyFileGrade File, CodacyLevel Level)> belowMinimum,
+		Dictionary<string, List<CodacyIssue>> issuesByFile)
 	{
 		var detail = new StringBuilder();
 		detail.AppendLine($"Codacy grades these files in `{context.FullName}` below `{minimumLevel}` on `{context.DefaultBranch}`:");
@@ -166,6 +279,40 @@ public sealed class CodacyFileGradesRule : RuleBase
 		}
 
 		detail.AppendLine();
+
+		// The issues themselves, per file. A grade says a file is poor; this says what Codacy objected
+		// to and where, which is the difference between a fix and a guess.
+		foreach (var (file, _) in belowMinimum)
+		{
+			var issues = IssuesFor(issuesByFile, file.Path);
+
+			if (issues.Count == 0)
+			{
+				continue;
+			}
+
+			detail.AppendLine($"### `{file.Path}` — {issues.Count} open issue(s)");
+			detail.AppendLine();
+
+			foreach (var issue in issues)
+			{
+				var location = issue.Line > 0 ? $"line {issue.Line}" : "file";
+				var pattern = string.IsNullOrWhiteSpace(issue.PatternId) ? "(unknown pattern)" : issue.PatternId;
+
+				detail.AppendLine($"- {location} — `{pattern}` — {issue.Message}");
+			}
+
+			detail.AppendLine();
+		}
+
+		if (belowMinimum.Count > _targetLimit)
+		{
+			detail.AppendLine(
+				$"Fix with AI will offer the worst {_targetLimit} of these {belowMinimum.Count} files, one "
+				+ "session each. The rest are listed above and are not queued.");
+			detail.AppendLine();
+		}
+
 		detail.AppendLine(
 			"A file's grade is not its issue count: Codacy also folds duplication and complexity into it, "
 			+ "so a file listing zero issues can still grade F. Where duplication is the figure driving the "

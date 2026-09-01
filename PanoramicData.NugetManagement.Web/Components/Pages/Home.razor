@@ -4223,8 +4223,9 @@ else
 
 		return !ollama.IsConfigured
 			? "No local model is configured — set one under Settings, Ollama Config."
-			: $"Ask {ollama.Model} to fix {count} rule(s) that have no automatic remediation. "
-				+ "One queued item each; the changes are left in the working tree for you to review.";
+			: $"Ask {ollama.Model} to attempt {count} fix(es) that have no automatic remediation. "
+				+ "One queued item each — a rule, or a single file where a rule names several; the "
+				+ "changes are left in the working tree for you to review.";
 	}
 
 	/// <summary>

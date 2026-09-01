@@ -145,7 +145,112 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 		result.Passed.Should().BeTrue();
 	}
 
-	private static CodacyFileGradesRule Rule(CodacyFileGradeReport report) => new(new FakeService(report));
+	[Fact]
+	public async Task ListsTheIssuesBehindTheGrade_WhenCodacyKnowsThem()
+	{
+		// A grade says a file is poor and no more. Told "Publish.ps1, 9 issues" and nothing else, a
+		// model spends its whole budget guessing which nine — which is exactly what one did.
+		var result = await Rule(
+			Report(File("Publish.ps1", "F", totalIssues: 2)),
+			Issue("Publish.ps1", 12, "PSAvoidUsingWriteHost", "Avoid using Write-Host."),
+			Issue("Publish.ps1", 40, "PSUseDeclaredVarsMoreThanAssignments", "The variable is never used."))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Detail.Should().Contain("PSAvoidUsingWriteHost");
+		result.Advisory.Detail.Should().Contain("Avoid using Write-Host.");
+		result.Advisory.Detail.Should().Contain("line 12");
+
+		var files = (List<Dictionary<string, object?>>)result.Advisory.Data["files"]!;
+		var issues = (List<Dictionary<string, object?>>)files[0]["issues"]!;
+
+		issues.Should().HaveCount(2);
+		issues[0]["pattern"].Should().Be("PSAvoidUsingWriteHost");
+	}
+
+	[Fact]
+	public async Task LeavesOutIssuesForFilesThatMeetTheMinimum()
+	{
+		var result = await Rule(
+			Report(File("src/Good.cs", "A"), File("Publish.ps1", "F")),
+			Issue("src/Good.cs", 3, "SomePattern", "Something about a good file."),
+			Issue("Publish.ps1", 12, "PSAvoidUsingWriteHost", "Avoid using Write-Host."))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Detail.Should().NotContain("Something about a good file.",
+			"a file that is not being fixed is a tangent");
+	}
+
+	[Fact]
+	public async Task MatchesIssuesToFiles_WhenTheTwoEndpointsSpellThePathDifferently()
+	{
+		// Codacy's file list and its issue list need not agree on separators or a leading "./", and a
+		// path that fails to match drops a file's issues without saying so.
+		var result = await Rule(
+			Report(File("src/Messy.cs", "F")),
+			Issue("./src\\Messy.cs", 7, "SonarCSharp_S3776", "Reduce complexity."))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Detail.Should().Contain("Reduce complexity.");
+	}
+
+	[Fact]
+	public async Task StillReportsTheGrades_WhenTheIssuesEndpointIsUnreachable()
+	{
+		// The grades are the finding. Losing them because a second endpoint failed would trade the
+		// whole rule for the detail, and CQ-03 already owns "the integration is broken".
+		var result = await new CodacyFileGradesRule(
+			new FakeService(Report(File("Publish.ps1", "F"))),
+			new ThrowingIssueService())
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Detail.Should().Contain("Publish.ps1");
+	}
+
+	[Fact]
+	public async Task NamesEachPoorFileAsItsOwnTarget_SoFixWithAiTakesThemOneAtATime()
+	{
+		var result = await Rule(Report(
+			File("src/A.cs", "A"),
+			File("Worst.ps1", "F"),
+			File("src/Middling.cs", "D")))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Targets.Should().Equal(["Worst.ps1", "src/Middling.cs"],
+			"worst first, so the queue spends the first session where it counts most");
+	}
+
+	[Fact]
+	public async Task CapsTheTargetsAndSaysSo_WhenAlmostEveryFileIsPoor()
+	{
+		// Every target is a queued item and a session on the shared GPU. Truncating silently would
+		// read as "that was all of them".
+		var result = await Rule(Report([.. Enumerable
+			.Range(0, 14)
+			.Select(i => File($"src/Bad{i}.cs", "F"))]))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Targets.Should().HaveCount(10);
+		result.Advisory.Detail.Should().Contain("worst 10");
+	}
+
+	[Fact]
+	public void IsGradedRemotely_SoAFixIsNeverJudgedByReRunningIt()
+		=> new CodacyFileGradesRule(new FakeService(Report()))
+			.Should().BeAssignableTo<IRemotelyGraded>(
+				"Codacy grades the published branch, so editing the clone cannot change this rule's answer");
+
+	private static CodacyFileGradesRule Rule(CodacyFileGradeReport report, params CodacyIssue[] issues)
+		=> new(new FakeService(report), new FakeIssueService(issues));
+
+	private static CodacyIssue Issue(string path, long line, string pattern, string message)
+		=> new()
+		{
+			FilePath = path,
+			Line = line,
+			PatternId = pattern,
+			Message = message
+		};
 
 	private static CodacyFileGradeReport Report(params CodacyFileGrade[] files)
 		=> new() { IsTracked = true, Files = files };
@@ -196,5 +301,17 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 	{
 		public Task<CodacyFileGradeReport> GetGradesAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
 			=> throw new InvalidOperationException("Codacy unreachable");
+	}
+
+	private sealed class FakeIssueService(params CodacyIssue[] issues) : ICodacyIssueService
+	{
+		public Task<CodacyRepositoryReport> GetReportAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
+			=> Task.FromResult(new CodacyRepositoryReport { IsTracked = true, Issues = issues });
+	}
+
+	private sealed class ThrowingIssueService : ICodacyIssueService
+	{
+		public Task<CodacyRepositoryReport> GetReportAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
+			=> throw new InvalidOperationException("Codacy issues unreachable");
 	}
 }

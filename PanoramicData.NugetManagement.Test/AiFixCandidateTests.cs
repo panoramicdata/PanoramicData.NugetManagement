@@ -17,7 +17,7 @@ public class AiFixCandidateTests(ITestOutputHelper output) : TestWithOutput(outp
 {
 	private static readonly RemediationRegistry _remediations = new();
 
-	private static RuleResult Result(string ruleId, bool passed) => new()
+	private static RuleResult Result(string ruleId, bool passed, params string[] targets) => new()
 	{
 		RuleId = ruleId,
 		RuleName = ruleId,
@@ -27,8 +27,15 @@ public class AiFixCandidateTests(ITestOutputHelper output) : TestWithOutput(outp
 		Message = passed ? "fine" : "not fine",
 		Advisory = passed
 			? null
-			: new RuleAdvisory { Summary = "Do the thing", Detail = "At length" }
+			: new RuleAdvisory
+			{
+				Summary = "Do the thing",
+				Detail = "At length",
+				Targets = targets.Length == 0 ? null : targets
+			}
 	};
+
+	private static AiFixTarget Rule(string ruleId) => new(ruleId, null);
 
 	private static RepositoryDashboardRow Row(params RuleResult[] results) => new()
 	{
@@ -48,7 +55,7 @@ public class AiFixCandidateTests(ITestOutputHelper output) : TestWithOutput(outp
 	[Fact]
 	public void AFailingRuleWithNoRemediation_IsACandidate()
 		=> AiFixCandidates.For(Row(Result("META-04", passed: false)), _remediations)
-			.Should().Equal(["META-04"]);
+			.Should().Equal([Rule("META-04")]);
 
 	[Fact]
 	public void AFailingRuleThatHasARemediation_IsNot()
@@ -90,8 +97,44 @@ public class AiFixCandidateTests(ITestOutputHelper output) : TestWithOutput(outp
 				Result("CQ-03", passed: false)),
 			_remediations);
 
-		candidates.Should().Equal(["CQ-03", "META-04", "META-05"],
+		candidates.Should().Equal([Rule("CQ-03"), Rule("META-04"), Rule("META-05")],
 			"a stable order makes the queue readable and the fan-out repeatable");
+	}
+
+	[Fact]
+	public void AFailureThatNamesTargets_BecomesOneCandidatePerFile()
+	{
+		// The turn budget is per session. "Improve these three files" spends the first third of it
+		// planning all three and finishes none; one file per session is one goal per budget.
+		var candidates = AiFixCandidates.For(
+			Row(Result("CQ-06", passed: false, "Publish.ps1", "src/VtlParser.cs")),
+			_remediations);
+
+		candidates.Should().Equal([
+			new AiFixTarget("CQ-06", "Publish.ps1"),
+			new AiFixTarget("CQ-06", "src/VtlParser.cs")]);
+	}
+
+	[Fact]
+	public void AFailureThatNamesNoTargets_StaysOneCandidateForTheRule()
+		=> AiFixCandidates.For(Row(Result("META-04", passed: false)), _remediations)
+			.Should().Equal([Rule("META-04")],
+				"nearly every rule's fix is one piece of work, and splitting it would be inventing files");
+
+	[Fact]
+	public void TwoRulesNamingTheSameFile_AreTwoCandidates()
+	{
+		// Distinctness is on the pair. Collapsing these to one would silently drop a rule's only chance
+		// at that file.
+		var candidates = AiFixCandidates.For(
+			Row(
+				Result("CQ-05", passed: false, "Publish.ps1"),
+				Result("CQ-06", passed: false, "Publish.ps1")),
+			_remediations);
+
+		candidates.Should().Equal([
+			new AiFixTarget("CQ-05", "Publish.ps1"),
+			new AiFixTarget("CQ-06", "Publish.ps1")]);
 	}
 
 	/// <summary>
@@ -105,6 +148,6 @@ public class AiFixCandidateTests(ITestOutputHelper output) : TestWithOutput(outp
 			.Select(rule => Result(rule.RuleId, passed: false))]);
 
 		AiFixCandidates.For(everyRuleFailing, _remediations)
-			.Should().OnlyContain(ruleId => _remediations.Get(ruleId) == null);
+			.Should().OnlyContain(target => _remediations.Get(target.RuleId) == null);
 	}
 }
