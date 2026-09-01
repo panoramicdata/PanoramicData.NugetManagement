@@ -45,9 +45,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "AutoTask.Psa.Api": {
-    "latestVersion": "1.1.18",
-    "published": "2026-08-31T13:58:19.18+01:00",
-    "refreshedAtUtc": "2026-08-31T13:29:12.7302289+00:00"
+    "latestVersion": "1.1.20",
+    "published": "2026-08-31T23:45:56.43+01:00",
+    "refreshedAtUtc": "2026-08-31T23:48:56.9069234+00:00"
   },
   "AwesomeAssertions": {
     "latestVersion": "9.6.0",
@@ -130,9 +130,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Cisco.Api": {
-    "latestVersion": "3.0.151",
-    "published": "2026-08-28T20:12:06.667+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "3.0.174",
+    "published": "2026-09-01T00:36:53.593+01:00",
+    "refreshedAtUtc": "2026-08-31T23:48:56.9069234+00:00"
   },
   "Cisco.DnaCenter.Api": {
     "latestVersion": "1.3.156",
@@ -155,9 +155,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Codacy.Api": {
-    "latestVersion": "3.0.45",
-    "published": "2026-08-30T14:40:53.66+01:00",
-    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+    "latestVersion": "3.0.48",
+    "published": "2026-09-01T00:19:49.04+01:00",
+    "refreshedAtUtc": "2026-08-31T23:48:56.9069234+00:00"
   },
   "Codeuctivity.ImageSharpCompare": {
     "latestVersion": "4.1.390",
@@ -365,9 +365,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Highlight.Api": {
-    "latestVersion": "2.0.45",
-    "published": "2026-08-31T16:34:58.453+01:00",
-    "refreshedAtUtc": "2026-08-31T21:19:19.9350179+00:00"
+    "latestVersion": "2.0.46",
+    "published": "2026-08-31T23:56:36.73+01:00",
+    "refreshedAtUtc": "2026-08-31T23:48:56.9069234+00:00"
   },
   "HtmlAgilityPack": {
     "latestVersion": "1.13.0",
@@ -1130,9 +1130,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "PanoramicData.Encryption": {
-    "latestVersion": "1.0.38",
-    "published": "2026-08-30T01:43:51.8+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "1.0.41",
+    "published": "2026-09-01T00:24:50.023+01:00",
+    "refreshedAtUtc": "2026-08-31T23:48:56.9069234+00:00"
   },
   "PanoramicData.Engines": {
     "latestVersion": "1.0.6",

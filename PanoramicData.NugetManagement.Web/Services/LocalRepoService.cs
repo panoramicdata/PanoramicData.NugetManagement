@@ -922,7 +922,9 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
-	/// Runs dotnet build on the repository.
+	/// Runs dotnet build on the repository. The build skips restore for speed, but a repository that
+	/// has never been restored (a fresh clone) has no assets file, and MSBuild fails on that alone —
+	/// so that one failure is retried with a restore rather than reported as a broken repository.
 	/// </summary>
 	public async Task<(bool Success, string Output)> BuildAsync(
 		string repoIdentity,
@@ -931,8 +933,22 @@ public partial class LocalRepoService
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Building in {Path}", path);
-		return await RunCommandWithStreamingAsync(path, "dotnet", "build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+		var result = await RunCommandWithStreamingAsync(path, "dotnet", "build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+		if (result.Success || cancellationToken.IsCancellationRequested || !IsMissingRestoreFailure(result.Output))
+		{
+			return result;
+		}
+
+		_logger.LogInformation("Build in {Path} had no restore; restoring and rebuilding", path);
+		onOutput?.Invoke("Nothing has been restored here yet; rebuilding with a restore.");
+		return await RunCommandWithStreamingAsync(path, "dotnet", "build --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
 	}
+
+	/// <summary>
+	/// Whether a build failed only because no restore had run (NETSDK1004: no project.assets.json).
+	/// </summary>
+	private static bool IsMissingRestoreFailure(string output)
+		=> output.Contains("NETSDK1004", StringComparison.Ordinal);
 
 	/// <summary>
 	/// Runs a full dotnet build (with restore) on the repository. Used by the regression guard so a
