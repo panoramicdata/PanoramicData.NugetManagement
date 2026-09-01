@@ -5,6 +5,9 @@
 		<Company>Panoramic Data Limited</Company>
 		<Copyright>Copyright © $([System.DateTime]::Now.Year) Panoramic Data Limited</Copyright>
 		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<!-- TreatWarningsAsErrors only covers the compiler. MSBuild's own warnings - a misconfigured
+		     pack, a missing file in an ItemGroup - would otherwise scroll past a green build. -->
+		<MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
 		<Nullable>enable</Nullable>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<NuGetAuditMode>All</NuGetAuditMode>
