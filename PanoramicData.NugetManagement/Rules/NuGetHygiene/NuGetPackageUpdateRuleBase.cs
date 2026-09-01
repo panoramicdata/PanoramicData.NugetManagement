@@ -115,6 +115,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 
 		var behindEstate = new List<string>();
 		var behindUpstream = new List<string>();
+		var updates = new List<string>();
 		var pending = new List<string>();
 		var governed = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
 		var now = _timeProvider.GetUtcNow();
@@ -138,6 +139,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 				&& NuGetVersionChecker.ClassifyUpdateLevel(current, floorVersion) == TargetUpdateLevel)
 			{
 				behindEstate.Add($"{reference.PackageId} {current.ToNormalizedString()} → {floor} ({reference.FilePath})");
+				updates.Add(SerializeUpdate(reference, floor));
 				governed.Add(reference.PackageId);
 				continue;
 			}
@@ -156,6 +158,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 			if (age.TotalDays > GraceDays)
 			{
 				behindUpstream.Add($"{entry}, published {age.Days} days ago");
+				updates.Add(SerializeUpdate(reference, snapshot.LatestVersion));
 				governed.Add(reference.PackageId);
 			}
 			else
@@ -192,6 +195,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 				Data = new()
 				{
 					["remediation_type"] = "update_package_versions",
+					["updates"] = updates.ToArray(),
 					["behind_estate"] = behindEstate.ToArray(),
 					["behind_upstream"] = behindUpstream.ToArray(),
 					[GovernedPackagesKey] = governed.ToArray(),
@@ -199,4 +203,26 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 				}
 			}));
 	}
+
+	/// <summary>
+	/// Renders one finding in the pipe-delimited form the <c>update_package_versions</c> remediation
+	/// parses: which file declared it, which package, how the version was written, and what to move it
+	/// from and to.
+	/// </summary>
+	/// <remarks>
+	/// Separate from <c>behind_estate</c> and <c>behind_upstream</c> for the same reason
+	/// <see cref="GovernedPackagesKey"/> is: those carry a sentence for a human, and the version
+	/// syntax a rewrite needs — attribute or element — does not survive being written as prose.
+	/// </remarks>
+	/// <param name="reference">The declaration the finding was raised against.</param>
+	/// <param name="targetVersion">The version the remediation should write.</param>
+	/// <returns>The serialized update.</returns>
+	private static string SerializeUpdate(PackageVersionReference reference, string targetVersion)
+		=> string.Join(
+			'|',
+			reference.FilePath,
+			reference.PackageId,
+			reference.VersionKind,
+			reference.CurrentVersion,
+			targetVersion);
 }
