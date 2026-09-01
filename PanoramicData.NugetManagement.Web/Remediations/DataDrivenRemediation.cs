@@ -1,4 +1,5 @@
-﻿using PanoramicData.NugetManagement.Models;
+﻿using System.Text.Json;
+using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Web.Remediations;
 
@@ -9,6 +10,39 @@ namespace PanoramicData.NugetManagement.Web.Remediations;
 /// </summary>
 public abstract class DataDrivenRemediation : IRemediation
 {
+	/// <summary>
+	/// What <see cref="ApplyCore"/> reads, per remediation type: one entry per requirement, each
+	/// listing the keys that satisfy it, any one of which will do.
+	/// </summary>
+	/// <remarks>
+	/// A type absent from this table states no requirement — <c>ensure_code_coverage_setup</c> has no
+	/// case here at all, and belongs entirely to the subclass that overrides <see cref="ApplyCore"/>
+	/// for it.
+	/// </remarks>
+	private static readonly Dictionary<string, string[][]> _requiredData = new(StringComparer.Ordinal)
+	{
+		["ensure_xml_property"] = [["property_name"], ["property_value"]],
+		["ensure_csproj_property"] = [["property_name"], ["property_value"], ["file", "projects"]],
+		["ensure_json_property"] = [["property_path"], ["property_value"], ["file", "files"]],
+		["ensure_json_properties"] = [["file"], ["properties"]],
+		["ensure_checkout_fetch_depth"] = [["file"]],
+		["replace_regex_in_file"] = [["file"], ["patterns"], ["replacements"]],
+		["replace_regex_in_files"] = [["globs"], ["patterns"], ["replacements"]],
+		["remove_json_property"] = [["file"], ["property_path"]],
+		["append_line"] = [["file"], ["line_content"]],
+		["prepend_line"] = [["file"], ["line_content"]],
+		["append_lines"] = [["file"], ["lines"]],
+		["add_slnx_file_entries"] = [["file"], ["missing_files"]],
+		["replace_file_content"] = [["file"], ["new_content"]],
+		["replace_in_file"] = [["file"], ["old_text"], ["new_text"]],
+		["add_package_version"] = [["package_name"], ["package_version"]],
+		["update_package_versions"] = [["updates"]],
+		["remove_packagereference_versions"] = [["projects"]],
+		["remove_packagereference"] = [["package_name"], ["projects"]],
+		["add_json_array_items"] = [["file"], ["array_property"], ["items"]],
+		["delete_file"] = [["file"]]
+	};
+
 	/// <inheritdoc />
 	public abstract string RuleId { get; }
 
@@ -28,10 +62,13 @@ public abstract class DataDrivenRemediation : IRemediation
 			return true;
 		}
 
-		// All other types identified by remediation_type key
+		// All other types identified by remediation_type key. Naming a type is not enough: the data it
+		// reads has to be there too, or the dashboard draws a wrench, counts the fix, applies nothing,
+		// and reports success — which is exactly what PKG-05/06/07 did once their rules renamed the
+		// payload out from under this class.
 		if (data.TryGetValue("remediation_type", out var rtObj) && rtObj is string rt)
 		{
-			return rt is "ensure_xml_property"
+			return HasRequiredData(data, rt) && rt is "ensure_xml_property"
 						or "ensure_csproj_property"
 						or "ensure_code_coverage_setup"
 						or "ensure_json_property"
@@ -113,25 +150,19 @@ public abstract class DataDrivenRemediation : IRemediation
 			case "ensure_csproj_property":
 				if (data["property_name"] is string cpn && data["property_value"] is string cpv)
 				{
-					if (data.TryGetValue("file", out var cfObj) && cfObj is string cf)
+					foreach (var proj in ReadStrings(data, "file", "projects"))
 					{
-						RemediationHelpers.EnsureXmlProperty(localPath, cf, cpn, cpv, result, applied, onOutput);
-					}
-					else if (data.TryGetValue("projects", out var projObj) && projObj is string[] projects)
-					{
-						foreach (var proj in projects)
-						{
-							RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
-						}
+						RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
 					}
 				}
 
 				break;
 
 			case "replace_regex_in_files":
-				if (data["globs"] is string[] rrGlobs
-					&& data["patterns"] is string[] rrPatterns
-					&& data["replacements"] is string[] rrReplacements)
+				var rrGlobs = ReadStrings(data, "globs");
+				var rrPatterns = ReadStrings(data, "patterns");
+				var rrReplacements = ReadStrings(data, "replacements");
+				if (rrGlobs.Length > 0 && rrPatterns.Length > 0 && rrReplacements.Length > 0)
 				{
 					RemediationHelpers.ReplaceRegexInFiles(
 						localPath, rrGlobs, rrPatterns, rrReplacements, result, applied, onOutput);
@@ -219,8 +250,8 @@ public abstract class DataDrivenRemediation : IRemediation
 				break;
 
 			case "add_slnx_file_entries":
-				if (data.TryGetValue("file", out var slnxFile) && slnxFile is string sf &&
-					data["missing_files"] is string[] missingFiles)
+				var missingFiles = ReadStrings(data, "missing_files");
+				if (data.TryGetValue("file", out var slnxFile) && slnxFile is string sf && missingFiles.Length > 0)
 				{
 					RemediationHelpers.AddSlnxFileEntries(localPath, sf, missingFiles, result, applied, onOutput);
 				}
@@ -247,20 +278,11 @@ public abstract class DataDrivenRemediation : IRemediation
 				break;
 
 			case "append_lines":
-				if (data.TryGetValue("file", out var alsFile) && alsFile is string alsf &&
-					data["lines"] is string[] lines)
+				if (data.TryGetValue("file", out var alsFile) && alsFile is string alsf)
 				{
-					foreach (var line in lines)
+					foreach (var line in ReadStrings(data, "lines"))
 					{
 						RemediationHelpers.AppendLine(localPath, alsf, line, result, applied, onOutput);
-					}
-				}
-				else if (data.TryGetValue("file", out var alsFile2) && alsFile2 is string alsf2 &&
-					data["lines"] is object[] objLines)
-				{
-					foreach (var line in objLines.OfType<string>())
-					{
-						RemediationHelpers.AppendLine(localPath, alsf2, line, result, applied, onOutput);
 					}
 				}
 
@@ -276,70 +298,37 @@ public abstract class DataDrivenRemediation : IRemediation
 				break;
 
 			case "update_package_versions":
-				if (data.TryGetValue("updates", out var updatesObj) && updatesObj is string[] updates)
+				var updates = ReadStrings(data, "updates");
+				if (updates.Length > 0)
 				{
 					RemediationHelpers.UpdatePackageVersions(localPath, updates, result, applied, onOutput);
-				}
-				else if (data.TryGetValue("updates", out var updatesObj2) && updatesObj2 is object[] objUpdates)
-				{
-					RemediationHelpers.UpdatePackageVersions(localPath, [.. objUpdates.OfType<string>()], result, applied, onOutput);
 				}
 
 				break;
 
 			case "remove_packagereference_versions":
-				if (data["projects"] is string[] violatingProjects)
+				var violatingProjects = ReadStrings(data, "projects");
+				if (violatingProjects.Length > 0)
 				{
 					RemediationHelpers.RemovePackageReferenceVersions(localPath, violatingProjects, result, applied, onOutput);
-				}
-				else if (data["projects"] is object[] objProjects)
-				{
-					var projects = objProjects.OfType<string>().ToArray();
-					RemediationHelpers.RemovePackageReferenceVersions(localPath, projects, result, applied, onOutput);
 				}
 
 				break;
 
 			case "add_json_array_items":
+				var items = ReadStrings(data, "items");
 				if (data.TryGetValue("file", out var jFile) && jFile is string jsonFile &&
-					data["array_property"] is string arrayProp)
+					data["array_property"] is string arrayProp && items.Length > 0)
 				{
-					string[] items;
-					if (data["items"] is string[] strItems)
-					{
-						items = strItems;
-					}
-					else if (data["items"] is object[] objItems)
-					{
-						items = [.. objItems.OfType<string>()];
-					}
-					else
-					{
-						break;
-					}
-
 					RemediationHelpers.AddJsonArrayItems(localPath, jsonFile, arrayProp, items, result, applied, onOutput);
 				}
 
 				break;
 
 			case "remove_packagereference":
-				if (data["package_name"] is string rpPkg)
+				var rpProjects = ReadStrings(data, "projects");
+				if (data["package_name"] is string rpPkg && rpProjects.Length > 0)
 				{
-					string[] rpProjects;
-					if (data["projects"] is string[] strProjects)
-					{
-						rpProjects = strProjects;
-					}
-					else if (data["projects"] is object[] objProjects)
-					{
-						rpProjects = [.. objProjects.OfType<string>()];
-					}
-					else
-					{
-						break;
-					}
-
 					RemediationHelpers.RemovePackageReference(localPath, rpPkg, rpProjects, result, applied, onOutput);
 				}
 
@@ -356,10 +345,30 @@ public abstract class DataDrivenRemediation : IRemediation
 	}
 
 	/// <summary>
-	/// Reads the strings held under the first of <paramref name="keys"/> that is present, accepting a
-	/// single string, a string array, or the object array advisory data becomes once it has been
-	/// round-tripped through JSON.
+	/// Checks that the advisory carries everything the remediation type will read.
 	/// </summary>
+	/// <remarks>
+	/// A subclass that overrides <see cref="ApplyCore"/> and reads different keys states its own
+	/// requirements by overriding this.
+	/// </remarks>
+	/// <param name="data">The advisory data.</param>
+	/// <param name="remediationType">The remediation type the advisory named.</param>
+	/// <returns>Whether the data is complete enough to act on.</returns>
+	protected virtual bool HasRequiredData(Dictionary<string, object> data, string remediationType)
+		=> !_requiredData.TryGetValue(remediationType, out var requirements)
+			|| requirements.All(alternatives => alternatives.Any(data.ContainsKey));
+
+	/// <summary>
+	/// Reads the strings held under the first of <paramref name="keys"/> that is present, accepting a
+	/// single string, a string array, or the <see cref="JsonElement"/> or object array advisory data
+	/// becomes once it has been round-tripped through JSON.
+	/// </summary>
+	/// <remarks>
+	/// Every array read in <see cref="ApplyCore"/> goes through here rather than testing for
+	/// <c>string[]</c> directly. The row cache normalises its arrays back to <c>string[]</c>, but not
+	/// every store does, and a shape this does not recognise is silently no work done rather than an
+	/// error — so it accepts every shape an advisory has been seen in.
+	/// </remarks>
 	/// <param name="data">The advisory data.</param>
 	/// <param name="keys">The keys to try, in order.</param>
 	/// <returns>The strings found, or an empty array.</returns>
@@ -378,6 +387,16 @@ public abstract class DataDrivenRemediation : IRemediation
 					return [single];
 				case string[] strings:
 					return strings;
+				case JsonElement { ValueKind: JsonValueKind.String } single:
+					return [single.GetString()!];
+				case JsonElement { ValueKind: JsonValueKind.Array } array:
+					return
+					[
+						.. array
+							.EnumerateArray()
+							.Where(item => item.ValueKind == JsonValueKind.String)
+							.Select(item => item.GetString()!)
+					];
 				case IEnumerable<object> objects:
 					return [.. objects.OfType<string>()];
 			}

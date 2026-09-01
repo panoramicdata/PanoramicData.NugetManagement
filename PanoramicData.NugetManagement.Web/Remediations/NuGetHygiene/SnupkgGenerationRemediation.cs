@@ -17,13 +17,13 @@ public sealed class SnupkgGenerationRemediation : DataDrivenRemediation
 		List<string> applied,
 		Action<string>? onOutput)
 	{
-		var file = data.TryGetValue("file", out var fObj) && fObj is string f ? f : null;
-		if (file is null)
+		// The rule names the offending projects, and may name more than one; a single "file" is what an
+		// advisory that has narrowed it to one writes. Reading only the latter meant this remediation
+		// silently did nothing for every failure the rule actually raises.
+		foreach (var file in ReadStrings(data, "file", "projects"))
 		{
-			return;
+			RemediationHelpers.EnsureXmlProperty(localPath, file, "IncludeSymbols", "true", result, applied, onOutput);
+			RemediationHelpers.EnsureXmlProperty(localPath, file, "SymbolPackageFormat", "snupkg", result, applied, onOutput);
 		}
-
-		RemediationHelpers.EnsureXmlProperty(localPath, file, "IncludeSymbols", "true", result, applied, onOutput);
-		RemediationHelpers.EnsureXmlProperty(localPath, file, "SymbolPackageFormat", "snupkg", result, applied, onOutput);
 	}
 }
