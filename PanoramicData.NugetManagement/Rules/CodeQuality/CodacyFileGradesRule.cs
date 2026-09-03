@@ -168,7 +168,12 @@ public sealed class CodacyFileGradesRule : RuleBase, IRemotelyGraded
 
 			// One session per file, worst first. The list is capped because each entry costs a queued
 			// item and a turn on the GPU, and BuildDetail says so where the reader can see it.
-			Targets = [.. belowMinimum.Take(_targetLimit).Select(entry => entry.File.Path)]
+			Targets =
+			[
+				.. belowMinimum
+					.Take(_targetLimit)
+					.Select(entry => BuildTarget(entry.File, entry.Level, IssuesFor(issuesByFile, entry.File.Path)))
+			]
 		});
 	}
 
@@ -253,6 +258,72 @@ public sealed class CodacyFileGradesRule : RuleBase, IRemotelyGraded
 				})
 				.ToList()
 		};
+
+	/// <summary>
+	/// One file as a self-contained piece of work: what is wrong with it, and what to do about it,
+	/// mentioning no other file.
+	/// </summary>
+	/// <remarks>
+	/// Written for a session that will see this and nothing else. Which measurement drove the grade
+	/// decides what the instruction is, because the three causes need three different fixes and a
+	/// small model will not pick between them from a table: issues are fixed one at a time, duplication
+	/// by factoring out the repeated block, complexity by splitting the method.
+	/// </remarks>
+	private static AdvisoryTarget BuildTarget(
+		CodacyFileGrade file,
+		CodacyLevel level,
+		IReadOnlyList<CodacyIssue> issues)
+	{
+		var detail = new StringBuilder();
+
+		if (issues.Count > 0)
+		{
+			detail.AppendLine($"Codacy reports these issues in {file.Path}. Fix them:");
+			detail.AppendLine();
+
+			foreach (var issue in issues)
+			{
+				var location = issue.Line > 0 ? $"line {issue.Line}" : "the file";
+				var pattern = string.IsNullOrWhiteSpace(issue.PatternId) ? "(unknown pattern)" : issue.PatternId;
+
+				detail.AppendLine($"- {location} — {pattern} — {issue.Message}");
+			}
+
+			detail.AppendLine();
+		}
+
+		if (file.Duplication is > 0)
+		{
+			detail.AppendLine(
+				$"{file.Duplication}% of {file.Path} is duplicated, across "
+				+ $"{file.NumberOfClones?.ToString() ?? "several"} clone(s). Find the blocks that repeat and "
+				+ "factor them into one helper, called from each place the block used to be. Repeated test "
+				+ "setup is the usual cause.");
+			detail.AppendLine();
+		}
+
+		if (file.Complexity is > 15)
+		{
+			detail.AppendLine(
+				$"{file.Path} has a complexity of {file.Complexity}. Find the longest method and split its "
+				+ "branches into separate private methods, changing what it does in no way.");
+			detail.AppendLine();
+		}
+
+		if (detail.Length == 0)
+		{
+			// Grade below the bar with nothing measured to explain it. Saying so is better than an
+			// empty instruction, which a model fills in with whatever it feels like changing.
+			detail.AppendLine(
+				$"Codacy grades {file.Path} {level} but attributes no issues, duplication or complexity to "
+				+ "it. There may be nothing to do here; if you cannot see a concrete problem, change nothing.");
+		}
+
+		return new AdvisoryTarget(
+			file.Path,
+			$"{file.Path} is graded {level} by Codacy, below the required minimum. {Describe(file, level)}.",
+			detail.ToString().TrimEnd());
+	}
 
 	/// <summary>
 	/// Builds the markdown an AI session reads, so it need not re-fetch anything from Codacy.

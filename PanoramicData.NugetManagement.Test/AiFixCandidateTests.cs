@@ -31,7 +31,9 @@ public class AiFixCandidateTests(ITestOutputHelper output) : TestWithOutput(outp
 			{
 				Summary = "Do the thing",
 				Detail = "At length",
-				Targets = targets.Length == 0 ? null : targets
+				Targets = targets.Length == 0
+					? null
+					: [.. targets.Select(path => new AdvisoryTarget(path, $"{path} is wrong.", $"Fix {path}."))]
 			}
 	};
 

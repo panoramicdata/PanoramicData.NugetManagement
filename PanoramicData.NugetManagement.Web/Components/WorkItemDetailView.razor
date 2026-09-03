@@ -43,6 +43,14 @@ else
 					Show the model's thinking
 				</label>
 			</div>
+
+			<div class="form-check form-switch mb-2">
+				<input class="form-check-input" type="checkbox" id="show-prompt" checked="@_showPrompt"
+					   @onchange="TogglePrompt" />
+				<label class="form-check-label small text-muted" for="show-prompt">
+					Show what the model was told
+				</label>
+			</div>
 		}
 
 		@if (Lines.Count == 0)
@@ -76,8 +84,9 @@ else
 
 	private System.Timers.Timer? _refresh;
 	private bool _showThinking = true;
+	private bool _showPrompt = true;
 	private ElementReference _transcriptElement;
-	private int _followedLineCount = -1;
+	private string _followedExtent = string.Empty;
 
 	/// <summary>The item to show, or null when it has left the queue.</summary>
 	[Parameter]
@@ -89,11 +98,19 @@ else
 	{
 		get
 		{
-			var lines = Item?.Transcript.Snapshot() ?? [];
+			IEnumerable<WorkLine> lines = Item?.Transcript.Snapshot() ?? [];
 
-			return _showThinking
-				? lines
-				: [.. lines.Where(line => line.Kind != WorkLineKind.Thinking)];
+			if (!_showThinking)
+			{
+				lines = lines.Where(line => line.Kind != WorkLineKind.Thinking);
+			}
+
+			if (!_showPrompt)
+			{
+				lines = lines.Where(line => line.Kind != WorkLineKind.Prompt);
+			}
+
+			return [.. lines];
 		}
 	}
 
@@ -122,13 +139,22 @@ else
 	{
 		// Only when the transcript has actually grown. The pane redraws five times a second while an
 		// item runs, and a round trip per redraw buys nothing when nothing has been said.
-		var lineCount = Item is null ? 0 : Lines.Count;
-		if (lineCount == 0 || lineCount == _followedLineCount)
+		//
+		// Growth is the line count AND the length of the last line, because a streamed turn accumulates
+		// into one line for hundreds of tokens at a time. Counting lines alone left the pane still for
+		// the whole of every turn — exactly the stretch anybody watching wants to see — and moved it
+		// only once the turn was over.
+		var lines = Item is null ? [] : Lines;
+		var extent = lines.Count == 0
+			? string.Empty
+			: $"{lines.Count}:{lines[^1].Text.Length}";
+
+		if (lines.Count == 0 || extent == _followedExtent)
 		{
 			return;
 		}
 
-		_followedLineCount = lineCount;
+		_followedExtent = extent;
 
 		try
 		{
@@ -149,4 +175,7 @@ else
 
 	private void ToggleThinking(ChangeEventArgs args)
 		=> _showThinking = args.Value as bool? ?? true;
+
+	private void TogglePrompt(ChangeEventArgs args)
+		=> _showPrompt = args.Value as bool? ?? true;
 }

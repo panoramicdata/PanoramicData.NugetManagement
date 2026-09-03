@@ -63,6 +63,11 @@ public static class AiFixPrompt
 	{
 		var builder = new StringBuilder();
 
+		// The target's own description, where the rule wrote one. Everything below then describes this
+		// file and no other — the rule's repository-wide message and advisory are set aside entirely,
+		// because a session told to change one file must not be handed a page about three.
+		var target = FindTarget(result.Advisory, targetPath);
+
 		builder.AppendLine($"Repository: {repositoryFullName}");
 		builder.AppendLine($"Rule: {result.RuleId} — {result.RuleName}");
 		builder.AppendLine();
@@ -73,13 +78,23 @@ public static class AiFixPrompt
 			builder.AppendLine();
 		}
 
-		// The rule's own message, always. It is the most specific statement of what is wrong that exists,
-		// and it is the same text fed back on a retry, so the model sees one consistent description.
+		// The most specific statement of what is wrong that exists, and the same text fed back on a
+		// retry, so the model sees one consistent description.
 		builder.AppendLine("What the rule reports:");
-		builder.AppendLine(result.Message);
+		builder.AppendLine(target?.Summary ?? result.Message);
 		builder.AppendLine();
 
-		if (playbook is not null)
+		if (target is not null)
+		{
+			builder.AppendLine("Goal:");
+			builder.AppendLine($"Change {target.Path} so the problems below no longer apply.");
+			builder.AppendLine();
+
+			builder.AppendLine("Guidance:");
+			builder.AppendLine(target.Detail);
+			builder.AppendLine();
+		}
+		else if (playbook is not null)
 		{
 			AppendPlaybook(builder, playbook);
 		}
@@ -92,6 +107,17 @@ public static class AiFixPrompt
 
 		return builder.ToString();
 	}
+
+	/// <summary>
+	/// The advisory's description of one file, or null when this session is not for one file.
+	/// </summary>
+	private static AdvisoryTarget? FindTarget(RuleAdvisory? advisory, string? targetPath)
+		=> string.IsNullOrWhiteSpace(targetPath)
+			? null
+			: advisory?.Targets?.FirstOrDefault(candidate => string.Equals(
+				candidate.Path.Replace('\\', '/'),
+				targetPath.Replace('\\', '/'),
+				StringComparison.OrdinalIgnoreCase));
 
 	private static void AppendPlaybook(StringBuilder builder, IRuleAiPlaybook playbook)
 	{
@@ -175,6 +201,31 @@ public static class AiFixPrompt
 	}
 
 	/// <summary>
+	/// One advisory fact, and anything nested inside it, rendered as lines of "key: value".
+	/// </summary>
+	/// <param name="key">The fact's name.</param>
+	/// <param name="value">Its value, of any shape.</param>
+	/// <param name="indent">Leading whitespace for the fact's own line; nesting adds two spaces a level.</param>
+	/// <param name="markdown">
+	/// True to render as a markdown nested list, for the frontier-model prompt the dashboard builds;
+	/// false for the plain indented form the small-model prompt uses.
+	/// </param>
+	/// <remarks>
+	/// Shared with the dashboard's remediation prompt, which used to join a fact's items with
+	/// <c>string.Join</c> and so rendered CQ-06's list of file dictionaries as a row of
+	/// <c>System.Collections.Generic.Dictionary`2[...]</c> — every per-file grade the rule had gathered,
+	/// thrown away at the last step.
+	/// </remarks>
+	public static string RenderFact(string key, object? value, string indent = "", bool markdown = false)
+	{
+		var builder = new StringBuilder();
+
+		AppendFact(builder, indent, key, value, markdown);
+
+		return builder.ToString();
+	}
+
+	/// <summary>
 	/// Writes one fact, and anything nested inside it, as indented lines of "key: value".
 	/// </summary>
 	/// <remarks>
@@ -183,22 +234,35 @@ public static class AiFixPrompt
 	/// <c>[path, Publish.ps1]</c> and worse, which is how the model came to be guessing at issues it had
 	/// in fact been sent. Indentation is enough structure for a small model and costs a line each.
 	/// </remarks>
-	private static void AppendFact(StringBuilder builder, string indent, string key, object? value)
+	private static void AppendFact(
+		StringBuilder builder,
+		string indent,
+		string key,
+		object? value,
+		bool markdown = false)
 	{
+		var lead = markdown ? $"{indent}- `{key}`" : $"{indent}{key}";
+		var childIndent = indent + "  ";
+
 		switch (value)
 		{
 			case IDictionary dictionary:
-				builder.AppendLine($"{indent}{key}:");
+				builder.AppendLine($"{lead}:");
 
 				foreach (DictionaryEntry entry in dictionary)
 				{
-					AppendFact(builder, indent + "  ", entry.Key?.ToString() ?? "(none)", entry.Value);
+					AppendFact(
+						builder,
+						childIndent,
+						entry.Key?.ToString() ?? "(none)",
+						entry.Value,
+						markdown);
 				}
 
 				return;
 
 			case string or null:
-				builder.AppendLine($"{indent}{key}: {Render(value)}");
+				builder.AppendLine($"{lead}: {Render(value)}");
 				return;
 
 			case IEnumerable items:
@@ -207,7 +271,7 @@ public static class AiFixPrompt
 
 				if (list.Count == 0)
 				{
-					builder.AppendLine($"{indent}{key}: (none)");
+					builder.AppendLine($"{lead}: (none)");
 					return;
 				}
 
@@ -215,11 +279,11 @@ public static class AiFixPrompt
 				// most advisory data — missing files, package names — is exactly that.
 				if (list.All(item => item is null or string or ValueType))
 				{
-					builder.AppendLine($"{indent}{key}: {string.Join(", ", list.Select(Render))}");
+					builder.AppendLine($"{lead}: {string.Join(", ", list.Select(Render))}");
 					return;
 				}
 
-				builder.AppendLine($"{indent}{key}:");
+				builder.AppendLine($"{lead}:");
 
 				var index = 1;
 
@@ -227,16 +291,17 @@ public static class AiFixPrompt
 				{
 					AppendFact(
 						builder,
-						indent + "  ",
+						childIndent,
 						index++.ToString(CultureInfo.InvariantCulture),
-						item);
+						item,
+						markdown);
 				}
 
 				return;
 			}
 
 			default:
-				builder.AppendLine($"{indent}{key}: {Render(value)}");
+				builder.AppendLine($"{lead}: {Render(value)}");
 				return;
 		}
 	}

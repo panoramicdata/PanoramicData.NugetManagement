@@ -42,3 +42,13 @@
 .work-line-model {
 	color: var(--bs-info, #0dcaf0);
 }
+
+/* What the model was told. Set apart with a rule down the side rather than a colour, because it is
+   pages long and a page of coloured text reads as an alarm. */
+.work-line-prompt {
+	border-left: 3px solid var(--bs-secondary, #6c757d);
+	padding: 0.35rem 0 0.35rem 0.6rem;
+	margin: 0.5rem 0;
+	opacity: 0.85;
+	background-color: rgba(255, 255, 255, 0.03);
+}

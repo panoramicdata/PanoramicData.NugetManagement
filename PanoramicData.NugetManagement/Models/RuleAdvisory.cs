@@ -1,6 +1,27 @@
 namespace PanoramicData.NugetManagement.Models;
 
 /// <summary>
+/// One file a failure's fix splits into, described on its own terms.
+/// </summary>
+/// <param name="Path">The file, relative to the repository root.</param>
+/// <param name="Summary">
+/// What is wrong with this file, in one sentence. Replaces the rule's repository-wide message for a
+/// session working on this file alone.
+/// </param>
+/// <param name="Detail">
+/// What to fix in this file, and nothing about any other. Replaces the advisory's repository-wide
+/// <see cref="RuleAdvisory.Detail"/>.
+/// </param>
+/// <remarks>
+/// The path alone is not enough, and assuming it was is what made the first attempt at this useless:
+/// the session was told "change this one file and no other" and then handed a rule message naming
+/// three files, a goal reading "improve 3 file(s)", and a guidance section listing all three with
+/// their issues. A small model reads the whole prompt, and two thirds of that prompt was about files
+/// it must not touch.
+/// </remarks>
+public sealed record AdvisoryTarget(string Path, string Summary, string Detail);
+
+/// <summary>
 /// Structured advisory data emitted by a governance rule when it fails.
 /// Designed for consumption by AI agents performing automated remediation.
 /// </summary>
@@ -41,5 +62,5 @@ public sealed class RuleAdvisory
 	/// <see cref="Detail"/> that it did.
 	/// </para>
 	/// </remarks>
-	public IReadOnlyList<string>? Targets { get; init; }
+	public IReadOnlyList<AdvisoryTarget>? Targets { get; init; }
 }

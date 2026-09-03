@@ -14,7 +14,7 @@ namespace PanoramicData.NugetManagement.Rules;
 /// since June — each for a different reason, none of them visible. This rule needs no release to
 /// happen before it can report: it compares what is tagged with what is published, every assessment.
 /// </remarks>
-public class PublishedVersionMatchesTagRule : RuleBase
+public class PublishedVersionMatchesTagRule : RuleBase, IFixedOutsideTheWorkingTree
 {
 	/// <inheritdoc />
 	public override string RuleId => "CI-11";
