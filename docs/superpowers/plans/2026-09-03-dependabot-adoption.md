@@ -697,7 +697,7 @@ public static partial class DependabotProposalParser
 	[GeneratedRegex(
 		@"^(?:Updated|Updates|Bumped|Bumps)\s+"
 			+ @"(?:`(?<name>[^`]+)`|\[(?<name>[^\]]+)\]\([^)]*\)|(?<name>[^\s\[`]+))"
-			+ @"\s+from\s+(?<from>\S+)\s+to\s+(?<to>.+?)(?:\s+in\s+(?<dir>\S+))?\.?\s*$",
+			+ @"\s+from\s+(?<from>\S+?)\s+to\s+(?<to>.+?)(?:\s+in\s+(?<dir>\S+?))?\.?\s*$",
 		RegexOptions.CultureInvariant | RegexOptions.Multiline)]
 	private static partial Regex BodyLine();
 
@@ -710,7 +710,14 @@ public static partial class DependabotProposalParser
 
 **Task 1 found the real format, and the regex above is already corrected for it.** All five captured bodies use one form — `Updated [Name](url) from X to Y.` — for both single-dependency and grouped pull requests. Neither `Updates` nor `Bumps` appears in any of them, and the spec's assumed wording was wrong on the verb, the name delimiter and the trailing full stop. The wider alternation is kept deliberately, per the doc comment.
 
-- [ ] **Step 5: Fix the two call sites the reshape broke**
+- [ ] **Step 5: Fix the call sites the reshape broke**
+
+There are **three**, not two — this plan missed one. `DependabotIssueSynthesizer:85` also parses proposals, and it groups them **by dependency** to build one finding per dependency. Shimming it to the first bump would publish a grouped pull request under its first dependency only and hide the other two, so it is done properly here rather than shimmed: flatten to one `(Issue, Bump)` entry per dependency moved, and group on `pair.Bump.Dependency`. `Finding` and `Describe` take `(RepositoryIssue Issue, DependabotBump Bump)`.
+
+For the same reason, the runner's three sites are written as loops over `proposal.Bumps` here rather than as `Bumps[0]` shims — a loop is already correct for a single-bump proposal, so there is nothing to undo in Task 4 beyond narrowing the gap loop to `GapBumps`.
+
+`DependabotTriageRunnerTests` constructs a `DependabotProposal` directly and needs its six-argument call replaced with the three-argument one.
+
 
 `DependabotTriageService.Judge` and `DependabotTriageRunner.RunAsync` both read `proposal.Dependency`, `proposal.FromVersion` and `proposal.ToVersion`. Task 4 rewrites both properly. For **this** task, make them compile against the first bump only, with a comment marking it:
 

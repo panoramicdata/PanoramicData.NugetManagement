@@ -99,8 +99,11 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 
 					if (triage.Proposal is { } satisfied)
 					{
-						resolved[satisfied.Dependency] =
-							$"{repositoryFullName} now declares it at or above the proposed version";
+						foreach (var bump in satisfied.Bumps)
+						{
+							resolved[bump.Dependency] =
+								$"{repositoryFullName} now declares it at or above the proposed version";
+						}
 					}
 
 					break;
@@ -111,8 +114,11 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 
 					if (triage.Proposal is { } covering && triage.CoveringRuleId is { } coveringRuleId)
 					{
-						resolved[covering.Dependency] =
-							$"{coveringRuleId} governs it and its remediation will move it";
+						foreach (var bump in covering.Bumps)
+						{
+							resolved[bump.Dependency] =
+								$"{coveringRuleId} governs it and its remediation will move it";
+						}
 					}
 
 					break;
@@ -125,18 +131,21 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 					break;
 
 				case DependabotVerdict.ValidUncovered when triage.Proposal is { } proposal:
-					if (!uncovered.TryGetValue(proposal.Dependency, out var sightings))
+					foreach (var bump in proposal.Bumps)
 					{
-						sightings = [];
-						uncovered[proposal.Dependency] = sightings;
-					}
+						if (!uncovered.TryGetValue(bump.Dependency, out var sightings))
+						{
+							sightings = [];
+							uncovered[bump.Dependency] = sightings;
+						}
 
-					sightings.Add(new UncoveredDependencySighting(
-						repositoryFullName,
-						proposal.Number,
-						proposal.FromVersion,
-						proposal.ToVersion,
-						proposal.HtmlUrl));
+						sightings.Add(new UncoveredDependencySighting(
+							repositoryFullName,
+							proposal.Number,
+							bump.FromVersion,
+							bump.ToVersion,
+							proposal.HtmlUrl));
+					}
 
 					break;
 

@@ -90,7 +90,7 @@ public sealed class DependabotTriageService
 		IReadOnlyList<RuleResult> ruleResults,
 		Func<string, bool> canRemediate)
 	{
-		var proposal = DependabotTitleParser.Parse(issue);
+		var proposal = DependabotProposalParser.Parse(issue);
 
 		if (proposal is null)
 		{
@@ -98,22 +98,26 @@ public sealed class DependabotTriageService
 				issue,
 				null,
 				DependabotVerdict.Unrecognised,
-				"Not a single-dependency Dependabot version bump, so triage leaves it alone.",
+				"Not a readable Dependabot version bump, so triage leaves it alone.",
 				null);
 		}
 
-		if (IsSatisfied(proposal, packages, actionUsages))
+		// Task 4 folds this over every bump. Reading only the first keeps the existing
+		// single-dependency behaviour exactly as it was while the model reshape lands on its own.
+		var bump = proposal.Bumps[0];
+
+		if (IsSatisfied(bump, packages, actionUsages))
 		{
 			return new DependabotTriage(
 				issue,
 				proposal,
 				DependabotVerdict.AlreadySatisfied,
-				$"{proposal.Dependency.Name} is already declared at {proposal.ToVersion} or above, so "
+				$"{bump.Dependency.Name} is already declared at {bump.ToVersion} or above, so "
 					+ "merging this would change nothing.",
 				null);
 		}
 
-		var coveringRuleId = CoveringRuleId(proposal.Dependency, ruleResults, canRemediate);
+		var coveringRuleId = CoveringRuleId(bump.Dependency, ruleResults, canRemediate);
 
 		if (coveringRuleId is not null)
 		{
@@ -122,13 +126,13 @@ public sealed class DependabotTriageService
 				proposal,
 				DependabotVerdict.ValidCovered,
 				$"Still outstanding, and {coveringRuleId} is failing with a remediation that will move "
-					+ $"{proposal.Dependency.Name} at least this far.",
+					+ $"{bump.Dependency.Name} at least this far.",
 				coveringRuleId);
 		}
 
 		// Nothing will move it today. Whether that is a gap in the rule set or a rule that has nothing
 		// to say today is a different question, and only the first is anybody's work.
-		var governingRuleId = GoverningRuleId(proposal.Dependency, canRemediate);
+		var governingRuleId = GoverningRuleId(bump.Dependency, canRemediate);
 
 		if (governingRuleId is null)
 		{
@@ -136,19 +140,19 @@ public sealed class DependabotTriageService
 				issue,
 				proposal,
 				DependabotVerdict.ValidUncovered,
-				$"Still outstanding, and no rule governs {proposal.Dependency.Name} at all, so nothing "
+				$"Still outstanding, and no rule governs {bump.Dependency.Name} at all, so nothing "
 					+ "here can fix it automatically.",
 				null,
 				IsRuleSetGap: true);
 		}
 
-		if (!IsObserved(proposal.Dependency, packages, actionUsages))
+		if (!IsObserved(bump.Dependency, packages, actionUsages))
 		{
 			return new DependabotTriage(
 				issue,
 				proposal,
 				DependabotVerdict.ValidUncovered,
-				$"Still outstanding, and {governingRuleId} claims {proposal.Dependency.Name} but never "
+				$"Still outstanding, and {governingRuleId} claims {bump.Dependency.Name} but never "
 					+ "reads where it is declared, so no failure of it can ever move this.",
 				null,
 				IsRuleSetGap: true);
@@ -158,7 +162,7 @@ public sealed class DependabotTriageService
 			issue,
 			proposal,
 			DependabotVerdict.ValidUncovered,
-			$"Still outstanding, and {governingRuleId} governs {proposal.Dependency.Name} but is not "
+			$"Still outstanding, and {governingRuleId} governs {bump.Dependency.Name} but is not "
 				+ "failing for it at the moment, so nothing is queued to move it right now.",
 			null);
 	}
@@ -173,27 +177,27 @@ public sealed class DependabotTriageService
 	/// request.
 	/// </remarks>
 	private static bool IsSatisfied(
-		DependabotProposal proposal,
+		DependabotBump bump,
 		List<PackageVersionReference> packages,
 		List<ActionUsage> actionUsages)
-		=> proposal.Dependency.Ecosystem switch
+		=> bump.Dependency.Ecosystem switch
 		{
-			DependencyEcosystem.NuGet => IsPackageSatisfied(proposal, packages),
-			DependencyEcosystem.GitHubActions => IsActionSatisfied(proposal, actionUsages),
+			DependencyEcosystem.NuGet => IsPackageSatisfied(bump, packages),
+			DependencyEcosystem.GitHubActions => IsActionSatisfied(bump, actionUsages),
 			_ => false
 		};
 
 	private static bool IsPackageSatisfied(
-		DependabotProposal proposal,
+		DependabotBump bump,
 		List<PackageVersionReference> packages)
 	{
-		if (!NuGetVersion.TryParse(proposal.ToVersion, out var target))
+		if (!NuGetVersion.TryParse(bump.ToVersion, out var target))
 		{
 			return false;
 		}
 
 		var declared = packages
-			.Where(p => string.Equals(p.PackageId, proposal.Dependency.Name, StringComparison.OrdinalIgnoreCase))
+			.Where(p => string.Equals(p.PackageId, bump.Dependency.Name, StringComparison.OrdinalIgnoreCase))
 			.Select(p => NuGetVersion.TryParse(p.CurrentVersion, out var version) ? version : null)
 			.ToList();
 
@@ -201,10 +205,10 @@ public sealed class DependabotTriageService
 			&& declared.All(version => version is not null && version >= target);
 	}
 
-	private static bool IsActionSatisfied(DependabotProposal proposal, List<ActionUsage> actionUsages)
+	private static bool IsActionSatisfied(DependabotBump bump, List<ActionUsage> actionUsages)
 	{
-		var target = MajorOf(proposal.ToVersion);
-		var lowest = ActionUsageScanner.LowestMajorOf(actionUsages, proposal.Dependency.Name);
+		var target = MajorOf(bump.ToVersion);
+		var lowest = ActionUsageScanner.LowestMajorOf(actionUsages, bump.Dependency.Name);
 
 		return target is not null && lowest is not null && lowest >= target;
 	}

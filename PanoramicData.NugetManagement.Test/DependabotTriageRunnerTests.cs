@@ -125,10 +125,7 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 			? null
 			: new DependabotProposal(
 				number,
-				new DependencyRef(ecosystem, dependencyName),
-				"2",
-				"4",
-				null,
+				[new DependabotBump(new DependencyRef(ecosystem, dependencyName), "2", "4", null)],
 				url);
 
 		return new DependabotTriage(
