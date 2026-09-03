@@ -151,20 +151,32 @@ public sealed class CodacyFileGradesRule : RuleBase, IRemotelyGraded
 			? $"{belowMinimum.Count} file(s) graded below {codacy.MinimumLevel}: {named}, and {belowMinimum.Count - _messageFileLimit} more."
 			: $"{belowMinimum.Count} file(s) graded below {codacy.MinimumLevel}: {named}.";
 
+		// What these grades actually describe. Appended rather than folded in, so the finding reads the
+		// same as it always did and the caveat is visibly a caveat.
+		var caveat = CodacyFreshness.Describe(report.AnalysisState, context.HeadSha);
+		if (caveat is not null)
+		{
+			message += $" {caveat}";
+		}
+
+		var data = new Dictionary<string, object>
+		{
+			["files_below_minimum"] = belowMinimum.Count,
+			["graded_files"] = graded.Count,
+			["required_min_grade"] = codacy.MinimumLevel.ToString(),
+			["worst_grade"] = belowMinimum[0].Level.ToString(),
+			["files"] = belowMinimum
+				.Select(entry => BuildFileData(entry.File, entry.Level, IssuesFor(issuesByFile, entry.File.Path)))
+				.ToList()
+		};
+
+		AddFreshnessData(data, report.AnalysisState);
+
 		return Fail(message, new RuleAdvisory
 		{
 			Summary = $"Improve {belowMinimum.Count} file(s) graded below {codacy.MinimumLevel} in {context.FullName}.",
-			Detail = BuildDetail(context, codacy.MinimumLevel, belowMinimum, issuesByFile),
-			Data = new()
-			{
-				["files_below_minimum"] = belowMinimum.Count,
-				["graded_files"] = graded.Count,
-				["required_min_grade"] = codacy.MinimumLevel.ToString(),
-				["worst_grade"] = belowMinimum[0].Level.ToString(),
-				["files"] = belowMinimum
-					.Select(entry => BuildFileData(entry.File, entry.Level, IssuesFor(issuesByFile, entry.File.Path)))
-					.ToList()
-			},
+			Detail = BuildDetail(context, codacy.MinimumLevel, belowMinimum, issuesByFile, report.AnalysisState),
+			Data = data,
 
 			// One session per file, worst first. The list is capped because each entry costs a queued
 			// item and a turn on the GPU, and BuildDetail says so where the reader can see it.
@@ -175,6 +187,40 @@ public sealed class CodacyFileGradesRule : RuleBase, IRemotelyGraded
 					.Select(entry => BuildTarget(entry.File, entry.Level, IssuesFor(issuesByFile, entry.File.Path)))
 			]
 		});
+	}
+
+	/// <summary>
+	/// Records what these figures describe, for whatever reads the advisory as data.
+	/// </summary>
+	/// <remarks>
+	/// The keys are absent rather than null when the state could not be established, because an
+	/// absent key reads as "not established" and a null <c>codacy_is_analysing</c> reads as "not
+	/// analysing" — which is the conflation this whole change exists to stop.
+	/// </remarks>
+	private static void AddFreshnessData(Dictionary<string, object> data, CodacyAnalysisState? state)
+	{
+		if (state is null)
+		{
+			return;
+		}
+
+		data["codacy_is_analysing"] = state.IsAnalysing;
+		data["codacy_state_retrieved_at"] = state.RetrievedAtUtc;
+
+		if (state.AnalysedSha is { } sha)
+		{
+			data["codacy_analysed_sha"] = sha;
+		}
+
+		if (state.AnalysedAtUtc is { } analysedAt)
+		{
+			data["codacy_analysed_at"] = analysedAt;
+		}
+
+		if (state.ProgressPercent is { } percent)
+		{
+			data["codacy_analysis_progress_percent"] = percent;
+		}
 	}
 
 	/// <summary>
@@ -332,9 +378,20 @@ public sealed class CodacyFileGradesRule : RuleBase, IRemotelyGraded
 		RepositoryContext context,
 		CodacyLevel minimumLevel,
 		List<(CodacyFileGrade File, CodacyLevel Level)> belowMinimum,
-		Dictionary<string, List<CodacyIssue>> issuesByFile)
+		Dictionary<string, List<CodacyIssue>> issuesByFile,
+		CodacyAnalysisState? analysisState)
 	{
 		var detail = new StringBuilder();
+
+		// Ahead of the table, because a model reads the table as ground truth and will not revise that
+		// on the strength of a footnote.
+		var caveat = CodacyFreshness.Describe(analysisState, context.HeadSha);
+		if (caveat is not null)
+		{
+			detail.AppendLine($"**{caveat}**");
+			detail.AppendLine();
+		}
+
 		detail.AppendLine($"Codacy grades these files in `{context.FullName}` below `{minimumLevel}` on `{context.DefaultBranch}`:");
 		detail.AppendLine();
 		detail.AppendLine("| File | Grade | Score | Issues | Duplication | Clones | Complexity | Lines |");

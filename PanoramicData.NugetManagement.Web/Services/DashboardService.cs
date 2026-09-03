@@ -20,6 +20,7 @@ public class DashboardService
 	private readonly RuntimeSettingsService _runtimeSettings;
 	private readonly NuGetOwnedPackageCatalog _owned;
 	private readonly AppSettings _settings;
+	private readonly ICodacyAnalysisStateService _codacyAnalysisState;
 	private readonly ILogger<DashboardService> _logger;
 
 	/// <summary>
@@ -35,6 +36,7 @@ public class DashboardService
 		RuntimeSettingsService runtimeSettings,
 		NuGetOwnedPackageCatalog owned,
 		IOptions<AppSettings> settings,
+		ICodacyAnalysisStateService codacyAnalysisState,
 		ILogger<DashboardService> logger)
 	{
 		_nuget = nuget;
@@ -46,6 +48,7 @@ public class DashboardService
 		_owned = owned;
 		RemediationRegistry = remediationRegistry;
 		_settings = settings.Value;
+		_codacyAnalysisState = codacyAnalysisState;
 		_logger = logger;
 	}
 
@@ -379,7 +382,8 @@ public class DashboardService
 					row.CurrentBranch,
 					row.LatestTag,
 					row.PrimaryPackage?.LatestVersion,
-					row.ReleaseRun);
+					row.ReleaseRun,
+					await _localRepo.GetHeadShaAsync(row.RepositoryFullName, cancellationToken).ConfigureAwait(false));
 		}
 
 		var parts = row.RepositoryFullName.Split('/');
@@ -656,6 +660,12 @@ public class DashboardService
 			var localBuilder = new LocalRepositoryContextBuilder(loggerFactory.CreateLogger<LocalRepositoryContextBuilder>());
 			// The release facts the dashboard already knows, handed to the rules so CI-11 can compare
 			// what was tagged with what was actually published.
+			// The checked-out commit, so CQ-06 can say whether Codacy's grades describe it or an older
+			// one. Null when git cannot be read, which leaves that comparison unmade.
+			var headSha = !string.IsNullOrWhiteSpace(repoIdentity)
+				? await _localRepo.GetHeadShaAsync(repoIdentity!, cancellationToken).ConfigureAwait(false)
+				: null;
+
 			var context = localBuilder.Build(
 				row.LocalPath,
 				row.RepositoryFullName,
@@ -664,7 +674,8 @@ public class DashboardService
 				row.CurrentBranch,
 				row.LatestTag,
 				row.PrimaryPackage?.LatestVersion,
-				row.ReleaseRun);
+				row.ReleaseRun,
+				headSha);
 
 			var rules = RuleRegistry.Rules;
 			var results = new List<RuleResult>();
@@ -1861,6 +1872,51 @@ public class DashboardService
 
 		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Reads where Codacy's analysis of a repository stands now, for the header chip.
+	/// </summary>
+	/// <remarks>
+	/// Asked on selection rather than taken from the last assessment, because that is the question a
+	/// reader looking at the panel is actually asking. An analysis that started since the last sweep
+	/// is invisible to anything captured during it.
+	/// <para>
+	/// A repository that cannot be asked keeps whatever was last known rather than being reset: an
+	/// unreachable Codacy is not evidence that an analysis stopped.
+	/// </para>
+	/// </remarks>
+	public async Task RefreshCodacyAnalysisStateAsync(
+		RepositoryDashboardRow row,
+		CancellationToken cancellationToken = default)
+	{
+		if (string.IsNullOrWhiteSpace(_settings.CodacyApiToken))
+		{
+			return;
+		}
+
+		var parts = row.RepositoryFullName.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		if (parts.Length != 2)
+		{
+			return;
+		}
+
+		var state = await _codacyAnalysisState
+			.GetStateAsync(
+				_settings.CodacyApiToken!,
+				parts[0],
+				parts[1],
+				row.Assessment?.DefaultBranch ?? row.CurrentBranch,
+				cancellationToken)
+			.ConfigureAwait(false);
+
+		if (state is null)
+		{
+			return;
+		}
+
+		row.CodacyAnalysisState = state;
+		row.CodacyStateCheckedAtUtc = state.RetrievedAtUtc;
 	}
 
 	/// <summary>

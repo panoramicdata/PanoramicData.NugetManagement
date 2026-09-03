@@ -605,6 +605,27 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
+	/// Gets the commit HEAD points at, or null when the repository is not on disk or git fails.
+	/// </summary>
+	/// <remarks>
+	/// Lets CQ-06 tell grades measured on the checked-out commit from grades measured on an older one.
+	/// Null is a real answer — "we do not know" — and the rules keep the comparison unmade rather than
+	/// reporting a staleness they cannot see.
+	/// </remarks>
+	public async Task<string?> GetHeadShaAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
+		var (exitCode, output) = await RunCommandAsync(path, "git", "rev-parse HEAD", cancellationToken).ConfigureAwait(false);
+
+		return exitCode == 0 && !string.IsNullOrWhiteSpace(output) ? output.Trim() : null;
+	}
+
+	/// <summary>
 	/// Gets the remote default branch name for origin when available.
 	/// </summary>
 	public async Task<string?> GetRemoteDefaultBranchAsync(string repoIdentity, CancellationToken cancellationToken = default)

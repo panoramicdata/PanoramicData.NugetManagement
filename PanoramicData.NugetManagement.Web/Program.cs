@@ -38,6 +38,8 @@ builder.Services.AddSingleton<NuGetDiscoveryService>();
 builder.Services.AddSingleton<IPublishedVersionSource, PublishedVersionService>();
 builder.Services.AddSingleton<PublishedVersionRefresher>();
 builder.Services.AddSingleton<LocalRepoService>();
+// Stateless and per-call, so a singleton: it constructs its own short-lived Codacy client.
+builder.Services.AddSingleton<ICodacyAnalysisStateService, CodacyAnalysisStateService>();
 builder.Services.AddSingleton<DashboardCacheService>();
 builder.Services.AddSingleton<RemediationRegistry>();
 // Singletons, because triage runs on many repository lanes at once and what stops one gap becoming

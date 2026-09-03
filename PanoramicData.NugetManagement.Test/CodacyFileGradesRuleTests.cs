@@ -240,6 +240,112 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 			.Should().BeAssignableTo<IRemotelyGraded>(
 				"Codacy grades the published branch, so editing the clone cannot change this rule's answer");
 
+	[Fact]
+	public async Task SaysCodacyIsReanalysing_WhenAnAnalysisIsInFlight()
+	{
+		// Without this the grades read as current fact, and the reader goes and fixes a file whose
+		// grade is being recalculated as they look at it.
+		var result = await Rule(Report(Analysing(progress: 60), File("src/Bad.cs", "F")))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Message.Should().Contain("re-analysing");
+		result.Message.Should().Contain("60%");
+	}
+
+	[Fact]
+	public async Task NamesTheCommitTheGradesDescribe_WhenCodacyIsBehindTheCheckout()
+	{
+		var result = await Rule(Report(Analysed("abc1234"), File("src/Bad.cs", "F")))
+			.EvaluateAsync(Context(Token(), headSha: "9f8e7d6"), TestContext.Current.CancellationToken);
+
+		result.Message.Should().Contain("abc1234");
+	}
+
+	[Fact]
+	public async Task SaysNothingAboutFreshness_WhenCodacyHasAnalysedTheCheckedOutCommit()
+	{
+		// Forty-odd repositories are current at any time. A caveat on every one of them is noise that
+		// trains the reader to ignore the caveat that matters.
+		var result = await Rule(Report(Analysed("abc1234"), File("src/Bad.cs", "F")))
+			.EvaluateAsync(Context(Token(), headSha: "abc1234"), TestContext.Current.CancellationToken);
+
+		result.Message.Should().NotContain("abc1234");
+		result.Message.Should().NotContain("re-analysing");
+	}
+
+	[Fact]
+	public async Task SaysNothingAboutFreshness_WhenTheCheckedOutCommitIsUnknown()
+	{
+		// A remote-only context has no head SHA. Reporting "behind" from a comparison we cannot make
+		// would invent a staleness nobody can act on.
+		var result = await Rule(Report(Analysed("abc1234"), File("src/Bad.cs", "F")))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Message.Should().NotContain("abc1234");
+	}
+
+	[Fact]
+	public async Task KeepsTheGradesAndTheTargets_WhenTheAnalysisStateIsUnavailable()
+	{
+		// Codacy's progress endpoint is a second call on a path that already worked. Losing the whole
+		// finding because the caveat could not be fetched would be worse than reporting it uncaveated.
+		var result = await Rule(Report(state: null, File("src/Bad.cs", "F")))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("src/Bad.cs");
+		result.Advisory!.Targets.Should().HaveCount(1);
+	}
+
+	[Fact]
+	public async Task KeepsTheTargets_WhenAnAnalysisIsInFlight()
+	{
+		// The grades are annotated, not withheld. Fix with AI still has work to offer.
+		var result = await Rule(Report(Analysing(progress: 60), File("src/Bad.cs", "F")))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Targets.Should().HaveCount(1);
+	}
+
+	[Fact]
+	public async Task WarnsTheAiSessionTheGradesMayMove_WhenAnAnalysisIsInFlight()
+	{
+		// A model reads the advisory table as ground truth unless told otherwise.
+		var result = await Rule(Report(Analysing(progress: 60), File("src/Bad.cs", "F")))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Detail.Should().Contain("re-analysing");
+	}
+
+	[Fact]
+	public async Task PublishesTheFreshnessFactsForMachines()
+	{
+		var result = await Rule(Report(Analysing(progress: 60, analysedSha: "abc1234"), File("src/Bad.cs", "F")))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Data["codacy_is_analysing"].Should().Be(true);
+		result.Advisory.Data["codacy_analysed_sha"].Should().Be("abc1234");
+	}
+
+	private static CodacyAnalysisState Analysing(int progress, string? analysedSha = null)
+		=> new()
+		{
+			IsAnalysing = true,
+			ProgressPercent = progress,
+			StartedAt = DateTimeOffset.UtcNow.AddMinutes(-4),
+			AnalysedSha = analysedSha,
+			RetrievedAtUtc = DateTimeOffset.UtcNow
+		};
+
+	private static CodacyAnalysisState Analysed(string sha)
+		=> new()
+		{
+			IsAnalysing = false,
+			AnalysedSha = sha,
+			AnalysedAtUtc = DateTimeOffset.UtcNow.AddHours(-3),
+			RetrievedAtUtc = DateTimeOffset.UtcNow
+		};
+
 	private static CodacyFileGradesRule Rule(CodacyFileGradeReport report, params CodacyIssue[] issues)
 		=> new(new FakeService(report), new FakeIssueService(issues));
 
@@ -254,6 +360,9 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 
 	private static CodacyFileGradeReport Report(params CodacyFileGrade[] files)
 		=> new() { IsTracked = true, Files = files };
+
+	private static CodacyFileGradeReport Report(CodacyAnalysisState? state, params CodacyFileGrade[] files)
+		=> new() { IsTracked = true, Files = files, AnalysisState = state };
 
 	private static CodacyFileGrade File(
 		string path,
@@ -279,13 +388,14 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 	private static CodacyOptions Token(CodacyLevel minimumLevel = CodacyLevel.A)
 		=> new() { ApiToken = "test-token", MinimumLevel = minimumLevel };
 
-	private static RepositoryContext Context(CodacyOptions? codacy)
+	private static RepositoryContext Context(CodacyOptions? codacy, string? headSha = null)
 		=> new()
 		{
 			FullName = "panoramicdata/Sample.Api",
 			Name = "Sample.Api",
 			DefaultBranch = "main",
 			CurrentBranch = "main",
+			HeadSha = headSha,
 			Options = new RepoOptions { Codacy = codacy },
 			FilePaths = [],
 			FileContents = []

@@ -22,6 +22,17 @@ public sealed class CodacyFileGradeReport
 	public IReadOnlyList<CodacyFileGrade> Files { get; init; } = [];
 
 	/// <summary>
+	/// Where Codacy's analysis had got to when the grades were read, or null when that could not be
+	/// established.
+	/// </summary>
+	/// <remarks>
+	/// Null is not "nothing is running" — it is "we do not know", and the two must not be conflated.
+	/// It costs a second call on a path that already succeeded, so a failure there loses the caveat
+	/// and nothing else: reporting the grades uncaveated beats losing the grades over it.
+	/// </remarks>
+	public CodacyAnalysisState? AnalysisState { get; init; }
+
+	/// <summary>
 	/// The files Codacy actually analysed. A tracked repository with none of these has been added to
 	/// Codacy but never scanned, which CQ-03 reports as a failure rather than a pass.
 	/// </summary>

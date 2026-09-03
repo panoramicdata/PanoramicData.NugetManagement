@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -281,6 +281,7 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			runtimeSettings,
 			new NuGetOwnedPackageCatalog(null),
 			appSettings,
+			new NoopCodacyAnalysisStateService(),
 			NullLogger<DashboardService>.Instance);
 
 		var lanes = new WorkLaneService();
@@ -405,6 +406,7 @@ public sealed class DashboardServiceCancellationTests(ITestOutputHelper output) 
 			runtimeSettings,
 			new NuGetOwnedPackageCatalog(null),
 			appSettings,
+			new NoopCodacyAnalysisStateService(),
 			NullLogger<DashboardService>.Instance);
 	}
 

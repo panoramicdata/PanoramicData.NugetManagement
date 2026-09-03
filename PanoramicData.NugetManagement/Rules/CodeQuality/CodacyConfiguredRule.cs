@@ -135,6 +135,16 @@ public class CodacyConfiguredRule : RuleBase
 				});
 		}
 
+		// An analysis in flight answers this rule's question — the integration is demonstrably working
+		// — and is why nothing is graded yet. Without this the rule read a first analysis still running
+		// as "analysed nothing" and told the reader to go and run the analysis that was already running.
+		if (report.AnalysisState is { IsAnalysing: true } analysing)
+		{
+			return Pass(
+				CodacyFreshness.Describe(analysing, context.HeadSha)
+					?? "Codacy is re-analysing this repository.");
+		}
+
 		if (!report.GradedFiles.Any())
 		{
 			return Fail(
@@ -159,7 +169,15 @@ public class CodacyConfiguredRule : RuleBase
 				});
 		}
 
-		return Pass($"Codacy is configured and has analysed {context.DefaultBranch}.");
+		// Which commit the analysis describes, and whether another is running, belong in this sentence:
+		// it is the one place that asserts the integration is working, and "has analysed main" without
+		// a date is a claim nothing keeps current.
+		var freshness = CodacyFreshness.Describe(report.AnalysisState, context.HeadSha)
+			?? CodacyFreshness.DescribeLastAnalysis(report.AnalysisState);
+
+		return Pass(freshness is null
+			? $"Codacy is configured and has analysed {context.DefaultBranch}."
+			: $"Codacy is configured and has analysed {context.DefaultBranch}. {freshness}");
 	}
 
 	/// <summary>

@@ -131,6 +131,23 @@ public class RepositoryDashboardRow
 	public DateTimeOffset? SyncStatusCheckedAtUtc { get; set; }
 
 	/// <summary>
+	/// Where Codacy's analysis stood when it was last read for this repository, or null when it never
+	/// has been.
+	/// </summary>
+	/// <remarks>
+	/// Read when the repository is selected rather than when it is assessed, and for the same reason
+	/// <see cref="SyncStatusCheckedAtUtc"/> exists: it is a point-in-time answer that nothing keeps
+	/// current. An analysis that started after the last sweep is invisible to a figure captured during
+	/// it, which is the whole defect — so the header chip asks again when someone actually looks.
+	/// </remarks>
+	public CodacyAnalysisState? CodacyAnalysisState { get; set; }
+
+	/// <summary>
+	/// When <see cref="CodacyAnalysisState"/> was last read, or null if it never has been.
+	/// </summary>
+	public DateTimeOffset? CodacyStateCheckedAtUtc { get; set; }
+
+	/// <summary>
 	/// The latest git tag on the local repo (e.g. "1.0.55").
 	/// </summary>
 	public string? LatestTag { get; set; }

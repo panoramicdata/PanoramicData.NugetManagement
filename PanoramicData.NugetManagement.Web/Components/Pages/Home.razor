@@ -331,6 +331,15 @@ else
 										<span class="git-dirty-badge" title="@OutOfStepTooltip(_selectedRow)">📦 tag @TagOrUnknown(_selectedRow) ≠ @OutOfStepSummary(_selectedRow)</span>
 									}
 								}
+								@* Outside the clone guard: Codacy analyses the published branch, so this applies to a
+								   repository whether or not there is a clone here. Absent unless an analysis is
+								   actually running — the panel below is showing grades it is about to replace. *@
+								@if (_currentView != NavView.Settings
+									&& RepositoryStateBadges.CodacyAnalysisChip(_selectedRow.CodacyAnalysisState) is { } codacyChip)
+								{
+									<span class="breadcrumb-sep">|</span>
+									<span class="git-unknown-badge" title="@CodacyAnalysisChipTooltip(_selectedRow)">⟳ @codacyChip</span>
+								}
 								@if (_selectedCategory is not null)
 								{
 									<span class="breadcrumb-sep">›</span>
@@ -1195,6 +1204,11 @@ else
 			if (newRow is not null)
 			{
 				_ = RefreshSelectedRowGitStatusAsync(newRow);
+
+				// Codacy's analysis state for the same reason, and it is the more perishable of the
+				// two: an analysis that started since the last sweep is invisible to anything captured
+				// during it, and the grades in the panel below are what it is about to replace.
+				_ = RefreshSelectedRowCodacyStateAsync(newRow);
 			}
 		}
 		else
@@ -1225,6 +1239,28 @@ else
 		}
 
 		// Clicking through the tree quickly can leave this arriving after the selection moved on.
+		if (ReferenceEquals(_selectedRow, row))
+		{
+			await InvokeAsync(StateHasChanged);
+		}
+	}
+
+	// Where Codacy's analysis of the selected repository stands, read now rather than trusted from
+	// the last assessment. Fire-and-forget: it is one HTTP call and the pane must not wait on it.
+	private async Task RefreshSelectedRowCodacyStateAsync(RepositoryDashboardRow row)
+	{
+		try
+		{
+			await Dashboard.RefreshCodacyAnalysisStateAsync(row);
+		}
+		catch (Exception ex)
+		{
+			// An unreadable state costs the chip and nothing else. It must not become an error in
+			// front of the reader, and it must not overwrite what was already known.
+			Logger.LogWarning(ex, "Could not read Codacy analysis state for {Repository}", row.RepositoryFullName);
+			return;
+		}
+
 		if (ReferenceEquals(_selectedRow, row))
 		{
 			await InvokeAsync(StateHasChanged);
@@ -4952,6 +4988,27 @@ else
 	/// </summary>
 	private string UnconfirmedSyncBadgeTooltip
 		=> $"{SyncBadgeTooltip("Was in sync with origin")} — not confirmed since. Sync to check.";
+
+	/// <summary>
+	/// What the Codacy chip means: an analysis is running, so the grades below it are being replaced.
+	/// </summary>
+	/// <remarks>
+	/// Dated for the same reason the sync badge is — the state was read when the repository was
+	/// selected, and an undated claim about a running process is the defect this chip exists to fix.
+	/// </remarks>
+	private static string CodacyAnalysisChipTooltip(RepositoryDashboardRow row)
+	{
+		var tooltip = "Codacy is analysing this repository — the grades shown below are being replaced";
+
+		if (row.CodacyAnalysisState?.AnalysedSha is { } sha)
+		{
+			tooltip += $". Currently showing commit {(sha.Length > 7 ? sha[..7] : sha)}";
+		}
+
+		return row.CodacyStateCheckedAtUtc is { } checkedAt
+			? $"{tooltip}. Read at {checkedAt:HH:mm:ss} UTC"
+			: tooltip;
+	}
 
 	/// <summary>
 	/// What a repository publishes, for the breadcrumb: the version when there is one package, and the
