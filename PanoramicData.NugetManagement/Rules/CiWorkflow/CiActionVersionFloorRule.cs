@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
 
@@ -37,7 +36,6 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 	/// </summary>
 	private const string _governedActionsKey = "governed_actions";
 
-	private static readonly string[] _workflowGlobs = [".github/workflows/*.yml", ".github/workflows/*.yaml"];
 
 	/// <inheritdoc />
 	public override string RuleId => _ruleId;
@@ -185,9 +183,9 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 				Data = new()
 				{
 					["remediation_type"] = "replace_regex_in_files",
-					["globs"] = _workflowGlobs,
-					["patterns"] = behind.Select(b => PatternFor(b.Action, b.Floor)).ToArray(),
-					["replacements"] = behind.Select(b => $"${{1}}{b.Floor}").ToArray(),
+					["globs"] = ActionUsesPattern.WorkflowGlobs,
+					["patterns"] = behind.Select(b => ActionUsesPattern.Below(b.Action, b.Floor)).ToArray(),
+					["replacements"] = behind.Select(b => ActionUsesPattern.Replacement(b.Floor)).ToArray(),
 					[_governedActionsKey] = behind.Select(b => b.Action).ToArray()
 				}
 			}));
@@ -199,33 +197,4 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 	/// <summary>Path comparison that does not care which slash a context happened to use.</summary>
 	private static string Normalise(string path) => path.Replace('\\', '/');
 
-	/// <summary>
-	/// Matches every pinned version of an action that is <em>below</em> the floor, sub-actions
-	/// included: one pattern rewrites <c>github/codeql-action/init@v2</c> and
-	/// <c>github/codeql-action/analyze@v2</c> alike, because the sub-actions carry the repository's
-	/// version rather than one of their own.
-	/// </summary>
-	/// <remarks>
-	/// The majors below the floor are listed out rather than matched as <c>v\d+</c>, because a pattern
-	/// that matches any version rewrites <em>every</em> version — so a workflow already on v9 would be
-	/// dragged back to a floor of v7 by a fix aimed at a different workflow on v3. A rule that is
-	/// careful to treat being ahead as compliant must not then have a remediation that levels
-	/// everything to the average.
-	/// <para>
-	/// The trailing lookahead is what stops <c>v1</c> matching the first character of <c>v16</c>: with
-	/// the alternation alone, a floor of v7 would rewrite v10 and v70 as though they were behind.
-	/// </para>
-	/// </remarks>
-	/// <param name="action">The action to rewrite.</param>
-	/// <param name="floorSpec">
-	/// The floor, as a spec like <c>v7</c>. Never <c>v0</c> here: a rule that only fails when a usage
-	/// is below the floor cannot fail at a floor of zero, so the alternation is never empty.
-	/// </param>
-	private static string PatternFor(string action, string floorSpec)
-	{
-		var floor = GitHubActionVersion.ParseMajor(floorSpec);
-		var below = string.Join('|', Enumerable.Range(0, floor));
-
-		return $@"({Regex.Escape(action)}(?:/[A-Za-z0-9_.-]+)*@)v(?:{below})(?:\.\d+)*(?![\d.])";
-	}
 }
