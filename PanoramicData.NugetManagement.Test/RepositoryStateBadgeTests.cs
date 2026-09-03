@@ -1,3 +1,4 @@
+using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Services;
 
@@ -94,5 +95,48 @@ public class RepositoryStateBadgeTests(ITestOutputHelper output) : TestWithOutpu
 			.Should().Be(NavTreeDataProvider.BuildRepositoryIconCss(plain),
 				"the glyph answers how the repository scores against the rules, and git state is not "
 				+ "a rule");
+	}
+
+	[Fact]
+	public void TheCodacyChip_SaysHowFarThroughTheAnalysisIs()
+	{
+		RepositoryStateBadges.CodacyAnalysisChip(new CodacyAnalysisState
+		{
+			IsAnalysing = true,
+			ProgressPercent = 60,
+			RetrievedAtUtc = DateTimeOffset.UtcNow
+		}).Should().Be("Codacy analysing 60%");
+	}
+
+	[Fact]
+	public void TheCodacyChip_OmitsAPercentageCodacyDidNotGive()
+	{
+		// A hard-coded 0% would read as an analysis that has stalled.
+		RepositoryStateBadges.CodacyAnalysisChip(new CodacyAnalysisState
+		{
+			IsAnalysing = true,
+			ProgressPercent = null,
+			RetrievedAtUtc = DateTimeOffset.UtcNow
+		}).Should().Be("Codacy analysing");
+	}
+
+	[Fact]
+	public void TheCodacyChip_IsAbsentWhenNoAnalysisIsRunning()
+	{
+		// Forty-odd repositories are current at any time. A permanent chip is noise.
+		RepositoryStateBadges.CodacyAnalysisChip(new CodacyAnalysisState
+		{
+			IsAnalysing = false,
+			AnalysedSha = "abc1234",
+			RetrievedAtUtc = DateTimeOffset.UtcNow
+		}).Should().BeNull();
+	}
+
+	[Fact]
+	public void TheCodacyChip_IsAbsentWhenTheStateIsUnknown()
+	{
+		// Not knowing is not the same as knowing an analysis is running, and a chip would assert the
+		// latter.
+		RepositoryStateBadges.CodacyAnalysisChip(null).Should().BeNull();
 	}
 }

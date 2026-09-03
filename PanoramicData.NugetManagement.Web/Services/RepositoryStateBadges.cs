@@ -1,3 +1,4 @@
+using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Web.Models;
 
 namespace PanoramicData.NugetManagement.Web.Services;
@@ -19,6 +20,33 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// </remarks>
 public static class RepositoryStateBadges
 {
+	/// <summary>
+	/// The header chip shown while Codacy is part-way through an analysis, or null when there is
+	/// nothing to say.
+	/// </summary>
+	/// <param name="state">
+	/// Where Codacy's analysis had got to, or null when that could not be established.
+	/// </param>
+	/// <remarks>
+	/// Null in every case but an analysis actually running, and deliberately so: forty-odd
+	/// repositories are current at any time, and a chip on all of them is noise that trains the reader
+	/// to ignore the one that matters. An unknown state is also null — not knowing an analysis is
+	/// running is not the same as knowing one is, and a chip would assert the latter.
+	/// </remarks>
+	public static string? CodacyAnalysisChip(CodacyAnalysisState? state)
+	{
+		if (state is not { IsAnalysing: true })
+		{
+			return null;
+		}
+
+		// A missing percentage is left out rather than shown as 0%, which reads as an analysis that
+		// has stalled.
+		return state.ProgressPercent is { } percent
+			? $"Codacy analysing {percent}%"
+			: "Codacy analysing";
+	}
+
 	/// <summary>
 	/// The git badge, worst-first: no clone at all, then uncommitted work, then drift from origin,
 	/// then an unread sync state, and only then clean.

@@ -71,6 +71,10 @@ public class LocalRepositoryContextBuilder
 	/// The CI run for <paramref name="latestTag"/>, when known. Lets CI-11 stay quiet about a release
 	/// that is still in flight and gives CI-13 its subject.
 	/// </param>
+	/// <param name="headSha">
+	/// The commit HEAD points at, when known. Lets CQ-06 tell grades measured on the checked-out
+	/// commit from grades Codacy measured on an older one.
+	/// </param>
 	public RepositoryContext Build(
 		string localPath,
 		string repositoryFullName,
@@ -79,7 +83,8 @@ public class LocalRepositoryContextBuilder
 		string? currentBranch = null,
 		string? latestTag = null,
 		string? latestPublishedVersion = null,
-		ReleaseRun? releaseRun = null)
+		ReleaseRun? releaseRun = null,
+		string? headSha = null)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]
@@ -98,6 +103,7 @@ public class LocalRepositoryContextBuilder
 			Name = repoName,
 			DefaultBranch = defaultBranch,
 			CurrentBranch = currentBranch,
+			HeadSha = headSha,
 			Options = options,
 			FilePaths = filePaths,
 			FileContents = fileContents,

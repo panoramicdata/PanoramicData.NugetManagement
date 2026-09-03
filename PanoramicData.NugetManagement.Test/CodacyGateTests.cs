@@ -109,10 +109,101 @@ public class CodacyGateTests(ITestOutputHelper output) : TestWithOutput(output)
 		result.Passed.Should().BeTrue();
 	}
 
+	[Fact]
+	public async Task ShouldNameTheLastAnalysedCommit_WhenCodacyHasAnalysedTheRepository()
+	{
+		// "Codacy is configured and has analysed main" is an undated claim. Which commit, and when, is
+		// the fact a reader needs to know whether the grades in CQ-06 are worth acting on.
+		var result = await Rule(Report(
+			isTracked: true,
+			state: Analysed("abc1234def567"),
+			Graded("src/A.cs", "A")))
+			.EvaluateAsync(CreateContext(withBadge: false, withApiToken: true), TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeTrue();
+		result.Message.Should().Contain("abc1234");
+	}
+
+	[Fact]
+	public async Task ShouldStillPassAndSaySoWhenAnAnalysisIsInFlight()
+	{
+		// A running analysis is not a configuration problem — the integration is working, which is all
+		// this rule asks. It must not fail, and it must say what is happening.
+		var result = await Rule(Report(isTracked: true, state: Analysing(), Graded("src/A.cs", "A")))
+			.EvaluateAsync(CreateContext(withBadge: false, withApiToken: true), TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeTrue();
+		result.Message.Should().Contain("re-analysing");
+	}
+
+	[Fact]
+	public async Task ShouldSayNothingAboutTheCommit_WhenTheAnalysisStateIsUnavailable()
+	{
+		var result = await Rule(Report(isTracked: true, state: null, Graded("src/A.cs", "A")))
+			.EvaluateAsync(CreateContext(withBadge: false, withApiToken: true), TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeTrue();
+		result.Message.Should().NotContain("commit");
+	}
+
+	[Fact]
+	public async Task ShouldNotBlameTheIntegration_WhenTheFirstAnalysisIsStillRunning()
+	{
+		// A repository added minutes ago has nothing graded yet, and this rule read that as "analysed
+		// nothing" and told the reader to go and run an analysis that was already running. Waiting is
+		// not a misconfiguration.
+		var result = await Rule(Report(isTracked: true, state: Analysing()))
+			.EvaluateAsync(CreateContext(withBadge: false, withApiToken: true), TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeTrue("an analysis in flight proves the integration works");
+		result.Message.Should().Contain("re-analysing");
+	}
+
+	[Fact]
+	public async Task ShouldStillBlameTheIntegration_WhenNothingIsRunningAndNothingIsGraded()
+	{
+		// The original finding has to survive: a repository added and left unanalysed is a real
+		// problem, and an in-flight analysis is the only thing that excuses it.
+		var result = await Rule(Report(isTracked: true, state: Analysed("abc1234")))
+			.EvaluateAsync(CreateContext(withBadge: false, withApiToken: true), TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("analysed nothing");
+	}
+
+	private static CodacyAnalysisState Analysed(string sha)
+		=> new()
+		{
+			IsAnalysing = false,
+			AnalysedSha = sha,
+			AnalysedAtUtc = DateTimeOffset.UtcNow.AddHours(-3),
+			RetrievedAtUtc = DateTimeOffset.UtcNow
+		};
+
+	private static CodacyAnalysisState Analysing()
+		=> new()
+		{
+			IsAnalysing = true,
+			ProgressPercent = 60,
+			StartedAt = DateTimeOffset.UtcNow.AddMinutes(-4),
+			RetrievedAtUtc = DateTimeOffset.UtcNow
+		};
+
 	private static CodacyConfiguredRule Rule(ICodacyFileGradeService service) => new(service);
 
 	private static ICodacyFileGradeService Report(bool isTracked, params CodacyFileGrade[] files)
 		=> new FakeService(new CodacyFileGradeReport { IsTracked = isTracked, Files = files });
+
+	private static ICodacyFileGradeService Report(
+		bool isTracked,
+		CodacyAnalysisState? state,
+		params CodacyFileGrade[] files)
+		=> new FakeService(new CodacyFileGradeReport
+		{
+			IsTracked = isTracked,
+			Files = files,
+			AnalysisState = state
+		});
 
 	private static CodacyFileGrade Graded(string path, string gradeLetter)
 		=> new() { Path = path, GradeLetter = gradeLetter, Grade = 100 };

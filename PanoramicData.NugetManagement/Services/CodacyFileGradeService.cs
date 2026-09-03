@@ -52,9 +52,25 @@ public sealed class CodacyFileGradeService : ICodacyFileGradeService
 		var files = await ListFilesAsync(client, organizationName, repositoryName, branch, cancellationToken)
 			.ConfigureAwait(false);
 
+		// What the grades describe. Fetched here rather than in the rules because it is the same
+		// question about the same response, and asking it twice would double the calls for CQ-03 and
+		// CQ-06 and let the two disagree about one repository in one panel.
+		Task<CodacyAnalysisState?> AnalysisStateAsync() => CodacyAnalysisStateLookup.ResolveAsync(
+			client,
+			organizationName,
+			repositoryName,
+			branch,
+			DateTimeOffset.UtcNow,
+			cancellationToken);
+
 		if (files is not null)
 		{
-			return new CodacyFileGradeReport { IsTracked = true, Files = files };
+			return new CodacyFileGradeReport
+			{
+				IsTracked = true,
+				Files = files,
+				AnalysisState = await AnalysisStateAsync().ConfigureAwait(false)
+			};
 		}
 
 		// A listing 404 does not establish that the repository was never added — Codacy answered it
@@ -72,14 +88,21 @@ public sealed class CodacyFileGradeService : ICodacyFileGradeService
 			now: DateTimeOffset.UtcNow,
 			cancellationToken: cancellationToken).ConfigureAwait(false);
 
-		return state switch
+		if (state is CodacyTrackingState.NotAdded)
 		{
-			CodacyTrackingState.NotAdded => new CodacyFileGradeReport { IsTracked = false },
-			CodacyTrackingState.Listed => new CodacyFileGradeReport { IsTracked = true, Files = files ?? [] },
+			// Never added, so there is no analysis to describe and no call worth making.
+			return new CodacyFileGradeReport { IsTracked = false };
+		}
 
-			// Added, but nothing listed for the branch. CQ-03 reports that as its own failure, which
-			// names the analysis that has not run rather than an integration that was never set up.
-			_ => new CodacyFileGradeReport { IsTracked = true, Files = [] }
+		return new CodacyFileGradeReport
+		{
+			IsTracked = true,
+
+			// Added, but nothing listed for the branch, means no files. CQ-03 reports that as its own
+			// failure, which names the analysis that has not run rather than an integration that was
+			// never set up — and the analysis state is exactly what tells it whether one is running now.
+			Files = state is CodacyTrackingState.Listed ? files ?? [] : [],
+			AnalysisState = await AnalysisStateAsync().ConfigureAwait(false)
 		};
 	}
 

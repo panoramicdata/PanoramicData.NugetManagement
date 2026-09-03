@@ -31,6 +31,17 @@ public class RepositoryContext
 	public string? CurrentBranch { get; init; }
 
 	/// <summary>
+	/// The commit HEAD points at in the local clone, or null when it is unknown — the repository is
+	/// not cloned locally, or git could not be read.
+	/// </summary>
+	/// <remarks>
+	/// Lets CQ-06 tell grades measured on the checked-out commit from grades measured on an older one.
+	/// Null keeps that comparison unmade rather than guessed: a staleness we cannot see is not a
+	/// staleness we should report.
+	/// </remarks>
+	public string? HeadSha { get; init; }
+
+	/// <summary>
 	/// The per-repo options (may be default).
 	/// </summary>
 	public required RepoOptions Options { get; init; }
