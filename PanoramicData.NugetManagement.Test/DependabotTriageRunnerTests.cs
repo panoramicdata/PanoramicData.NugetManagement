@@ -121,12 +121,13 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 			CreatedAtUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
 		};
 
+		var bump = new DependabotBump(new DependencyRef(ecosystem, dependencyName), "2", "4", null);
+
 		var proposal = verdict == DependabotVerdict.Unrecognised
 			? null
-			: new DependabotProposal(
-				number,
-				[new DependabotBump(new DependencyRef(ecosystem, dependencyName), "2", "4", null)],
-				url);
+			: new DependabotProposal(number, [bump], url);
+
+		var isGap = verdict == DependabotVerdict.ValidUncovered && isRuleSetGap;
 
 		return new DependabotTriage(
 			issue,
@@ -134,7 +135,12 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 			verdict,
 			"because this test says so",
 			coveringRuleId,
-			IsRuleSetGap: verdict == DependabotVerdict.ValidUncovered && isRuleSetGap);
+			IsRuleSetGap: isGap,
+
+			// A gap verdict has to name the bumps that are the gap. The runner raises one issue per
+			// named bump, so a gap carrying none raises nothing at all — which is the right behaviour
+			// and the wrong test.
+			GapBumpsOrNull: isGap ? [bump] : null);
 	}
 
 	/// <summary>

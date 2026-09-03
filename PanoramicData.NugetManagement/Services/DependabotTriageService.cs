@@ -21,6 +21,10 @@ namespace PanoramicData.NugetManagement.Services;
 /// <param name="IsRuleSetGap">
 /// Whether this is a gap in the rule set rather than a rule that simply has nothing to say today.
 /// </param>
+/// <param name="GapBumpsOrNull">
+/// Backing for <see cref="GapBumps"/>. Positional so the record stays positional; read through the
+/// property, which normalizes null to empty.
+/// </param>
 /// <remarks>
 /// <see cref="IsRuleSetGap"/> is what decides whether an issue is raised. Both it and
 /// <see cref="DependabotVerdict.ValidUncovered"/> mean "no fix is coming for this right now", but only
@@ -35,7 +39,20 @@ public sealed record DependabotTriage(
 	DependabotVerdict Verdict,
 	string Reason,
 	string? CoveringRuleId,
-	bool IsRuleSetGap = false);
+	bool IsRuleSetGap = false,
+	IReadOnlyList<DependabotBump>? GapBumpsOrNull = null)
+{
+	/// <summary>
+	/// The bumps in this pull request that nothing governs, or that are governed by a rule which never
+	/// reads where they are declared. Empty unless <see cref="IsRuleSetGap"/>.
+	/// </summary>
+	/// <remarks>
+	/// A grouped pull request can be part covered and part gap, and only the gap half is somebody's
+	/// work. Raising an issue for the covered half would be raising one against a fix that is already
+	/// queued.
+	/// </remarks>
+	public IReadOnlyList<DependabotBump> GapBumps => GapBumpsOrNull ?? [];
+}
 
 /// <summary>
 /// Decides what to do about each of a repository's open Dependabot pull requests.
@@ -102,70 +119,103 @@ public sealed class DependabotTriageService
 				null);
 		}
 
-		// Task 4 folds this over every bump. Reading only the first keeps the existing
-		// single-dependency behaviour exactly as it was while the model reshape lands on its own.
-		var bump = proposal.Bumps[0];
+		// Bumps already done drop out: a group of three where two are satisfied should be judged on the
+		// one that is not.
+		var outstanding = proposal.Bumps
+			.Where(bump => !IsSatisfied(bump, packages, actionUsages))
+			.ToList();
 
-		if (IsSatisfied(bump, packages, actionUsages))
+		if (outstanding.Count == 0)
 		{
 			return new DependabotTriage(
 				issue,
 				proposal,
 				DependabotVerdict.AlreadySatisfied,
-				$"{bump.Dependency.Name} is already declared at {bump.ToVersion} or above, so "
+				$"{Describe(proposal.Bumps)} already declared at the proposed version or above, so "
 					+ "merging this would change nothing.",
 				null);
 		}
 
-		var coveringRuleId = CoveringRuleId(bump.Dependency, ruleResults, canRemediate);
+		// Covered before anything else: if a failing rule is already going to move a dependency, letting
+		// the rule do it keeps one mechanism responsible for one change, and the estate floors and rule
+		// thresholds keep deciding the target version rather than Dependabot.
+		var covering = outstanding
+			.Select(bump => CoveringRuleId(bump.Dependency, ruleResults, canRemediate))
+			.ToList();
 
-		if (coveringRuleId is not null)
+		if (covering.TrueForAll(ruleId => ruleId is not null))
 		{
 			return new DependabotTriage(
 				issue,
 				proposal,
 				DependabotVerdict.ValidCovered,
-				$"Still outstanding, and {coveringRuleId} is failing with a remediation that will move "
-					+ $"{bump.Dependency.Name} at least this far.",
-				coveringRuleId);
+				$"Still outstanding, and {string.Join(", ", covering.Distinct())} failing with a "
+					+ $"remediation that will move {Describe(outstanding)} at least this far.",
+				covering[0]);
 		}
 
-		// Nothing will move it today. Whether that is a gap in the rule set or a rule that has nothing
-		// to say today is a different question, and only the first is anybody's work.
-		var governingRuleId = GoverningRuleId(bump.Dependency, canRemediate);
+		// Nothing failing will move all of it. Whether that is a gap in the rule set or a rule that has
+		// nothing to say today is a different question, and only the first is anybody's work.
+		var gaps = outstanding
+			.Where(bump => IsGap(bump, packages, actionUsages, canRemediate))
+			.ToList();
 
-		if (governingRuleId is null)
+		if (gaps.Count > 0)
 		{
 			return new DependabotTriage(
 				issue,
 				proposal,
 				DependabotVerdict.ValidUncovered,
-				$"Still outstanding, and no rule governs {bump.Dependency.Name} at all, so nothing "
-					+ "here can fix it automatically.",
+				$"Still outstanding, and nothing here can ever move {Describe(gaps)} — no rule governs "
+					+ "it, or the rule that claims it never reads where it is declared.",
 				null,
-				IsRuleSetGap: true);
+				IsRuleSetGap: true,
+				GapBumpsOrNull: gaps);
 		}
 
-		if (!IsObserved(bump.Dependency, packages, actionUsages))
-		{
-			return new DependabotTriage(
-				issue,
-				proposal,
-				DependabotVerdict.ValidUncovered,
-				$"Still outstanding, and {governingRuleId} claims {bump.Dependency.Name} but never "
-					+ "reads where it is declared, so no failure of it can ever move this.",
-				null,
-				IsRuleSetGap: true);
-		}
+		var idle = outstanding
+			.Where((_, index) => covering[index] is null)
+			.ToList();
 
 		return new DependabotTriage(
 			issue,
 			proposal,
 			DependabotVerdict.ValidUncovered,
-			$"Still outstanding, and {governingRuleId} governs {bump.Dependency.Name} but is not "
-				+ "failing for it at the moment, so nothing is queued to move it right now.",
+			$"Still outstanding, and {Describe(idle)} governed by a rule that is not failing for it at "
+				+ "the moment, so nothing is queued to move it right now.",
 			null);
 	}
+
+	/// <summary>
+	/// Whether nothing here can ever move this bump: no rule governs it, or one claims it but never
+	/// reads where it is declared.
+	/// </summary>
+	private bool IsGap(
+		DependabotBump bump,
+		List<PackageVersionReference> packages,
+		List<ActionUsage> actionUsages,
+		Func<string, bool> canRemediate)
+		=> GoverningRuleId(bump.Dependency, canRemediate) is null
+			|| !IsObserved(bump.Dependency, packages, actionUsages);
+
+	/// <summary>
+	/// Names bumps for a sentence a human reads: "Serilog", "Serilog and Refit", or "Serilog, Refit
+	/// and 2 others".
+	/// </summary>
+	/// <remarks>
+	/// Every reason sentence names which dependency drove the verdict. A grouped pull request reported
+	/// as a gap with no indication of <em>which</em> of its three dependencies is the gap is a sentence
+	/// that sends somebody back to GitHub to find out.
+	/// </remarks>
+	private static string Describe(IReadOnlyList<DependabotBump> bumps)
+		=> bumps.Count switch
+		{
+			0 => "nothing",
+			1 => $"{bumps[0].Dependency.Name} is",
+			2 => $"{bumps[0].Dependency.Name} and {bumps[1].Dependency.Name} are",
+			_ => string.Join(", ", bumps.Take(2).Select(b => b.Dependency.Name))
+				+ $" and {bumps.Count - 2} other{(bumps.Count == 3 ? string.Empty : "s")} are"
+		};
 
 	/// <summary>
 	/// Whether the repository already declares the target version or better, everywhere it declares

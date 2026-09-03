@@ -130,8 +130,10 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 					onOutput($"↺ #{triage.Issue.Number} left open: {triage.Reason}");
 					break;
 
+				// One sighting per bump that is nobody's job, not per pull request. A grouped pull request
+				// that is part covered and part gap raises an issue only for the gap half.
 				case DependabotVerdict.ValidUncovered when triage.Proposal is { } proposal:
-					foreach (var bump in proposal.Bumps)
+					foreach (var bump in triage.GapBumps)
 					{
 						if (!uncovered.TryGetValue(bump.Dependency, out var sightings))
 						{
