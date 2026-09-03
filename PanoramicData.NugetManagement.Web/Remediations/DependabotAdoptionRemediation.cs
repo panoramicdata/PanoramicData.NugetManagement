@@ -13,12 +13,15 @@ namespace PanoramicData.NugetManagement.Web.Remediations;
 /// so there is one implementation of "move a package version" and one of "move an action pin", and
 /// adoption cannot drift from what the rules do.
 /// <para>
-/// Deliberately <em>not</em> registered in <c>RemediationRegistry</c>. That registry is keyed by rule
-/// id and triage's own coverage predicate reads it — registering this under a pretend rule id would
-/// have it answer "yes, a remediation exists" for a rule that does not exist, and would surface in
-/// the registry-coverage and self-assessment suites as a rule with no rule.
+/// Deliberately <em>not</em> registered in <see cref="RemediationRegistry"/>, which is why the
+/// attribute is there: the registry discovers every <see cref="IRemediation"/> in the assembly by
+/// reflection, so opting out has to be explicit. It is keyed by rule id and triage's own coverage
+/// predicate reads it, and registering this under an id that is not a rule would put a non-rule into
+/// <see cref="RemediationRegistry.RegisteredRuleIds"/> for everything comparing the registry against
+/// the rule set to trip over.
 /// </para>
 /// </remarks>
+[UnregisteredRemediation]
 public sealed class DependabotAdoptionRemediation : DataDrivenRemediation
 {
 	/// <summary>

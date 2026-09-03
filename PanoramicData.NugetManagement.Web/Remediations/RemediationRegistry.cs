@@ -18,6 +18,10 @@ public sealed class RemediationRegistry
 		_remediations = typeof(RemediationRegistry).Assembly
 			.GetTypes()
 			.Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IRemediation).IsAssignableFrom(t))
+
+			// A remediation no rule owns has no business being keyed by rule id. See
+			// UnregisteredRemediationAttribute.
+			.Where(t => !t.IsDefined(typeof(UnregisteredRemediationAttribute), inherit: false))
 			.Select(t => (IRemediation)Activator.CreateInstance(t)!)
 			.ToDictionary(r => r.RuleId, StringComparer.OrdinalIgnoreCase);
 	}
