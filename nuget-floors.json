@@ -340,7 +340,7 @@
   "Whois": "3.0.1",
   "WordPressPCL": "3.0.0",
   "xunit": "2.9.3",
-  "xunit.analyzers": "1.27.0",
+  "xunit.analyzers": "2.0.0",
   "Xunit.Microsoft.DependencyInjection": "10.1.0",
   "xunit.runner.visualstudio": "4.0.0",
   "xunit.v3": "4.0.0",
