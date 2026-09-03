@@ -57,6 +57,10 @@ internal static class RuleAssessmentIsolation
 	{
 		NuGetVersionCache.Default = new NuGetVersionCache(null);
 		NuGetFloorCatalog.Default = new NuGetFloorCatalog(null);
+		// PKG-05/06/07 read the owned-package list to decide which packages get no grace period. Left
+		// on the committed file, a test asserting the grace period would depend on whether the estate
+		// happens to publish the package it names.
+		NuGetOwnedPackageCatalog.Default = new NuGetOwnedPackageCatalog(null);
 		// CI-12 observes every action in every workflow of every repository a test assesses, so
 		// without this the committed action-versions.json would gain an entry for each one.
 		ActionVersionCatalog.Default = new ActionVersionCatalog(null);

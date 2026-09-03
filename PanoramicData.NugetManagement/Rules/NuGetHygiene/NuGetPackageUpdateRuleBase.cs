@@ -60,13 +60,18 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 	private readonly NuGetVersionCache _cache;
 	private readonly NuGetFloorCatalog _floors;
 	private readonly TimeProvider _timeProvider;
+	private readonly NuGetOwnedPackageCatalog _owned;
 
 	/// <summary>
 	/// Initializes a new instance using the shared stores. This is the constructor
 	/// <see cref="RuleRegistry"/> uses, via <c>Activator.CreateInstance</c>.
 	/// </summary>
 	protected NuGetPackageUpdateRuleBase()
-		: this(NuGetVersionCache.Default, NuGetFloorCatalog.Default, TimeProvider.System)
+		: this(
+			NuGetVersionCache.Default,
+			NuGetFloorCatalog.Default,
+			TimeProvider.System,
+			NuGetOwnedPackageCatalog.Default)
 	{
 	}
 
@@ -76,14 +81,36 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 	/// <param name="cache">The committed upstream snapshot.</param>
 	/// <param name="floors">The estate-learned floors.</param>
 	/// <param name="timeProvider">The clock the grace period is measured against.</param>
+	/// <remarks>
+	/// Every package is somebody else's, so the grace period applies to all of them. Tests about our
+	/// own packages use the overload that takes a catalogue; every other test keeps the behaviour it
+	/// was written against.
+	/// </remarks>
 	protected NuGetPackageUpdateRuleBase(
 		NuGetVersionCache cache,
 		NuGetFloorCatalog floors,
 		TimeProvider timeProvider)
+		: this(cache, floors, timeProvider, new NuGetOwnedPackageCatalog(null))
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance with explicit stores, clock and owned-package list, for tests.
+	/// </summary>
+	/// <param name="cache">The committed upstream snapshot.</param>
+	/// <param name="floors">The estate-learned floors.</param>
+	/// <param name="timeProvider">The clock the grace period is measured against.</param>
+	/// <param name="owned">The packages the estate publishes itself.</param>
+	protected NuGetPackageUpdateRuleBase(
+		NuGetVersionCache cache,
+		NuGetFloorCatalog floors,
+		TimeProvider timeProvider,
+		NuGetOwnedPackageCatalog owned)
 	{
 		_cache = cache;
 		_floors = floors;
 		_timeProvider = timeProvider;
+		_owned = owned;
 	}
 
 	/// <inheritdoc />
@@ -155,9 +182,18 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 			var age = now - snapshot.Published;
 			var entry = $"{reference.PackageId} {current.ToNormalizedString()} → {snapshot.LatestVersion} ({reference.FilePath})";
 
-			if (age.TotalDays > GraceDays)
+			// A release of ours gets no grace. The grace period exists so that a verdict is not handed
+			// to whoever published this morning; when we published it, there is nobody else to wait on,
+			// and waiting is how a Dependabot pull request bumping one of our own packages sits open for
+			// a month with no failing rule queued to move it.
+			var isOurs = _owned.Contains(reference.PackageId);
+			var graceDays = isOurs ? 0 : GraceDays;
+
+			if (age.TotalDays > graceDays)
 			{
-				behindUpstream.Add($"{entry}, published {age.Days} days ago");
+				behindUpstream.Add(isOurs
+					? $"{entry}, published {age.Days} days ago and we publish it, so it has no grace period"
+					: $"{entry}, published {age.Days} days ago");
 				updates.Add(SerializeUpdate(reference, snapshot.LatestVersion));
 				governed.Add(reference.PackageId);
 			}
@@ -191,7 +227,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 			new RuleAdvisory
 			{
 				Summary = $"Update the listed packages to at least the version the estate already uses, and adopt {UpdateLevelDisplayName} releases within {GraceDays} days.",
-				Detail = $"A package below the estate floor is behind a version another repository of ours already runs. A package past its {GraceDays}-day grace period has been behind a published release for too long. Update the listed versions in `Directory.Packages.props` or the affected project files.",
+				Detail = $"A package below the estate floor is behind a version another repository of ours already runs. A package past its {GraceDays}-day grace period has been behind a published release for too long, and a package the estate publishes itself has no grace period at all. Update the listed versions in `Directory.Packages.props` or the affected project files.",
 				Data = new()
 				{
 					["remediation_type"] = "update_package_versions",
