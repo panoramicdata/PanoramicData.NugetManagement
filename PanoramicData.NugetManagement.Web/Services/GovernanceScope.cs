@@ -79,6 +79,7 @@ public static class GovernanceScope
 		row.SlnxPath = null;
 		row.CurrentBranch = null;
 		row.IsWorkingTreeClean = null;
+		row.HasUnpushedCommits = null;
 		row.IsSyncedWithOrigin = null;
 		row.SyncStatusCheckedAtUtc = null;
 	}

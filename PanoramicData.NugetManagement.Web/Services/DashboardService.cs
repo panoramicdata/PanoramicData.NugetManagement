@@ -126,6 +126,10 @@ public class DashboardService
 				row.IsWorkingTreeClean = await _localRepo
 					.IsWorkingTreeCleanAsync(row.RepositoryFullName, cancellationToken)
 					.ConfigureAwait(false);
+
+				row.HasUnpushedCommits = await _localRepo
+					.HasUnpushedCommitsAsync(row.RepositoryFullName, cancellationToken)
+					.ConfigureAwait(false);
 			}
 		}
 
@@ -304,12 +308,14 @@ public class DashboardService
 				// unknown branch and every local action refusing to run until something else filled it in.
 				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 				row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+				row.HasUnpushedCommits = await _localRepo.HasUnpushedCommitsAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			}
 			else
 			{
 				// Everything below was read out of a checkout that is no longer there.
 				row.CurrentBranch = null;
 				row.IsWorkingTreeClean = null;
+				row.HasUnpushedCommits = null;
 				row.IsSyncedWithOrigin = null;
 				row.SyncStatusCheckedAtUtc = null;
 				row.LatestTag = null;
@@ -1296,6 +1302,8 @@ public class DashboardService
 			// fetch is needed to know it — but it is knowledge with an age, like any other.
 			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+			// Same reasoning: what was here has just gone to origin, so there is nothing left ahead of it.
+			row.HasUnpushedCommits = false;
 			row.IsSyncedWithOrigin = true;
 			row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
 		}
@@ -1834,14 +1842,15 @@ public class DashboardService
 
 		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.HasUnpushedCommits = await _localRepo.HasUnpushedCommitsAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		row.IsSyncedWithOrigin = await _localRepo.IsSyncedWithOriginAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
 		row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
-	/// Refreshes only the git facts that can be read without contacting the remote: the current branch
-	/// and whether the working tree is clean.
+	/// Refreshes only the git facts that can be read without contacting the remote: the current branch,
+	/// whether the working tree is clean, and whether anything is committed but not yet pushed.
 	/// </summary>
 	/// <remarks>
 	/// Separate from <see cref="RefreshGitStatusAsync"/> because that one compares against origin, which
@@ -1861,6 +1870,7 @@ public class DashboardService
 
 		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.HasUnpushedCommits = await _localRepo.HasUnpushedCommitsAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>

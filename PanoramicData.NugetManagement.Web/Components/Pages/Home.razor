@@ -294,7 +294,14 @@ else
 								@if (_selectedRow.IsClonedLocally && _currentView != NavView.Settings)
 								{
 									<span class="breadcrumb-sep">|</span>
-									@if (_selectedRow.IsWorkingTreeClean == false)
+									@if (IsSelectedRowPorcelain)
+									{
+										@* One badge in place of "Clean" and "Synced", because for a clone with nothing
+										   uncommitted and nothing to exchange with origin those are one fact, and it is
+										   the fact that decides whether Commit & Push has anything to do. *@
+										<span class="git-clean-badge" title="@PorcelainBadgeTooltip">✨ Porcelain</span>
+									}
+									else if (_selectedRow.IsWorkingTreeClean == false)
 									{
 										<span class="git-dirty-badge" title="Working tree has uncommitted changes">● Dirty</span>
 									}
@@ -302,23 +309,35 @@ else
 									{
 										<span class="git-clean-badge" title="Working tree is clean">● Clean</span>
 									}
+									@if (_selectedRow.HasUnpushedCommits == true)
+									{
+										@* Why a clean clone can still have Commit & Push to do. Without this the button
+										   looks live for no visible reason. *@
+										<span class="git-dirty-badge" title="This clone holds commits that have not been pushed">⬆ Unpushed</span>
+									}
 									@if (_selectedRow.CurrentBranch is not null)
 									{
 										<span class="@(_selectedRow.CurrentBranch == "main" ? "git-clean-badge" : "git-dirty-badge")" title="Current branch">⎇ @_selectedRow.CurrentBranch</span>
 									}
-									@if (_selectedRow.IsSyncedWithOrigin == false)
+									@* Skipped entirely when porcelain: the badge above has already said both halves. *@
+									@if (!IsSelectedRowPorcelain)
 									{
-										<span class="git-dirty-badge" title="@SyncBadgeTooltip("Not in sync with origin")">⇅ Out of sync</span>
-									}
-									else if (IsRecentlyConfirmedInSync(_selectedRow))
-									{
-										<span class="git-clean-badge" title="@SyncBadgeTooltip("In sync with origin")">⇅ Synced</span>
-									}
-									else if (_selectedRow.IsSyncedWithOrigin == true)
-									{
-										@* Same fact the Sync button gates on, so the two cannot contradict each other: while
-										   this shows unconfirmed, Sync is available, and vice versa. *@
-										<span class="git-unknown-badge" title="@UnconfirmedSyncBadgeTooltip">⇅ Synced?</span>
+										@if (_selectedRow.IsSyncedWithOrigin == false)
+										{
+											<span class="git-dirty-badge" title="@SyncBadgeTooltip("Not in sync with origin")">⇅ Out of sync</span>
+										}
+										else if (IsRecentlyConfirmedInSync(_selectedRow))
+										{
+											<span class="git-clean-badge" title="@SyncBadgeTooltip("In sync with origin")">⇅ In sync</span>
+										}
+										else if (_selectedRow.IsSyncedWithOrigin == true)
+										{
+											@* Same fact the Sync button gates on, so the two cannot contradict each other: while
+											   this shows unconfirmed, Sync is available, and vice versa. It says when it was last
+											   true rather than "Synced?", which asked the reader a question instead of answering
+											   one. *@
+											<span class="git-unknown-badge" title="@UnconfirmedSyncBadgeTooltip">⇅ @UnconfirmedSyncBadgeText</span>
+										}
 									}
 									@if (_selectedRow.AllPackagesMatchTag)
 									{
@@ -507,8 +526,8 @@ else
 											 IconCssClass="fas fa-cloud-upload-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
 											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
-											 IsEnabled="@IsLocalStepEnabled(WorkflowStep.CommitAndPush)"
-											 ToolTip="@GatedTooltip(WorkflowStep.CommitAndPush, WorkflowStepTooltip("Commit changes, fetch, rebase and push to origin"))"
+											 IsEnabled="@IsCommitAndPushEnabled()"
+											 ToolTip="@GatedTooltip(WorkflowStep.CommitAndPush, GetCommitAndPushTooltip())"
 											 Click="OnToolbarClick" />
 
 							@if (ShowWorkflowFlow)
@@ -963,6 +982,37 @@ else
 	private AssessmentCategory[] _categories = [];
 	private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
 	private System.Threading.Timer? _autoRefreshTimer;
+
+	// === Working tree watcher ===
+
+	/// <summary>
+	/// Re-reads the selected clone's local git facts on a short cycle, so cleanliness on screen is the
+	/// repository's, not the app's memory of it.
+	/// </summary>
+	/// <remarks>
+	/// Selection already refreshes them once, which is not enough now that Commit &amp; Push greys
+	/// itself out on a clean tree: an editor saving a file, or another tool committing, would otherwise
+	/// leave the button disabled with real work waiting behind it until the user clicked elsewhere and
+	/// back. A poll rather than a <c>FileSystemWatcher</c>, because what matters is git's answer, not
+	/// that a file changed — a build writing to <c>obj</c> fires the watcher and changes nothing, while
+	/// a commit made in a terminal changes everything and touches no watched file.
+	/// </remarks>
+	private System.Threading.Timer? _gitStateWatchTimer;
+
+	/// <summary>
+	/// 0 when no watch read is in flight, 1 when one is. Guards against a slow git piling up behind
+	/// itself on a busy repository.
+	/// </summary>
+	private int _gitStateWatchInFlight;
+
+	/// <summary>
+	/// How often the watcher re-reads the selected clone. Short enough that a save or a commit made
+	/// outside the app shows up while the user is still looking at the toolbar.
+	/// </summary>
+	private static readonly TimeSpan GitStateWatchInterval = TimeSpan.FromSeconds(5);
+
+	// === Dashboard state, continued ===
+
 	private PDTable<RepositoryDashboardRow>? _table;
 	private string _searchText = string.Empty;
 
@@ -1090,6 +1140,14 @@ else
 			null,
 			DashboardCacheService.CacheDuration,
 			DashboardCacheService.CacheDuration);
+
+		// Watches the selected clone's working tree for the whole life of the circuit. It costs nothing
+		// while nothing is selected — the callback returns immediately.
+		_gitStateWatchTimer = new System.Threading.Timer(
+			OnGitStateWatchTimer,
+			null,
+			GitStateWatchInterval,
+			GitStateWatchInterval);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -1228,6 +1286,82 @@ else
 		if (ReferenceEquals(_selectedRow, row))
 		{
 			await InvokeAsync(StateHasChanged);
+		}
+	}
+
+	/// <summary>
+	/// The working tree watcher's tick. Reads the selected clone's git state and repaints only if it
+	/// moved.
+	/// </summary>
+	private void OnGitStateWatchTimer(object? state)
+	{
+		if (_disposed || _selectedRow is not { IsClonedLocally: true })
+		{
+			return;
+		}
+
+		if (Interlocked.CompareExchange(ref _gitStateWatchInFlight, 1, 0) != 0)
+		{
+			return;
+		}
+
+		_ = WatchSelectedRowGitStateAsync();
+	}
+
+	/// <summary>
+	/// One watch read: re-reads the selected row's branch and cleanliness, and repaints only when one
+	/// of them has changed.
+	/// </summary>
+	/// <remarks>
+	/// The "only when changed" is the point. This runs every few seconds for as long as the tab is
+	/// open, and an unconditional <c>StateHasChanged</c> would re-render the whole page — navigation
+	/// tree included — on every tick, which is what makes a tree flicker under a user who is trying to
+	/// read it.
+	/// </remarks>
+	private async Task WatchSelectedRowGitStateAsync()
+	{
+		try
+		{
+			var row = _selectedRow;
+			if (row is not { IsClonedLocally: true })
+			{
+				return;
+			}
+
+			var wasClean = row.IsWorkingTreeClean;
+			var wasUnpushed = row.HasUnpushedCommits;
+			var wasBranch = row.CurrentBranch;
+
+			try
+			{
+				await Dashboard.RefreshLocalGitStatusAsync(row);
+			}
+			catch (Exception ex)
+			{
+				// A failed read is not worth a message: the badges keep their last known values and the
+				// next tick tries again.
+				Logger.LogDebug(ex, "Working tree watch failed for {Repository}", row.RepositoryFullName);
+				return;
+			}
+
+			if (_disposed
+				|| !ReferenceEquals(_selectedRow, row)
+				|| (row.IsWorkingTreeClean == wasClean
+					&& row.HasUnpushedCommits == wasUnpushed
+					&& row.CurrentBranch == wasBranch))
+			{
+				return;
+			}
+
+			await InvokeAsync(StateHasChanged);
+		}
+		catch (ObjectDisposedException)
+		{
+			// The circuit went away mid-read. Nothing to repaint.
+		}
+		finally
+		{
+			Interlocked.Exchange(ref _gitStateWatchInFlight, 0);
 		}
 	}
 
@@ -4921,23 +5055,19 @@ else
 	}
 
 	/// <summary>
-	/// Whether this row was confirmed to match origin recently enough to still act on it.
+	/// Whether this row was confirmed to match origin recently enough to still act on it. See
+	/// <see cref="RepositoryGitState.IsRecentlyConfirmedInSync"/>, which decides it.
 	/// </summary>
-	/// <remarks>
-	/// The age matters because being in sync is not a durable fact — origin can move a moment after the
-	/// check, and nothing tells the app when it does. Disabling Sync on the bare claim would eventually
-	/// strand someone with a button they cannot press and a pull they need, so the claim expires.
-	/// </remarks>
 	private static bool IsRecentlyConfirmedInSync(RepositoryDashboardRow row)
-		=> row.IsSyncedWithOrigin == true
-			&& row.SyncStatusCheckedAtUtc is { } checkedAt
-			&& DateTimeOffset.UtcNow - checkedAt < SyncStatusTrustedFor;
+		=> RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow);
 
 	/// <summary>
-	/// How long a confirmed-in-sync answer is treated as still true. Long enough to cover working
-	/// through the toolbar on one repository, short enough that a stale answer does not block a pull.
+	/// Whether the selected clone has nothing uncommitted and nothing to exchange with origin, as far
+	/// as the last check established. What the Porcelain badge shows and what Commit &amp; Push is
+	/// disabled by — one answer, so the badge and the button cannot disagree.
 	/// </summary>
-	private static readonly TimeSpan SyncStatusTrustedFor = TimeSpan.FromMinutes(5);
+	private bool IsSelectedRowPorcelain
+		=> RepositoryGitState.IsPorcelain(_selectedRow);
 
 	/// <summary>
 	/// Dates the sync badge, so a claim about origin is not read as being about this moment.
@@ -4952,6 +5082,25 @@ else
 	/// </summary>
 	private string UnconfirmedSyncBadgeTooltip
 		=> $"{SyncBadgeTooltip("Was in sync with origin")} — not confirmed since. Sync to check.";
+
+	/// <summary>
+	/// What Porcelain means, and how far it can be trusted. The two local halves are current — the
+	/// watcher re-reads them every few seconds — but "not behind origin" rests on the last fetch, so
+	/// the tooltip dates that half rather than letting one badge imply everything was checked now.
+	/// </summary>
+	private string PorcelainBadgeTooltip
+		=> _selectedRow?.SyncStatusCheckedAtUtc is { } checkedAt
+			? $"Nothing to commit and nothing to push; origin last checked at {checkedAt:HH:mm:ss} UTC"
+			: "Nothing to commit and nothing to push; origin has not been checked";
+
+	/// <summary>
+	/// The label for that same state: when the answer was last true, so the badge reports a dated fact
+	/// rather than putting a question mark on screen for the reader to interpret.
+	/// </summary>
+	private string UnconfirmedSyncBadgeText
+		=> _selectedRow?.SyncStatusCheckedAtUtc is { } checkedAt
+			? $"In sync at {checkedAt:HH:mm} UTC"
+			: "Sync unchecked";
 
 	/// <summary>
 	/// What a repository publishes, for the breadcrumb: the version when there is one package, and the
@@ -6361,6 +6510,33 @@ else
 		return "Open selected repository in IDE";
 	}
 
+	/// <summary>
+	/// Whether Commit &amp; Push has anything to do.
+	/// </summary>
+	/// <remarks>
+	/// Everything <see cref="IsLocalStepEnabled"/> asks of a local step, and then one thing more: a
+	/// porcelain clone has nothing to commit and nothing to push, so the button would queue work whose
+	/// whole output is "nothing to do". The extra test is for one selected repository only — an estate
+	/// press covers dozens, and one porcelain repository among them is no reason to refuse the rest,
+	/// each of which checks its own state when it runs.
+	/// <para>
+	/// Because <see cref="RepositoryGitState.IsPorcelain"/> needs the sync answer to be both positive
+	/// and current, the button comes back on its own once the answer expires — no state can leave it
+	/// greyed out while there is genuinely something to push.
+	/// </para>
+	/// </remarks>
+	private bool IsCommitAndPushEnabled()
+		=> IsLocalStepEnabled(WorkflowStep.CommitAndPush)
+			&& (IsEstateWide || !IsSelectedRowPorcelain);
+
+	/// <summary>
+	/// What Commit &amp; Push would do, or why it is not offering to.
+	/// </summary>
+	private string GetCommitAndPushTooltip()
+		=> !IsEstateWide && IsSelectedRowPorcelain
+			? "Nothing to commit and nothing to push — the working tree is clean and in sync with origin"
+			: WorkflowStepTooltip("Commit changes, fetch, rebase and push to origin");
+
 	private bool IsGitSyncEnabled()
 		=> !_isRunning && _selectedRow?.IsWorkingTreeClean != false;
 
@@ -6455,6 +6631,7 @@ else
 		_laneChangeDebounce.Elapsed -= OnLaneChangeDebounceElapsed;
 		_laneChangeDebounce.Dispose();
 		_autoRefreshTimer?.Dispose();
+		_gitStateWatchTimer?.Dispose();
 		_treeFilterDebounce?.Dispose();
 		_doneClearTimer?.Dispose();
 	}

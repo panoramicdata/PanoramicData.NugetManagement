@@ -109,6 +109,18 @@ public class RepositoryDashboardRow
 	public bool? IsWorkingTreeClean { get; set; }
 
 	/// <summary>
+	/// Whether the clone holds commits its upstream branch does not, or null where there is no clone,
+	/// no upstream to compare against, or the question has not been asked.
+	/// </summary>
+	/// <remarks>
+	/// The other half of "is there anything for Commit &amp; Push to do", alongside
+	/// <see cref="IsWorkingTreeClean"/>: a commit made and not pushed leaves nothing to commit and
+	/// something to send. Read without a fetch, so unlike <see cref="IsSyncedWithOrigin"/> it needs no
+	/// expiry — nothing but this checkout can change it.
+	/// </remarks>
+	public bool? HasUnpushedCommits { get; set; }
+
+	/// <summary>
 	/// The current local branch name.
 	/// </summary>
 	public string? CurrentBranch { get; set; }

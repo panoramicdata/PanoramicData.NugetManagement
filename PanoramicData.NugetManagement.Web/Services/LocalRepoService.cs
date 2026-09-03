@@ -724,6 +724,43 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
+	/// Checks whether the local branch has commits that origin has not, without contacting origin.
+	/// </summary>
+	/// <param name="repoIdentity">The repository.</param>
+	/// <param name="cancellationToken">Cancellation.</param>
+	/// <returns>
+	/// True when HEAD is ahead of the remote-tracking ref, false when it is not, and null when there
+	/// is no clone, no remote-tracking ref, or git would not answer.
+	/// </returns>
+	/// <remarks>
+	/// Deliberately no fetch, unlike <see cref="IsSyncedWithOriginAsync"/>: whether this clone holds
+	/// commits nobody else has is answerable from the refs already on disk, and the answer cannot go
+	/// stale behind the app's back the way "origin has moved on" can — only something done to this
+	/// checkout changes it. That makes it cheap enough to re-read on a few-second cycle, which is what
+	/// lets Commit &amp; Push grey itself out the moment there is nothing left to send.
+	/// </remarks>
+	public async Task<bool?> HasUnpushedCommitsAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
+		// @{u} is the branch's own upstream, whatever it is called — not an assumption that it is
+		// origin/<same name>. A detached HEAD or a branch never pushed has none, and git exits
+		// non-zero, which is the null answer rather than a false one.
+		var (exitCode, output) = await RunCommandAsync(
+			path, "git", "rev-list --count @{u}..HEAD", cancellationToken).ConfigureAwait(false);
+		if (exitCode != 0 || !int.TryParse(output.Trim(), out var ahead))
+		{
+			return null;
+		}
+
+		return ahead > 0;
+	}
+
+	/// <summary>
 	/// Checks whether the local branch is in sync with its origin counterpart.
 	/// Performs a git fetch first, then compares HEAD against origin/{branch}.
 	/// Returns true if HEAD matches origin/{branch} (not behind and not ahead).
