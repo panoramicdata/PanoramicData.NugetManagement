@@ -1,4 +1,5 @@
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Remediations;
 
@@ -55,12 +56,25 @@ public static class AiFixCandidates
 			.. row.Assessment.RuleResults
 				.Where(result => !result.Passed)
 				.Where(result => remediations.Get(result.RuleId) is null)
+				.Where(result => !IsFixedElsewhere(result.RuleId))
 				.SelectMany(Expand)
 				.Distinct()
 				.OrderBy(target => target.RuleId, StringComparer.OrdinalIgnoreCase)
 				.ThenBy(target => target.Path, StringComparer.OrdinalIgnoreCase)
 		];
 	}
+
+	/// <summary>
+	/// Whether the rule's fix lies outside the working tree, so no amount of editing files can reach it.
+	/// </summary>
+	/// <remarks>
+	/// Looked up from the registry rather than carried on the result, because a result is data that
+	/// survives a round trip through the cache and an interface is not.
+	/// </remarks>
+	private static bool IsFixedElsewhere(string ruleId)
+		=> PanoramicData.NugetManagement.Services.RuleRegistry.Rules
+			.FirstOrDefault(rule => string.Equals(rule.RuleId, ruleId, StringComparison.OrdinalIgnoreCase))
+			is IFixedOutsideTheWorkingTree;
 
 	/// <summary>
 	/// One failure, as the session or sessions that would address it.
@@ -71,8 +85,8 @@ public static class AiFixCandidates
 
 		return targets is { Count: > 0 }
 			? targets
-				.Where(path => !string.IsNullOrWhiteSpace(path))
-				.Select(path => new AiFixTarget(result.RuleId, path))
+				.Where(target => !string.IsNullOrWhiteSpace(target.Path))
+				.Select(target => new AiFixTarget(result.RuleId, target.Path))
 			: [new AiFixTarget(result.RuleId, null)];
 	}
 }

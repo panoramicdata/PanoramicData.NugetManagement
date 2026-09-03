@@ -869,13 +869,15 @@ public sealed class WorkExecutors(
 				row.LocalPath,
 				build: async token =>
 				{
-					await dashboard.BuildAsync(row, Say, token).ConfigureAwait(false);
-					return row.StatusMessage;
+					var captured = new List<string>();
+					await dashboard.BuildAsync(row, captured.Add, token).ConfigureAwait(false);
+					return SummariseRun("Build", row.Status == PackageStatus.BuildSucceeded, captured);
 				},
 				test: async token =>
 				{
-					await dashboard.RunTestsAsync(row, Say, token).ConfigureAwait(false);
-					return row.StatusMessage;
+					var captured = new List<string>();
+					await dashboard.RunTestsAsync(row, captured.Add, token).ConfigureAwait(false);
+					return SummariseRun("Tests", row.Status == PackageStatus.TestsPassed, captured);
 				});
 
 			var playbook = playbooks.For(ruleId);
@@ -914,6 +916,11 @@ public sealed class WorkExecutors(
 				result.RuleName,
 				AiFixPrompt.BuildTask(result, row.RepositoryFullName, playbook, targetPath),
 				AiFixPrompt.SystemPrompt);
+
+			// Into the transcript before the first turn, so the pane reads in the order the model saw
+			// things. Not through Say: the shared console is not the place for two pages of prompt.
+			item.Transcript.Append(WorkLineKind.Prompt, $"System prompt:\n{request.SystemPrompt}");
+			item.Transcript.Append(WorkLineKind.Prompt, $"Task:\n{request.Task}");
 
 			var outcome = await session
 				.RunAsync(
@@ -965,6 +972,53 @@ public sealed class WorkExecutors(
 	}
 
 	/// <summary>
+	/// How many diagnostic lines of a build or test run the model is shown.
+	/// </summary>
+	/// <remarks>
+	/// Enough to fix what it broke, few enough to leave room for the task. A model that has caused
+	/// forty errors has caused one error forty times.
+	/// </remarks>
+	private const int _diagnosticLineLimit = 30;
+
+	/// <summary>
+	/// What a build or test run says, in a form worth sending to a model and worth keeping in a
+	/// transcript.
+	/// </summary>
+	/// <remarks>
+	/// Two problems, one cause. The run's output used to go straight to <see cref="Say"/>, and
+	/// <c>dotnet build --verbosity normal</c> prints every compiler command line it issues — thousands
+	/// of lines of reference paths. A transcript holds five hundred lines, so one build erased the
+	/// whole session from the pane it was meant to be read in.
+	/// <para>
+	/// Meanwhile the model was handed <c>row.StatusMessage</c>, which is the words "Build failed." and
+	/// nothing else — so a model that had just broken the build was told only that it had, and its next
+	/// turn was a guess. The errors are the one part of that output it can act on, so the errors are
+	/// what it gets.
+	/// </para>
+	/// </remarks>
+	private static string SummariseRun(string what, bool succeeded, List<string> output)
+	{
+		var verdict = succeeded ? $"{what} succeeded." : $"{what} failed.";
+
+		if (succeeded)
+		{
+			return verdict;
+		}
+
+		var diagnostics = output
+			.Where(line => line.Contains(": error ", StringComparison.OrdinalIgnoreCase)
+				|| line.Contains("failed:", StringComparison.OrdinalIgnoreCase)
+				|| line.Contains("[FAIL]", StringComparison.OrdinalIgnoreCase))
+			.Distinct(StringComparer.Ordinal)
+			.Take(_diagnosticLineLimit)
+			.ToList();
+
+		return diagnostics.Count == 0
+			? $"{verdict} No error lines were found in the output."
+			: $"{verdict}\n{string.Join("\n", diagnostics)}";
+	}
+
+	/// <summary>
 	/// Whether the rule's verdict comes from a service reading the published branch.
 	/// </summary>
 	private static bool IsRemotelyGraded(string ruleId)
@@ -997,17 +1051,23 @@ public sealed class WorkExecutors(
 			return new AiRuleCheck(false, "Nothing was written, so nothing changed.");
 		}
 
-		await dashboard.BuildAsync(row, Say, cancellationToken).ConfigureAwait(false);
+		// Captured rather than said, for the reason SummariseRun gives: a verbose build streamed into
+		// the transcript pushes the session out of it.
+		var captured = new List<string>();
+		await dashboard.BuildAsync(row, captured.Add, cancellationToken).ConfigureAwait(false);
 
 		var built = row.Status == PackageStatus.BuildSucceeded;
 
 		RememberBuildResult(row, built ? RepositoryBuildState.Succeeded : RepositoryBuildState.Failed);
 
+		var summary = SummariseRun("Build", built, captured);
+		Say(built ? $"   ✓ {summary}" : $"   ⚠️ {summary}");
+
 		return new AiRuleCheck(
 			built,
 			built
 				? $"{toolbox.FilesWritten.Count} file(s) changed and the build succeeded."
-				: $"The build failed after the change: {row.StatusMessage}");
+				: summary);
 	}
 
 	/// <summary>

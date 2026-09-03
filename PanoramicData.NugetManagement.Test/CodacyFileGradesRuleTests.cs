@@ -216,7 +216,7 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 			File("src/Middling.cs", "D")))
 			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
 
-		result.Advisory!.Targets.Should().Equal(["Worst.ps1", "src/Middling.cs"],
+		result.Advisory!.Targets!.Select(target => target.Path).Should().Equal(["Worst.ps1", "src/Middling.cs"],
 			"worst first, so the queue spends the first session where it counts most");
 	}
 

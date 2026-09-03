@@ -14,7 +14,18 @@ public enum WorkLineKind
 	Thinking,
 
 	/// <summary>What a model actually said, as distinct from what it was thinking.</summary>
-	Model
+	Model,
+
+	/// <summary>
+	/// What the model was told before it said anything: the system prompt and the task.
+	/// </summary>
+	/// <remarks>
+	/// Its own kind rather than ordinary output, because it is the one part of the transcript nobody
+	/// wrote for a reader and the only part that explains the rest. A session that wanders is usually
+	/// answering the prompt it was given rather than the one intended, and without this the reader is
+	/// left inferring that prompt from the wandering.
+	/// </remarks>
+	Prompt
 }
 
 /// <summary>

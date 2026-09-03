@@ -158,19 +158,61 @@ public class AiFixPromptTests(ITestOutputHelper output) : TestWithOutput(output)
 		task.Should().NotContain("[path,", "a flattened KeyValuePair is not a fact either");
 	}
 
-	[Fact]
-	public void WithATargetFile_TheOtherFilesFactsAreDropped()
+	/// <summary>
+	/// A failure describing three files, exactly as CQ-06 emits one: a repository-wide message, a
+	/// repository-wide advisory naming every file, and a per-file target for each.
+	/// </summary>
+	private static RuleResult FailingAcrossFiles() => new()
 	{
+		RuleId = "CQ-06",
+		RuleName = "Codacy file grades",
+		Category = AssessmentCategory.CodeQuality,
+		Severity = AssessmentSeverity.Info,
+		Passed = false,
+		Message = "3 file(s) graded below A: Publish.ps1 (F), PanoramicData.Vtl/VtlParser.cs (B).",
+		Advisory = new RuleAdvisory
+		{
+			Summary = "Improve 3 file(s) graded below A in panoramicdata/Sample.",
+			Detail = "| Publish.ps1 | F | ... | PanoramicData.Vtl/VtlParser.cs | B | Reduce complexity. |",
+			Data = FileFacts(),
+			Targets =
+			[
+				new("Publish.ps1", "Publish.ps1 is graded F by Codacy.", "- line 12 — PSAvoidUsingWriteHost — Avoid Write-Host."),
+				new("PanoramicData.Vtl/VtlParser.cs", "VtlParser.cs is graded B by Codacy.", "- line 88 — SonarCSharp_S3776 — Reduce complexity.")
+			]
+		}
+	};
+
+	[Fact]
+	public void WithATargetFile_NothingInTheTaskMentionsAnyOtherFile()
+	{
+		// The first attempt at this narrowed only the Facts, and the test that was supposed to catch
+		// that passed because its stub advisory never named the other file. The prompt still opened
+		// with a rule message naming three files and a guidance section listing all three — so a
+		// session told "change this one file and no other" was immediately shown two more.
 		var task = AiFixPrompt.BuildTask(
-			Failing(data: FileFacts()),
+			FailingAcrossFiles(),
 			"panoramicdata/Sample",
 			playbook: null,
 			targetPath: "Publish.ps1");
 
 		task.Should().Contain("Change this one file and no other: Publish.ps1");
+		task.Should().Contain("Publish.ps1 is graded F by Codacy.", "the target's own summary replaces the rule's");
 		task.Should().Contain("PSAvoidUsingWriteHost");
+
 		task.Should().NotContain("VtlParser", "a small model told about two files will try to fix two files");
 		task.Should().NotContain("Reduce complexity.");
+		task.Should().NotContain("3 file(s)", "the repository-wide message describes work this session must not do");
+		task.Should().NotContain("Improve 3", "nor does the repository-wide goal");
+	}
+
+	[Fact]
+	public void WithNoTargetFile_TheRepositoryWideDescriptionIsUsed()
+	{
+		var task = AiFixPrompt.BuildTask(FailingAcrossFiles(), "panoramicdata/Sample", playbook: null);
+
+		task.Should().Contain("3 file(s) graded below A");
+		task.Should().Contain("VtlParser", "with no target, every file is in scope");
 	}
 
 	[Fact]
