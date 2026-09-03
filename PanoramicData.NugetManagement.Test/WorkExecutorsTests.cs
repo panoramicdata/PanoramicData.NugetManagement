@@ -3,6 +3,7 @@ using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Remediations;
 using PanoramicData.NugetManagement.Web.Services;
@@ -278,6 +279,7 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			new RemediationRegistry(),
 			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
 			runtimeSettings,
+			new NuGetOwnedPackageCatalog(null),
 			appSettings,
 			NullLogger<DashboardService>.Instance);
 
@@ -401,6 +403,7 @@ public sealed class DashboardServiceCancellationTests(ITestOutputHelper output) 
 			new RemediationRegistry(),
 			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
 			runtimeSettings,
+			new NuGetOwnedPackageCatalog(null),
 			appSettings,
 			NullLogger<DashboardService>.Instance);
 	}

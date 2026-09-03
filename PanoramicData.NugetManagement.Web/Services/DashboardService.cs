@@ -18,6 +18,7 @@ public class DashboardService
 	private readonly LocalRepoService _localRepo;
 	private readonly RegressionGuardService _regressionGuard;
 	private readonly RuntimeSettingsService _runtimeSettings;
+	private readonly NuGetOwnedPackageCatalog _owned;
 	private readonly AppSettings _settings;
 	private readonly ILogger<DashboardService> _logger;
 
@@ -32,6 +33,7 @@ public class DashboardService
 		RemediationRegistry remediationRegistry,
 		RegressionGuardService regressionGuard,
 		RuntimeSettingsService runtimeSettings,
+		NuGetOwnedPackageCatalog owned,
 		IOptions<AppSettings> settings,
 		ILogger<DashboardService> logger)
 	{
@@ -41,6 +43,7 @@ public class DashboardService
 		_localRepo = localRepo;
 		_regressionGuard = regressionGuard;
 		_runtimeSettings = runtimeSettings;
+		_owned = owned;
 		RemediationRegistry = remediationRegistry;
 		_settings = settings.Value;
 		_logger = logger;
@@ -87,6 +90,11 @@ public class DashboardService
 			packages.AddRange(discovered);
 		}
 
+		// What we publish ourselves is decided here, by NuGet's own owner: search, and read back by
+		// PKG-05/06/07: a release of ours gets no grace period against nuget.org. Recorded before the
+		// rows are built, because a package belonging to no repository we govern is still ours.
+		RecordOwnedPackages(_owned, packages);
+
 		// Whether a repository is ours at all is decided before anything is read from disk on the
 		// strength of it: NuGet's owner: search says who owns the package, never who owns the
 		// repository behind it. Every organisation under management is consulted, not merely the one
@@ -123,6 +131,20 @@ public class DashboardService
 
 		return rows;
 	}
+
+	/// <summary>
+	/// Records every discovered package as one the estate publishes itself.
+	/// </summary>
+	/// <param name="owned">The catalogue the freshness rules read.</param>
+	/// <param name="packages">The packages discovered from NuGet.</param>
+	/// <remarks>
+	/// Static and free of the network so the one decision it encodes — that a package with no
+	/// repository behind it is still ours — can be tested without a dashboard.
+	/// </remarks>
+	internal static void RecordOwnedPackages(
+		NuGetOwnedPackageCatalog owned,
+		IReadOnlyList<NuGetPackageInfo> packages)
+		=> owned.Record(packages.Select(p => p.PackageId));
 
 	/// <summary>
 	/// Turns discovered packages into one row per repository, plus the packages that belong to no

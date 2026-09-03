@@ -68,6 +68,23 @@ public class CommittedNuGetStoreTests(ITestOutputHelper output) : TestWithOutput
 	}
 
 	[Fact]
+	public void TheCommittedOwnedPackageListShouldParse()
+	{
+		var path = RepositoryRootFile.Resolve(NuGetOwnedPackageCatalog.FileName);
+		path.Should().NotBeNull();
+		File.Exists(path).Should().BeTrue("the seeded owned-package list is committed");
+
+		var catalog = new NuGetOwnedPackageCatalog(path);
+
+		catalog.LoadFailed.Should().BeFalse(
+			"a list that will not parse restores the full grace period to every package of ours: "
+				+ catalog.LoadFailure);
+		catalog.PackageIds.Should().NotBeEmpty(
+			"an empty list is an estate that publishes nothing, and every release of ours then waits out "
+				+ "a grace period meant for somebody else's");
+	}
+
+	[Fact]
 	public void EveryCommittedFloorShouldBeAStableVersion()
 	{
 		var catalog = new NuGetFloorCatalog(RepositoryRootFile.Resolve(NuGetFloorCatalog.FileName));

@@ -29,6 +29,22 @@ public sealed class NuGetBuildLevelUpdatesRule : NuGetPackageUpdateRuleBase
 	{
 	}
 
+	/// <summary>
+	/// Initializes a new instance with explicit stores, clock and owned-package list, for tests.
+	/// </summary>
+	/// <param name="cache">The committed upstream snapshot.</param>
+	/// <param name="floors">The estate-learned floors.</param>
+	/// <param name="timeProvider">The clock the grace period is measured against.</param>
+	/// <param name="owned">The packages the estate publishes itself.</param>
+	public NuGetBuildLevelUpdatesRule(
+		NuGetVersionCache cache,
+		NuGetFloorCatalog floors,
+		TimeProvider timeProvider,
+		NuGetOwnedPackageCatalog owned)
+		: base(cache, floors, timeProvider, owned)
+	{
+	}
+
 	/// <inheritdoc />
 	public override string RuleId => "PKG-05";
 

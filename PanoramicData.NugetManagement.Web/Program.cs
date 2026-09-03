@@ -61,6 +61,9 @@ builder.Services.AddSingleton<GitHubTokenProvider>();
 builder.Services.AddSingleton<RegressionGuardService>();
 builder.Services.AddSingleton(_ => NuGetVersionCache.Default);
 builder.Services.AddSingleton(_ => NuGetFloorCatalog.Default);
+// The same instance the rules read through their own static Default, so what discovery records is
+// what PKG-05/06/07 see on the next assessment.
+builder.Services.AddSingleton(_ => NuGetOwnedPackageCatalog.Default);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<NuGetVersionRefresher>(sp =>
 {
