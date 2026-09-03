@@ -678,17 +678,26 @@ public static partial class DependabotProposalParser
 			: DependencyEcosystem.NuGet;
 
 	/// <summary>
-	/// One dependency move as a body states it: <c>Updates `X` from a to b</c> for a grouped pull
-	/// request, or <c>Bumps [X](url) from a to b</c> for a single-dependency one.
+	/// One dependency move as a body states it. Dependabot writes
+	/// <c>Updated [X](url) from a to b.</c>, the same form for a single-dependency pull request as for
+	/// each line of a grouped one.
 	/// </summary>
 	/// <remarks>
-	/// Anchored to the start of a line, so the identical sentences that appear inside the release-notes
-	/// and changelog <c>&lt;details&gt;</c> blocks — which quote upstream text describing other
-	/// packages entirely — are not read as proposals.
+	/// The verb and name alternations are wider than the captured bodies need — <c>Updates `X`</c> and
+	/// <c>Bumps [X](url)</c> are forms Dependabot has used elsewhere. Being permissive here costs
+	/// nothing and means a wording change upstream degrades to reading fewer pull requests rather than
+	/// none.
+	/// <para>
+	/// Anchored to the start of a line, so the sentences inside the release-notes and changelog
+	/// <c>&lt;details&gt;</c> blocks — which quote upstream text about other packages entirely — are
+	/// not read as proposals. The version group is lazy so that the full stop Dependabot ends the line
+	/// with is not swallowed into the version, while a version's own dots still are.
+	/// </para>
 	/// </remarks>
 	[GeneratedRegex(
-		@"^(?:Updates|Bumps)\s+(?:`(?<name>[^`]+)`|\[(?<name>[^\]]+)\]\([^)]*\)|(?<name>\S+))"
-			+ @"\s+from\s+(?<from>\S+)\s+to\s+(?<to>[^\s.]+)\.?(?:\s+in\s+(?<dir>\S+))?\s*$",
+		@"^(?:Updated|Updates|Bumped|Bumps)\s+"
+			+ @"(?:`(?<name>[^`]+)`|\[(?<name>[^\]]+)\]\([^)]*\)|(?<name>[^\s\[`]+))"
+			+ @"\s+from\s+(?<from>\S+)\s+to\s+(?<to>.+?)(?:\s+in\s+(?<dir>\S+))?\.?\s*$",
 		RegexOptions.CultureInvariant | RegexOptions.Multiline)]
 	private static partial Regex BodyLine();
 
@@ -699,7 +708,7 @@ public static partial class DependabotProposalParser
 }
 ```
 
-**Adjust `BodyLine()` to whatever Task 1's fixtures actually show.** The alternation above covers the three forms the spec expected; if the fixtures show a fourth, add it, and if a `to` group swallows a trailing full stop, the `[^\s.]+` class is where to fix it.
+**Task 1 found the real format, and the regex above is already corrected for it.** All five captured bodies use one form — `Updated [Name](url) from X to Y.` — for both single-dependency and grouped pull requests. Neither `Updates` nor `Bumps` appears in any of them, and the spec's assumed wording was wrong on the verb, the name delimiter and the trailing full stop. The wider alternation is kept deliberately, per the doc comment.
 
 - [ ] **Step 5: Fix the two call sites the reshape broke**
 
