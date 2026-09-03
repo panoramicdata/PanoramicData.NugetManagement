@@ -64,6 +64,13 @@ public class RepositoryContext
 	public string? LatestPublishedVersion { get; init; }
 
 	/// <summary>
+	/// The CI run for <see cref="LatestTag"/>, or null when nothing is known about it — the
+	/// repository was assessed without a GitHub client, or the tag has no run. Lets CI-11 tell a
+	/// release in flight from one that failed, and gives CI-13 its subject.
+	/// </summary>
+	public ReleaseRun? ReleaseRun { get; init; }
+
+	/// <summary>
 	/// Measured line coverage as a percentage, or null when this repository's tests have not been run
 	/// with coverage collection.
 	/// </summary>

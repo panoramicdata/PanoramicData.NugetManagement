@@ -67,6 +67,10 @@ public class LocalRepositoryContextBuilder
 	/// <returns>A fully populated <see cref="RepositoryContext"/>.</returns>
 	/// <param name="latestTag">The newest version tag, when known, for CI-11.</param>
 	/// <param name="latestPublishedVersion">The newest version on nuget.org, when known, for CI-11.</param>
+	/// <param name="releaseRun">
+	/// The CI run for <paramref name="latestTag"/>, when known. Lets CI-11 stay quiet about a release
+	/// that is still in flight and gives CI-13 its subject.
+	/// </param>
 	public RepositoryContext Build(
 		string localPath,
 		string repositoryFullName,
@@ -74,7 +78,8 @@ public class LocalRepositoryContextBuilder
 		string defaultBranch = "main",
 		string? currentBranch = null,
 		string? latestTag = null,
-		string? latestPublishedVersion = null)
+		string? latestPublishedVersion = null,
+		ReleaseRun? releaseRun = null)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]
@@ -98,7 +103,8 @@ public class LocalRepositoryContextBuilder
 			FileContents = fileContents,
 			RepositoryConfig = repositoryConfig,
 			LatestTag = latestTag,
-			LatestPublishedVersion = latestPublishedVersion
+			LatestPublishedVersion = latestPublishedVersion,
+			ReleaseRun = releaseRun
 		};
 	}
 

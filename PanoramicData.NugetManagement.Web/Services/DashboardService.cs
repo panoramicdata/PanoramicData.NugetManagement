@@ -356,7 +356,8 @@ public class DashboardService
 					"main",
 					row.CurrentBranch,
 					row.LatestTag,
-					row.PrimaryPackage?.LatestVersion);
+					row.PrimaryPackage?.LatestVersion,
+					row.ReleaseRun);
 		}
 
 		var parts = row.RepositoryFullName.Split('/');
@@ -537,6 +538,36 @@ public class DashboardService
 	}
 
 	/// <summary>
+	/// Reads the CI run for the row's newest tag, so CI-11 can tell a release in flight from one that
+	/// failed and CI-13 can report the failure.
+	/// </summary>
+	/// <remarks>
+	/// Only the local assess path needs this: the remote path builds its context from the GitHub tree
+	/// and supplies no tag at all, so both rules are not applicable there. With no client the run is
+	/// cleared rather than left as it was — an unrefreshed run is stale evidence about a release that
+	/// may since have finished, and clearing it returns both rules to the behaviour they had before
+	/// runs were read at all.
+	/// </remarks>
+	private async Task RefreshReleaseRunAsync(
+		RepositoryDashboardRow row,
+		IGitHubClient? github,
+		CancellationToken cancellationToken)
+	{
+		if (github is null)
+		{
+			row.ReleaseRun = null;
+			return;
+		}
+
+		using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+
+		await new ReleaseRunRefresher(
+				new ReleaseRunService(github, loggerFactory.CreateLogger<ReleaseRunService>()))
+			.RefreshAsync(row, cancellationToken)
+			.ConfigureAwait(false);
+	}
+
+	/// <summary>
 	/// Assesses a single repository against all governance rules using the local filesystem.
 	/// This reads files directly from disk so that changes made by remediations are
 	/// immediately visible without pushing to GitHub first.
@@ -587,6 +618,9 @@ public class DashboardService
 				row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			}
 
+			// After the tag is known, because the run is looked up by it.
+			await RefreshReleaseRunAsync(row, github, cancellationToken).ConfigureAwait(false);
+
 			var detectedDefaultBranch = !string.IsNullOrWhiteSpace(repoIdentity)
 				? await _localRepo.GetRemoteDefaultBranchAsync(repoIdentity!, cancellationToken).ConfigureAwait(false)
 				: null;
@@ -607,7 +641,8 @@ public class DashboardService
 				defaultBranch,
 				row.CurrentBranch,
 				row.LatestTag,
-				row.PrimaryPackage?.LatestVersion);
+				row.PrimaryPackage?.LatestVersion,
+				row.ReleaseRun);
 
 			var rules = RuleRegistry.Rules;
 			var results = new List<RuleResult>();
