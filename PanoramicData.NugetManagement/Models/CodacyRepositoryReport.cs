@@ -6,8 +6,9 @@ namespace PanoramicData.NugetManagement.Models;
 public sealed class CodacyRepositoryReport
 {
 	/// <summary>
-	/// Whether the repository is tracked/analysed by Codacy. When <see langword="false"/>, no issue
-	/// data is available (the repository has not been added to Codacy or has not been analysed yet).
+	/// Whether Codacy holds the repository. <see langword="false"/> only when Codacy's repository
+	/// endpoint answers 404 for the name, i.e. it was never added; a repository that is added but
+	/// unanalysed is tracked with no issues, because a search 404 does not tell the two apart.
 	/// </summary>
 	public required bool IsTracked { get; init; }
 

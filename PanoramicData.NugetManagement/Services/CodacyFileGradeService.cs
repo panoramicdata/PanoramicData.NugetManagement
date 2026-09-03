@@ -49,6 +49,50 @@ public sealed class CodacyFileGradeService : ICodacyFileGradeService
 	{
 		using var client = new CodacyClient(new CodacyClientOptions { ApiToken = apiToken });
 
+		var files = await ListFilesAsync(client, organizationName, repositoryName, branch, cancellationToken)
+			.ConfigureAwait(false);
+
+		if (files is not null)
+		{
+			return new CodacyFileGradeReport { IsTracked = true, Files = files };
+		}
+
+		// A listing 404 does not establish that the repository was never added — Codacy answered it
+		// for repositories it demonstrably held. Ask the question that does.
+		var state = await CodacyTracking.ResolveAsync(
+			isAddedAsync: token => CodacyRepositoryLookup.IsAddedAsync(client, organizationName, repositoryName, token),
+			retryListingAsync: async token =>
+			{
+				files = await ListFilesAsync(client, organizationName, repositoryName, branch, token)
+					.ConfigureAwait(false);
+				return files is not null;
+			},
+			window: CodacyRetryWindow.Shared,
+			key: $"{organizationName}/{repositoryName}",
+			now: DateTimeOffset.UtcNow,
+			cancellationToken: cancellationToken).ConfigureAwait(false);
+
+		return state switch
+		{
+			CodacyTrackingState.NotAdded => new CodacyFileGradeReport { IsTracked = false },
+			CodacyTrackingState.Listed => new CodacyFileGradeReport { IsTracked = true, Files = files ?? [] },
+
+			// Added, but nothing listed for the branch. CQ-03 reports that as its own failure, which
+			// names the analysis that has not run rather than an integration that was never set up.
+			_ => new CodacyFileGradeReport { IsTracked = true, Files = [] }
+		};
+	}
+
+	/// <summary>
+	/// Pages the whole file listing, or returns <see langword="null"/> when Codacy answers 404.
+	/// </summary>
+	private static async Task<List<CodacyFileGrade>?> ListFilesAsync(
+		CodacyClient client,
+		string organizationName,
+		string repositoryName,
+		string? branch,
+		CancellationToken cancellationToken)
+	{
 		var files = new List<CodacyFileGrade>();
 		string? cursor = null;
 
@@ -86,10 +130,9 @@ public sealed class CodacyFileGradeService : ICodacyFileGradeService
 		}
 		catch (Exception ex) when (CodacyNotFound.Matches(ex))
 		{
-			// Codacy does not track this repository: it was never added.
-			return new CodacyFileGradeReport { IsTracked = false };
+			return null;
 		}
 
-		return new CodacyFileGradeReport { IsTracked = true, Files = files };
+		return files;
 	}
 }
