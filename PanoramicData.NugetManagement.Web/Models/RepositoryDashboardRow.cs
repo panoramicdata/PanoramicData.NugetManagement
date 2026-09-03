@@ -136,6 +136,17 @@ public class RepositoryDashboardRow
 	public string? LatestTag { get; set; }
 
 	/// <summary>
+	/// The CI run for <see cref="LatestTag"/> as it was at the last assessment, or null when nothing
+	/// is known about it.
+	/// </summary>
+	/// <remarks>
+	/// Read alongside the published version at assessment time and held here so the two assess paths
+	/// and the AI context builder share one read. Like the published version, it is a point-in-time
+	/// answer: a run that was in flight when it was read may have finished since.
+	/// </remarks>
+	public ReleaseRun? ReleaseRun { get; set; }
+
+	/// <summary>
 	/// What happened the last time this working tree was built here, or null when that is not known —
 	/// it has never been built in this application, or it has changed since it was.
 	/// </summary>
