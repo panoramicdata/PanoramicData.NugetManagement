@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
@@ -94,13 +95,29 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 		}
 	};
 
-	/// <summary>Triages one pull request, with every governing rule remediable unless stated.</summary>
+	/// <summary>
+	/// Triages one pull request, with every governing rule remediable unless stated.
+	/// </summary>
+	/// <param name="issue">The pull request to judge.</param>
+	/// <param name="context">What the repository declares.</param>
+	/// <param name="ruleResults">The current assessment; none failing unless given.</param>
+	/// <param name="canRemediate">Which rule ids have a remediation; all of them unless given.</param>
+	/// <param name="age">
+	/// How long the pull request has been open. One day by default, which is inside
+	/// <see cref="DependabotTriageService.AdoptAfter"/> — every test in this class is about coverage
+	/// rather than age, and a pull request old enough to adopt would reach the adoption verdict before
+	/// the one under test. The adoption gate has its own suite in
+	/// <see cref="DependabotAdoptionPlanTests"/>.
+	/// </param>
 	private static DependabotTriage TriageOne(
 		RepositoryIssue issue,
 		RepositoryContext context,
 		IReadOnlyList<RuleResult>? ruleResults = null,
-		Func<string, bool>? canRemediate = null)
-		=> new DependabotTriageService()
+		Func<string, bool>? canRemediate = null,
+		TimeSpan? age = null)
+		=> new DependabotTriageService(
+				RuleRegistry.Rules,
+				new FakeTimeProvider(issue.CreatedAtUtc + (age ?? TimeSpan.FromDays(1))))
 			.Triage([issue], context, ruleResults ?? [], canRemediate ?? (_ => true))
 			.Should().ContainSingle().Subject;
 

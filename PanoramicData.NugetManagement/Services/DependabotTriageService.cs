@@ -25,6 +25,10 @@ namespace PanoramicData.NugetManagement.Services;
 /// Backing for <see cref="GapBumps"/>. Positional so the record stays positional; read through the
 /// property, which normalizes null to empty.
 /// </param>
+/// <param name="Adoption">
+/// What adopting this pull request would write, or null when the verdict is not
+/// <see cref="DependabotVerdict.Adoptable"/>.
+/// </param>
 /// <remarks>
 /// <see cref="IsRuleSetGap"/> is what decides whether an issue is raised. Both it and
 /// <see cref="DependabotVerdict.ValidUncovered"/> mean "no fix is coming for this right now", but only
@@ -40,7 +44,8 @@ public sealed record DependabotTriage(
 	string Reason,
 	string? CoveringRuleId,
 	bool IsRuleSetGap = false,
-	IReadOnlyList<DependabotBump>? GapBumpsOrNull = null)
+	IReadOnlyList<DependabotBump>? GapBumpsOrNull = null,
+	DependabotAdoptionPlan? Adoption = null)
 {
 	/// <summary>
 	/// The bumps in this pull request that nothing governs, or that are governed by a rule which never
@@ -58,20 +63,42 @@ public sealed record DependabotTriage(
 /// Decides what to do about each of a repository's open Dependabot pull requests.
 /// </summary>
 /// <remarks>
-/// Pure: no I/O, no GitHub, no clock. Everything it needs is the pull requests, what the repository
-/// declares, which rules are failing, and whether a rule has a remediation. That last one arrives as
-/// a predicate rather than a dependency on <c>RemediationRegistry</c>, which lives in the web project
-/// — keeping the existing rules-in-core, remediations-in-web seam intact.
+/// Pure apart from a clock: no I/O and no GitHub. Everything else it needs is the pull requests, what
+/// the repository declares, which rules are failing, and whether a rule has a remediation. That last
+/// one arrives as a predicate rather than a dependency on <c>RemediationRegistry</c>, which lives in
+/// the web project — keeping the existing rules-in-core, remediations-in-web seam intact.
+/// <para>
+/// The clock is needed only for the adoption age gate, and arrives as a <see cref="TimeProvider"/> so
+/// a test can stand either side of the threshold.
+/// </para>
 /// </remarks>
 public sealed class DependabotTriageService
 {
+	/// <summary>
+	/// How long a still-valid pull request may stay open before its bumps are adopted regardless of
+	/// whether any rule is failing for them.
+	/// </summary>
+	/// <remarks>
+	/// Sixty days sits above PKG-05's 30-day build grace and below PKG-06's 90-day minor grace. It is
+	/// not trying to mirror the graces — it is a backstop against a pull request rotting, and its only
+	/// job is to be long enough that nothing is adopted while a grace period is still doing useful
+	/// work.
+	/// <para>
+	/// A constant rather than a setting. One number nobody has asked to change is not worth a settings
+	/// row — and a new <c>RuntimeSettings</c> property has to be added to the hand-written
+	/// <c>SaveToDisk</c> snapshot or every save silently erases it.
+	/// </para>
+	/// </remarks>
+	public static readonly TimeSpan AdoptAfter = TimeSpan.FromDays(60);
+
 	private readonly IReadOnlyList<IRule> _rules;
+	private readonly TimeProvider _timeProvider;
 
 	/// <summary>
-	/// Initializes a new instance using every registered rule.
+	/// Initializes a new instance using every registered rule and the system clock.
 	/// </summary>
 	public DependabotTriageService()
-		: this(RuleRegistry.Rules)
+		: this(RuleRegistry.Rules, TimeProvider.System)
 	{
 	}
 
@@ -79,7 +106,21 @@ public sealed class DependabotTriageService
 	/// Initializes a new instance over an explicit rule set, for tests.
 	/// </summary>
 	/// <param name="rules">The rules to consider when deciding coverage.</param>
-	public DependabotTriageService(IReadOnlyList<IRule> rules) => _rules = rules;
+	public DependabotTriageService(IReadOnlyList<IRule> rules)
+		: this(rules, TimeProvider.System)
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance over an explicit rule set and clock, for tests.
+	/// </summary>
+	/// <param name="rules">The rules to consider when deciding coverage.</param>
+	/// <param name="timeProvider">The clock the adoption age gate is measured against.</param>
+	public DependabotTriageService(IReadOnlyList<IRule> rules, TimeProvider timeProvider)
+	{
+		_rules = rules;
+		_timeProvider = timeProvider;
+	}
 
 	/// <summary>
 	/// A verdict for every open item, in the order given.
@@ -150,12 +191,29 @@ public sealed class DependabotTriageService
 				proposal,
 				DependabotVerdict.ValidCovered,
 				$"Still outstanding, and {string.Join(", ", covering.Distinct())} failing with a "
-					+ $"remediation that will move {Describe(outstanding)} at least this far.",
+					+ $"remediation that will move {Names(outstanding)} at least this far.",
 				covering[0]);
 		}
 
-		// Nothing failing will move all of it. Whether that is a gap in the rule set or a rule that has
-		// nothing to say today is a different question, and only the first is anybody's work.
+		// Nothing failing will move all of it. Before calling that a gap or an idle rule, ask whether
+		// the pull request has simply been waiting too long: a grace period exists to avoid churning on
+		// a release published this morning, not to hold a pull request open for four months.
+		var age = _timeProvider.GetUtcNow() - issue.CreatedAtUtc;
+
+		if (age >= AdoptAfter && Plan(outstanding, packages, actionUsages) is { HasAnything: true } plan)
+		{
+			return new DependabotTriage(
+				issue,
+				proposal,
+				DependabotVerdict.Adoptable,
+				$"Open for {age.Days} days with nothing queued to move it, so adopting what it proposes "
+					+ $"for {Names(outstanding)} into the local clone.",
+				null,
+				Adoption: plan);
+		}
+
+		// Whether this is a gap in the rule set or a rule that has nothing to say today is a different
+		// question, and only the first is anybody's work.
 		var gaps = outstanding
 			.Where(bump => IsGap(bump, packages, actionUsages, canRemediate))
 			.ToList();
@@ -166,7 +224,7 @@ public sealed class DependabotTriageService
 				issue,
 				proposal,
 				DependabotVerdict.ValidUncovered,
-				$"Still outstanding, and nothing here can ever move {Describe(gaps)} — no rule governs "
+				$"Still outstanding, and nothing here can ever move {Names(gaps)} — no rule governs "
 					+ "it, or the rule that claims it never reads where it is declared.",
 				null,
 				IsRuleSetGap: true,
@@ -184,6 +242,83 @@ public sealed class DependabotTriageService
 			$"Still outstanding, and {Describe(idle)} governed by a rule that is not failing for it at "
 				+ "the moment, so nothing is queued to move it right now.",
 			null);
+	}
+
+	/// <summary>
+	/// What writing every one of these bumps would take, or null when any of them cannot be written.
+	/// </summary>
+	/// <remarks>
+	/// All-or-nothing, deliberately. A pull request is adopted only when every outstanding bump in it
+	/// can be written: adopting part of a group and closing it silently drops the rest, and adopting
+	/// part without closing leaves a pull request whose content is mostly already applied — noise on
+	/// every subsequent pass. "Closed" has to keep meaning "fully superseded".
+	/// </remarks>
+	/// <param name="bumps">The outstanding bumps to write.</param>
+	/// <param name="packages">Every package declaration the repository makes.</param>
+	/// <param name="actionUsages">Every action usage the repository makes.</param>
+	private static DependabotAdoptionPlan? Plan(
+		IReadOnlyList<DependabotBump> bumps,
+		List<PackageVersionReference> packages,
+		List<ActionUsage> actionUsages)
+	{
+		var packageUpdates = new List<string>();
+		var patterns = new List<string>();
+		var replacements = new List<string>();
+
+		foreach (var bump in bumps)
+		{
+			switch (bump.Dependency.Ecosystem)
+			{
+				case DependencyEcosystem.NuGet:
+					if (!NuGetVersion.TryParse(bump.ToVersion, out _))
+					{
+						return null;
+					}
+
+					var declarations = packages
+						.Where(p => string.Equals(
+							p.PackageId, bump.Dependency.Name, StringComparison.OrdinalIgnoreCase))
+						.ToList();
+
+					// Declared nowhere the scanner reads means there is nothing to rewrite, which is not
+					// the same as nothing to do — so the pull request is not adoptable rather than
+					// adoptable-with-no-work.
+					if (declarations.Count == 0)
+					{
+						return null;
+					}
+
+					// One entry per declaration site: a package pinned in two project files has to move in
+					// both, or the next pass finds it still unsatisfied.
+					packageUpdates.AddRange(declarations.Select(d => string.Join(
+						'|',
+						d.FilePath,
+						d.PackageId,
+						d.VersionKind,
+						d.CurrentVersion,
+						bump.ToVersion)));
+
+					break;
+
+				case DependencyEcosystem.GitHubActions:
+					if (MajorOf(bump.ToVersion) is null
+						|| !actionUsages.Any(u => string.Equals(
+							u.Action, bump.Dependency.Name, StringComparison.OrdinalIgnoreCase)))
+					{
+						return null;
+					}
+
+					patterns.Add(ActionUsesPattern.Below(bump.Dependency.Name, bump.ToVersion));
+					replacements.Add(ActionUsesPattern.Replacement(bump.ToVersion));
+
+					break;
+
+				default:
+					return null;
+			}
+		}
+
+		return new DependabotAdoptionPlan(packageUpdates, patterns, replacements);
 	}
 
 	/// <summary>
@@ -207,15 +342,21 @@ public sealed class DependabotTriageService
 	/// as a gap with no indication of <em>which</em> of its three dependencies is the gap is a sentence
 	/// that sends somebody back to GitHub to find out.
 	/// </remarks>
-	private static string Describe(IReadOnlyList<DependabotBump> bumps)
+	private static string Names(IReadOnlyList<DependabotBump> bumps)
 		=> bumps.Count switch
 		{
 			0 => "nothing",
-			1 => $"{bumps[0].Dependency.Name} is",
-			2 => $"{bumps[0].Dependency.Name} and {bumps[1].Dependency.Name} are",
+			1 => bumps[0].Dependency.Name,
+			2 => $"{bumps[0].Dependency.Name} and {bumps[1].Dependency.Name}",
 			_ => string.Join(", ", bumps.Take(2).Select(b => b.Dependency.Name))
-				+ $" and {bumps.Count - 2} other{(bumps.Count == 3 ? string.Empty : "s")} are"
+				+ $" and {bumps.Count - 2} other{(bumps.Count == 3 ? string.Empty : "s")}"
 		};
+
+	/// <summary>
+	/// <see cref="Names"/> with the verb that agrees with it, for a sentence that needs one.
+	/// </summary>
+	private static string Describe(IReadOnlyList<DependabotBump> bumps)
+		=> $"{Names(bumps)} {(bumps.Count == 1 ? "is" : "are")}";
 
 	/// <summary>
 	/// Whether the repository already declares the target version or better, everywhere it declares
