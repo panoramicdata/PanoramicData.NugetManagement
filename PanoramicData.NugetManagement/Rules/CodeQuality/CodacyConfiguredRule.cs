@@ -116,11 +116,16 @@ public class CodacyConfiguredRule : RuleBase
 				{
 					Summary = $"Add {context.FullName} to Codacy at app.codacy.com.",
 					Detail = $"""
-						Codacy answered the file listing for `{context.FullName}` with a 404, which is what it
-						returns for a repository that was never added to the organization.
+						Codacy holds no repository named `{parts[1]}` in `{parts[0]}`: both the file listing and
+						the repository endpoint answered 404 for that name.
 
 						Add it at https://app.codacy.com/gh/{parts[0]}/dashboard, then let the first analysis
 						of `{context.DefaultBranch}` finish.
+
+						If the repository is visibly there in Codacy, check the name for a case difference —
+						Codacy's paths are case-sensitive, and the dashboard takes a repository's identity from
+						the `RepositoryUrl` declared in its published package, which is where a wrong casing
+						enters. GitHub routes case-insensitively, so the typo surfaces here first.
 						""",
 					Data = new()
 					{

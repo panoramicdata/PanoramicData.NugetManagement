@@ -44,6 +44,48 @@ public sealed class CodacyIssueService : ICodacyIssueService
 	{
 		using var client = new CodacyClient(new CodacyClientOptions { ApiToken = apiToken });
 
+		var issues = await SearchIssuesAsync(client, organizationName, repositoryName, branch, cancellationToken)
+			.ConfigureAwait(false);
+
+		if (issues is not null)
+		{
+			return new CodacyRepositoryReport { IsTracked = true, Issues = issues };
+		}
+
+		// The same 404 the file listing answers for repositories Codacy holds, and it must not be read
+		// as absence here either: CQ-05 reports an untracked repository as "no issues to report",
+		// which turns a repository Codacy has graded into a silent pass.
+		var state = await CodacyTracking.ResolveAsync(
+			isAddedAsync: token => CodacyRepositoryLookup.IsAddedAsync(client, organizationName, repositoryName, token),
+			retryListingAsync: async token =>
+			{
+				issues = await SearchIssuesAsync(client, organizationName, repositoryName, branch, token)
+					.ConfigureAwait(false);
+				return issues is not null;
+			},
+			window: CodacyRetryWindow.Shared,
+			key: $"{organizationName}/{repositoryName}/issues",
+			now: DateTimeOffset.UtcNow,
+			cancellationToken: cancellationToken).ConfigureAwait(false);
+
+		return state switch
+		{
+			CodacyTrackingState.NotAdded => new CodacyRepositoryReport { IsTracked = false },
+			CodacyTrackingState.Listed => new CodacyRepositoryReport { IsTracked = true, Issues = issues ?? [] },
+			_ => new CodacyRepositoryReport { IsTracked = true, Issues = [] }
+		};
+	}
+
+	/// <summary>
+	/// Pages the whole issue search, or returns <see langword="null"/> when Codacy answers 404.
+	/// </summary>
+	private static async Task<List<CodacyIssue>?> SearchIssuesAsync(
+		CodacyClient client,
+		string organizationName,
+		string repositoryName,
+		string? branch,
+		CancellationToken cancellationToken)
+	{
 		var body = new SearchRepositoryIssuesBody();
 		if (!string.IsNullOrWhiteSpace(branch))
 		{
@@ -89,10 +131,9 @@ public sealed class CodacyIssueService : ICodacyIssueService
 		}
 		catch (Exception ex) when (CodacyNotFound.Matches(ex))
 		{
-			// Codacy does not track this repository (not added or not yet analysed).
-			return new CodacyRepositoryReport { IsTracked = false };
+			return null;
 		}
 
-		return new CodacyRepositoryReport { IsTracked = true, Issues = issues };
+		return issues;
 	}
 }
