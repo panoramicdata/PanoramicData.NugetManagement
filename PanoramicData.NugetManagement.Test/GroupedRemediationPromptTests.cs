@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Models;
+﻿using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Services;
 
@@ -146,5 +146,75 @@ public class GroupedRemediationPromptTests(ITestOutputHelper output) : TestWithO
 
 		prompt.Should().Contain("## CiCd (1 issue)");
 		prompt.Should().NotContain("Versioning");
+	}
+
+	/// <summary>
+	/// CQ-06's own fact shape: a list of per-file dictionaries. Joining it with string.Join put
+	/// seven copies of "System.Collections.Generic.Dictionary`2[...]" in the prompt and threw away
+	/// every grade the rule had gathered.
+	/// </summary>
+	private static RuleResult FileGradeFailure() => new()
+	{
+		RuleId = "CQ-06",
+		RuleName = "Codacy file grades",
+		Category = AssessmentCategory.CodeQuality,
+		Severity = AssessmentSeverity.Info,
+		Passed = false,
+		Message = "2 file(s) graded below A.",
+		Advisory = new RuleAdvisory
+		{
+			Summary = "Improve 2 file(s) graded below A.",
+			Detail = "Factor out the repeated blocks.",
+			Data = new Dictionary<string, object>
+			{
+				["files_below_minimum"] = 2,
+				["worst_grade"] = "D",
+				["files"] = new List<Dictionary<string, object?>>
+				{
+					new()
+					{
+						["path"] = "Codacy.Api.Test/Integration/PeopleApiTests.cs",
+						["grade_letter"] = "D",
+						["duplication_percent"] = 36
+					},
+					new()
+					{
+						["path"] = "Codacy.Api.Test/Integration/IssuesApiTests.cs",
+						["grade_letter"] = "C",
+						["duplication_percent"] = 59
+					}
+				}
+			}
+		}
+	};
+
+	[Fact]
+	public void NestedFacts_AreExpandedRatherThanJoinedIntoTypeNames()
+	{
+		var prompt = DashboardService.GenerateRuleRemediationPrompt(
+			Row(FileGradeFailure()),
+			FileGradeFailure());
+		Output.WriteLine(prompt);
+
+		prompt.Should().NotContain("System.Collections",
+			"a type name tells the model nothing about which files to fix");
+		prompt.Should().Contain("Codacy.Api.Test/Integration/PeopleApiTests.cs");
+		prompt.Should().Contain("Codacy.Api.Test/Integration/IssuesApiTests.cs");
+		prompt.Should().Contain("duplication_percent",
+			"the figure driving the grade is the one the fix turns on");
+		prompt.Should().Contain("59");
+	}
+
+	[Fact]
+	public void ScalarFacts_KeepTheirOneLineBulletForm()
+	{
+		var prompt = DashboardService.GenerateRuleRemediationPrompt(
+			Row(FileGradeFailure()),
+			FileGradeFailure());
+
+		var lines = prompt.Split('\n');
+
+		lines.Should().Contain("  - `files_below_minimum`: 2");
+		lines.Should().Contain("  - `worst_grade`: D");
 	}
 }

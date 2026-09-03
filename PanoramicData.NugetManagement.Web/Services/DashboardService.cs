@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
@@ -910,7 +910,13 @@ public class DashboardService
 					{
 						foreach (var (key, value) in failure.Advisory.Data)
 						{
-							lines.Add($"  - `{key}`: {FormatDataValue(value)}");
+							// Nested facts — CQ-06's per-file grades, and every rule that reports a
+							// list of dictionaries — are expanded rather than joined, so the model
+							// gets the figures instead of a row of type names.
+							lines.AddRange(AiFixPrompt
+								.RenderFact(key, value, "  ", markdown: true)
+								.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+								.Select(line => line.TrimEnd('\r')));
 						}
 					}
 				}
@@ -1892,11 +1898,4 @@ public class DashboardService
 		return summaries;
 	}
 
-	private static string FormatDataValue(object value) => value switch
-	{
-		string s => s,
-		string[] arr => string.Join(", ", arr),
-		IEnumerable<object> list => string.Join(", ", list),
-		_ => value.ToString() ?? string.Empty
-	};
 }
