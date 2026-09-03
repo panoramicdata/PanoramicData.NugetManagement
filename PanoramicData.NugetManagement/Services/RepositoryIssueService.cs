@@ -124,6 +124,7 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 		{
 			Number = item.Number,
 			Title = item.Title,
+			Body = item.Body,
 			IsPullRequest = item.IsPullRequest,
 			HtmlUrl = item.HtmlUrl,
 			AuthorLogin = item.AuthorLogin,
