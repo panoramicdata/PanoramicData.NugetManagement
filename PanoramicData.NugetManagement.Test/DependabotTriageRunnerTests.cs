@@ -151,7 +151,8 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 		DependabotTriageRunner Runner,
 		RecordingWriteApi Write,
 		List<string> Log,
-		IGitHubIssueApi Read)
+		IGitHubIssueApi Read,
+		StubAdopter? Adopter = null)
 	{
 		public Task<DependabotTriageOutcome> RunAsync(params DependabotTriage[] triages)
 			=> Runner.RunAsync(
@@ -160,17 +161,145 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 				_repository,
 				triages,
 				Log.Add,
-				TestContext.Current.CancellationToken);
+				TestContext.Current.CancellationToken,
+				Adopter);
 	}
 
-	private static Subject NewSubject(string? openGapIssueFor = null)
+	/// <summary>
+	/// An adopter that records the plans handed to it and reports a fixed set of written files.
+	/// </summary>
+	/// <param name="written">
+	/// What to claim was written. Empty stands for a writer that matched nothing, which is the case the
+	/// conditional close exists for.
+	/// </param>
+	private sealed class StubAdopter(params string[] written) : IBumpAdopter
+	{
+		public List<DependabotAdoptionPlan> Plans { get; } = [];
+
+		public IReadOnlyList<string> Adopt(DependabotAdoptionPlan plan, Action<string> onOutput)
+		{
+			Plans.Add(plan);
+			onOutput("stub adopter ran");
+
+			return written;
+		}
+	}
+
+	private static Subject NewSubject(
+		string? openGapIssueFor = null,
+		StubAdopter? adopter = null)
 	{
 		var write = new RecordingWriteApi();
 
 		var runner = new DependabotTriageRunner(
 			new UncoveredDependencyIssueService("panoramicdata/PanoramicData.NugetManagement"));
 
-		return new Subject(runner, write, [], new NoOpenIssues(openGapIssueFor));
+		return new Subject(runner, write, [], new NoOpenIssues(openGapIssueFor), adopter);
+	}
+
+	/// <summary>An adoptable verdict carrying a plan that would rewrite one package declaration.</summary>
+	private static DependabotTriage Adoptable(int number)
+	{
+		var url = $"https://github.com/{_repository}/pull/{number}";
+
+		var bump = new DependabotBump(
+			new DependencyRef(DependencyEcosystem.NuGet, "coverlet.collector"),
+			"8.0.1",
+			"10.0.0",
+			null);
+
+		return new DependabotTriage(
+			new RepositoryIssue
+			{
+				Number = number,
+				Title = "Bump coverlet.collector from 8.0.1 to 10.0.0",
+				IsPullRequest = true,
+				HtmlUrl = url,
+				AuthorLogin = "dependabot[bot]",
+				CreatedAtUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
+			},
+			new DependabotProposal(number, [bump], url),
+			DependabotVerdict.Adoptable,
+			"open for 138 days with nothing queued to move it, so adopting what it proposes",
+			null,
+			Adoption: new DependabotAdoptionPlan(
+				["Directory.Packages.props|coverlet.collector|PackageVersionAttribute|8.0.1|10.0.0"],
+				[],
+				[]));
+	}
+
+	[Fact]
+	public async Task Adoptable_WritesThenCommentsThenCloses()
+	{
+		var adopter = new StubAdopter("Directory.Packages.props");
+		var subject = NewSubject(adopter: adopter);
+
+		var outcome = await subject.RunAsync(Adoptable(6));
+
+		outcome.Adopted.Should().Be(1);
+		adopter.Plans.Should().ContainSingle().Subject
+			.PackageUpdates.Should().ContainSingle();
+		subject.Write.Calls.Should().Equal(
+			["comment:6", "close:6"],
+			"the explanation lands before the close, as it does for an already-satisfied pull request");
+	}
+
+	[Fact]
+	public async Task AdoptedClosingComment_CarriesTheAdoptedMarkerRatherThanTheSatisfiedOne()
+	{
+		var subject = NewSubject(adopter: new StubAdopter("Directory.Packages.props"));
+
+		await subject.RunAsync(Adoptable(6));
+
+		var comment = subject.Write.Comments.Should().ContainSingle().Subject;
+
+		comment.Body.Should().Contain(
+			DependabotTriageRunner.AdoptedMarker,
+			"the two reasons for a close have to stay distinguishable in a pull request's history");
+		comment.Body.Should().NotContain(
+			DependabotTriageRunner.ClosedMarker,
+			"this pull request was not one the repository had already outgrown");
+	}
+
+	[Fact]
+	public async Task AdoptableButNothingWritten_IsLeftOpen()
+	{
+		var subject = NewSubject(adopter: new StubAdopter());
+
+		var outcome = await subject.RunAsync(Adoptable(6));
+
+		outcome.Adopted.Should().Be(0);
+		outcome.Idle.Should().Be(1, "it is reported, and left for the next pass");
+		subject.Write.Calls.Should().BeEmpty(
+			"a writer that matched nothing looks exactly like one that succeeded — closing on that basis "
+				+ "would close a pull request against no change at all");
+	}
+
+	[Fact]
+	public async Task AdoptableWithNoAdopter_ClosesNothingAndSaysWhy()
+	{
+		var subject = NewSubject();
+
+		var outcome = await subject.RunAsync(Adoptable(6));
+
+		outcome.Adopted.Should().Be(0);
+		subject.Write.Calls.Should().BeEmpty("with no clone to write to, nothing can be adopted");
+		subject.Log.Should().Contain(
+			line => line.Contains("no local clone", StringComparison.OrdinalIgnoreCase),
+			"the pass has to say why an adoptable pull request was left alone");
+	}
+
+	[Fact]
+	public async Task Adoptable_AnnouncesTheWriteBeforeTheClose()
+	{
+		var subject = NewSubject(adopter: new StubAdopter("Directory.Packages.props"));
+
+		await subject.RunAsync(Adoptable(6));
+
+		subject.Log.Should().Contain(
+			line => line.Contains("Directory.Packages.props", StringComparison.Ordinal),
+			"every mutation is announced before it is made, so the work item's output is the audit "
+				+ "trail for it");
 	}
 
 	[Fact]
