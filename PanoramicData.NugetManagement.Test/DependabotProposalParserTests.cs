@@ -197,6 +197,27 @@ public class DependabotProposalParserTests(ITestOutputHelper output) : TestWithO
 	}
 
 	[Fact]
+	public void Parse_BodyWithWindowsLineEndings_ReadsEveryDependency()
+	{
+		// What GitHub actually delivers. Every other test here uses \n, because that is what a C# raw
+		// string literal and a "\n"-joined list produce — so nothing was covering the line endings the
+		// API really sends, and the anchored pattern is exactly the sort of thing a stray \r breaks.
+		var proposal = DependabotProposalParser.Parse(PullRequest(
+			"Bump the nuget group with 2 updates",
+			body: "Updated [Serilog](https://github.com/serilog/serilog) from 3.0.0 to 4.0.0.\r\n"
+				+ "\r\n"
+				+ "Updated [refit](https://github.com/reactiveui/refit) from 6.3.2 to 7.2.22.\r\n"));
+
+		proposal.Should().NotBeNull();
+		proposal!.Bumps.Should().HaveCount(2);
+		proposal.Bumps[0].ToVersion.Should().Be(
+			"4.0.0",
+			"the carriage return must not be swallowed into the version — a version of '4.0.0\\r' "
+				+ "matches nothing the repository declares, so the rewrite would silently find nothing");
+		proposal.Bumps[1].ToVersion.Should().Be("7.2.22");
+	}
+
+	[Fact]
 	public void Parse_BodyListingTheSameDependencyTwice_KeepsOneBump()
 	{
 		var proposal = DependabotProposalParser.Parse(PullRequest(

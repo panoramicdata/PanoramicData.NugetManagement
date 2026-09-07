@@ -10,6 +10,12 @@ namespace PanoramicData.NugetManagement.Test;
 /// These pin the <em>format</em>, separately from any test of the parser. A parser test failing tells
 /// you something is wrong; these tell you whether it is the parser or Dependabot's wording that
 /// changed, which is the difference between a bug and a re-capture.
+/// <para>
+/// The <c>\r?</c> before each anchor is load-bearing. These files are committed with LF and checked
+/// out with CRLF on Windows, so the line endings differ by platform and by clone — and <c>$</c> in
+/// .NET's multiline mode matches only before <c>\n</c>, leaving a stray <c>\r</c> to break an
+/// otherwise correct pattern.
+/// </para>
 /// </remarks>
 public partial class DependabotFixturesTests(ITestOutputHelper output) : TestWithOutput(output)
 {
@@ -36,7 +42,7 @@ public partial class DependabotFixturesTests(ITestOutputHelper output) : TestWit
 			DependabotFixtures
 				.Body(number)
 				.Should().MatchRegex(
-					@"(?m)^Updated \[[^\]]+\]\([^)]*\) from \S+ to \S+$",
+					@"(?m)^Updated \[[^\]]+\]\([^)]*\) from \S+ to \S+\r?$",
 					$"pull request #{number} states its moves as 'Updated [Name](url) from X to Y.', "
 						+ "which is the single form the parser reads");
 		}
