@@ -90,6 +90,8 @@ else
 	{
 		DependabotVerdict.AlreadySatisfied => "Superseded — closing",
 		DependabotVerdict.ValidCovered => "Valid — an auto-fix covers this",
+		DependabotVerdict.Adoptable => "Valid — adopting it locally",
+		DependabotVerdict.Obsolete => "Not referenced here any more — closing",
 		DependabotVerdict.ValidUncovered => "Valid — no auto-fix available",
 		_ => "Not recognised — left alone"
 	};
@@ -102,7 +104,9 @@ else
 	{
 		DependabotVerdict.ValidUncovered => "bg-warning text-dark",
 		DependabotVerdict.ValidCovered => "bg-info text-dark",
+		DependabotVerdict.Adoptable => "bg-info text-dark",
 		DependabotVerdict.AlreadySatisfied => "bg-secondary",
+		DependabotVerdict.Obsolete => "bg-secondary",
 		_ => "bg-light text-dark"
 	};
 }

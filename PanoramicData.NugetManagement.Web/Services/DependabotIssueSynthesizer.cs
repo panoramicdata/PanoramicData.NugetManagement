@@ -136,6 +136,8 @@ public static class DependabotIssueSynthesizer
 	private static string Verdict(RepositoryIssue issue) => issue.TriageVerdict switch
 	{
 		DependabotVerdict.AlreadySatisfied => " — superseded, closeable",
+		DependabotVerdict.Obsolete => " — not referenced here, closeable",
+		DependabotVerdict.Adoptable => " — adopting it locally",
 		DependabotVerdict.ValidCovered => " — an auto-fix covers it",
 		DependabotVerdict.ValidUncovered => " — valid, no auto-fix",
 		DependabotVerdict.Unrecognised => " — left alone",

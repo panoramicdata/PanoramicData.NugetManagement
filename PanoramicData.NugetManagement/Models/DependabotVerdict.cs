@@ -39,10 +39,30 @@ public enum DependabotVerdict
 	/// <see cref="ValidCovered"/> is. Triage decides; the runner adopts, and only if the write applies
 	/// something.
 	/// <para>
-	/// Appended last, and it must stay last. <c>RepositoryIssue.TriageVerdict</c> is persisted to the
-	/// row cache as a JSON number, so inserting a member above this one silently rewrites the meaning
-	/// of every verdict already cached.
+	/// Appended last when it was added, and nothing may be inserted above it.
+	/// <c>RepositoryIssue.TriageVerdict</c> is persisted to the row cache as a JSON number, so a member
+	/// added anywhere but the end silently rewrites the meaning of every verdict already cached.
 	/// </para>
 	/// </remarks>
-	Adoptable
+	Adoptable,
+
+	/// <summary>
+	/// The repository does not reference the dependency anywhere it could be declaring one, so the
+	/// pull request proposes moving something that is not here. Closed, with a comment saying so.
+	/// </summary>
+	/// <remarks>
+	/// Distinct from <see cref="ValidUncovered"/> with a rule-set gap, which it used to be reported as.
+	/// A gap means a fix is missing and somebody should write one; this means there is nothing to fix,
+	/// and raising an issue for it asks for a remediation covering a dependency the estate has already
+	/// dropped.
+	/// <para>
+	/// The only verdict that closes a pull request on the strength of not finding something, which is
+	/// why <see cref="Services.DependencyMentionScanner"/> looks as widely as it does, and why one
+	/// still-referenced bump anywhere in a group is enough to keep the pull request open.
+	/// </para>
+	/// <para>
+	/// Appended last, and it must stay last, for the cache reason given on <see cref="Adoptable"/>.
+	/// </para>
+	/// </remarks>
+	Obsolete
 }

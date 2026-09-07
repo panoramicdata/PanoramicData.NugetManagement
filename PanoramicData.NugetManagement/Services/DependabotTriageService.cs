@@ -138,11 +138,16 @@ public sealed class DependabotTriageService
 		var packages = PackageReferenceScanner.Scan(context);
 		var actionUsages = ActionUsageScanner.Scan(context);
 
-		return [.. issues.Select(issue => Judge(issue, packages, actionUsages, ruleResults, canRemediate))];
+		return
+		[
+			.. issues.Select(issue =>
+				Judge(issue, context, packages, actionUsages, ruleResults, canRemediate))
+		];
 	}
 
 	private DependabotTriage Judge(
 		RepositoryIssue issue,
+		RepositoryContext context,
 		List<PackageVersionReference> packages,
 		List<ActionUsage> actionUsages,
 		IReadOnlyList<RuleResult> ruleResults,
@@ -174,6 +179,22 @@ public sealed class DependabotTriageService
 				DependabotVerdict.AlreadySatisfied,
 				$"{Describe(proposal.Bumps)} already declared at the proposed version or above, so "
 					+ "merging this would change nothing.",
+				null);
+		}
+
+		// Absent before covered: a dependency the repository no longer references cannot be moved by
+		// anything, is not waiting on a remediation, and is not somebody's missing rule — the pull
+		// request is simply about a repository that has moved on. Every outstanding bump has to be
+		// absent, for the same reason adoption is all-or-nothing: closing a group on the strength of
+		// its dropped half would silently discard the half still worth doing.
+		if (outstanding.TrueForAll(bump => !DependencyMentionScanner.Mentions(context, bump.Dependency)))
+		{
+			return new DependabotTriage(
+				issue,
+				proposal,
+				DependabotVerdict.Obsolete,
+				$"{Describe(outstanding)} no longer referenced anywhere this repository could be "
+					+ "declaring it, so there is nothing here for this pull request to move.",
 				null);
 		}
 
@@ -215,7 +236,7 @@ public sealed class DependabotTriageService
 		// Whether this is a gap in the rule set or a rule that has nothing to say today is a different
 		// question, and only the first is anybody's work.
 		var gaps = outstanding
-			.Where(bump => IsGap(bump, packages, actionUsages, canRemediate))
+			.Where(bump => IsGap(bump, context, packages, actionUsages, canRemediate))
 			.ToList();
 
 		if (gaps.Count > 0)
@@ -325,13 +346,21 @@ public sealed class DependabotTriageService
 	/// Whether nothing here can ever move this bump: no rule governs it, or one claims it but never
 	/// reads where it is declared.
 	/// </summary>
+	/// <remarks>
+	/// A dependency the repository does not reference at all is never a gap, whichever of those two is
+	/// also true of it. There is no fix missing for something that is not here, and an issue raised
+	/// against it asks for a remediation covering a dependency the repository has already dropped —
+	/// which is what a bump the scanners could not see used to produce.
+	/// </remarks>
 	private bool IsGap(
 		DependabotBump bump,
+		RepositoryContext context,
 		List<PackageVersionReference> packages,
 		List<ActionUsage> actionUsages,
 		Func<string, bool> canRemediate)
-		=> GoverningRuleId(bump.Dependency, canRemediate) is null
-			|| !IsObserved(bump.Dependency, packages, actionUsages);
+		=> DependencyMentionScanner.Mentions(context, bump.Dependency)
+			&& (GoverningRuleId(bump.Dependency, canRemediate) is null
+				|| !IsObserved(bump.Dependency, packages, actionUsages));
 
 	/// <summary>
 	/// Names bumps for a sentence a human reads: "Serilog", "Serilog and Refit", or "Serilog, Refit

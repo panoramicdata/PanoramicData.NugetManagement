@@ -371,6 +371,60 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 	}
 
 	[Fact]
+	public async Task Obsolete_CommentsThenCloses()
+	{
+		var subject = NewSubject();
+
+		var outcome = await subject.RunAsync(Triage(5, DependabotVerdict.Obsolete));
+
+		outcome.Obsolete.Should().Be(1);
+		subject.Write.Calls.Should().Equal(
+			["comment:5", "close:5"],
+			"the explanation lands before the close, as it does for every other close");
+	}
+
+	[Fact]
+	public async Task Obsolete_RaisesNoGapIssue()
+	{
+		var subject = NewSubject();
+
+		await subject.RunAsync(Triage(5, DependabotVerdict.Obsolete));
+
+		subject.Write.Created.Should().BeEmpty(
+			"there is no missing remediation for a dependency the repository does not have");
+	}
+
+	[Fact]
+	public async Task ObsoleteClosingComment_CarriesItsOwnMarker()
+	{
+		var subject = NewSubject();
+
+		await subject.RunAsync(Triage(5, DependabotVerdict.Obsolete));
+
+		var comment = subject.Write.Comments.Should().ContainSingle().Subject;
+
+		comment.Body.Should().Contain(
+			DependabotTriageRunner.ObsoleteMarker,
+			"somebody reading the pull request has to be able to tell this close from one made because "
+			+ "the repository had already moved past the proposed version");
+		comment.Body.Should().NotContain(DependabotTriageRunner.ClosedMarker);
+		comment.Body.Should().NotContain(DependabotTriageRunner.AdoptedMarker);
+	}
+
+	[Fact]
+	public async Task Obsolete_RetractsAStandingGapIssueForTheDependency()
+	{
+		var subject = NewSubject(openGapIssueFor: "github/codeql-action");
+
+		await subject.RunAsync(Triage(5, DependabotVerdict.Obsolete));
+
+		subject.Write.ClosedIssues.Should().Equal(
+			[_gapIssueNumber],
+			"the gap issue asks for a remediation covering a dependency this repository no longer has, "
+			+ "which is exactly the issue this verdict exists to stop raising");
+	}
+
+	[Fact]
 	public async Task TwoUncoveredPullRequestsForOneDependency_RaiseOneIssue()
 	{
 		var subject = NewSubject();
