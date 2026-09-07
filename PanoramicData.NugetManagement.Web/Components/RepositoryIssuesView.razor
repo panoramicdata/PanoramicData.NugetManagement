@@ -94,6 +94,7 @@ else
 	{
 		DependabotVerdict.AlreadySatisfied => "Superseded",
 		DependabotVerdict.ValidCovered => "Auto-fix covers it",
+		DependabotVerdict.Adoptable => "Adopting",
 		DependabotVerdict.ValidUncovered => "No auto-fix",
 		_ => "Left alone"
 	};
@@ -102,10 +103,17 @@ else
 	/// Uncovered is the only verdict nothing else will act on, so it is the only one coloured to ask
 	/// for attention.
 	/// </summary>
+	/// <remarks>
+	/// Adoptable is coloured like covered rather than like uncovered: something is going to act on it.
+	/// A row still showing it after a pass is one whose write applied nothing, which the reason
+	/// explains — hence "Adopting" in the present tense, because an adopted pull request is closed and
+	/// gone from this list entirely.
+	/// </remarks>
 	private static string BadgeClass(DependabotVerdict verdict) => verdict switch
 	{
 		DependabotVerdict.ValidUncovered => "bg-warning text-dark",
 		DependabotVerdict.ValidCovered => "bg-info text-dark",
+		DependabotVerdict.Adoptable => "bg-info text-dark",
 		DependabotVerdict.AlreadySatisfied => "bg-secondary",
 		_ => "bg-light text-dark"
 	};

@@ -57,4 +57,18 @@ public class FixScopeTests(ITestOutputHelper output) : TestWithOutput(output)
 		FixScope.For(NavView.RepositoryDetail).HasAnything.Should().BeTrue();
 		FixScope.For(NavView.RepositoryIssuesDetail).HasAnything.Should().BeTrue();
 	}
+
+	[Fact]
+	public void AdoptionArrivesUnderTheExistingTriageAction()
+	{
+		FixScope.For(NavView.RepositoryDetail).TriageDependabot.Should().BeTrue();
+
+		typeof(FixActions).GetProperties()
+			.Select(p => p.Name)
+			.Should().BeEquivalentTo(
+				["ApplyRemediations", "TriageDependabot", "HasAnything"],
+				"adopting a Dependabot bump is part of what triaging one means, so it arrives under the "
+					+ "existing action. Fix is the only control that fixes things, and a third action "
+					+ "here would be a new button in all but name");
+	}
 }

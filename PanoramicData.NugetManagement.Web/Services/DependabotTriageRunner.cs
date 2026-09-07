@@ -15,12 +15,18 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// reported and left alone.
 /// </param>
 /// <param name="Unrecognised">Pull requests left alone.</param>
+/// <param name="Adopted">
+/// Pull requests whose bumps were written to the local clone and which were then closed. Counts what
+/// was actually written, not what was found adoptable: a plan that matched nothing closes nothing and
+/// is reported as idle instead.
+/// </param>
 public sealed record DependabotTriageOutcome(
 	int Closed,
 	int Covered,
 	int Uncovered,
 	int Idle,
-	int Unrecognised);
+	int Unrecognised,
+	int Adopted = 0);
 
 /// <summary>
 /// Carries out what triage decided: closes the redundant pull requests and raises an issue for each
@@ -45,6 +51,18 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	public const string ClosedMarker = "<!-- nugetmgmt:closed:already-satisfied -->";
 
 	/// <summary>
+	/// The hidden marker on a comment closing a pull request whose bumps this application has adopted
+	/// into the local clone.
+	/// </summary>
+	/// <remarks>
+	/// Separate from <see cref="ClosedMarker"/> because the two are different claims: one says the
+	/// repository had already outgrown the pull request, the other says this application has just
+	/// written what the pull request proposed. Somebody reading the history needs to tell them apart —
+	/// and the second is the one that leaves an uncommitted change behind.
+	/// </remarks>
+	public const string AdoptedMarker = "<!-- nugetmgmt:closed:adopted -->";
+
+	/// <summary>
 	/// The pull requests this process has already commented on, as "owner/name#number".
 	/// </summary>
 	/// <remarks>
@@ -66,19 +84,25 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	/// so the work item's output is the audit trail for it.
 	/// </param>
 	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <param name="adopter">
+	/// Writes an adoption plan to the local clone, or null when there is no clone to write to — in
+	/// which case nothing is adopted and no pull request is closed on that basis.
+	/// </param>
 	public async Task<DependabotTriageOutcome> RunAsync(
 		IGitHubIssueApi readApi,
 		IGitHubWriteApi writeApi,
 		string repositoryFullName,
 		IReadOnlyList<DependabotTriage> triages,
 		Action<string> onOutput,
-		CancellationToken cancellationToken)
+		CancellationToken cancellationToken,
+		IBumpAdopter? adopter = null)
 	{
 		var (owner, name) = Split(repositoryFullName);
 		var closed = 0;
 		var covered = 0;
 		var idle = 0;
 		var unrecognised = 0;
+		var adopted = 0;
 
 		var uncovered = new Dictionary<DependencyRef, List<UncoveredDependencySighting>>();
 
@@ -93,14 +117,18 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 			switch (triage.Verdict)
 			{
 				case DependabotVerdict.AlreadySatisfied:
-					await CloseAsync(writeApi, owner, name, triage, onOutput, cancellationToken)
+					await CloseAsync(
+							writeApi, owner, name, triage, ClosedMarker, onOutput, cancellationToken)
 						.ConfigureAwait(false);
 					closed++;
 
 					if (triage.Proposal is { } satisfied)
 					{
-						resolved[satisfied.Dependency] =
-							$"{repositoryFullName} now declares it at or above the proposed version";
+						foreach (var bump in satisfied.Bumps)
+						{
+							resolved[bump.Dependency] =
+								$"{repositoryFullName} now declares it at or above the proposed version";
+						}
 					}
 
 					break;
@@ -111,8 +139,57 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 
 					if (triage.Proposal is { } covering && triage.CoveringRuleId is { } coveringRuleId)
 					{
-						resolved[covering.Dependency] =
-							$"{coveringRuleId} governs it and its remediation will move it";
+						foreach (var bump in covering.Bumps)
+						{
+							resolved[bump.Dependency] =
+								$"{coveringRuleId} governs it and its remediation will move it";
+						}
+					}
+
+					break;
+
+				// Old enough that no grace period is still protecting anything, and every outstanding
+				// bump can be written. Write first, and close only if the write actually landed.
+				case DependabotVerdict.Adoptable when triage.Adoption is { } plan:
+					if (adopter is null)
+					{
+						idle++;
+						onOutput(
+							$"↺ #{triage.Issue.Number} left open: adoptable, but there is no local clone to "
+							+ "write the bump to.");
+						break;
+					}
+
+					onOutput($"🔧 #{triage.Issue.Number}: {triage.Reason}");
+
+					var written = adopter.Adopt(plan, onOutput);
+
+					// A writer that matched nothing is indistinguishable from one that succeeded, so the
+					// close has to be conditional on there being something to show for it. This is also the
+					// ordinary case when two pull requests in one pass propose the same package.
+					if (written.Count == 0)
+					{
+						idle++;
+						onOutput(
+							$"↺ #{triage.Issue.Number} left open: adoption wrote nothing, so closing it "
+							+ "would close it against no change at all.");
+						break;
+					}
+
+					onOutput($"✏️ Wrote {string.Join(", ", written)} in the local clone.");
+
+					await CloseAsync(
+							writeApi, owner, name, triage, AdoptedMarker, onOutput, cancellationToken)
+						.ConfigureAwait(false);
+					adopted++;
+
+					if (triage.Proposal is { } adoptedProposal)
+					{
+						foreach (var bump in adoptedProposal.Bumps)
+						{
+							resolved[bump.Dependency] =
+								$"{repositoryFullName} has adopted the proposed version locally";
+						}
 					}
 
 					break;
@@ -124,19 +201,24 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 					onOutput($"↺ #{triage.Issue.Number} left open: {triage.Reason}");
 					break;
 
+				// One sighting per bump that is nobody's job, not per pull request. A grouped pull request
+				// that is part covered and part gap raises an issue only for the gap half.
 				case DependabotVerdict.ValidUncovered when triage.Proposal is { } proposal:
-					if (!uncovered.TryGetValue(proposal.Dependency, out var sightings))
+					foreach (var bump in triage.GapBumps)
 					{
-						sightings = [];
-						uncovered[proposal.Dependency] = sightings;
-					}
+						if (!uncovered.TryGetValue(bump.Dependency, out var sightings))
+						{
+							sightings = [];
+							uncovered[bump.Dependency] = sightings;
+						}
 
-					sightings.Add(new UncoveredDependencySighting(
-						repositoryFullName,
-						proposal.Number,
-						proposal.FromVersion,
-						proposal.ToVersion,
-						proposal.HtmlUrl));
+						sightings.Add(new UncoveredDependencySighting(
+							repositoryFullName,
+							proposal.Number,
+							bump.FromVersion,
+							bump.ToVersion,
+							proposal.HtmlUrl));
+					}
 
 					break;
 
@@ -178,7 +260,8 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 			covered,
 			uncovered.Sum(entry => entry.Value.Count),
 			idle,
-			unrecognised);
+			unrecognised,
+			adopted);
 	}
 
 	/// <summary>
@@ -224,11 +307,23 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	/// Explains, then closes. In that order, so a human who finds the pull request closed has
 	/// something to read — and so a failure to close still leaves the explanation behind.
 	/// </summary>
+	/// <param name="writeApi">For commenting and closing.</param>
+	/// <param name="owner">The repository owner.</param>
+	/// <param name="name">The repository name.</param>
+	/// <param name="triage">The verdict being acted on.</param>
+	/// <param name="marker">
+	/// The hidden marker identifying why this close happened: <see cref="ClosedMarker"/> for a pull
+	/// request the repository had already outgrown, <see cref="AdoptedMarker"/> for one whose bumps
+	/// were just written.
+	/// </param>
+	/// <param name="onOutput">Where the intended close is announced before it is made.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
 	private async Task CloseAsync(
 		IGitHubWriteApi writeApi,
 		string owner,
 		string name,
 		DependabotTriage triage,
+		string marker,
 		Action<string> onOutput,
 		CancellationToken cancellationToken)
 	{
@@ -239,7 +334,8 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 		if (_commented.Add(key))
 		{
 			await writeApi
-				.CommentAsync(owner, name, triage.Issue.Number, CommentBody(triage), cancellationToken)
+				.CommentAsync(
+					owner, name, triage.Issue.Number, CommentBody(triage, marker), cancellationToken)
 				.ConfigureAwait(false);
 		}
 
@@ -252,16 +348,20 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	/// The closing comment. Says what happened and why, in terms a human reading the pull request can
 	/// act on, and carries the marker so its provenance is obvious.
 	/// </summary>
-	private static string CommentBody(DependabotTriage triage)
+	private static string CommentBody(DependabotTriage triage, string marker)
 		=> string.Join(
 			"\n",
-			ClosedMarker,
+			marker,
 			string.Empty,
 			$"Closing automatically: {triage.Reason}",
 			string.Empty,
-			"Raised by PanoramicData.NugetManagement's Dependabot triage. If this is wrong, reopen it — "
-				+ "and the mistake is worth reporting, because triage only closes pull requests whose "
-				+ "target version the repository already declares.");
+			marker == AdoptedMarker
+				? "Raised by PanoramicData.NugetManagement's Dependabot triage, which has written these "
+					+ "versions into the repository directly rather than merging this pull request. If "
+					+ "this is wrong, reopen it — and the mistake is worth reporting."
+				: "Raised by PanoramicData.NugetManagement's Dependabot triage. If this is wrong, reopen "
+					+ "it — and the mistake is worth reporting, because triage only closes pull requests "
+					+ "whose target version the repository already declares.");
 
 	private static (string Owner, string Name) Split(string fullName)
 	{

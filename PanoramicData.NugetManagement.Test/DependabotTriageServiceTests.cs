@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
@@ -94,24 +95,149 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 		}
 	};
 
-	/// <summary>Triages one pull request, with every governing rule remediable unless stated.</summary>
+	/// <summary>
+	/// Triages one pull request, with every governing rule remediable unless stated.
+	/// </summary>
+	/// <param name="issue">The pull request to judge.</param>
+	/// <param name="context">What the repository declares.</param>
+	/// <param name="ruleResults">The current assessment; none failing unless given.</param>
+	/// <param name="canRemediate">Which rule ids have a remediation; all of them unless given.</param>
+	/// <param name="age">
+	/// How long the pull request has been open. One day by default, which is inside
+	/// <see cref="DependabotTriageService.AdoptAfter"/> — every test in this class is about coverage
+	/// rather than age, and a pull request old enough to adopt would reach the adoption verdict before
+	/// the one under test. The adoption gate has its own suite in
+	/// <see cref="DependabotAdoptionPlanTests"/>.
+	/// </param>
 	private static DependabotTriage TriageOne(
 		RepositoryIssue issue,
 		RepositoryContext context,
 		IReadOnlyList<RuleResult>? ruleResults = null,
-		Func<string, bool>? canRemediate = null)
-		=> new DependabotTriageService()
+		Func<string, bool>? canRemediate = null,
+		TimeSpan? age = null)
+		=> new DependabotTriageService(
+				RuleRegistry.Rules,
+				new FakeTimeProvider(issue.CreatedAtUtc + (age ?? TimeSpan.FromDays(1))))
 			.Triage([issue], context, ruleResults ?? [], canRemediate ?? (_ => true))
 			.Should().ContainSingle().Subject;
 
+	/// <summary>
+	/// One <c>Directory.Packages.props</c> declaring several packages.
+	/// </summary>
+	/// <remarks>
+	/// Separate from <see cref="Packages"/> because that one names the same file every time, so two of
+	/// them cannot go into the same context. A grouped pull request needs several packages declared at
+	/// once, and they all live in the one props file.
+	/// </remarks>
+	private static (string, string) PackagesMany(params (string Id, string Version)[] packages)
+		=> (_packagesProps,
+			"<Project><ItemGroup>"
+				+ string.Concat(packages.Select(p =>
+					$"""<PackageVersion Include="{p.Id}" Version="{p.Version}" />"""))
+				+ "</ItemGroup></Project>");
+
+	/// <summary>
+	/// A grouped pull request, with the body Dependabot writes for one.
+	/// </summary>
+	private static RepositoryIssue GroupedPullRequest(
+		int number,
+		params (string Name, string From, string To)[] bumps)
+		=> new()
+		{
+			Number = number,
+			Title = $"Bump the group with {bumps.Length} updates",
+			IsPullRequest = true,
+			HtmlUrl = $"https://github.com/panoramicdata/Athonet.Api/pull/{number}",
+			AuthorLogin = "dependabot[bot]",
+			CreatedAtUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+			Body = string.Join(
+				"\n",
+				bumps.Select(b =>
+					$"Updated [{b.Name}](https://github.com/example/{b.Name}) from {b.From} to {b.To}."))
+		};
+
 	[Fact]
-	public void GroupedPullRequest_IsUnrecognisedAndCarriesNoProposal()
+	public void GroupedPullRequestWithNoBody_IsUnrecognisedAndCarriesNoProposal()
 	{
 		var triage = TriageOne(PullRequest(1, "Bump the nuget group with 3 updates"), Ctx());
 
 		triage.Verdict.Should().Be(DependabotVerdict.Unrecognised);
 		triage.Proposal.Should().BeNull();
 	}
+
+	[Fact]
+	public void GroupWhereEveryBumpIsSatisfied_IsAlreadySatisfied()
+		=> TriageOne(
+				GroupedPullRequest(1, ("Serilog", "3.0.0", "4.0.0"), ("refit", "6.0.0", "7.0.0")),
+				Ctx(PackagesMany(("Serilog", "4.1.0"), ("refit", "7.0.0"))))
+			.Verdict.Should().Be(
+				DependabotVerdict.AlreadySatisfied,
+				"every dependency it proposes is already declared at or above the target");
+
+	[Fact]
+	public void GroupWhereOneBumpIsOutstanding_IsJudgedOnThatBumpAlone()
+	{
+		var triage = TriageOne(
+			GroupedPullRequest(1, ("Serilog", "3.0.0", "4.0.0"), ("refit", "6.0.0", "7.0.0")),
+			Ctx(PackagesMany(("Serilog", "4.1.0"), ("refit", "6.0.0"))));
+
+		triage.Verdict.Should().NotBe(
+			DependabotVerdict.AlreadySatisfied,
+			"one of the two is still outstanding, so the pull request still proposes something");
+		triage.Reason.Should().Contain(
+			"refit",
+			"the reason has to name which dependency drove the verdict, or it sends somebody back to "
+				+ "GitHub to find out");
+		triage.Reason.Should().NotContain(
+			"Serilog",
+			"the satisfied half is not what is outstanding, and naming it would read as though it were");
+	}
+
+	[Fact]
+	public void GroupWhereEveryOutstandingBumpIsCovered_IsCovered()
+		=> TriageOne(
+				GroupedPullRequest(1, ("Serilog", "3.0.0", "4.0.0"), ("refit", "6.0.0", "7.0.0")),
+				Ctx(PackagesMany(("Serilog", "3.0.0"), ("refit", "6.0.0"))),
+				[FailingNamingPackages("PKG-07", "Serilog", "refit")],
+				ruleId => ruleId == "PKG-07")
+			.Verdict.Should().Be(
+				DependabotVerdict.ValidCovered,
+				"one failing rule names both, so its remediation moves the whole pull request");
+
+	[Fact]
+	public void GroupWhereOnlySomeOutstandingBumpsAreCovered_IsNotCovered()
+		=> TriageOne(
+				GroupedPullRequest(1, ("Serilog", "3.0.0", "4.0.0"), ("refit", "6.0.0", "7.0.0")),
+				Ctx(PackagesMany(("Serilog", "3.0.0"), ("refit", "6.0.0"))),
+				[FailingNamingPackages("PKG-07", "Serilog")],
+				ruleId => ruleId == "PKG-07")
+			.Verdict.Should().NotBe(
+				DependabotVerdict.ValidCovered,
+				"reporting the pull request as covered would have it wait indefinitely for a fix that "
+					+ "never touches refit, with no gap issue raised because it looks handled");
+
+	[Fact]
+	public void GroupWithOneUngovernedBump_IsAGapForThatBumpOnly()
+	{
+		var triage = TriageOne(
+			GroupedPullRequest(1, ("Serilog", "3.0.0", "4.0.0"), ("some/action", "1", "2")),
+			Ctx(Packages("Serilog", "3.0.0")),
+			[FailingNamingPackages("PKG-07", "Serilog")],
+			ruleId => ruleId == "PKG-07");
+
+		triage.IsRuleSetGap.Should().BeTrue(
+			"nothing governs some/action, so part of this pull request is nobody's job");
+		triage.GapBumps.Select(b => b.Dependency.Name).Should().BeEquivalentTo(
+			["some/action"],
+			"the governed half is covered and is not somebody's work — only the ungoverned bump is");
+	}
+
+	[Fact]
+	public void SingleBumpVerdict_CarriesNoGapBumpsWhenItIsNotAGap()
+		=> TriageOne(
+				PullRequest(1, "Bump refit from 6.3.2 to 7.2.22"),
+				Ctx(Packages("refit", "7.2.22")))
+			.GapBumps.Should().BeEmpty("a satisfied pull request is nobody's work");
 
 	[Fact]
 	public void PackageDeclaredAtTheTargetVersion_IsAlreadySatisfied()

@@ -27,5 +27,22 @@ public enum DependabotVerdict
 	/// Still worth doing, and nothing we have can do it automatically. Raises an issue against this
 	/// application's own repository, so the missing remediation becomes visible work.
 	/// </summary>
-	ValidUncovered
+	ValidUncovered,
+
+	/// <summary>
+	/// Still worth doing, nothing is failing for it, and the pull request has been open long enough
+	/// that no grace period is still protecting anything — so the bumps it proposes are written to the
+	/// local clone and the pull request is closed.
+	/// </summary>
+	/// <remarks>
+	/// Named for the state triage found rather than the act the runner performs, as
+	/// <see cref="ValidCovered"/> is. Triage decides; the runner adopts, and only if the write applies
+	/// something.
+	/// <para>
+	/// Appended last, and it must stay last. <c>RepositoryIssue.TriageVerdict</c> is persisted to the
+	/// row cache as a JSON number, so inserting a member above this one silently rewrites the meaning
+	/// of every verdict already cached.
+	/// </para>
+	/// </remarks>
+	Adoptable
 }

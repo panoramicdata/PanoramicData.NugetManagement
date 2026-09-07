@@ -29,6 +29,23 @@ public class RepositoryIssue
 	/// <summary>The title, as shown on GitHub.</summary>
 	public required string Title { get; init; }
 
+	/// <summary>
+	/// The item's body as GitHub reported it, or null when it did not come from a fetch that read one.
+	/// </summary>
+	/// <remarks>
+	/// Not persisted. Dependabot writes whole changelogs into a pull request body, and the row cache
+	/// holds every open item of every repository — carrying them would inflate the cache by orders of
+	/// magnitude to store text that is only ever read during the pass that fetched it.
+	/// <para>
+	/// The consequence is that a restored row has titles but no bodies, so a grouped pull request
+	/// cannot be judged from cache alone: its title names neither all of its dependencies nor any
+	/// version, so it parses to nothing and is left strictly alone. That is the safe direction, and the
+	/// behaviour that existed before bodies were read at all.
+	/// </para>
+	/// </remarks>
+	[JsonIgnore]
+	public string? Body { get; init; }
+
 	/// <summary>Whether this item is a pull request rather than an issue.</summary>
 	public bool IsPullRequest { get; init; }
 

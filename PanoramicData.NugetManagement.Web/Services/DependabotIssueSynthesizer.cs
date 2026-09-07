@@ -81,15 +81,19 @@ public static class DependabotIssueSynthesizer
 
 		var nowUtc = DateTimeOffset.UtcNow;
 
+		// Flattened to one entry per dependency moved rather than per pull request: a grouped pull
+		// request moves several, and it belongs in the finding for each of them. Grouping the pull
+		// request by its first dependency alone would hide the rest entirely.
 		var proposals = row.OpenIssues
-			.Select(issue => (Issue: issue, Proposal: DependabotTitleParser.Parse(issue)))
+			.Select(issue => (Issue: issue, Proposal: DependabotProposalParser.Parse(issue)))
 			.Where(pair => pair.Proposal is not null)
+			.SelectMany(pair => pair.Proposal!.Bumps.Select(bump => (pair.Issue, Bump: bump)))
 			.ToList();
 
 		return
 		[
 			.. proposals
-				.GroupBy(pair => pair.Proposal!.Dependency)
+				.GroupBy(pair => pair.Bump.Dependency)
 				.Select(group => Finding(group.Key, [.. group], nowUtc))
 				.OrderBy(result => result.RuleId, StringComparer.OrdinalIgnoreCase)
 		];
@@ -97,7 +101,7 @@ public static class DependabotIssueSynthesizer
 
 	private static RuleResult Finding(
 		DependencyRef dependency,
-		IReadOnlyList<(RepositoryIssue Issue, DependabotProposal? Proposal)> pairs,
+		IReadOnlyList<(RepositoryIssue Issue, DependabotBump Bump)> pairs,
 		DateTimeOffset nowUtc)
 		=> new()
 		{
@@ -114,12 +118,12 @@ public static class DependabotIssueSynthesizer
 
 	private static string Describe(
 		DependencyRef dependency,
-		IReadOnlyList<(RepositoryIssue Issue, DependabotProposal? Proposal)> pairs)
+		IReadOnlyList<(RepositoryIssue Issue, DependabotBump Bump)> pairs)
 	{
 		var parts = pairs
 			.OrderBy(pair => pair.Issue.Number)
 			.Select(pair =>
-				$"#{pair.Issue.Number} ({pair.Proposal!.FromVersion} → {pair.Proposal.ToVersion})"
+				$"#{pair.Issue.Number} ({pair.Bump.FromVersion} → {pair.Bump.ToVersion})"
 				+ Verdict(pair.Issue));
 
 		return $"{dependency.Name}: {string.Join(", ", parts)}.";

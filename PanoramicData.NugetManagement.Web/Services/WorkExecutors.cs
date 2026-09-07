@@ -4,6 +4,7 @@ using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
+using PanoramicData.NugetManagement.Web.Remediations;
 
 namespace PanoramicData.NugetManagement.Web.Services;
 
@@ -1321,6 +1322,19 @@ public sealed class WorkExecutors(
 			row.Assessment.RuleResults,
 			ruleId => remediations.Get(ruleId) is not null);
 
+		// Adoption writes files, which triage has never done. No clone means no adoption: the verdicts
+		// are still reached and reported, and every adoptable pull request is left open saying why. The
+		// guard matches the one the Fix lane uses, rather than inventing a second opinion about when a
+		// clone can be written to.
+		var adopter = row is { IsClonedLocally: true, LocalPath: not null }
+			? new CloneBumpAdopter(row.LocalPath)
+			: null;
+
+		if (adopter is null)
+		{
+			Say($"ℹ️ {row.RepositoryFullName} is not cloned locally, so nothing can be adopted this pass.");
+		}
+
 		var outcome = await triageRunner
 			.RunAsync(
 				new OctokitGitHubIssueApi(github),
@@ -1328,17 +1342,44 @@ public sealed class WorkExecutors(
 				row.RepositoryFullName,
 				triages,
 				Say,
-				cancellationToken)
+				cancellationToken,
+				adopter)
 			.ConfigureAwait(false);
 
-		Say($"✅ {row.RepositoryFullName}: closed {outcome.Closed}, "
+		Say($"✅ {row.RepositoryFullName}: closed {outcome.Closed}, adopted {outcome.Adopted}, "
 			+ $"{outcome.Covered} awaiting an existing fix, {outcome.Uncovered} with no fix available, "
 			+ $"{outcome.Unrecognised} left alone.");
+
+		if (outcome.Adopted > 0)
+		{
+			// The adopted versions are sitting uncommitted in the clone. Saying so here is the only
+			// warning anybody gets: the pull requests are already closed, so an unpushed clone is how
+			// the bumps get lost.
+			Say($"⚠️ {outcome.Adopted} adopted bump(s) are uncommitted in {row.LocalPath} — "
+				+ "commit and push them, or the closed pull requests take the changes with them.");
+
+			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+		}
 
 		// The closed ones have left the open list, and the survivors now carry their verdicts.
 		row.OpenIssues = [.. DependabotTriageRunner.Restamp(row.OpenIssues, triages)];
 
 		cache.UpsertRow(row);
+	}
+
+	/// <summary>
+	/// Adopts Dependabot bumps into one repository's local clone.
+	/// </summary>
+	/// <param name="localPath">The root of the clone.</param>
+	/// <remarks>
+	/// The whole of the runner's file-system dependency, so the runner itself keeps no knowledge of
+	/// working trees and stays testable without one.
+	/// </remarks>
+	private sealed class CloneBumpAdopter(string localPath) : IBumpAdopter
+	{
+		/// <inheritdoc />
+		public IReadOnlyList<string> Adopt(DependabotAdoptionPlan plan, Action<string> onOutput)
+			=> DependabotAdoptionRemediation.Adopt(localPath, plan, onOutput);
 	}
 
 	/// <summary>
