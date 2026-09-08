@@ -110,9 +110,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "bunit": {
-    "latestVersion": "2.9.0",
-    "published": "2026-08-03T20:51:54.89+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "2.10.3",
+    "published": "2026-09-08T09:46:13.583+01:00",
+    "refreshedAtUtc": "2026-09-08T10:19:02.8676229+00:00"
   },
   "Castle.Core": {
     "latestVersion": "5.2.1",
@@ -515,9 +515,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Microsoft.AspNetCore.Components.WebView.WindowsForms": {
-    "latestVersion": "10.0.100",
-    "published": "2026-08-20T17:20:28.46+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "10.0.101",
+    "published": "2026-09-07T17:25:48.85+01:00",
+    "refreshedAtUtc": "2026-09-07T22:19:02.8714701+00:00"
   },
   "Microsoft.AspNetCore.DataProtection": {
     "latestVersion": "10.0.11",
@@ -855,9 +855,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Microsoft.Kiota.Abstractions": {
-    "latestVersion": "2.1.1",
-    "published": "2026-09-04T16:16:03.39+01:00",
-    "refreshedAtUtc": "2026-09-04T16:19:02.8664962+00:00"
+    "latestVersion": "2.1.2",
+    "published": "2026-09-08T14:50:39.087+01:00",
+    "refreshedAtUtc": "2026-09-08T16:19:02.87148+00:00"
   },
   "Microsoft.ML": {
     "latestVersion": "5.0.0",
@@ -1170,9 +1170,9 @@
     "refreshedAtUtc": "2026-09-03T16:19:02.8622546+00:00"
   },
   "PanoramicData.NCalcExtensions": {
-    "latestVersion": "6.1.13",
-    "published": "2026-08-31T16:56:19.207+01:00",
-    "refreshedAtUtc": "2026-08-31T21:19:19.9350179+00:00"
+    "latestVersion": "6.1.30",
+    "published": "2026-09-07T15:06:20.907+01:00",
+    "refreshedAtUtc": "2026-09-07T16:19:02.8716504+00:00"
   },
   "PanoramicData.NetFlowServer": {
     "latestVersion": "1.0.9",
