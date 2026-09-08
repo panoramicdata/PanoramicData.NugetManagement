@@ -238,7 +238,7 @@
   "PanoramicData.HealthChecks.Core": "10.0.17",
   "PanoramicData.HealthChecks.Versions": "10.0.17",
   "PanoramicData.Mapper": "10.0.47",
-  "PanoramicData.NCalcExtensions": "6.1.13",
+  "PanoramicData.NCalcExtensions": "6.1.30",
   "PanoramicData.NetFlowServer": "1.0.9",
   "PanoramicData.NugetManagement": "1.0.60",
   "PanoramicData.OData.Client": "10.0.123",
