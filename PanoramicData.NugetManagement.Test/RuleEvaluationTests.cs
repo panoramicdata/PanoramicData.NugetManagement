@@ -1164,6 +1164,38 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeTrue("a not-applicable rule must never count as a failure");
 	}
 
+	[Fact]
+	public async Task HTTP01_ShouldNotApply_WhenTheRepositoryTalksToAGraphQlEndpoint()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"GraphQL.Client\" Version=\"6.1.0\" /></ItemGroup></Project>",
+			["MyProject/MyProject.csproj"] =
+				"<Project><ItemGroup>"
+				+ "<PackageReference Include=\"GraphQL.Client\" />"
+				+ "<PackageReference Include=\"Microsoft.Extensions.Http\" />"
+				+ "</ItemGroup></Project>"
+		});
+
+		var result = await GetRule("HTTP-01").EvaluateAsync(context, CancellationToken.None);
+		result.IsApplicable.Should().BeFalse("a GraphQL client posts to one endpoint, so there are no routes for Refit to declare");
+		result.Passed.Should().BeTrue("a not-applicable rule must never count as a failure");
+	}
+
+	[Fact]
+	public async Task HTTP01_ShouldFail_WhenAGraphQlClientIsOnlyCentrallyPinned()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"GraphQL.Client\" Version=\"6.1.0\" /></ItemGroup></Project>",
+			["MyProject/MyProject.csproj"] = "<Project><ItemGroup><PackageReference Include=\"RestSharp\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("HTTP-01").EvaluateAsync(context, CancellationToken.None);
+		result.IsApplicable.Should().BeTrue("a version pin is not a decision to use the package");
+		result.Passed.Should().BeFalse();
+	}
+
 	// ── LIC-02 ──────────────────────────────────────────────────────────
 
 	[Fact]

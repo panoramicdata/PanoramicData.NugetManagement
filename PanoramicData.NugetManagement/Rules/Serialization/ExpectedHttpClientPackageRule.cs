@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Models;
+﻿using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Rules;
 
@@ -34,6 +34,18 @@ public class ExpectedHttpClientPackageRule : RuleBase
 		"Flurl"
 	];
 
+	/// <summary>
+	/// Packages that mean the repository's remote API is GraphQL, not REST. A GraphQL client posts
+	/// every operation to a single endpoint, so there are no resource-shaped routes for a Refit
+	/// interface to declare and the expected HTTP client package genuinely does not apply. Matched as
+	/// a direct project reference only: a central version pin alone is not a decision to use it.
+	/// </summary>
+	private static readonly string[] GraphQlClientIndicators =
+	[
+		"GraphQL.Client",
+		"StrawberryShake"
+	];
+
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
@@ -59,10 +71,24 @@ public class ExpectedHttpClientPackageRule : RuleBase
 			|| ReferencesPackage(dirBuild, indicator, includeVariants: true)
 			|| csprojFiles.Any(csproj => ReferencesPackage(context.GetFileContent(csproj), indicator, includeVariants: true)));
 
-		return Task.FromResult(!doesHttp
-			? NotApplicable(
-				"No HTTP client usage detected in any non-test project, so an HTTP client package is not required.")
-			: Fail(
+		if (!doesHttp)
+		{
+			return Task.FromResult(NotApplicable(
+				"No HTTP client usage detected in any non-test project, so an HTTP client package is not required."));
+		}
+
+		// The HTTP the repository does may not be REST at all. A GraphQL client owns the transport
+		// itself and speaks to one endpoint, which leaves nothing for the expected HTTP client
+		// package to describe, so require it only of repositories whose remote API is REST.
+		if (csprojFiles.Any(csproj => GraphQlClientIndicators.Any(indicator =>
+			ReferencesPackageDirectly(context.GetFileContent(csproj), indicator, includeVariants: true))))
+		{
+			return Task.FromResult(NotApplicable(
+				$"The repository talks to a GraphQL endpoint, so \"{expected}\" does not apply."));
+		}
+
+		return Task.FromResult(
+			Fail(
 				$"Expected HTTP client package \"{expected}\" is not referenced in any non-test project.",
 				new RuleAdvisory
 				{
