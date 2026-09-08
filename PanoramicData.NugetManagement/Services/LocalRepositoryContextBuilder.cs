@@ -16,9 +16,30 @@ public class LocalRepositoryContextBuilder
 	private static readonly string[] _contentExtensions =
 	[
 		".csproj",
+		".fsproj",
+		".vbproj",
+		".props",
+		".targets",
 		".slnx",
 		".yml",
 		".yaml",
+	];
+
+	/// <summary>
+	/// Files whose content is read wherever in the tree they appear, matched by name.
+	/// </summary>
+	/// <remarks>
+	/// Both declare dependencies and neither carries an extension that
+	/// <see cref="_contentExtensions"/> can pick out. A dependency declared in one of these and left
+	/// unread reads as a dependency the repository does not have — see
+	/// <see cref="DependencyMentionScanner"/>, which has to assume the worst about any declaration
+	/// site nobody looked in.
+	/// </remarks>
+	private static readonly string[] _contentFileNames =
+	[
+		"packages.config",
+		"dotnet-tools.json",
+		"xunit.runner.json"
 	];
 
 	/// <summary>
@@ -207,8 +228,10 @@ public class LocalRepositoryContextBuilder
 			}
 		}
 
-		// Fetch all xunit.runner.json files (needed by the failSkips rule, which reads their content)
-		foreach (var path in filePaths.Where(p => p.EndsWith("xunit.runner.json", StringComparison.OrdinalIgnoreCase)))
+		// Files matched by name rather than extension: xunit.runner.json for the failSkips rule, the
+		// rest so that every place a dependency can be declared has been read.
+		foreach (var path in filePaths.Where(p =>
+			_contentFileNames.Any(name => p.EndsWith(name, StringComparison.OrdinalIgnoreCase))))
 		{
 			toFetch.Add(path);
 		}

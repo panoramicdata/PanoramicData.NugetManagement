@@ -55,6 +55,23 @@ public class TriageRestampTests(ITestOutputHelper output) : TestWithOutput(outpu
 	}
 
 	[Fact]
+	public void Restamp_DropsWhatWasClosedAsObsolete()
+	{
+		var obsolete = Item(3);
+		var kept = Item(5);
+
+		var remaining = DependabotTriageRunner.Restamp(
+			[obsolete, kept],
+			[
+				Verdict(obsolete, DependabotVerdict.Obsolete),
+				Verdict(kept, DependabotVerdict.ValidUncovered)
+			]);
+
+		remaining.Select(i => i.Number).Should().Equal([5],
+			"an obsolete pull request is closed unconditionally, so it has left the open list too");
+	}
+
+	[Fact]
 	public void Restamp_LeavesItemsTriageSaidNothingAbout()
 	{
 		var plainIssue = Item(9, isPullRequest: false);

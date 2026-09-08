@@ -196,15 +196,28 @@ public class RepositoryContextBuilder : IDisposable
 			}
 		}
 
-		// Fetch all .csproj files
-		foreach (var path in filePaths.Where(p => p.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)))
+		// Fetch every project file, and every other file a dependency can be declared in. A declaration
+		// site left unread reads as a dependency the repository does not have, which
+		// DependencyMentionScanner has to guard against by assuming the worst — so the cheapest fix is
+		// to leave as few of them unread as possible. These are raw CDN reads and cost no API calls.
+		foreach (var path in filePaths.Where(p =>
+			p.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+			|| p.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase)
+			|| p.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase)
+			|| p.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
+			|| p.EndsWith(".targets", StringComparison.OrdinalIgnoreCase)
+			|| p.EndsWith("packages.config", StringComparison.OrdinalIgnoreCase)
+			|| p.EndsWith("dotnet-tools.json", StringComparison.OrdinalIgnoreCase)))
 		{
 			toFetch.Add(path);
 		}
 
-		// Fetch all workflow files
+		// Fetch all workflow files, and the composite actions they call — both carry `uses:` lines, so
+		// both are places a GitHub Action is declared.
 		foreach (var path in filePaths.Where(p =>
-			p.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase) &&
+			(p.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase)
+				|| p.EndsWith("/action.yml", StringComparison.OrdinalIgnoreCase)
+				|| p.EndsWith("/action.yaml", StringComparison.OrdinalIgnoreCase)) &&
 			(p.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase))))
 		{
 			toFetch.Add(path);

@@ -18,9 +18,10 @@ else
 {
 	<p class="fixes-intro">
 		@DependabotCount of these @(DependabotCount == 1 ? "is" : "are") Dependabot's.
-		<strong>Fix</strong> closes the ones this repository has already outgrown, leaves the ones an
-		existing auto-fix will handle, and raises an issue against PanoramicData.NugetManagement for
-		anything valid that no auto-fix covers. Every close is written to the console first.
+		<strong>Fix</strong> closes the ones this repository has already outgrown or no longer
+		references at all, leaves the ones an existing auto-fix will handle, and raises an issue
+		against PanoramicData.NugetManagement for anything valid that no auto-fix covers. Every close
+		is written to the console first.
 	</p>
 
 	<table class="table table-sm align-middle">
@@ -95,6 +96,7 @@ else
 		DependabotVerdict.AlreadySatisfied => "Superseded",
 		DependabotVerdict.ValidCovered => "Auto-fix covers it",
 		DependabotVerdict.Adoptable => "Adopting",
+		DependabotVerdict.Obsolete => "Not referenced",
 		DependabotVerdict.ValidUncovered => "No auto-fix",
 		_ => "Left alone"
 	};
@@ -115,6 +117,7 @@ else
 		DependabotVerdict.ValidCovered => "bg-info text-dark",
 		DependabotVerdict.Adoptable => "bg-info text-dark",
 		DependabotVerdict.AlreadySatisfied => "bg-secondary",
+		DependabotVerdict.Obsolete => "bg-secondary",
 		_ => "bg-light text-dark"
 	};
 }

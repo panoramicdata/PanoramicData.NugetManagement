@@ -20,13 +20,19 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// was actually written, not what was found adoptable: a plan that matched nothing closes nothing and
 /// is reported as idle instead.
 /// </param>
+/// <param name="Obsolete">
+/// Pull requests closed because the repository no longer references what they propose to move.
+/// Counted apart from <paramref name="Closed"/> because the two claims are different: one says the
+/// repository has already gone further, the other says it has dropped the dependency entirely.
+/// </param>
 public sealed record DependabotTriageOutcome(
 	int Closed,
 	int Covered,
 	int Uncovered,
 	int Idle,
 	int Unrecognised,
-	int Adopted = 0);
+	int Adopted = 0,
+	int Obsolete = 0);
 
 /// <summary>
 /// Carries out what triage decided: closes the redundant pull requests and raises an issue for each
@@ -61,6 +67,17 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	/// and the second is the one that leaves an uncommitted change behind.
 	/// </remarks>
 	public const string AdoptedMarker = "<!-- nugetmgmt:closed:adopted -->";
+
+	/// <summary>
+	/// The hidden marker on a comment closing a pull request for a dependency the repository no longer
+	/// references anywhere it could be declaring one.
+	/// </summary>
+	/// <remarks>
+	/// The third and last reason a close happens, and the only one made on the strength of not finding
+	/// something. Kept distinct from the other two so that a close made in error — the one failure mode
+	/// this verdict has — can be found by searching for its marker rather than read out of prose.
+	/// </remarks>
+	public const string ObsoleteMarker = "<!-- nugetmgmt:closed:no-longer-referenced -->";
 
 	/// <summary>
 	/// The pull requests this process has already commented on, as "owner/name#number".
@@ -103,6 +120,7 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 		var idle = 0;
 		var unrecognised = 0;
 		var adopted = 0;
+		var obsolete = 0;
 
 		var uncovered = new Dictionary<DependencyRef, List<UncoveredDependencySighting>>();
 
@@ -128,6 +146,25 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 						{
 							resolved[bump.Dependency] =
 								$"{repositoryFullName} now declares it at or above the proposed version";
+						}
+					}
+
+					break;
+
+				// The repository has dropped the dependency, so there is nothing here for the pull request
+				// to move and nothing missing that somebody should write.
+				case DependabotVerdict.Obsolete:
+					await CloseAsync(
+							writeApi, owner, name, triage, ObsoleteMarker, onOutput, cancellationToken)
+						.ConfigureAwait(false);
+					obsolete++;
+
+					if (triage.Proposal is { } dropped)
+					{
+						foreach (var bump in dropped.Bumps)
+						{
+							resolved[bump.Dependency] =
+								$"{repositoryFullName} no longer references it anywhere it could be declared";
 						}
 					}
 
@@ -261,7 +298,8 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 			uncovered.Sum(entry => entry.Value.Count),
 			idle,
 			unrecognised,
-			adopted);
+			adopted,
+			obsolete);
 	}
 
 	/// <summary>
@@ -290,7 +328,8 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 				continue;
 			}
 
-			if (triage.Verdict == DependabotVerdict.AlreadySatisfied)
+			// Both of these close unconditionally, so neither is open any more.
+			if (triage.Verdict is DependabotVerdict.AlreadySatisfied or DependabotVerdict.Obsolete)
 			{
 				continue;
 			}
@@ -355,13 +394,30 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 			string.Empty,
 			$"Closing automatically: {triage.Reason}",
 			string.Empty,
-			marker == AdoptedMarker
-				? "Raised by PanoramicData.NugetManagement's Dependabot triage, which has written these "
-					+ "versions into the repository directly rather than merging this pull request. If "
-					+ "this is wrong, reopen it — and the mistake is worth reporting."
-				: "Raised by PanoramicData.NugetManagement's Dependabot triage. If this is wrong, reopen "
-					+ "it — and the mistake is worth reporting, because triage only closes pull requests "
-					+ "whose target version the repository already declares.");
+			Provenance(marker));
+
+	/// <summary>
+	/// The paragraph explaining who closed this and on what grounds. One per marker: the grounds
+	/// differ, and a reader deciding whether to reopen needs to know which claim is being made.
+	/// </summary>
+	private static string Provenance(string marker) => marker switch
+	{
+		AdoptedMarker =>
+			"Raised by PanoramicData.NugetManagement's Dependabot triage, which has written these "
+				+ "versions into the repository directly rather than merging this pull request. If this "
+				+ "is wrong, reopen it — and the mistake is worth reporting.",
+
+		ObsoleteMarker =>
+			"Raised by PanoramicData.NugetManagement's Dependabot triage, which found no reference to "
+				+ "this dependency in any project file, props or targets file, packages.config, tool "
+				+ "manifest or workflow in the repository. If it is declared somewhere that list misses, "
+				+ "reopen it — and please report it, because the missing place is a bug here.",
+
+		_ =>
+			"Raised by PanoramicData.NugetManagement's Dependabot triage. If this is wrong, reopen it — "
+				+ "and the mistake is worth reporting, because triage only closes pull requests whose "
+				+ "target version the repository already declares."
+	};
 
 	private static (string Owner, string Name) Split(string fullName)
 	{

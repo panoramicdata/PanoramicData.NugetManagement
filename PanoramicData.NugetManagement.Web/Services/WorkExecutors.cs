@@ -1347,6 +1347,7 @@ public sealed class WorkExecutors(
 			.ConfigureAwait(false);
 
 		Say($"✅ {row.RepositoryFullName}: closed {outcome.Closed}, adopted {outcome.Adopted}, "
+			+ $"closed {outcome.Obsolete} for dependencies it no longer references, "
 			+ $"{outcome.Covered} awaiting an existing fix, {outcome.Uncovered} with no fix available, "
 			+ $"{outcome.Unrecognised} left alone.");
 

@@ -221,7 +221,7 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 	{
 		var triage = TriageOne(
 			GroupedPullRequest(1, ("Serilog", "3.0.0", "4.0.0"), ("some/action", "1", "2")),
-			Ctx(Packages("Serilog", "3.0.0")),
+			Ctx(Packages("Serilog", "3.0.0"), Workflow(_ciPath, "some/action@v1")),
 			[FailingNamingPackages("PKG-07", "Serilog")],
 			ruleId => ruleId == "PKG-07");
 
@@ -305,13 +305,84 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 		// package rules claim it all the same, so "governed" alone would hide it forever.
 		var triage = TriageOne(
 			PullRequest(1, "Bump nbgv from 3.9.50 to 3.10.94"),
-			Ctx(Packages("refit", "7.2.22")));
+			Ctx(
+				Packages("refit", "7.2.22"),
+				(".config/dotnet-tools.json", """{ "tools": { "nbgv": { "version": "3.9.50" } } }""")));
 
 		triage.Verdict.Should().Be(DependabotVerdict.ValidUncovered);
 		triage.IsRuleSetGap.Should().BeTrue(
 			"no failure of the rule that claims it can ever name a package the scanner never sees");
 		triage.Reason.Should().Contain("never reads where it is declared");
 	}
+
+	[Fact]
+	public void APackageTheRepositoryDoesNotReferenceAnywhere_IsObsolete()
+	{
+		var triage = TriageOne(
+			PullRequest(1, "Bump coverlet.collector from 8.0.1 to 10.0.1"),
+			Ctx(Packages("refit", "7.2.22")));
+
+		triage.Verdict.Should().Be(
+			DependabotVerdict.Obsolete,
+			"the pull request proposes moving something this repository no longer has");
+		triage.Reason.Should().Contain("no longer referenced");
+	}
+
+	[Fact]
+	public void APackageTheRepositoryDoesNotReferenceAnywhere_IsNotARuleSetGap()
+		=> TriageOne(
+				PullRequest(1, "Bump coverlet.collector from 8.0.1 to 10.0.1"),
+				Ctx(Packages("refit", "7.2.22")))
+			.IsRuleSetGap.Should().BeFalse(
+				"a dependency the repository does not have is nobody's missing remediation, and an "
+				+ "issue raised against it asks for a fix to something that is not broken");
+
+	[Fact]
+	public void APackageReferencedWithoutAVersion_IsNotObsolete()
+		=> TriageOne(
+				PullRequest(1, "Bump coverlet.collector from 8.0.1 to 10.0.1"),
+				Ctx(("src/Sample.Test.csproj",
+					"""<Project><ItemGroup><PackageReference Include="coverlet.collector" /></ItemGroup></Project>""")))
+			.Verdict.Should().NotBe(
+				DependabotVerdict.Obsolete,
+				"the version scanner cannot read a versionless reference, but the repository plainly "
+				+ "still uses the package");
+
+	[Fact]
+	public void AnObsoletePackage_StaysObsoleteOnceOldEnoughToAdopt()
+		=> TriageOne(
+				PullRequest(1, "Bump coverlet.collector from 8.0.1 to 10.0.1"),
+				Ctx(Packages("refit", "7.2.22")),
+				age: DependabotTriageService.AdoptAfter + TimeSpan.FromDays(3))
+			.Verdict.Should().Be(
+				DependabotVerdict.Obsolete,
+				"there is nothing to adopt into a repository that does not declare it, and age does not "
+				+ "make an absent dependency present");
+
+	[Fact]
+	public void AGroupWhereOnlyOneBumpIsUnreferenced_IsNotObsolete()
+	{
+		var triage = TriageOne(
+			GroupedPullRequest(
+				1, ("refit", "6.3.2", "7.2.22"), ("coverlet.collector", "8.0.1", "10.0.1")),
+			Ctx(Packages("refit", "6.3.2")));
+
+		triage.Verdict.Should().NotBe(
+			DependabotVerdict.Obsolete,
+			"closing it would silently drop the half of the group that is still worth doing");
+		triage.IsRuleSetGap.Should().BeFalse(
+			"the half that is missing is not a gap either — one absent dependency does not make the "
+			+ "pull request somebody's work");
+	}
+
+	[Fact]
+	public void AnActionNoWorkflowUses_IsObsolete()
+		=> TriageOne(
+				PullRequest(1, "Bump github/codeql-action from 3 to 4"),
+				Ctx(Workflow(_ciPath, "actions/checkout@v5")))
+			.Verdict.Should().Be(
+				DependabotVerdict.Obsolete,
+				"the workflow that used it has gone, so the pull request updates nothing");
 
 	[Fact]
 	public void PackageDeclaredInTwoPlaces_OneBehind_IsNotSatisfied()

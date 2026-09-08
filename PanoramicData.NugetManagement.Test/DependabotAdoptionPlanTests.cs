@@ -250,7 +250,9 @@ public class DependabotAdoptionPlanTests(ITestOutputHelper output) : TestWithOut
 				new FakeTimeProvider(_raised + DependabotTriageService.AdoptAfter + TimeSpan.FromDays(1)))
 			.Triage(
 				[PullRequest(Moved("nbgv", "3.6.133", "3.7.115"))],
-				Ctx(Packages(("coverlet.collector", "8.0.1"))),
+				Ctx(
+					Packages(("coverlet.collector", "8.0.1")),
+					(".config/dotnet-tools.json", """{ "tools": { "nbgv": { "version": "3.6.133" } } }""")),
 				[],
 				_ => true)[0];
 
