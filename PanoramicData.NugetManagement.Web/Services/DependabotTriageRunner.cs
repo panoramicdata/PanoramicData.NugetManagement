@@ -334,12 +334,58 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 				continue;
 			}
 
-			issue.TriageVerdict = triage.Verdict;
-			issue.TriageReason = triage.Reason;
+			Stamp(issue, triage);
 			remaining.Add(issue);
 		}
 
 		return remaining;
+	}
+
+	/// <summary>
+	/// Records what a triage pass <em>would</em> conclude about each open item, without acting on any
+	/// of it.
+	/// </summary>
+	/// <param name="issues">The repository's open items.</param>
+	/// <param name="triages">The verdicts reached.</param>
+	/// <remarks>
+	/// The read-only half of <see cref="Restamp"/>, and the reason the tree can answer "is anything
+	/// going to fix this?" before somebody commits to the action. Every verdict was previously written
+	/// only from inside <see cref="RunAsync"/>, which comments on and closes pull requests as it goes —
+	/// so the only way to learn that a pull request was already covered was to run the thing that
+	/// mutates GitHub, and until then every row read "Not triaged".
+	/// <para>
+	/// Unlike <see cref="Restamp"/>, this drops nothing. Restamp removes what the pass has just closed
+	/// because those pull requests really have left the open list; here nothing has been closed, so a
+	/// pull request Fix would close is still open, and hiding it would report an action that has not
+	/// happened.
+	/// </para>
+	/// </remarks>
+	public static void Preview(
+		IReadOnlyList<RepositoryIssue> issues,
+		IReadOnlyList<DependabotTriage> triages)
+	{
+		var byNumber = triages.ToDictionary(t => t.Issue.Number);
+
+		foreach (var issue in issues)
+		{
+			if (byNumber.TryGetValue(issue.Number, out var triage))
+			{
+				Stamp(issue, triage);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Writes one verdict onto the item it was reached about.
+	/// </summary>
+	/// <remarks>
+	/// Shared by <see cref="Restamp"/> and <see cref="Preview"/> so the two cannot come to disagree
+	/// about what a stamped item looks like.
+	/// </remarks>
+	private static void Stamp(RepositoryIssue issue, DependabotTriage triage)
+	{
+		issue.TriageVerdict = triage.Verdict;
+		issue.TriageReason = triage.Reason;
 	}
 
 	/// <summary>

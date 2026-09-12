@@ -61,5 +61,11 @@ public sealed class NuGetMinorLevelUpdatesRule : NuGetPackageUpdateRuleBase
 	protected override string UpdateLevelDisplayName => "minor-level";
 
 	/// <inheritdoc />
-	protected override int GraceDays => 90;
+	/// <remarks>
+	/// None, for the same reason as build level: a minor release is additive by convention, and if it
+	/// is a finding it should arrive with the fix that closes it rather than wait ninety days to
+	/// become one. Major is the only level that still waits — see
+	/// <see cref="NuGetMajorLevelUpdatesRule"/>, where the update is breaking by definition.
+	/// </remarks>
+	protected override int GraceDays => 0;
 }

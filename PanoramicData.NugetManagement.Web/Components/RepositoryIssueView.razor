@@ -86,12 +86,18 @@ else
 	/// <summary>
 	/// What a verdict means to somebody looking at the pull request, rather than its enum name.
 	/// </summary>
+	/// <remarks>
+	/// Worded as what Fix will do, not as what is happening. A verdict is stamped by the read-only
+	/// preview during a re-assessment as well as by a real pass, so a pull request can carry one while
+	/// nothing whatever has been done to it — and "closing" said about a pull request nobody has
+	/// touched is a claim the application has not earned.
+	/// </remarks>
 	private static string TriageLabel(DependabotVerdict verdict) => verdict switch
 	{
-		DependabotVerdict.AlreadySatisfied => "Superseded — closing",
+		DependabotVerdict.AlreadySatisfied => "Superseded — Fix will close it",
 		DependabotVerdict.ValidCovered => "Valid — an auto-fix covers this",
-		DependabotVerdict.Adoptable => "Valid — adopting it locally",
-		DependabotVerdict.Obsolete => "Not referenced here any more — closing",
+		DependabotVerdict.Adoptable => "Valid — Fix will adopt it locally",
+		DependabotVerdict.Obsolete => "Not referenced here any more — Fix will close it",
 		DependabotVerdict.ValidUncovered => "Valid — no auto-fix available",
 		_ => "Not recognised — left alone"
 	};

@@ -95,7 +95,7 @@ else
 	{
 		DependabotVerdict.AlreadySatisfied => "Superseded",
 		DependabotVerdict.ValidCovered => "Auto-fix covers it",
-		DependabotVerdict.Adoptable => "Adopting",
+		DependabotVerdict.Adoptable => "Adoptable",
 		DependabotVerdict.Obsolete => "Not referenced",
 		DependabotVerdict.ValidUncovered => "No auto-fix",
 		_ => "Left alone"
@@ -107,9 +107,12 @@ else
 	/// </summary>
 	/// <remarks>
 	/// Adoptable is coloured like covered rather than like uncovered: something is going to act on it.
-	/// A row still showing it after a pass is one whose write applied nothing, which the reason
-	/// explains — hence "Adopting" in the present tense, because an adopted pull request is closed and
-	/// gone from this list entirely.
+	/// <para>
+	/// Every label names the state triage found, never the act the runner performs. A verdict is now
+	/// stamped by the read-only preview too, so a row can carry one before anybody has pressed Fix, and
+	/// a label in the present tense — "Adopting" for something nothing has yet begun — would be
+	/// reporting an action that has not happened.
+	/// </para>
 	/// </remarks>
 	private static string BadgeClass(DependabotVerdict verdict) => verdict switch
 	{

@@ -130,14 +130,19 @@ public static class DependabotIssueSynthesizer
 	}
 
 	/// <summary>
-	/// What the last triage pass concluded, where it has run. Left off entirely where it has not,
+	/// What triage concluded, where it has reached a verdict. Left off entirely where it has not,
 	/// rather than saying "not triaged" against every pull request in the estate.
 	/// </summary>
+	/// <remarks>
+	/// A verdict may have come from a real pass or from the read-only preview a re-assessment runs, and
+	/// this sentence is written into a GitHub issue somebody else reads, so it describes the state
+	/// rather than claiming an act is under way.
+	/// </remarks>
 	private static string Verdict(RepositoryIssue issue) => issue.TriageVerdict switch
 	{
 		DependabotVerdict.AlreadySatisfied => " — superseded, closeable",
 		DependabotVerdict.Obsolete => " — not referenced here, closeable",
-		DependabotVerdict.Adoptable => " — adopting it locally",
+		DependabotVerdict.Adoptable => " — adoptable locally",
 		DependabotVerdict.ValidCovered => " — an auto-fix covers it",
 		DependabotVerdict.ValidUncovered => " — valid, no auto-fix",
 		DependabotVerdict.Unrecognised => " — left alone",

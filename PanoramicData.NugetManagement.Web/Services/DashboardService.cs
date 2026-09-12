@@ -477,6 +477,7 @@ public class DashboardService
 			row.CategorySummaries = BuildCategorySummaries(results);
 
 			await RefreshOpenIssuesAsync(row, github, parts[0], parts[1], cancellationToken).ConfigureAwait(false);
+			PreviewTriage(row, context, results);
 
 			row.Status = PackageStatus.Assessed;
 			row.StatusMessage = $"{row.TotalFailures} issue(s) found.";
@@ -566,6 +567,67 @@ public class DashboardService
 				row.RepositoryFullName);
 			row.OpenIssues = [];
 			row.OpenIssuesKnown = false;
+		}
+	}
+
+	/// <summary>
+	/// Works out what a triage pass would conclude about each open pull request, and records it on the
+	/// row, without touching GitHub.
+	/// </summary>
+	/// <param name="row">The row whose open items have just been refreshed.</param>
+	/// <param name="context">The repository, as the assessment just built it.</param>
+	/// <param name="results">The assessment those verdicts are judged against.</param>
+	/// <remarks>
+	/// A verdict used to exist only after Fix had run, because
+	/// <see cref="DependabotTriageRunner.RunAsync"/> was the one place that wrote it — and that method
+	/// comments on and closes pull requests as it goes. So the only way to find out whether a pull
+	/// request was already covered by a failing rule was to authorise the writes, and until then the
+	/// tree said "Not triaged" about everything. <see cref="DependabotTriageService"/> is pure, so
+	/// there was never a reason for the answer to cost a mutation.
+	/// <para>
+	/// Read-only, deliberately and in every sense: no write API, no adopter, and nothing closed. It
+	/// predicts the pass rather than performing part of it — an adoption written here would leave the
+	/// clone changed by something the user only asked to re-assess.
+	/// </para>
+	/// <para>
+	/// A failure here must not fail the assessment. The rules have already been evaluated by the time
+	/// this runs, and losing them because a scanner threw on a malformed project file would be the same
+	/// poor trade <see cref="RefreshOpenIssuesAsync"/> declines to make.
+	/// </para>
+	/// </remarks>
+	private void PreviewTriage(
+		RepositoryDashboardRow row,
+		RepositoryContext context,
+		IReadOnlyList<RuleResult> results)
+	{
+		if (!row.OpenIssuesKnown)
+		{
+			return;
+		}
+
+		var pullRequests = row.OpenIssues.Where(issue => issue.IsPullRequest).ToList();
+
+		if (pullRequests.Count == 0)
+		{
+			return;
+		}
+
+		try
+		{
+			DependabotTriageRunner.Preview(
+				pullRequests,
+				new DependabotTriageService().Triage(
+					pullRequests,
+					context,
+					results,
+					ruleId => RemediationRegistry.Get(ruleId) is not null));
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(
+				ex,
+				"Could not predict triage verdicts for {Repo}; its pull requests will show as untriaged.",
+				row.RepositoryFullName);
 		}
 	}
 
@@ -718,6 +780,8 @@ public class DashboardService
 						.ConfigureAwait(false);
 				}
 			}
+
+			PreviewTriage(row, context, results);
 
 			row.Status = PackageStatus.Assessed;
 			row.StatusMessage = $"{row.TotalFailures} issue(s) found (local).";

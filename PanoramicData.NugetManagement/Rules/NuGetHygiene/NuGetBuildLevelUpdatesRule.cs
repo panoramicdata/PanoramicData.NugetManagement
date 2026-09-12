@@ -61,5 +61,12 @@ public sealed class NuGetBuildLevelUpdatesRule : NuGetPackageUpdateRuleBase
 	protected override string UpdateLevelDisplayName => "build-level";
 
 	/// <inheritdoc />
-	protected override int GraceDays => 30;
+	/// <remarks>
+	/// None. A build-level release is the safest thing a dependency can ship, and the auto-fix that
+	/// adopts it is a version string in <c>Directory.Packages.props</c> that the build then proves.
+	/// Waiting thirty days bought nothing and cost visibly: a Dependabot pull request bumping a patch
+	/// sat labelled "No auto-fix" while an auto-fix for it already existed, because no rule was
+	/// failing yet for triage to attach it to.
+	/// </remarks>
+	protected override int GraceDays => 0;
 }

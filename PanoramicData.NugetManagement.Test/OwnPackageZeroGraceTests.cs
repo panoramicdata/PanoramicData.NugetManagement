@@ -58,7 +58,21 @@ public class OwnPackageZeroGraceTests(ITestOutputHelper output) : TestWithOutput
 	}
 
 	[Fact]
-	public async Task SomebodyElsesBuildLevelReleaseShouldStillGetItsGracePeriod()
+	public async Task SomebodyElsesMajorReleaseShouldStillGetItsGracePeriod()
+	{
+		// Major is the only level that still waits, so it is the only level on which "ours" and
+		// "theirs" can still be told apart. Build and minor now fail for everybody on day one.
+		var result = await Evaluate<NuGetMajorLevelUpdatesRule>(
+			declared: "3.1.138",
+			latest: "4.0.0",
+			now: _published.AddDays(1),
+			owned: new NuGetOwnedPackageCatalog(null));
+
+		result.Passed.Should().BeTrue("the 365-day major grace is untouched for packages we do not publish");
+	}
+
+	[Fact]
+	public async Task SomebodyElsesBuildLevelReleaseShouldNoLongerGetAGracePeriod()
 	{
 		var result = await Evaluate<NuGetBuildLevelUpdatesRule>(
 			declared: "3.1.138",
@@ -66,7 +80,7 @@ public class OwnPackageZeroGraceTests(ITestOutputHelper output) : TestWithOutput
 			now: _published.AddDays(1),
 			owned: new NuGetOwnedPackageCatalog(null));
 
-		result.Passed.Should().BeTrue("the 30-day grace is untouched for packages we do not publish");
+		result.Passed.Should().BeFalse("build level has no grace for anybody now");
 	}
 
 	[Fact]

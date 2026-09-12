@@ -79,10 +79,11 @@ public sealed class DependabotTriageService
 	/// whether any rule is failing for them.
 	/// </summary>
 	/// <remarks>
-	/// Sixty days sits above PKG-05's 30-day build grace and below PKG-06's 90-day minor grace. It is
-	/// not trying to mirror the graces — it is a backstop against a pull request rotting, and its only
-	/// job is to be long enough that nothing is adopted while a grace period is still doing useful
-	/// work.
+	/// A backstop against a pull request rotting, and nothing more. It used to be positioned between
+	/// PKG-05's 30-day build grace and PKG-06's 90-day minor grace; both of those are now zero, so
+	/// build and minor bumps become failing rules on day one and reach a pull request through
+	/// <see cref="DependabotVerdict.ValidCovered"/> long before this fires. What is left for this to
+	/// catch is a major inside PKG-07's 365-day grace, which is the one level still permitted to wait.
 	/// <para>
 	/// A constant rather than a setting. One number nobody has asked to change is not worth a settings
 	/// row — and a new <c>RuntimeSettings</c> property has to be added to the hand-written

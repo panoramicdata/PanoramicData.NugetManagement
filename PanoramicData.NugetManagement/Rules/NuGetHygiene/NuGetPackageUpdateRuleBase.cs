@@ -127,9 +127,21 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 	protected abstract string UpdateLevelDisplayName { get; }
 
 	/// <summary>
-	/// Gets how long a published release may go un-adopted before it becomes a failure.
+	/// Gets how long a published release may go un-adopted before it becomes a failure. Zero means a
+	/// release is a finding the moment it is published.
 	/// </summary>
 	protected abstract int GraceDays { get; }
+
+	/// <summary>
+	/// How this level's deadline reads in a sentence.
+	/// </summary>
+	/// <remarks>
+	/// Spelled out rather than interpolated, because "within 0 days" is not a deadline anybody can
+	/// act on and reads as a bug in the message rather than as the policy it is.
+	/// </remarks>
+	private string GraceDescription => GraceDays == 0
+		? "adopted as soon as they are published"
+		: $"adopted within {GraceDays} days";
 
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
@@ -206,9 +218,10 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 		if (behindEstate.Count == 0 && behindUpstream.Count == 0)
 		{
 			// Drift inside the grace period is always reported, so it is visible before it is a failure.
+			// At a zero grace the only thing that can land here is a release dated ahead of this clock.
 			return Task.FromResult(pending.Count == 0
 				? Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue.")
-				: Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue. Available within the {GraceDays}-day grace period: {string.Join("; ", pending)}"));
+				: Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue. {(GraceDays == 0 ? "Published ahead of this clock" : $"Available within the {GraceDays}-day grace period")}: {string.Join("; ", pending)}"));
 		}
 
 		var messages = new List<string>();
@@ -226,8 +239,8 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 			$"The following NuGet packages have {UpdateLevelDisplayName} updates outstanding — {string.Join(", ", messages)}",
 			new RuleAdvisory
 			{
-				Summary = $"Update the listed packages to at least the version the estate already uses, and adopt {UpdateLevelDisplayName} releases within {GraceDays} days.",
-				Detail = $"A package below the estate floor is behind a version another repository of ours already runs. A package past its {GraceDays}-day grace period has been behind a published release for too long, and a package the estate publishes itself has no grace period at all. Update the listed versions in `Directory.Packages.props` or the affected project files.",
+				Summary = $"Update the listed packages to at least the version the estate already uses. {UpdateLevelDisplayName} releases must be {GraceDescription}.",
+				Detail = $"A package below the estate floor is behind a version another repository of ours already runs. {(GraceDays == 0 ? $"A {UpdateLevelDisplayName} release is outstanding from the moment it is published — this level has no grace period." : $"A package past its {GraceDays}-day grace period has been behind a published release for too long, and a package the estate publishes itself has no grace period at all.")} Update the listed versions in `Directory.Packages.props` or the affected project files.",
 				Data = new()
 				{
 					["remediation_type"] = "update_package_versions",

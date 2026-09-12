@@ -8,9 +8,15 @@
   "actions/setup-node": "v4",
   "actions/upload-artifact": "v7",
   "actions/upload-pages-artifact": "v3",
+  "Azure/functions-action": "v1",
+  "dchourasia/ms-teams-notification": "v1",
+  "docker/login-action": "v4",
+  "docker/setup-buildx-action": "v4",
   "github/codeql-action": "v4",
   "irongut/CodeCoverageSummary": "v1",
   "JamesIves/github-pages-deploy-action": "v4",
+  "microsoft/setup-msbuild": "v1",
   "NuGet/login": "v1",
+  "PSModule/install-powershell": "v1",
   "softprops/action-gh-release": "v1"
 }

@@ -7,8 +7,13 @@ namespace PanoramicData.NugetManagement.Test;
 
 /// <summary>
 /// Tests the two questions the freshness rules now ask: are you behind the estate (immediate), and
-/// have you been behind a published release for longer than its grace period.
+/// are you behind a published release at this level.
 /// </summary>
+/// <remarks>
+/// Build and minor no longer carry a grace period. Only <see cref="NuGetMajorLevelUpdatesRule"/>
+/// still waits, because a major is breaking by definition and its fix is the one most likely to
+/// need a person.
+/// </remarks>
 public class NuGetPackageUpdateGateTests(ITestOutputHelper output) : TestWithOutput(output)
 {
 	private static readonly DateTimeOffset _published = new(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
@@ -27,19 +32,21 @@ public class NuGetPackageUpdateGateTests(ITestOutputHelper output) : TestWithOut
 	}
 
 	[Fact]
-	public async Task ShouldPassWhenBehindUpstreamButInsideTheGracePeriod()
+	public async Task ShouldFailAsSoonAsABuildLevelReleaseIsPublished()
 	{
+		// Build level has no grace at all: if it is a finding, it gets a fix. Waiting only produced
+		// pull requests nobody was queued to move, labelled "No auto-fix" while an auto-fix existed.
 		var result = await Evaluate(
 			declaredVersion: "3.0.42",
 			cache: CacheWith("Codacy.Api", "3.0.43", _published),
 			floors: new NuGetFloorCatalog(null),
-			now: _published.AddDays(29));
+			now: _published.AddDays(1));
 
-		result.Passed.Should().BeTrue("30 days is the build-level grace");
+		result.Passed.Should().BeFalse("build-level updates have no grace period");
 	}
 
 	[Fact]
-	public async Task ShouldFailWhenBehindUpstreamForLongerThanTheGracePeriod()
+	public async Task ShouldFailWhenBehindUpstreamForALongTime()
 	{
 		var result = await Evaluate(
 			declaredVersion: "3.0.42",
