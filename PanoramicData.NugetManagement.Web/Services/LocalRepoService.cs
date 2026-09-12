@@ -745,6 +745,46 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
+	/// Returns the version Nerdbank.GitVersioning would give a release built from this clone as it
+	/// stands, or null when that cannot be established.
+	/// </summary>
+	/// <param name="repoIdentity">The repository.</param>
+	/// <param name="cancellationToken">Cancellation.</param>
+	/// <remarks>
+	/// Asks nbgv rather than computing the height here, because its rules — versionHeightOffset, which
+	/// refs count as public releases, when the height resets — are subtle enough that an independent
+	/// calculation would eventually disagree with what a release actually publishes, and a number that
+	/// disagrees is worse than no number in an informational finding. Every failure is null for the
+	/// same reason: no nbgv on the machine, no version.json, a repository it will not read.
+	/// </remarks>
+	public async Task<string?> GetNextVersionAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		if (!Directory.Exists(path))
+		{
+			return null;
+		}
+
+		var executable = NbgvVersionReader.ResolveExecutable(
+			Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+			File.Exists);
+
+		try
+		{
+			var (exitCode, output) = await RunCommandAsync(
+				path, executable, "get-version -f json", cancellationToken).ConfigureAwait(false);
+
+			return exitCode == 0 ? NbgvVersionReader.ReadVersion(output) : null;
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			// A machine without nbgv fails at the launch itself rather than with an exit code.
+			_logger.LogDebug(ex, "Could not read the nbgv version for {Repo}.", repoIdentity);
+			return null;
+		}
+	}
+
+	/// <summary>
 	/// Checks whether the local branch has commits that origin has not, without contacting origin.
 	/// </summary>
 	/// <param name="repoIdentity">The repository.</param>

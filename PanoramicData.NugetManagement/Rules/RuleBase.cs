@@ -1,5 +1,6 @@
 using System.Xml;
 using System.Xml.Linq;
+using NuGet.Versioning;
 using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Rules;
@@ -133,6 +134,21 @@ public abstract class RuleBase : IRule
 			? NotApplicable("No project declares itself published to NuGet — see PKG-10.")
 			: null;
 	}
+
+	/// <summary>
+	/// Reads a version from a tag or a computed version string, tolerating the leading "v" that is a
+	/// tag convention rather than part of the version.
+	/// </summary>
+	/// <param name="value">The tag or version text.</param>
+	/// <param name="version">The parsed version.</param>
+	/// <returns>True if the text is a version.</returns>
+	/// <remarks>
+	/// Shared by the rules that compare releases — CI-11 against nuget.org, VER-05 against the working
+	/// tree — because the comparison is only right when both sides are read the same way. Ordering
+	/// versions as text is the mistake this exists to prevent: 3.264.11 sorts before 3.240.3.
+	/// </remarks>
+	protected static bool TryParseVersion(string value, out NuGetVersion version)
+		=> NuGetVersion.TryParse(value.TrimStart('v', 'V'), out version!);
 
 	/// <summary>
 	/// Checks whether a file content contains a specific string.

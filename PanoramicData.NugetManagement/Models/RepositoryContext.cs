@@ -75,6 +75,30 @@ public class RepositoryContext
 	public string? LatestPublishedVersion { get; init; }
 
 	/// <summary>
+	/// The version Nerdbank.GitVersioning computes for the clone as it stands — what the next release
+	/// from it would carry — or null when that could not be established.
+	/// </summary>
+	/// <remarks>
+	/// Read by running nbgv against the clone rather than derived here, because its height rules
+	/// (versionHeightOffset, which refs count as public releases, when the height resets) are subtle
+	/// enough that a number computed independently would eventually disagree with what a release
+	/// actually publishes. Null where nbgv is absent or failed: no number beats a wrong one.
+	/// </remarks>
+	public string? NextVersion { get; init; }
+
+	/// <summary>
+	/// Whether this clone was confirmed to match origin recently enough to still act on the answer.
+	/// </summary>
+	/// <remarks>
+	/// Decided by <c>RepositoryGitState.IsRecentlyConfirmedInSync</c> at assessment time and passed in
+	/// already aged, so a rule stays a pure function of its context and there is one notion of how long
+	/// a sync claim is trusted rather than two. VER-05 needs it because unreleased work and a stale
+	/// clone look identical from inside the clone: commits sitting past the newest local tag have
+	/// usually been released by somebody else.
+	/// </remarks>
+	public bool IsConfirmedInSyncWithOrigin { get; init; }
+
+	/// <summary>
 	/// The CI run for <see cref="LatestTag"/>, or null when nothing is known about it — the
 	/// repository was assessed without a GitHub client, or the tag has no run. Lets CI-11 tell a
 	/// release in flight from one that failed, and gives CI-13 its subject.

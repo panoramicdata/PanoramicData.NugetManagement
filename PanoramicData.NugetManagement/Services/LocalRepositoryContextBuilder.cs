@@ -96,6 +96,13 @@ public class LocalRepositoryContextBuilder
 	/// The commit HEAD points at, when known. Lets CQ-06 tell grades measured on the checked-out
 	/// commit from grades Codacy measured on an older one.
 	/// </param>
+	/// <param name="nextVersion">
+	/// The version a release from this clone would carry, when nbgv could be asked, for VER-05.
+	/// </param>
+	/// <param name="isConfirmedInSyncWithOrigin">
+	/// Whether this clone was recently confirmed to match origin. VER-05 reports nothing without it,
+	/// because a stale clone's own commits look exactly like work waiting to be released.
+	/// </param>
 	public RepositoryContext Build(
 		string localPath,
 		string repositoryFullName,
@@ -105,7 +112,9 @@ public class LocalRepositoryContextBuilder
 		string? latestTag = null,
 		string? latestPublishedVersion = null,
 		ReleaseRun? releaseRun = null,
-		string? headSha = null)
+		string? headSha = null,
+		string? nextVersion = null,
+		bool isConfirmedInSyncWithOrigin = false)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]
@@ -131,7 +140,9 @@ public class LocalRepositoryContextBuilder
 			RepositoryConfig = repositoryConfig,
 			LatestTag = latestTag,
 			LatestPublishedVersion = latestPublishedVersion,
-			ReleaseRun = releaseRun
+			ReleaseRun = releaseRun,
+			NextVersion = nextVersion,
+			IsConfirmedInSyncWithOrigin = isConfirmedInSyncWithOrigin
 		};
 	}
 

@@ -165,6 +165,16 @@ public class RepositoryDashboardRow
 	public string? LatestTag { get; set; }
 
 	/// <summary>
+	/// The version a release built from this clone would carry, as at the last assessment, or null
+	/// when nbgv could not be asked.
+	/// </summary>
+	/// <remarks>
+	/// Read beside <see cref="LatestTag"/>, and only useful next to it: the pair is what VER-05
+	/// compares to report work that is committed and not released.
+	/// </remarks>
+	public string? NextVersion { get; set; }
+
+	/// <summary>
 	/// The CI run for <see cref="LatestTag"/> as it was at the last assessment, or null when nothing
 	/// is known about it.
 	/// </summary>

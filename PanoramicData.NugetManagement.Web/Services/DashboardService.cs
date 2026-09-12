@@ -389,7 +389,9 @@ public class DashboardService
 					row.LatestTag,
 					row.PrimaryPackage?.LatestVersion,
 					row.ReleaseRun,
-					await _localRepo.GetHeadShaAsync(row.RepositoryFullName, cancellationToken).ConfigureAwait(false));
+					await _localRepo.GetHeadShaAsync(row.RepositoryFullName, cancellationToken).ConfigureAwait(false),
+					row.NextVersion,
+					RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow));
 		}
 
 		var parts = row.RepositoryFullName.Split('/');
@@ -710,6 +712,9 @@ public class DashboardService
 				// this with what is on nuget.org, and without it the rule has nothing to say. A local
 				// `git describe` on a clone we already have is cheap.
 				row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+
+				// What a release from this clone would publish, for VER-05 to compare with the tag.
+				row.NextVersion = await _localRepo.GetNextVersionAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 			}
 
 			// After the tag is known, because the run is looked up by it.
@@ -743,7 +748,9 @@ public class DashboardService
 				row.LatestTag,
 				row.PrimaryPackage?.LatestVersion,
 				row.ReleaseRun,
-				headSha);
+				headSha,
+				row.NextVersion,
+				RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow));
 
 			var rules = RuleRegistry.Rules;
 			var results = new List<RuleResult>();
@@ -1921,6 +1928,11 @@ public class DashboardService
 		row.IsSyncedWithOrigin = await _localRepo.IsSyncedWithOriginAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
 		row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+
+		// Both halves of VER-05's comparison move when a sync brings commits in, and this is the one
+		// path that has just established the clone matches origin — the state in which that rule has
+		// anything to say at all.
+		row.NextVersion = await _localRepo.GetNextVersionAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>

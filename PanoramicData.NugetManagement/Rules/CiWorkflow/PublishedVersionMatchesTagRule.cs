@@ -209,10 +209,4 @@ public class PublishedVersionMatchesTagRule : RuleBase, IFixedOutsideTheWorkingT
 				["repository"] = context.FullName
 			}
 		};
-
-	/// <summary>
-	/// Reads a version from a tag, tolerating the common leading "v".
-	/// </summary>
-	private static bool TryParseVersion(string value, out NuGetVersion version)
-		=> NuGetVersion.TryParse(value.TrimStart('v', 'V'), out version!);
 }
