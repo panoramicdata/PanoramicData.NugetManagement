@@ -191,11 +191,25 @@ Confirmed against the live API before implementation:
 - Grade A, 92.
 - `coverage: { "status": "None" }` — no coverage has ever been uploaded. Under the bands above this
   repository is RED today, which is the finding the whole change exists to make visible and then fix.
-- `minCoveragePercentage: 60` — Codacy's own coverage gate for this repository is already set to 60%,
-  which is above even the GREEN threshold here. That gate is Codacy's, not ours, and nothing in this
-  design changes it; but it will report the repository as failing its coverage gate until coverage passes
-  60%, independently of the RAG bands. Leaving them out of step is a deliberate choice: the bands describe
-  where the estate is, and 60% describes where Codacy was told to want it.
+- `minCoveragePercentage: 60` — Codacy's own coverage gate for this repository, above even the GREEN
+  threshold here. **Decision: align it to 50%**, so Codacy and the RAG bands agree on what "enough" means.
+  Two thresholds disagreeing by ten points is a standing invitation to argue about which one is real.
+
+  The endpoint is `PUT .../settings/quality/repository`, which replaces the whole object, so the other
+  five thresholds must be sent back unchanged.
+
+  Two caveats found while probing, both unresolved at time of writing:
+
+  - The repository inherits an organisation-level policy (`repositoryGatePolicyInfo: {id: 995, name:
+    "Codacy Gate Policy"}`). The 60% may be inherited rather than set locally, in which case a
+    repository-level PUT either will not stick or will detach this repository from the shared policy.
+    Editing the policy itself would move every repository in the organisation and is out of scope here.
+  - The pull-request gate is a separate setting and is currently off (`coverageThreshold: -1`). Nothing in
+    this design turns it on. Coverage should be visible for a while before it blocks a merge.
+
+  Aligning one repository by hand is cosmetic. The durable form is a rule asserting
+  `minCoveragePercentage == 50` across the estate, a natural sibling to TST-10 — deliberately not in this
+  spec's scope, but the obvious follow-on.
 
 ## Rollout
 
