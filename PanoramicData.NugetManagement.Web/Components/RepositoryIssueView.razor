@@ -54,6 +54,96 @@ else
 		}
 	</dl>
 
+	@if (Issue.Analysis is { } analysis)
+	{
+		<div class="card mb-3">
+			<div class="card-header d-flex align-items-center gap-2">
+				<span class="badge @AnalysisBadgeClass">@AnalysisLabel(analysis.Action)</span>
+				<span class="text-muted small">@analysis.Confidence confidence</span>
+				@if (IsAnalysisStale)
+				{
+					<span class="badge bg-warning text-dark ms-auto">
+						Someone has commented since — re-analyse
+					</span>
+				}
+			</div>
+			<div class="card-body">
+				<p class="mb-2">@analysis.Reasoning</p>
+
+				@if (analysis.Risks.Count > 0)
+				{
+					<div class="mb-2">
+						@foreach (var risk in analysis.Risks)
+						{
+							<span class="badge bg-warning text-dark me-1">@RiskLabel(risk)</span>
+						}
+						<div class="text-muted small mt-1">
+							Anything flagged waits for you, whatever the model's confidence.
+						</div>
+					</div>
+				}
+
+				@if (analysis.Brief is { } brief)
+				{
+					<dl class="row mb-2">
+						<dt class="col-sm-3">Proposed change</dt>
+						<dd class="col-sm-9">@brief.Goal</dd>
+
+						<dt class="col-sm-3">Files</dt>
+						<dd class="col-sm-9"><code>@string.Join(", ", brief.Paths)</code></dd>
+
+						<dt class="col-sm-3">Done looks like</dt>
+						<dd class="col-sm-9">@brief.ExpectedEndState</dd>
+					</dl>
+				}
+
+				@if (analysis.DraftReply is { Length: > 0 } draft)
+				{
+					<div class="mb-2">
+						<div class="fw-semibold">Drafted reply</div>
+						<pre class="small bg-body-tertiary p-2 mb-1">@draft</pre>
+						<div class="text-muted small">
+							Assembled from a fixed template. Nothing the reporter wrote reaches it verbatim.
+						</div>
+					</div>
+				}
+			</div>
+			<div class="card-footer d-flex flex-wrap gap-2">
+				@if (analysis.Brief is not null)
+				{
+					<button class="btn btn-sm btn-outline-primary" @onclick="() => OnQueueFix.InvokeAsync(Issue)">
+						<i class="fas fa-robot"></i> Queue this fix
+					</button>
+				}
+
+				@if (analysis.DraftReply is { Length: > 0 })
+				{
+					<button class="btn btn-sm btn-outline-primary" @onclick="() => OnPostReply.InvokeAsync(Issue)">
+						<i class="fas fa-comment"></i> Post this reply
+					</button>
+
+					@if (analysis.Action is IssueAction.Reject)
+					{
+						<button class="btn btn-sm btn-outline-danger" @onclick="() => OnPostReplyAndClose.InvokeAsync(Issue)">
+							<i class="fas fa-circle-xmark"></i> Post and close
+						</button>
+					}
+				}
+
+				<button class="btn btn-sm btn-outline-secondary" @onclick="() => OnReanalyse.InvokeAsync(Issue)">
+					<i class="fas fa-rotate"></i> Re-analyse
+				</button>
+			</div>
+		</div>
+	}
+	else if (!Issue.IsPullRequest)
+	{
+		<div class="alert alert-secondary">
+			Nothing has analysed this issue yet. <strong>Fix with AI</strong> reads every human-raised
+			issue here and says what should happen about each.
+		</div>
+	}
+
 	<a class="btn btn-outline-primary" href="@Issue.HtmlUrl" target="_blank" rel="noopener">
 		<i class="fab fa-github"></i> Open on GitHub
 	</a>
@@ -68,6 +158,79 @@ else
 	/// <summary>The repository the item belongs to, as "owner/name".</summary>
 	[Parameter]
 	public string? RepositoryFullName { get; set; }
+
+	/// <summary>Queues the fix the analysis proposed.</summary>
+	[Parameter]
+	public EventCallback<RepositoryIssue> OnQueueFix { get; set; }
+
+	/// <summary>Posts the drafted reply, leaving the issue open.</summary>
+	[Parameter]
+	public EventCallback<RepositoryIssue> OnPostReply { get; set; }
+
+	/// <summary>Posts the drafted reply and closes the issue.</summary>
+	/// <remarks>
+	/// Separate from <see cref="OnPostReply"/> and never reachable without a person pressing it. A
+	/// rejection is published under the organisation's name against a real person, and it is also the
+	/// outcome somebody would aim for who wanted a genuine report closed unread.
+	/// </remarks>
+	[Parameter]
+	public EventCallback<RepositoryIssue> OnPostReplyAndClose { get; set; }
+
+	/// <summary>Queues a fresh analysis, discarding the current verdict.</summary>
+	[Parameter]
+	public EventCallback<RepositoryIssue> OnReanalyse { get; set; }
+
+	/// <summary>
+	/// Whether the conversation has moved on since the verdict was reached.
+	/// </summary>
+	/// <remarks>
+	/// Worth saying loudly: the comment added since may be the reporter answering the very question
+	/// that made the model escalate, and a stale verdict presented as current is worse than none.
+	/// </remarks>
+	private bool IsAnalysisStale
+		=> Issue?.AnalysedAtIssueUpdatedUtc is { } analysed
+			&& Issue.LastMaintainerReplyUtc is { } replied
+			&& replied > analysed;
+
+	/// <summary>What a verdict means, worded as what will happen rather than what has.</summary>
+	/// <param name="action">The verdict.</param>
+	private static string AnalysisLabel(IssueAction action) => action switch
+	{
+		IssueAction.Fix => "Valid — a fix is proposed",
+		IssueAction.Answer => "No change needed — a reply is drafted",
+		IssueAction.Reject => "Could not be taken forward — waits for you",
+		_ => "Needs a human"
+	};
+
+	/// <summary>
+	/// Only Reject is coloured as a danger, and only Fix as something actionable.
+	/// </summary>
+	/// <remarks>
+	/// Escalate is deliberately unremarkable. It is the most common verdict and the cheapest one to be
+	/// wrong about, so colouring it for attention would make the panel shout on every issue.
+	/// </remarks>
+	private string AnalysisBadgeClass => Issue?.Analysis?.Action switch
+	{
+		IssueAction.Fix => "bg-info text-dark",
+		IssueAction.Answer => "bg-secondary",
+		IssueAction.Reject => "bg-danger",
+		_ => "bg-light text-dark"
+	};
+
+	/// <summary>A risk flag in words rather than as an enum name.</summary>
+	/// <param name="risk">The flag.</param>
+	private static string RiskLabel(IssueRiskFlag risk) => risk switch
+	{
+		IssueRiskFlag.InstructsTheReader => "Tries to instruct its reader",
+		IssueRiskFlag.RequestsNewDependency => "Asks for a new dependency",
+		IssueRiskFlag.RequestsCredentialOrSecret => "Involves credentials or secrets",
+		IssueRiskFlag.TouchesCiOrPublish => "Would reach CI or publish",
+		IssueRiskFlag.ContainsExternalLinks => "Contains external links",
+		IssueRiskFlag.UnknownAuthor => "Author is unknown here",
+		IssueRiskFlag.Unreproducible => "Cannot be reproduced from what it says",
+		IssueRiskFlag.PossiblyObsolete => "May have been overtaken",
+		_ => "Wider than one report"
+	};
 
 
 	private AssessmentSeverity Severity
