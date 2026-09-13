@@ -111,7 +111,7 @@ public class CodacyIssuesRuleTests(ITestOutputHelper output) : TestWithOutput(ou
 		=> PanoramicData.NugetManagement.Services.RuleRegistry.Rules
 			.Where(rule => rule is PanoramicData.NugetManagement.Rules.IRemotelyGraded)
 			.Select(rule => rule.RuleId)
-			.Should().BeEquivalentTo(["CQ-05", "CQ-06"]);
+			.Should().BeEquivalentTo(["CQ-05", "CQ-06", "SEC-01", "SEC-02", "SEC-03"]);
 
 	private sealed class FakeService(CodacyRepositoryReport report) : ICodacyIssueService
 	{

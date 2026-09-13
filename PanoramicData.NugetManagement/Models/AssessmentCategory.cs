@@ -88,5 +88,10 @@ public enum AssessmentCategory
 	/// <summary>
 	/// Community health files (SECURITY.md, CONTRIBUTING.md).
 	/// </summary>
-	CommunityHealth
+	CommunityHealth,
+
+	/// <summary>
+	/// Security findings reported by Codacy's security and risk management analysis.
+	/// </summary>
+	Security
 }
