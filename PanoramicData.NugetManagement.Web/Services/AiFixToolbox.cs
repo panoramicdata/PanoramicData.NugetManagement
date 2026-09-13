@@ -38,8 +38,29 @@ public sealed record AiToolResult(string Content, bool IsError = false, bool IsF
 public sealed class AiFixToolbox(
 	string cloneRoot,
 	Func<CancellationToken, Task<string>>? build = null,
-	Func<CancellationToken, Task<string>>? test = null)
+	Func<CancellationToken, Task<string>>? test = null,
+	IReadOnlyCollection<string>? writablePaths = null)
 {
+	/// <summary>
+	/// The only files this session may write, or null when it may write anywhere in the clone.
+	/// </summary>
+	/// <remarks>
+	/// Set for a fix derived from a human-raised issue and left null for a rule-driven one, and the
+	/// difference is the oracle. A rule re-evaluates for free, so a rule-driven session is bounded by
+	/// something that can tell it it is wrong; an issue has no such check, so its bound is this list —
+	/// the paths screened before the session was ever queued.
+	/// <para>
+	/// It is the containment that survives every upstream failure at once. If the analysis was fooled,
+	/// the gate cleared it and the brief was wrong, a session can still only reach the handful of files
+	/// a human-readable screen already accepted.
+	/// </para>
+	/// </remarks>
+	private readonly HashSet<string>? _writable = writablePaths is null
+		? null
+		: new HashSet<string>(
+			writablePaths.Select(path => path.Replace('\\', '/')),
+			StringComparer.OrdinalIgnoreCase);
+
 	/// <summary>
 	/// How much of a file the model may see at once.
 	/// </summary>
@@ -139,6 +160,13 @@ public sealed class AiFixToolbox(
 		if (!TryResolve(call, out var relativePath, out var fullPath, out var refusal))
 		{
 			return refusal;
+		}
+
+		if (_writable is not null && !_writable.Contains(relativePath))
+		{
+			return Error(
+				$"You may not write '{relativePath}'. This session may only write: "
+				+ $"{string.Join(", ", _writable.Order(StringComparer.Ordinal))}.");
 		}
 
 		if (!call.Arguments.TryGetValue("content", out var content))
