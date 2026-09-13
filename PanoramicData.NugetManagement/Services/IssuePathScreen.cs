@@ -54,6 +54,16 @@ public static class IssuePathScreen
 		IReadOnlyList<string> paths,
 		IReadOnlyCollection<string>? alsoProtected = null)
 	{
+		// No clone means nothing to screen against, which is a refusal and not an error: a repository
+		// that is not on disk cannot have its files checked for existence, and an allowlist nobody
+		// checked is not an allowlist.
+		if (string.IsNullOrWhiteSpace(cloneRoot))
+		{
+			return new IssuePathScreenResult(
+				false,
+				"This repository is not cloned locally, so the files a fix names cannot be checked.");
+		}
+
 		if (paths.Count == 0)
 		{
 			return new IssuePathScreenResult(

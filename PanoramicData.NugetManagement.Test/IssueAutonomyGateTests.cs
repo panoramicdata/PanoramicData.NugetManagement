@@ -140,6 +140,17 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 	}
 
 	[Fact]
+	public void MayFixAutomatically_BlocksWhenTheRepositoryIsNotClonedLocally()
+	{
+		var decision = IssueAutonomyGate.MayFixAutomatically(FixVerdict(), "Owner", string.Empty);
+
+		decision.Allowed.Should().BeFalse(
+			"with no clone there is nothing to screen the brief's paths against, and an unscreened "
+				+ "allowlist is not an allowlist");
+		decision.Reason.Should().NotBeEmpty();
+	}
+
+	[Fact]
 	public void MayAnswerAutomatically_AllowsAConfidentUnflaggedAnswer()
 	{
 		var verdict = new IssueVerdict(
