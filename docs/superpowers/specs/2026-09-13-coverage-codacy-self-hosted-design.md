@@ -41,9 +41,17 @@ every repository uploads coverage to it from CI, and the assessor reads it back 
 | Band | Condition | `AssessmentSeverity` | Badge class |
 |---|---|---|---|
 | RED | No coverage figure available, or 0% | `Error` | `badge-fail` |
-| AMBER | Above 0% and below 25% | `Warning` | `badge-warn` |
-| BLUE | At least 25% and below 50% | `Info` | `badge-info` |
-| GREEN | At least 50% | (passes) | green |
+| AMBER | Above 0% and below 30% | `Warning` | `badge-warn` |
+| BLUE | At least 30% and below 60% | `Info` | `badge-info` |
+| GREEN | At least 60% | (passes) | green |
+
+GREEN sits at 60% to agree with the coverage gate Codacy already applies to this organisation, so that
+the dashboard and Codacy cannot disagree about whether a repository is good enough. AMBER's ceiling moved
+from the originally proposed 25% to 30% so the two failing bands stay comparable in width rather than
+leaving BLUE to cover most of the scale on its own.
+
+This is less conservative than the 50% first proposed. See "What Codacy holds today" for why 60 was
+chosen anyway, and for the caveat that 60 was originally a vendor default rather than a decision.
 
 The scale needs no new enum. `Home.razor` already maps `Error`/`Critical` to red, `Warning` to amber and
 everything else to blue, and `DashboardService.SeverityRank` already orders the fix list red, amber, blue.
@@ -160,7 +168,7 @@ TDD, tests first.
 `CodeCoverageBandRuleTests`:
 - Null coverage with test projects present gives RED.
 - 0% gives RED.
-- The boundaries, each side: 0.1, 24.9, 25, 49.9, 50.
+- The boundaries, each side: 0.1, 29.9, 30, 59.9, 60.
 - No test projects gives not-applicable, whatever the coverage figure.
 - The emitted `Severity` is asserted per band, since the whole colour scheme depends on it.
 - The advisory is populated for every failing band.
@@ -191,25 +199,28 @@ Confirmed against the live API before implementation:
 - Grade A, 92.
 - `coverage: { "status": "None" }` — no coverage has ever been uploaded. Under the bands above this
   repository is RED today, which is the finding the whole change exists to make visible and then fix.
-- `minCoveragePercentage: 60` — Codacy's own coverage gate for this repository, above even the GREEN
-  threshold here. **Decision: align it to 50%**, so Codacy and the RAG bands agree on what "enough" means.
-  Two thresholds disagreeing by ten points is a standing invitation to argue about which one is real.
+- `minCoveragePercentage: 60` — Codacy's own coverage gate. **Decision: GREEN is set to match it, and
+  Codacy is left alone.**
 
-  The endpoint is `PUT .../settings/quality/repository`, which replaces the whole object, so the other
-  five thresholds must be sent back unchanged.
+  The alignment was nearly made in the other direction, lowering Codacy to the originally proposed 50%.
+  Checking first was worth it. Six other repositories in the organisation — AutoTask.Api, Toggl.Api,
+  Codacy.Api, MagicSuite, Lifx.Api, PanoramicData.Vtl — return byte-identical settings, all six
+  thresholds, 60/20/10/10/1/20. That is Codacy's stock default, untouched across the estate, not a figure
+  anyone chose.
 
-  Two caveats found while probing, both unresolved at time of writing:
+  So 60 arrived as a vendor default. It is adopted here as a decision, which is a different thing, and the
+  reasoning is practical: matching Codacy costs nothing. No `PUT .../settings/quality/repository` (which
+  replaces the whole object and would need the other five thresholds echoed back), no risk of detaching
+  this repository from the organisation-level policy it inherits (`repositoryGatePolicyInfo: {id: 995,
+  name: "Codacy Gate Policy"}`), and no estate-wide sweep to keep the two numbers in step later. One
+  number, already in force everywhere.
 
-  - The repository inherits an organisation-level policy (`repositoryGatePolicyInfo: {id: 995, name:
-    "Codacy Gate Policy"}`). The 60% may be inherited rather than set locally, in which case a
-    repository-level PUT either will not stick or will detach this repository from the shared policy.
-    Editing the policy itself would move every repository in the organisation and is out of scope here.
-  - The pull-request gate is a separate setting and is currently off (`coverageThreshold: -1`). Nothing in
-    this design turns it on. Coverage should be visible for a while before it blocks a merge.
+  The cost is honesty about ambition: 60% is well above the 50% first proposed, and this repository is at
+  zero. Both figures are far enough from reality that the gap is theoretical for a long time, and the
+  bands are informational regardless. Revisit once real coverage figures exist across the estate.
 
-  Aligning one repository by hand is cosmetic. The durable form is a rule asserting
-  `minCoveragePercentage == 50` across the estate, a natural sibling to TST-10 — deliberately not in this
-  spec's scope, but the obvious follow-on.
+  The pull-request gate is a separate setting and is currently off (`coverageThreshold: -1`). Nothing in
+  this design turns it on. Coverage should be visible for a while before it blocks a merge.
 
 ## Rollout
 
