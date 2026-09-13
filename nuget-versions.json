@@ -40,9 +40,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "AutoTask.Api": {
-    "latestVersion": "1.7.36",
-    "published": "2026-09-09T00:58:52.033+01:00",
-    "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
+    "latestVersion": "1.7.38",
+    "published": "2026-09-12T19:04:58.96+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "AutoTask.Psa.Api": {
     "latestVersion": "1.1.27",
@@ -130,14 +130,14 @@
     "refreshedAtUtc": "2026-09-12T16:16:24.0536693+00:00"
   },
   "Cisco.Api": {
-    "latestVersion": "3.0.176",
-    "published": "2026-09-03T03:15:04.387+01:00",
-    "refreshedAtUtc": "2026-09-03T06:41:10.1206156+00:00"
+    "latestVersion": "3.0.179",
+    "published": "2026-09-12T19:30:57.313+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "Cisco.DnaCenter.Api": {
-    "latestVersion": "1.3.166",
-    "published": "2026-09-03T03:52:27.14+01:00",
-    "refreshedAtUtc": "2026-09-03T06:41:10.1206156+00:00"
+    "latestVersion": "1.3.175",
+    "published": "2026-09-12T19:30:29.067+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "Clone.Behave": {
     "latestVersion": "1.0.1",
@@ -155,9 +155,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Codacy.Api": {
-    "latestVersion": "3.0.51",
-    "published": "2026-09-08T17:44:45.13+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "3.0.54",
+    "published": "2026-09-12T19:27:48.28+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "Codeuctivity.ImageSharpCompare": {
     "latestVersion": "4.1.390",
@@ -360,9 +360,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "HaloPsa.Api": {
-    "latestVersion": "2.196.78",
-    "published": "2026-09-09T00:59:15.467+01:00",
-    "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
+    "latestVersion": "2.196.81",
+    "published": "2026-09-12T19:30:15.46+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "HidSharp": {
     "latestVersion": "2.6.4",
@@ -370,9 +370,9 @@
     "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
   },
   "Highlight.Api": {
-    "latestVersion": "2.0.48",
-    "published": "2026-09-03T15:01:20.82+01:00",
-    "refreshedAtUtc": "2026-09-03T16:19:02.8622546+00:00"
+    "latestVersion": "2.0.51",
+    "published": "2026-09-12T19:23:51.21+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "HtmlAgilityPack": {
     "latestVersion": "1.13.0",
@@ -435,9 +435,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "LogicMonitor.Api": {
-    "latestVersion": "3.240.82",
-    "published": "2026-09-07T04:59:50.8+01:00",
-    "refreshedAtUtc": "2026-09-07T04:19:02.869552+00:00"
+    "latestVersion": "3.240.85",
+    "published": "2026-09-12T19:30:59.853+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "LogicMonitor.Datamart": {
     "latestVersion": "3.240.13",
@@ -945,9 +945,9 @@
     "refreshedAtUtc": "2026-09-03T06:41:10.1206156+00:00"
   },
   "MicrosoftDynamics.Api": {
-    "latestVersion": "10.0.45",
-    "published": "2026-09-09T18:47:55.723+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "10.0.47",
+    "published": "2026-09-12T19:28:14.523+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "MicrosoftExtensions.Logging.Xunit": {
     "latestVersion": "1.2.1",
@@ -1008,6 +1008,16 @@
     "latestVersion": "3.1.0",
     "published": "2026-09-07T08:26:16.637+01:00",
     "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
+  },
+  "NAudio.Core": {
+    "latestVersion": "3.1.0",
+    "published": "2026-09-07T08:26:20.28+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
+  },
+  "NAudio.Wasapi": {
+    "latestVersion": "3.1.0",
+    "published": "2026-09-07T08:26:35.16+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "NCalcSync": {
     "latestVersion": "7.1.0",
@@ -1125,9 +1135,9 @@
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
   "Ollama.Api": {
-    "latestVersion": "1.0.26",
-    "published": "2026-09-03T12:13:45.607+01:00",
-    "refreshedAtUtc": "2026-09-03T12:41:10.1229261+00:00"
+    "latestVersion": "1.0.29",
+    "published": "2026-09-12T19:29:03.66+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "PanoramicData.Blazor": {
     "latestVersion": "10.0.215",
@@ -1135,9 +1145,9 @@
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
   "PanoramicData.ChartMagic": {
-    "latestVersion": "9.1.26",
-    "published": "2026-08-29T22:02:25.47+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "9.1.33",
+    "published": "2026-09-12T19:27:33.437+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "PanoramicData.DeepCloner": {
     "latestVersion": "1.0.8",
@@ -1210,9 +1220,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "PanoramicData.SheetMagic": {
-    "latestVersion": "3.1.140",
-    "published": "2026-08-30T01:46:23.32+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "3.1.146",
+    "published": "2026-09-12T21:02:27.93+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "PanoramicData.Slack.Webhooks": {
     "latestVersion": "1.0.3",
@@ -1265,9 +1275,9 @@
     "refreshedAtUtc": "2026-09-05T22:19:02.8646372+00:00"
   },
   "Quartz": {
-    "latestVersion": "4.0.1",
-    "published": "2026-09-08T22:23:00.08+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "4.1.0",
+    "published": "2026-09-13T11:59:34.16+01:00",
+    "refreshedAtUtc": "2026-09-13T12:00:56.7835653+00:00"
   },
   "RabbitMQ.Client": {
     "latestVersion": "7.2.2",
@@ -1420,9 +1430,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "ServiceNow.Api": {
-    "latestVersion": "1.3.36",
-    "published": "2026-09-12T05:32:58.773+01:00",
-    "refreshedAtUtc": "2026-09-12T10:16:24.0502436+00:00"
+    "latestVersion": "1.3.38",
+    "published": "2026-09-12T20:54:04.663+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "ServiceStack": {
     "latestVersion": "10.2.0",
@@ -1440,9 +1450,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "SideroLabs.Omni.Api": {
-    "latestVersion": "1.1.16",
-    "published": "2026-08-28T18:32:03.44+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "1.1.28",
+    "published": "2026-09-12T21:00:28.19+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "SimpleSOAPClient": {
     "latestVersion": "2.1.0",
@@ -1535,9 +1545,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "SymphonyAi.Summit.Api": {
-    "latestVersion": "1.1.32",
-    "published": "2026-08-28T21:02:39.2+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "1.1.41",
+    "published": "2026-09-12T21:00:30.913+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "System.CommandLine": {
     "latestVersion": "2.0.12",
@@ -1670,9 +1680,9 @@
     "refreshedAtUtc": "2026-09-04T10:19:02.8651974+00:00"
   },
   "Toggl.Api": {
-    "latestVersion": "9.0.115",
-    "published": "2026-09-03T03:32:01.003+01:00",
-    "refreshedAtUtc": "2026-09-03T06:41:10.1206156+00:00"
+    "latestVersion": "9.0.121",
+    "published": "2026-09-12T19:49:40.177+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "Twilio": {
     "latestVersion": "8.0.1",
@@ -1700,9 +1710,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "xunit.analyzers": {
-    "latestVersion": "2.0.0",
-    "published": "2026-08-15T02:50:53.65+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "2.1.0",
+    "published": "2026-09-12T20:07:26.237+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "Xunit.Microsoft.DependencyInjection": {
     "latestVersion": "10.1.0",
@@ -1715,19 +1725,19 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "xunit.v3": {
-    "latestVersion": "4.0.0",
-    "published": "2026-08-15T02:50:55.493+01:00",
-    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+    "latestVersion": "4.0.1",
+    "published": "2026-09-12T20:07:27.03+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "xunit.v3.assert": {
-    "latestVersion": "4.0.0",
-    "published": "2026-08-15T02:50:58.267+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "4.0.1",
+    "published": "2026-09-12T20:07:30.133+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "xunit.v3.common": {
-    "latestVersion": "4.0.0",
-    "published": "2026-08-15T02:51:00.603+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "4.0.1",
+    "published": "2026-09-12T20:07:32.697+01:00",
+    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "YamlDotNet": {
     "latestVersion": "18.1.0",
