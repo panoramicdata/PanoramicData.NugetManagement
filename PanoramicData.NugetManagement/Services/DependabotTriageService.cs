@@ -94,6 +94,13 @@ public sealed class DependabotTriageService
 
 	private readonly IReadOnlyList<IRule> _rules;
 	private readonly TimeProvider _timeProvider;
+	private readonly ActionVersionCatalog _actionVersions;
+
+	/// <summary>
+	/// Passed where the action rules pass a hardcoded "latest", so a proposal competes only against
+	/// what has actually been learned. CI-12 owns no hardcoded floor, and neither does this.
+	/// </summary>
+	private const string _noHardcodedFloor = "v0";
 
 	/// <summary>
 	/// Initializes a new instance using every registered rule and the system clock.
@@ -118,9 +125,24 @@ public sealed class DependabotTriageService
 	/// <param name="rules">The rules to consider when deciding coverage.</param>
 	/// <param name="timeProvider">The clock the adoption age gate is measured against.</param>
 	public DependabotTriageService(IReadOnlyList<IRule> rules, TimeProvider timeProvider)
+		: this(rules, timeProvider, ActionVersionCatalog.Default)
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance over an explicit rule set, clock and action catalog, for tests.
+	/// </summary>
+	/// <param name="rules">The rules to consider when deciding coverage.</param>
+	/// <param name="timeProvider">The clock the adoption age gate is measured against.</param>
+	/// <param name="actionVersions">The catalog a proposed action version is taught to.</param>
+	public DependabotTriageService(
+		IReadOnlyList<IRule> rules,
+		TimeProvider timeProvider,
+		ActionVersionCatalog actionVersions)
 	{
 		_rules = rules;
 		_timeProvider = timeProvider;
+		_actionVersions = actionVersions;
 	}
 
 	/// <summary>
@@ -198,6 +220,14 @@ public sealed class DependabotTriageService
 					+ "declaring it, so there is nothing here for this pull request to move.",
 				null);
 		}
+
+		// Before asking who covers this, let what it proposes raise the action floor. Dependabot is the
+		// only part of this system that hears from upstream: the catalog otherwise learns only from a
+		// repository already using a higher version, so an action nobody has upgraded yet can never
+		// have a floor above what everybody uses, and CI-12 can never fail for it. That is how
+		// SolarWinds.Api sat on actions/deploy-pages v4 for eleven days with v5 offered and triage
+		// reporting "no auto-fix" about something it could have fixed as soon as it knew v5 existed.
+		TeachActionFloors(outstanding, context, actionUsages);
 
 		// Covered before anything else: if a failing rule is already going to move a dependency, letting
 		// the rule do it keeps one mechanism responsible for one change, and the estate floors and rule
@@ -449,6 +479,47 @@ public sealed class DependabotTriageService
 	/// The rule has to be <em>failing</em>: a passing rule will not be remediated, so it will not move
 	/// anything, so it cannot cover a pull request that is still outstanding.
 	/// </remarks>
+	/// <summary>
+	/// Records the versions this pull request proposes for the actions the repository actually uses,
+	/// raising the learned floor where a proposal is ahead of it.
+	/// </summary>
+	/// <remarks>
+	/// The same learning the catalog already does from a canary repository, with Dependabot as the
+	/// source. Restricted to actions this repository uses: a proposal about one it has dropped says
+	/// nothing about the version the estate should hold, and would hold every other repository to a
+	/// floor learned from one that had stopped caring.
+	/// <para>
+	/// The floor a run evaluates against is frozen at load, so this takes effect on the next
+	/// assessment rather than the one that learns it — CI-12 then fails everywhere still behind, and
+	/// its remediation rewrites the <c>uses:</c> lines. That lag is how the existing canary learning
+	/// already behaves.
+	/// </para>
+	/// </remarks>
+	private void TeachActionFloors(
+		List<DependabotBump> outstanding,
+		RepositoryContext context,
+		List<ActionUsage> actionUsages)
+	{
+		foreach (var bump in outstanding)
+		{
+			// Only what this repository is observed using. That is also what keeps a NuGet bump out:
+			// a package id cannot match an action usage, because an action name carries an owner and a
+			// package id cannot contain a slash.
+			if (!actionUsages.Any(usage => string.Equals(
+				usage.Action, bump.Dependency.Name, StringComparison.OrdinalIgnoreCase)))
+			{
+				continue;
+			}
+
+			var proposedMajor = GitHubActionVersion.ParseMajor(bump.ToVersion);
+			if (proposedMajor > 0)
+			{
+				_actionVersions.Observe(
+					bump.Dependency.Name, proposedMajor, _noHardcodedFloor, context.FullName);
+			}
+		}
+	}
+
 	private string? CoveringRuleId(
 		DependencyRef dependency,
 		IReadOnlyList<RuleResult> ruleResults,
