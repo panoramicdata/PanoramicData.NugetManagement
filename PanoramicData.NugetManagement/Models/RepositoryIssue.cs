@@ -83,6 +83,31 @@ public class RepositoryIssue
 	public string? TriageReason { get; set; }
 
 	/// <summary>
+	/// What the last analysis concluded about this issue, or null when nothing has analysed it.
+	/// </summary>
+	/// <remarks>
+	/// Stamped after the fact for the same reason <see cref="TriageVerdict"/> is: it is the conclusion
+	/// of a later pass, not a property of the issue, and it goes stale as the repository and the
+	/// conversation move on. Persisted so the panel shows the last verdict without spending minutes of
+	/// a local model on every render.
+	/// <para>
+	/// Only ever set for issues a person raised. Dependabot's own items are triaged, not analysed, and
+	/// having both passes judge the same item would have them disagreeing in public.
+	/// </para>
+	/// </remarks>
+	public IssueVerdict? Analysis { get; set; }
+
+	/// <summary>
+	/// The issue's own last-updated time when <see cref="Analysis"/> was reached.
+	/// </summary>
+	/// <remarks>
+	/// The staleness test for a verdict. A comment added since means the analysis read a shorter
+	/// conversation than the one now there — possibly the reporter answering the very question that
+	/// made it escalate — so the panel marks it stale and the next Fix with AI re-analyses it.
+	/// </remarks>
+	public DateTimeOffset? AnalysedAtIssueUpdatedUtc { get; set; }
+
+	/// <summary>
 	/// The instant the staleness clock starts: the last maintainer reply, or the moment the item was
 	/// opened when there has never been one. An item nobody has answered has been waiting since it
 	/// was raised.

@@ -50,6 +50,12 @@ public class RepositoryIssueServiceTests(ITestOutputHelper output) : TestWithOut
 			return Task.FromResult(
 				perItem is not null && perItem.TryGetValue(issueNumber, out var found) ? found : []);
 		}
+
+		public Task<GitHubIssueThread> GetThreadAsync(
+			string owner, string name, int issueNumber, CancellationToken cancellationToken)
+			=> throw new NotSupportedException(
+				"The staleness sweep reads timestamps, never prose. Fetching a thread here would be "
+					+ "the cost this port was split to avoid.");
 	}
 
 	private static GitHubIssueComment Comment(int issueNumber, TimeSpan ago, bool maintainer)

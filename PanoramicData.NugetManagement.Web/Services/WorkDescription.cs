@@ -14,7 +14,8 @@ public static class WorkDescription
 {
 	/// <summary>Whether a model does this work, which is what makes its pane a session rather than a log.</summary>
 	/// <param name="kind">The kind of work.</param>
-	public static bool IsAi(WorkKind kind) => kind is WorkKind.FixWithAiRule;
+	public static bool IsAi(WorkKind kind)
+		=> kind is WorkKind.FixWithAiRule or WorkKind.AnalyseIssue or WorkKind.FixWithAiIssue;
 
 	/// <summary>Whether the kind has a sentence of its own.</summary>
 	/// <param name="kind">The kind of work.</param>
@@ -49,6 +50,14 @@ public static class WorkDescription
 			$"Asking a local model to fix {rule} in {scope}. It reads and edits the clone itself, and the "
 				+ "rule is re-checked after each attempt — so this takes minutes rather than seconds, and "
 				+ "what follows is the session as it happens.",
+		WorkKind.AnalyseIssue =>
+			$"Reading one human-raised issue in {scope} and deciding what should happen about it. The "
+				+ "model doing the reading holds no tools — it cannot open a file, post a comment or "
+				+ "reach the network — because the text it is reading was written by a stranger.",
+		WorkKind.FixWithAiIssue =>
+			$"Asking a local model to carry out the fix an analysis proposed for an issue in {scope}. It "
+				+ "sees the brief and never the issue, may write only the files that brief named, and is "
+				+ "judged on whether the repository still builds and tests green.",
 		WorkKind.Build => $"Building {scope}.",
 		WorkKind.Test => $"Running the tests in {scope}.",
 		WorkKind.TriageDependabot => $"Deciding what to do about each open Dependabot pull request in {scope}.",

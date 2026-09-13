@@ -36,6 +36,32 @@ public enum WorkKind
 	/// </remarks>
 	FixWithAiRule,
 
+	/// <summary>
+	/// Read one human-raised issue and conclude what should happen about it. Parameter:
+	/// <c>issueNumber</c>.
+	/// </summary>
+	/// <remarks>
+	/// Its own kind, and never folded into <see cref="FixWithAiRule"/>, because it is the only work
+	/// here that reads text a stranger wrote. It runs a model holding no tools at all, so the
+	/// separation is not tidiness — it is the boundary that keeps an issue body away from anything
+	/// that can act on it.
+	/// <para>
+	/// One issue per item, like one rule per item: the prompt stays small, each is separately
+	/// stoppable, and a slow local model chewing on one unreadable issue does not hold up the rest.
+	/// </para>
+	/// </remarks>
+	AnalyseIssue,
+
+	/// <summary>
+	/// Have the local model act on the brief an analysis produced. Parameter: <c>issueNumber</c>.
+	/// </summary>
+	/// <remarks>
+	/// Queued only for a verdict that cleared <c>IssueAutonomyGate</c>, or that a human queued by hand
+	/// after reading it. The session sees the brief and never the issue, and may write only the files
+	/// the brief named.
+	/// </remarks>
+	FixWithAiIssue,
+
 	/// <summary>Build one repository.</summary>
 	Build,
 
