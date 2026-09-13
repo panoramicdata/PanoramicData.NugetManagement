@@ -280,6 +280,7 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
 			runtimeSettings,
 			new NuGetOwnedPackageCatalog(null),
+			new RuleWaiverCatalog(null),
 			appSettings,
 			new NoopCodacyAnalysisStateService(),
 			NullLogger<DashboardService>.Instance);
@@ -405,6 +406,7 @@ public sealed class DashboardServiceCancellationTests(ITestOutputHelper output) 
 			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
 			runtimeSettings,
 			new NuGetOwnedPackageCatalog(null),
+			new RuleWaiverCatalog(null),
 			appSettings,
 			new NoopCodacyAnalysisStateService(),
 			NullLogger<DashboardService>.Instance);

@@ -28,7 +28,17 @@ public class RepoAssessment
 	/// <summary>
 	/// The total number of rules that passed.
 	/// </summary>
-	public int PassedCount => RuleResults.Count(r => r.Passed);
+	public int PassedCount => RuleResults.Count(r => r.Passed && r.Waiver is null);
+
+	/// <summary>
+	/// The number of rules this repository is deliberately not held to.
+	/// </summary>
+	public int WaivedCount => RuleResults.Count(r => r.Waiver is not null);
+
+	/// <summary>
+	/// The number of waivers that are no longer needed, because the rule now passes without them.
+	/// </summary>
+	public int StaleWaiverCount => RuleResults.Count(r => r.Waiver is { IsStale: true });
 
 	/// <summary>
 	/// The total number of rules that failed.

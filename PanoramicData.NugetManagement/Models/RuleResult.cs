@@ -53,4 +53,15 @@ public class RuleResult
 	/// Structured advisory for AI-driven remediation. Null when the rule passes.
 	/// </summary>
 	public RuleAdvisory? Advisory { get; init; }
+
+	/// <summary>
+	/// The waiver this result was excused by, or null when the rule was held to normally.
+	/// </summary>
+	/// <remarks>
+	/// A waived result reports <see cref="Passed"/> as true so it never counts against the
+	/// repository, exactly as a not-applicable result does. This is what tells the two apart — and
+	/// what lets a waiver be shown with its reason rather than silently removing the rule from the
+	/// board.
+	/// </remarks>
+	public AppliedWaiver? Waiver { get; init; }
 }

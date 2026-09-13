@@ -25,7 +25,13 @@ public class RepoOptions
 	/// <summary>
 	/// Rule IDs to suppress for this repository.
 	/// </summary>
+	[Obsolete("Use Waivers instead, which records why the rule does not apply. Entries here are still honoured, as waivers with no reason given.")]
 	public List<string> SuppressedRules { get; set; } = [];
+
+	/// <summary>
+	/// Rules this repository is deliberately not held to, each with the reason it was waived.
+	/// </summary>
+	public List<RuleWaiver> Waivers { get; set; } = [];
 
 	/// <summary>
 	/// The exact CI workflow file name under .github/workflows/.

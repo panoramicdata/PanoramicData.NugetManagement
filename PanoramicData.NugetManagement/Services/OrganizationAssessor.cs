@@ -149,29 +149,27 @@ public class OrganizationAssessor : IDisposable
 		var ruleResults = new List<RuleResult>();
 		foreach (var rule in _rules)
 		{
-			if (repoOptions.SuppressedRules.Contains(rule.RuleId, StringComparer.OrdinalIgnoreCase))
-			{
-				_logger.LogDebug("Rule {RuleId} suppressed for {FullName}", rule.RuleId, repository.FullName);
-				continue;
-			}
-
+			// A waived rule is evaluated like any other and excused afterwards, so the verdict it would
+			// have given is still known and a waiver that has outlived its problem can be spotted.
 			try
 			{
 				var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
-				ruleResults.Add(result);
+				ruleResults.Add(RuleWaivers.Apply(result, repoOptions));
 			}
 			catch (Exception ex)
 			{
 				_logger.LogWarning(ex, "Rule {RuleId} threw for {FullName}", rule.RuleId, repository.FullName);
-				ruleResults.Add(new RuleResult
-				{
-					RuleId = rule.RuleId,
-					RuleName = rule.RuleName,
-					Category = rule.Category,
-					Severity = rule.Severity,
-					Passed = false,
-					Message = $"Rule threw an exception: {ex.Message}"
-				});
+				ruleResults.Add(RuleWaivers.Apply(
+					new RuleResult
+					{
+						RuleId = rule.RuleId,
+						RuleName = rule.RuleName,
+						Category = rule.Category,
+						Severity = rule.Severity,
+						Passed = false,
+						Message = $"Rule threw an exception: {ex.Message}"
+					},
+					repoOptions));
 			}
 		}
 

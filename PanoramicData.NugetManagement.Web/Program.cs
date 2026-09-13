@@ -66,6 +66,9 @@ builder.Services.AddSingleton(_ => NuGetFloorCatalog.Default);
 // The same instance the rules read through their own static Default, so what discovery records is
 // what PKG-05/06/07 see on the next assessment.
 builder.Services.AddSingleton(_ => NuGetOwnedPackageCatalog.Default);
+// The estate's committed record of which rules each repository is deliberately not held to, read
+// once at startup: a waiver is changed by editing the file and is meant to be reviewed, not toggled.
+builder.Services.AddSingleton(_ => RuleWaiverCatalog.Default);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<NuGetVersionRefresher>(sp =>
 {

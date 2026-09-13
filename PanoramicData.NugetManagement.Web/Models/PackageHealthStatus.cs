@@ -68,6 +68,16 @@ public class CategorySummary
 	public int Infos { get; set; }
 
 	/// <summary>
+	/// Number of rules this repository is deliberately not held to.
+	/// </summary>
+	/// <remarks>
+	/// Counted apart from <see cref="Passed"/>: a waived rule is one the estate has excused, not one
+	/// the repository satisfies, and rolling the two together makes a category look healthier than it
+	/// is.
+	/// </remarks>
+	public int Waived { get; set; }
+
+	/// <summary>
 	/// Total failures across all severities.
 	/// </summary>
 	public int TotalFailures => Criticals + Errors + Warnings + Infos;

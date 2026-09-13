@@ -19,6 +19,7 @@ public class DashboardService
 	private readonly RegressionGuardService _regressionGuard;
 	private readonly RuntimeSettingsService _runtimeSettings;
 	private readonly NuGetOwnedPackageCatalog _owned;
+	private readonly RuleWaiverCatalog _waivers;
 	private readonly AppSettings _settings;
 	private readonly ICodacyAnalysisStateService _codacyAnalysisState;
 	private readonly ILogger<DashboardService> _logger;
@@ -35,6 +36,7 @@ public class DashboardService
 		RegressionGuardService regressionGuard,
 		RuntimeSettingsService runtimeSettings,
 		NuGetOwnedPackageCatalog owned,
+		RuleWaiverCatalog waivers,
 		IOptions<AppSettings> settings,
 		ICodacyAnalysisStateService codacyAnalysisState,
 		ILogger<DashboardService> logger)
@@ -46,6 +48,7 @@ public class DashboardService
 		_regressionGuard = regressionGuard;
 		_runtimeSettings = runtimeSettings;
 		_owned = owned;
+		_waivers = waivers;
 		RemediationRegistry = remediationRegistry;
 		_settings = settings.Value;
 		_codacyAnalysisState = codacyAnalysisState;
@@ -336,13 +339,20 @@ public class DashboardService
 	/// Dependabot triage — and an option added to one of them but not the others would assess the
 	/// same repository differently depending on which path reached it.
 	/// </remarks>
-	private RepoOptions BuildRepoOptions()
+	/// <param name="repositoryFullName">
+	/// The repository the options are for, as "owner/name". Its waivers are read from the estate's
+	/// committed catalogue; everything else is the same for every repository. Required rather than
+	/// defaulted, so a new caller has to decide which repository it is asking about instead of
+	/// silently getting one that is held to every rule.
+	/// </param>
+	private RepoOptions BuildRepoOptions(string? repositoryFullName)
 	{
 		var repoOptions = new RepoOptions
 		{
 			ExpectedLicense = _settings.ExpectedLicense,
 			ExpectedCopyrightHolder = _settings.CopyrightHolder,
 			NuGetUser = _settings.NuGetUser,
+			Waivers = [.. _waivers.For(repositoryFullName)],
 		};
 
 		if (!string.IsNullOrEmpty(_settings.CodacyApiToken))
@@ -372,7 +382,7 @@ public class DashboardService
 		IGitHubClient github,
 		CancellationToken cancellationToken = default)
 	{
-		var repoOptions = BuildRepoOptions();
+		var repoOptions = BuildRepoOptions(row.RepositoryFullName);
 
 		using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 
@@ -447,7 +457,7 @@ public class DashboardService
 			}
 
 			var repo = await github.Repository.Get(parts[0], parts[1]).ConfigureAwait(false);
-			var repoOptions = BuildRepoOptions();
+			var repoOptions = BuildRepoOptions(row.RepositoryFullName);
 
 			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 			using var contextBuilder = new RepositoryContextBuilder(github, loggerFactory.CreateLogger<RepositoryContextBuilder>());
@@ -458,13 +468,11 @@ public class DashboardService
 
 			foreach (var rule in rules)
 			{
-				if (repoOptions.SuppressedRules.Contains(rule.RuleId))
-				{
-					continue;
-				}
-
+				// Waived rules are evaluated like any other and excused afterwards, so a waiver that has
+				// outlived the problem it was agreed for can be reported as stale rather than standing
+				// unexamined for ever.
 				var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
-				results.Add(result);
+				results.Add(RuleWaivers.Apply(result, repoOptions));
 			}
 
 			row.Assessment = new RepoAssessment
@@ -727,7 +735,7 @@ public class DashboardService
 				? row.Assessment?.DefaultBranch ?? "main"
 				: detectedDefaultBranch;
 
-			var repoOptions = BuildRepoOptions();
+			var repoOptions = BuildRepoOptions(row.RepositoryFullName);
 
 			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 			var localBuilder = new LocalRepositoryContextBuilder(loggerFactory.CreateLogger<LocalRepositoryContextBuilder>());
@@ -757,13 +765,11 @@ public class DashboardService
 
 			foreach (var rule in rules)
 			{
-				if (repoOptions.SuppressedRules.Contains(rule.RuleId))
-				{
-					continue;
-				}
-
+				// Waived rules are evaluated like any other and excused afterwards, so a waiver that has
+				// outlived the problem it was agreed for can be reported as stale rather than standing
+				// unexamined for ever.
 				var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
-				results.Add(result);
+				results.Add(RuleWaivers.Apply(result, repoOptions));
 			}
 
 			row.Assessment = new RepoAssessment
@@ -2086,7 +2092,8 @@ public class DashboardService
 		{
 			summaries[group.Key] = new CategorySummary
 			{
-				Passed = group.Count(r => r.Passed),
+				Passed = group.Count(r => r.Passed && r.Waiver is null),
+				Waived = group.Count(r => r.Waiver is not null),
 				Criticals = group.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Critical),
 				Errors = group.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Error),
 				Warnings = group.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Warning),

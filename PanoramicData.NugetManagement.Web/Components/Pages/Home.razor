@@ -3443,6 +3443,10 @@ else
 			.OrderBy(r => SeverityColorRank(r.Severity))
 			.ThenBy(r => r.RuleId)
 			.ToList();
+		var waived = _selectedRow.Assessment.RuleResults
+			.Where(r => r.Waiver is not null && r.Category == cat)
+			.OrderBy(r => r.RuleId)
+			.ToList();
 
 		<div class="detail-issues">
 			<div class="issue-group">
@@ -3491,8 +3495,59 @@ else
 					}
 				}
 			</div>
+			@if (waived.Count > 0)
+			{
+				<div class="issue-group">
+					<div class="issue-group-header">
+						<div class="issue-group-title">
+							<span class="badge badge-neutral">@waived.Count</span>
+							<span>Waived</span>
+						</div>
+					</div>
+					@foreach (var result in waived)
+					{
+						var waiver = result.Waiver!;
+						<div class="issue-item">
+							<div class="issue-item-header">
+								<span class="badge badge-neutral">@result.RuleId</span>
+								<span class="issue-rule-name">@result.RuleName</span>
+								@if (waiver.IsStale)
+								{
+									<span class="badge badge-pass" title="This rule now passes on its own, so the waiver can be deleted from rule-waivers.json.">No longer needed</span>
+								}
+							</div>
+							<div class="issue-message">@waiver.Waiver.Reason</div>
+							<div class="issue-advisory">
+								<span class="advisory-icon"><i class="fas fa-gavel"></i></span>
+								<span>@WaiverAttribution(waiver)</span>
+							</div>
+						</div>
+					}
+				</div>
+			}
 		</div>
 	};
+
+	/// <summary>
+	/// Who agreed a waiver and what the rule makes of the repository regardless, for the line under
+	/// the reason. A waiver nobody can attribute is still shown — the estate needs to see it to be
+	/// able to ask about it.
+	/// </summary>
+	private static string WaiverAttribution(AppliedWaiver waiver)
+	{
+		var who = string.IsNullOrWhiteSpace(waiver.Waiver.WaivedBy) ? null : waiver.Waiver.WaivedBy;
+		var when = waiver.Waiver.WaivedOnUtc?.ToString("yyyy-MM-dd");
+
+		var attribution = (who, when) switch
+		{
+			(not null, not null) => $"Waived by {who} on {when}.",
+			(not null, null) => $"Waived by {who}.",
+			(null, not null) => $"Waived on {when}.",
+			_ => "Waived in rule-waivers.json."
+		};
+
+		return $"{attribution} The rule itself says: {waiver.UnderlyingMessage}";
+	}
 
 	private RenderFragment RenderRuleDetailView() => __builder =>
 	{

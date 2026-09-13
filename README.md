@@ -184,15 +184,51 @@ already cloned locally are assessed from disk at no API cost at all.
 
 ## Per-Repository Options
 
+A library consumer supplies these directly:
+
 ```csharp
 var repoOptions = new RepoOptions
 {
     Exclude = false,                     // Set true to skip entirely
     IsPackable = true,                   // Set false for apps/tools (skips NuGet rules)
     EnforceRequiredProperties = true,    // Configurable 'required' keyword enforcement
-    SuppressedRules = ["HTTP-01"]        // Suppress specific rules by ID
+    Waivers =                            // Rules this repository is not held to, and why
+    [
+        new RuleWaiver { RuleId = "HTTP-01", Reason = "Talks to one GraphQL endpoint." }
+    ]
 };
 ```
+
+The dashboard builds its own options from configuration, so only waivers are per-repository
+there — everything else is estate-wide. Exclusion has its own control on the dashboard.
+
+## Waiving a rule
+
+A waiver says a repository is deliberately not held to a rule. Record one in `rule-waivers.json`
+at the root of this repository, keyed by repository full name:
+
+```json
+{
+  "panoramicdata/LanSweeper.Api": [
+    {
+      "ruleId": "HTTP-01",
+      "reason": "Talks to one GraphQL endpoint, so there are no routes for Refit to declare.",
+      "waivedBy": "someone@panoramicdata.com",
+      "waivedOnUtc": "2026-09-13T00:00:00Z"
+    }
+  ]
+}
+```
+
+The file lives here rather than in the governed repository, and is edited by hand rather than
+from the dashboard, because a waiver is a governance decision: it should arrive as a pull request
+someone reviewed, not as a click nobody can trace. **A waiver with no `reason` is refused** — it
+is exactly the silent suppression this file exists to replace.
+
+A waived rule is still evaluated. Its result appears under Waived in the category view with the
+reason, and never counts against the repository. Because the rule still runs, the dashboard can
+also tell you when a waiver has outlived its problem: one whose rule now passes on its own is
+marked **No longer needed**, and can be deleted.
 
 ## Available Rules
 
