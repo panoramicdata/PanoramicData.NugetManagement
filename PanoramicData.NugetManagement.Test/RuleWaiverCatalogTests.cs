@@ -147,6 +147,19 @@ public class RuleWaiverCatalogTests(ITestOutputHelper output) : TestWithOutput(o
 		catalog.LoadFailed.Should().BeFalse();
 	}
 
+	[Fact]
+	public void TheCommittedWaiversFileShouldBeUsable()
+	{
+		// The file is edited by hand, and a waiver that fails to load waives nothing while looking
+		// exactly like a repository nobody has excused. This is the only thing that would notice.
+		var path = RepositoryRootFile.Resolve(RuleWaiverCatalog.FileName);
+		path.Should().NotBeNull("the tests run from inside the repository");
+
+		var catalog = new RuleWaiverCatalog(path);
+
+		catalog.LoadFailure.Should().BeNull();
+	}
+
 	private RuleWaiverCatalog CatalogFrom(string json)
 	{
 		Directory.CreateDirectory(_directory);

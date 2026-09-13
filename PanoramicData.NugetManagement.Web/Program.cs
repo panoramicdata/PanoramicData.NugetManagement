@@ -170,6 +170,18 @@ var app = builder.Build();
 // nowhere — including on the settings page that offers to open it.
 app.Services.GetRequiredService<LocalRepoService>().EnsureReposRootExists();
 
+// Says so, loudly, when the waivers file was present but not wholly usable. An unusable waiver
+// waives nothing, which looks exactly like a repository nobody ever excused — and the point of
+// writing waivers down was to stop decisions going missing quietly.
+var waiverCatalog = app.Services.GetRequiredService<RuleWaiverCatalog>();
+if (waiverCatalog.LoadFailed)
+{
+	app.Services.GetRequiredService<ILogger<Program>>().LogError(
+		"{FileName} was not wholly usable ({Failure}); any rule it meant to waive is being enforced.",
+		RuleWaiverCatalog.FileName,
+		waiverCatalog.LoadFailure);
+}
+
 // Fetch the .NET channel Microsoft currently supports before serving, so assessments measure against
 // the published standard rather than the offline fallback — and never against whatever SDKs happen to
 // be installed on this machine, which is what this replaced. A failed fetch is not fatal.
