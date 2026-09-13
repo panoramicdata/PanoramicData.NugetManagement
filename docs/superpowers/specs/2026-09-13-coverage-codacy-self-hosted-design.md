@@ -172,10 +172,30 @@ TDD, tests first.
 
 ## Configuration and secrets
 
+Both are in place as of 2026-09-13.
+
 - `CODACY_PROJECT_TOKEN` — a repository Actions secret, used only by the coverage job's upload step.
+  Minted via `POST /api/v3/organizations/gh/panoramicdata/repositories/{repo}/tokens` as `pt-ce574eea6252`.
+  **It expires on 2027-09-13.** Codacy project tokens are not renewed automatically, and the upload step
+  runs with `continue-on-error: true`, so on expiry coverage will stop reaching Codacy silently and every
+  repository will drift to RED without anything going red in CI. Worth a rule of its own later.
 - `AssessmentOptions:CodacyApiToken` — the account-level token the assessor already looks for, stored in
-  the Web project's `dotnet user-secrets` (`UserSecretsId` is `PanoramicData.NugetManagement.Web`). It is
-  currently unset, which is a second reason the Codacy rules have been quiet.
+  the Web project's `dotnet user-secrets` (`UserSecretsId` is `PanoramicData.NugetManagement.Web`). The
+  Web layer reads `AppSettings:CodacyApiToken`; both keys are set.
+
+## What Codacy holds today
+
+Confirmed against the live API before implementation:
+
+- The repository is already added (`addedState: "Added"`), so no onboarding step is needed.
+- Grade A, 92.
+- `coverage: { "status": "None" }` — no coverage has ever been uploaded. Under the bands above this
+  repository is RED today, which is the finding the whole change exists to make visible and then fix.
+- `minCoveragePercentage: 60` — Codacy's own coverage gate for this repository is already set to 60%,
+  which is above even the GREEN threshold here. That gate is Codacy's, not ours, and nothing in this
+  design changes it; but it will report the repository as failing its coverage gate until coverage passes
+  60%, independently of the RAG bands. Leaving them out of step is a deliberate choice: the bands describe
+  where the estate is, and 60% describes where Codacy was told to want it.
 
 ## Rollout
 
