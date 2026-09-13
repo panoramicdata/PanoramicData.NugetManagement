@@ -99,6 +99,63 @@ public class OctokitGitHubIssueApi(IGitHubClient github) : IGitHubIssueApi
 	/// <summary>
 	/// Whether a comment's author association makes its writer a maintainer of the repository.
 	/// </summary>
+	/// <inheritdoc />
+	public async Task<GitHubIssueThread> GetThreadAsync(
+		string owner,
+		string name,
+		int issueNumber,
+		CancellationToken cancellationToken)
+	{
+		var issue = await _github.Issue.Get(owner, name, issueNumber).ConfigureAwait(false);
+
+		var comments = await _github.Issue.Comment
+			.GetAllForIssue(owner, name, issueNumber, new ApiOptions { PageSize = PageSize })
+			.ConfigureAwait(false);
+
+		var author = issue.User?.Login ?? string.Empty;
+
+		return new GitHubIssueThread(
+			issue.Number,
+			issue.Title ?? string.Empty,
+			issue.Body,
+			author,
+			AssociationOf(author, comments),
+			issue.CreatedAt,
+			[.. comments
+				.OrderBy(comment => comment.CreatedAt)
+				.Select(comment => new GitHubThreadComment(
+					comment.User?.Login ?? string.Empty,
+					comment.AuthorAssociation.StringValue ?? NoAssociation,
+					comment.CreatedAt,
+					comment.Body ?? string.Empty))]);
+	}
+
+	/// <summary>The association assumed for somebody this repository can tell us nothing about.</summary>
+	private const string NoAssociation = "None";
+
+	/// <summary>
+	/// The issue author's association with the repository, as far as it can be established.
+	/// </summary>
+	/// <remarks>
+	/// Octokit's <c>Issue</c> does not carry an author association — only comments do — so it is taken
+	/// from a comment the author wrote on their own issue, which most reporters eventually do.
+	/// <para>
+	/// When there is none, the answer is "None", and that is the right way to be wrong. A known
+	/// contributor mistaken for a stranger loses an unattended fix and gets a verdict a human presses
+	/// a button on; a stranger mistaken for a contributor is the case this whole gate exists to
+	/// prevent.
+	/// </para>
+	/// </remarks>
+	private static string AssociationOf(string author, IReadOnlyList<IssueComment> comments)
+		=> string.IsNullOrEmpty(author)
+			? NoAssociation
+			: comments
+				.Where(comment => string.Equals(
+					comment.User?.Login, author, StringComparison.OrdinalIgnoreCase))
+				.Select(comment => comment.AuthorAssociation.StringValue)
+				.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+				?? NoAssociation;
+
 	private static bool IsMaintainer(IssueComment comment)
 		=> IsMaintainerAssociation(comment.AuthorAssociation.Value);
 

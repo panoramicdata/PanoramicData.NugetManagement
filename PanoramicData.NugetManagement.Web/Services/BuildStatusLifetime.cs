@@ -31,6 +31,11 @@ public static class BuildStatusLifetime
 		// rebuilding before anyone believes a green badge over it. Invalidating even on failure is right:
 		// a failed attempt reverts the clone, and a revert changes the tree as surely as a fix does.
 		WorkKind.FixWithAiRule,
+
+		// Same reasoning, and the revert matters more here: an issue-driven fix that gives up restores
+		// the files it was allowed to write, which changes the tree back and leaves any build result
+		// taken in between describing neither state.
+		WorkKind.FixWithAiIssue,
 		WorkKind.GitSync,
 		WorkKind.Clone
 	];
@@ -50,6 +55,10 @@ public static class BuildStatusLifetime
 		WorkKind.Test,
 		WorkKind.Reassess,
 		WorkKind.TriageDependabot,
+
+		// It reads an issue and writes a verdict onto a cached row. It holds no tools at all, so it
+		// cannot have touched the working tree whatever the issue said to it.
+		WorkKind.AnalyseIssue,
 		WorkKind.CommitAndPush,
 		WorkKind.Publish,
 		WorkKind.RediscoverOrganization,

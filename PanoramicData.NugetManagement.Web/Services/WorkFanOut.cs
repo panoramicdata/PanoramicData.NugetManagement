@@ -1,3 +1,4 @@
+using System.Globalization;
 using PanoramicData.NugetManagement.Web.Models;
 
 namespace PanoramicData.NugetManagement.Web.Services;
@@ -134,6 +135,73 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 
 		return queued;
 	}
+
+	/// <summary>
+	/// Queues one analysis per human-raised issue.
+	/// </summary>
+	/// <param name="organization">The owning organisation, or null.</param>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="issueNumbers">The issues to analyse.</param>
+	/// <param name="consoleNodeKey">Which console the work narrates itself to.</param>
+	/// <returns>How many items were queued.</returns>
+	/// <remarks>
+	/// One item per issue, not one per repository. A slow local model chewing through a long thread
+	/// should be separately stoppable, and an issue it cannot make sense of should not hold up the
+	/// others behind it.
+	/// </remarks>
+	public int EnqueueIssueAnalysis(
+		string? organization,
+		string repositoryFullName,
+		IReadOnlyList<int> issueNumbers,
+		string? consoleNodeKey)
+	{
+		var queued = 0;
+
+		foreach (var number in issueNumbers)
+		{
+			var item = lanes.Enqueue(
+				$"Analyse #{number} in {ShortName(repositoryFullName)}",
+				WorkDescriptor.ForRepository(
+					WorkKind.AnalyseIssue,
+					organization,
+					repositoryFullName,
+					[("issueNumber", number.ToString(CultureInfo.InvariantCulture))]),
+				$"analyseissue:{repositoryFullName}:{number}",
+				null,
+				consoleNodeKey);
+
+			if (item is not null)
+			{
+				queued++;
+			}
+		}
+
+		return queued;
+	}
+
+	/// <summary>
+	/// Queues the fix an analysis asked for.
+	/// </summary>
+	/// <param name="organization">The owning organisation, or null.</param>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="issueNumber">The issue whose brief is to be acted on.</param>
+	/// <param name="consoleNodeKey">Which console the work narrates itself to.</param>
+	/// <returns>Whether an item was queued.</returns>
+	public bool EnqueueIssueFix(
+		string? organization,
+		string repositoryFullName,
+		int issueNumber,
+		string? consoleNodeKey)
+		=> lanes.Enqueue(
+			$"Fix #{issueNumber} with AI in {ShortName(repositoryFullName)}",
+			WorkDescriptor.ForRepository(
+				WorkKind.FixWithAiIssue,
+				organization,
+				repositoryFullName,
+				[("issueNumber", issueNumber.ToString(CultureInfo.InvariantCulture))]),
+			$"fixissue:{repositoryFullName}:{issueNumber}",
+			null,
+			consoleNodeKey) is not null;
 
 	/// <summary>
 	/// The file's own name, without its folders. A queued item's title has room for one of the two, and

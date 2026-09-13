@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.Extensions.Options
 @using Octokit
+@using PanoramicData.NugetManagement.Services
 @rendermode InteractiveServer
 @inject DashboardService Dashboard
 @inject DashboardCacheService Cache
@@ -3172,7 +3173,9 @@ else
 				break;
 			case NavView.RepositoryIssuesDetail:
 				@* The repository's whole inbox, and the place Dependabot triage is started from. *@
-				<RepositoryIssuesView Issues="@(_selectedRow?.OpenIssues ?? [])" RepositoryFullName="@_selectedRow?.RepositoryFullName" />
+				<RepositoryIssuesView Issues="@(_selectedRow?.OpenIssues ?? [])"
+									  RepositoryFullName="@_selectedRow?.RepositoryFullName"
+									  OnCopyPrompt="@CopyHumanIssuePromptAsync" />
 				break;
 			case NavView.WorkQueue:
 				@* The lane behind the Work node. An organisation's covers the lanes beneath it too,
@@ -3189,7 +3192,12 @@ else
 			case NavView.RepositoryIssueDetail:
 				@* Its own component rather than another render method here: this file is already
 				   enormous, and IssuesView sets the precedent for a self-contained panel. *@
-				<RepositoryIssueView Issue="@SelectedRepositoryIssue" RepositoryFullName="@_selectedRow?.RepositoryFullName" />
+				<RepositoryIssueView Issue="@SelectedRepositoryIssue"
+									 RepositoryFullName="@_selectedRow?.RepositoryFullName"
+									 OnQueueFix="@QueueIssueFixAsync"
+									 OnPostReply="@(issue => PostIssueReplyAsync(issue, close: false))"
+									 OnPostReplyAndClose="@(issue => PostIssueReplyAsync(issue, close: true))"
+									 OnReanalyse="@ReanalyseIssueAsync" />
 				break;
 			default:
 				@RenderGettingStarted()
@@ -4423,8 +4431,169 @@ else
 	/// <summary>
 	/// How many of the selected repository's failing rules the local model could attempt.
 	/// </summary>
+	/// <summary>
+	/// Copies the repository's analysed human-raised issues as one pasteable prompt.
+	/// </summary>
+	/// <remarks>
+	/// Verdicts, reasoning and briefs — never issue text. The model on the other end has an IDE and a
+	/// shell, so it is the most capable reader this feature has and the one the quarantine most needs
+	/// to hold for.
+	/// </remarks>
+	private async Task CopyHumanIssuePromptAsync()
+	{
+		if (_selectedRow is null)
+		{
+			return;
+		}
+
+		var prompt = CombinedRemediationPromptBuilder.ForHumanIssues(
+			_selectedRow.RepositoryFullName, _selectedRow.OpenIssues);
+
+		if (prompt.Length == 0)
+		{
+			AppendConsole("Nothing here has been analysed yet — press Fix with AI first.");
+			return;
+		}
+
+		try
+		{
+			await JS.InvokeVoidAsync("navigator.clipboard.writeText", prompt);
+			AppendConsole("📋 Copied the analysed issues as a prompt. It carries verdicts and briefs, "
+				+ "never the issue text.");
+		}
+		catch (Exception ex)
+		{
+			Logger.LogWarning(ex, "Could not copy the issue prompt to the clipboard");
+			AppendConsole("⚠️ Failed to copy to clipboard.");
+		}
+	}
+
+	/// <summary>
+	/// Queues the fix an analysis proposed, at a human's request rather than the gate's.
+	/// </summary>
+	/// <param name="issue">The issue whose brief to act on.</param>
+	/// <remarks>
+	/// The same work item the gate would have queued by itself. The gate decides what happens
+	/// <em>unattended</em>; it was never a judgement that the fix is wrong, so a person who has read
+	/// the verdict needs no separate path.
+	/// </remarks>
+	private Task QueueIssueFixAsync(RepositoryIssue issue)
+	{
+		if (_selectedRow is null || issue.Analysis?.Brief is null)
+		{
+			return Task.CompletedTask;
+		}
+
+		var queued = FanOut.EnqueueIssueFix(
+			_selectedRow.Organization, _selectedRow.RepositoryFullName, issue.Number, _selectedNodeKey);
+
+		AppendConsole(queued
+			? $"⏳ Queued the fix for #{issue.Number}. It may write only "
+				+ $"{string.Join(", ", issue.Analysis.Brief.Paths)}, and nothing will be committed."
+			: $"#{issue.Number} is already queued.");
+
+		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// Queues a fresh analysis of one issue, discarding the verdict it currently carries.
+	/// </summary>
+	/// <param name="issue">The issue to re-read.</param>
+	private Task ReanalyseIssueAsync(RepositoryIssue issue)
+	{
+		if (_selectedRow is null)
+		{
+			return Task.CompletedTask;
+		}
+
+		issue.Analysis = null;
+		issue.AnalysedAtIssueUpdatedUtc = null;
+
+		var queued = FanOut.EnqueueIssueAnalysis(
+			_selectedRow.Organization, _selectedRow.RepositoryFullName, [issue.Number], _selectedNodeKey);
+
+		AppendConsole(queued > 0
+			? $"⏳ Queued a fresh analysis of #{issue.Number}."
+			: $"#{issue.Number} is already queued for analysis.");
+
+		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// Posts the drafted reply, and closes the issue when asked to.
+	/// </summary>
+	/// <param name="issue">The issue to reply to.</param>
+	/// <param name="close">Whether to close it afterwards.</param>
+	/// <remarks>
+	/// Reached only from the panel's buttons. Closing in particular has no unattended path at any
+	/// confidence: it is published under the organisation's name against a real person, and it is the
+	/// outcome worth crafting an issue to obtain.
+	/// </remarks>
+	private async Task PostIssueReplyAsync(RepositoryIssue issue, bool close)
+	{
+		if (_selectedRow is null || issue.Analysis?.DraftReply is not { Length: > 0 } reply)
+		{
+			return;
+		}
+
+		var parts = _selectedRow.RepositoryFullName.Split('/');
+		var writeApi = new OctokitGitHubWriteApi(CreateGitHubClient());
+
+		try
+		{
+			await writeApi.CommentAsync(parts[0], parts[1], issue.Number, reply, CancellationToken.None);
+			AppendConsole($"💬 Replied to #{issue.Number}.");
+
+			if (close)
+			{
+				await writeApi.CloseIssueAsync(parts[0], parts[1], issue.Number, CancellationToken.None);
+				AppendConsole($"🔒 Closed #{issue.Number}. Re-assess to refresh the inbox.");
+			}
+		}
+		catch (Exception ex)
+		{
+			AppendConsole($"⚠️ Could not post to #{issue.Number}: {ex.Message}");
+		}
+	}
+
 	private int AiFixCandidateCount()
-		=> _selectedRow is null ? 0 : AiFixCandidates.For(_selectedRow, Remediations).Count;
+		=> _selectedRow is null
+			? 0
+			: AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
+
+	/// <summary>
+	/// The human-raised issues in the selected repository that no analysis has judged yet.
+	/// </summary>
+	/// <remarks>
+	/// A verdict is re-taken when the conversation has moved on since it was reached: a comment added
+	/// after the fact may be the reporter answering the very question that made the model escalate,
+	/// and a stale verdict shown as current is worse than none.
+	/// <para>
+	/// Only human-raised issues. Dependabot's belong to triage, which runs on Fix and does not need a
+	/// model.
+	/// </para>
+	/// </remarks>
+	private IReadOnlyList<RepositoryIssue> UnanalysedHumanIssues()
+	{
+		if (_selectedRow is null)
+		{
+			return [];
+		}
+
+		return
+		[
+			.. _selectedRow.OpenIssues
+				.Where(HumanIssueFilter.IsHumanRaised)
+				.Where(issue => issue.Analysis is null || IsVerdictStale(issue))
+		];
+	}
+
+	/// <summary>Whether the conversation has moved on since the verdict was reached.</summary>
+	/// <param name="issue">The issue.</param>
+	private static bool IsVerdictStale(RepositoryIssue issue)
+		=> issue.AnalysedAtIssueUpdatedUtc is { } analysed
+			&& issue.LastMaintainerReplyUtc is { } replied
+			&& replied > analysed;
 
 	/// <summary>
 	/// Whether fixing locally is possible right now.
@@ -4446,11 +4615,29 @@ else
 		var count = AiFixCandidateCount();
 		var ollama = RuntimeSettings.Ollama;
 
-		return !ollama.IsConfigured
-			? "No local model is configured — set one under Settings, Ollama Config."
-			: $"Ask {ollama.Model} to attempt {count} fix(es) that have no automatic remediation. "
-				+ "One queued item each — a rule, or a single file where a rule names several; the "
-				+ "changes are left in the working tree for you to review.";
+		if (!ollama.IsConfigured)
+		{
+			return "No local model is configured — set one under Settings, Ollama Config.";
+		}
+
+		var issues = UnanalysedHumanIssues().Count;
+		var rules = count - issues;
+
+		var parts = new List<string>();
+
+		if (rules > 0)
+		{
+			parts.Add($"attempt {rules} fix(es) that have no automatic remediation");
+		}
+
+		if (issues > 0)
+		{
+			parts.Add($"read {issues} human-raised issue(s) and say what should happen about each");
+		}
+
+		return $"Ask {ollama.Model} to {string.Join(", and ", parts)}. One queued item each. "
+			+ "Changes are left in the working tree for you to review, and no issue is ever closed "
+			+ "without you.";
 	}
 
 	/// <summary>
@@ -4471,21 +4658,42 @@ else
 		EnsureSelectedRowIsCurrent();
 
 		var candidates = AiFixCandidates.For(_selectedRow, Remediations);
+		var issues = UnanalysedHumanIssues();
 
-		if (candidates.Count == 0)
+		if (candidates.Count == 0 && issues.Count == 0)
 		{
-			AppendConsole("Nothing here needs the model: every failing rule has an automatic remediation.");
+			AppendConsole("Nothing here needs the model: every failing rule has an automatic "
+				+ "remediation, and every human-raised issue already has a verdict.");
 			return Task.CompletedTask;
 		}
 
-		var queued = FanOut.EnqueueAiFix(
-			_selectedRow.Organization,
-			_selectedRow.RepositoryFullName,
-			candidates,
-			_selectedNodeKey);
+		if (candidates.Count > 0)
+		{
+			var queued = FanOut.EnqueueAiFix(
+				_selectedRow.Organization,
+				_selectedRow.RepositoryFullName,
+				candidates,
+				_selectedNodeKey);
 
-		AppendConsole($"⏳ Queued {queued} local-model fix(es) for {_selectedRow.RepositoryName}: "
-			+ $"{string.Join(", ", candidates)}.");
+			AppendConsole($"⏳ Queued {queued} local-model fix(es) for {_selectedRow.RepositoryName}: "
+				+ $"{string.Join(", ", candidates)}.");
+		}
+
+		if (issues.Count > 0)
+		{
+			var queued = FanOut.EnqueueIssueAnalysis(
+				_selectedRow.Organization,
+				_selectedRow.RepositoryFullName,
+				[.. issues.Select(issue => issue.Number)],
+				_selectedNodeKey);
+
+			// Said plainly because analysis is not fixing. Most of these end as a verdict somebody
+			// reads; only a confident, unflagged one from a known contributor turns into a change,
+			// and none of them closes anything.
+			AppendConsole($"⏳ Queued {queued} issue analysis(es) for {_selectedRow.RepositoryName}: "
+				+ $"{string.Join(", ", issues.Select(issue => $"#{issue.Number}"))}. Each produces a "
+				+ "verdict; rejections always wait for you.");
+		}
 
 		return Task.CompletedTask;
 	}

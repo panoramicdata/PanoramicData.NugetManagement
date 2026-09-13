@@ -33,6 +33,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 		public Task<IReadOnlyList<GitHubIssueComment>> GetCommentsForItemAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)
 			=> Task.FromResult<IReadOnlyList<GitHubIssueComment>>([]);
+
+		public Task<GitHubIssueThread> GetThreadAsync(
+			string owner, string name, int issueNumber, CancellationToken cancellationToken)
+			=> throw new NotSupportedException("This double raises issues; it never reads one.");
 	}
 
 	/// <summary>A write port that records every call instead of making it.</summary>

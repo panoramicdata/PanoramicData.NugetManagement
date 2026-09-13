@@ -99,6 +99,12 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 		public Task<IReadOnlyList<GitHubIssueComment>> GetCommentsForItemAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)
 			=> Task.FromResult<IReadOnlyList<GitHubIssueComment>>([]);
+
+		public Task<GitHubIssueThread> GetThreadAsync(
+			string owner, string name, int issueNumber, CancellationToken cancellationToken)
+			=> throw new NotSupportedException(
+				"Dependabot triage reads titles and bodies it already has; threads belong to the "
+					+ "analysis of human-raised issues, which is a different pass.");
 	}
 
 	private static DependabotTriage Triage(

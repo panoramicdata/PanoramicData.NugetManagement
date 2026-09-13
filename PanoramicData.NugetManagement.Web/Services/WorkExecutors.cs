@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
@@ -73,6 +74,7 @@ public sealed class WorkExecutors(
 	{
 		WorkKind.Clone, WorkKind.Reassess, WorkKind.FixAll, WorkKind.FixCategory, WorkKind.FixRule,
 		WorkKind.FixWithAiRule,
+		WorkKind.AnalyseIssue, WorkKind.FixWithAiIssue,
 		WorkKind.TriageDependabot,
 		WorkKind.Build, WorkKind.Test, WorkKind.GitSync, WorkKind.CommitAndPush, WorkKind.Publish,
 		WorkKind.RediscoverOrganization, WorkKind.DiscoverReassessTargets,
@@ -135,6 +137,8 @@ public sealed class WorkExecutors(
 			WorkKind.FixCategory => FixCategoryAsync(item, progress, cancellationToken),
 			WorkKind.FixRule => FixRuleAsync(item, progress, cancellationToken),
 			WorkKind.FixWithAiRule => FixWithAiRuleAsync(item, progress, cancellationToken),
+			WorkKind.AnalyseIssue => AnalyseIssueAsync(item, progress, cancellationToken),
+			WorkKind.FixWithAiIssue => FixWithAiIssueAsync(item, progress, cancellationToken),
 			WorkKind.TriageDependabot => TriageDependabotAsync(item, progress, cancellationToken),
 			WorkKind.Build => BuildAsync(item, progress, cancellationToken),
 			WorkKind.Test => TestAsync(item, progress, cancellationToken),
@@ -1240,6 +1244,393 @@ public sealed class WorkExecutors(
 		}
 
 		await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Reads one human-raised issue and records what should happen about it.
+	/// </summary>
+	/// <remarks>
+	/// The whole of this application's exposure to text a stranger wrote lives in this method, and the
+	/// containment is that the session it starts holds no tools. Nothing read here can cause a file to
+	/// be opened, a comment to be posted or a request to leave the machine — the only thing that comes
+	/// back is a verdict, which is parsed into closed types and then gated in C#.
+	/// <para>
+	/// What follows the verdict is deliberately asymmetric. A fix that clears the gate is queued, an
+	/// answer that clears it is posted, and a rejection is never carried out here at any confidence:
+	/// closing somebody's issue is published under the organisation's name and waits for a person.
+	/// </para>
+	/// </remarks>
+	private async Task AnalyseIssueAsync(
+		WorkItem item,
+		IProgress<string> progress,
+		CancellationToken cancellationToken)
+	{
+		var row = RowFor(item);
+
+		if (row is null)
+		{
+			SayRepositoryGone(item);
+			return;
+		}
+
+		var issueNumber = int.Parse(item.Descriptor.Parameter("issueNumber")!, CultureInfo.InvariantCulture);
+		var ollama = runtimeSettings.Ollama;
+
+		if (!ollama.IsConfigured)
+		{
+			Say("⚠️ No Ollama server is configured — set one under Settings, Ollama Config.");
+			return;
+		}
+
+		var issue = row.OpenIssues.FirstOrDefault(candidate => candidate.Number == issueNumber);
+
+		if (issue is null)
+		{
+			Say($"⏭️ Issue #{issueNumber} is no longer open on {row.RepositoryFullName}.");
+			return;
+		}
+
+		// Re-checked rather than trusted from the queue: an item can sit in a lane while the world
+		// changes, and analysing a bot's issue would have two passes judging the same item in public.
+		if (!HumanIssueFilter.IsHumanRaised(issue))
+		{
+			Say($"⏭️ #{issueNumber} is not a human-raised issue.");
+			return;
+		}
+
+		var github = await CreateGitHubClientAsync().ConfigureAwait(false);
+		var issueApi = new OctokitGitHubIssueApi(github);
+		var (owner, name) = SplitFullName(row.RepositoryFullName);
+
+		var thread = await issueApi
+			.GetThreadAsync(owner, name, issueNumber, cancellationToken)
+			.ConfigureAwait(false);
+
+		var input = new IssueAnalysisInput(
+			row.RepositoryFullName,
+			thread.Number,
+			thread.Title,
+			thread.Body,
+			thread.AuthorLogin,
+			thread.AuthorAssociation,
+			thread.CreatedAtUtc,
+			issue.LastMaintainerReplyUtc,
+			[.. thread.Comments.Select(comment => new IssueAnalysisComment(
+				comment.AuthorLogin, comment.AuthorAssociation, comment.CreatedAtUtc, comment.Body))],
+			RepositoryFileList(row),
+			[.. row.Assessment?.RuleResults.Where(result => !result.Passed).Select(result => result.RuleId)
+				?? []]);
+
+		Say($"⏳ Waiting for the model ({ollama.Model})...");
+		using var hold = await ollamaGate.EnterAsync(cancellationToken).ConfigureAwait(false);
+
+		using var client = new Ollama.Api.OllamaClient(new Ollama.Api.OllamaClientOptions
+		{
+			Uri = new Uri(ollama.BaseUrl!),
+			ApiKey = ollama.ApiKey,
+			Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
+		});
+
+		var session = new IssueAnalysisSession(
+			new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow),
+			Say,
+			AiTranscriptSink.For(item.Transcript));
+
+		item.Transcript.Append(WorkLineKind.Prompt, $"System prompt:\n{IssueAnalysisSession.SystemPrompt}");
+		item.Transcript.Append(
+			WorkLineKind.Prompt,
+			$"Task:\n{IssueAnalysisSession.BuildTask(input, DateTimeOffset.UtcNow)}");
+
+		var verdict = await session
+			.AnalyseAsync(input, DateTimeOffset.UtcNow, cancellationToken)
+			.ConfigureAwait(false);
+
+		issue.Analysis = verdict;
+		issue.AnalysedAtIssueUpdatedUtc = thread.Comments.Count > 0
+			? thread.Comments[^1].CreatedAtUtc
+			: thread.CreatedAtUtc;
+
+		cache.UpsertRow(row);
+
+		await ActOnVerdictAsync(item, row, issue, thread, verdict, github, cancellationToken)
+			.ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Does whatever the gate permits about a verdict, and says what it left for a human.
+	/// </summary>
+	private async Task ActOnVerdictAsync(
+		WorkItem item,
+		RepositoryDashboardRow row,
+		RepositoryIssue issue,
+		GitHubIssueThread thread,
+		IssueVerdict verdict,
+		IGitHubClient github,
+		CancellationToken cancellationToken)
+	{
+		if (verdict.Action is IssueAction.Fix)
+		{
+			var decision = IssueAutonomyGate.MayFixAutomatically(
+				verdict,
+				thread.AuthorAssociation,
+				row.LocalPath ?? string.Empty,
+				RemediationOwnedPaths(row));
+
+			if (decision.Allowed)
+			{
+				fanOut.EnqueueIssueFix(
+					row.Organization, row.RepositoryFullName, issue.Number, item.ConsoleNodeKey);
+
+				Say($"▶ #{issue.Number}: queued a fix. {decision.Reason}");
+				return;
+			}
+
+			Say($"⏸️ #{issue.Number}: a fix is proposed but waits for you — {decision.Reason}");
+			return;
+		}
+
+		if (verdict.Action is IssueAction.Answer)
+		{
+			var decision = IssueAutonomyGate.MayAnswerAutomatically(verdict);
+
+			if (decision.Allowed)
+			{
+				var (owner, name) = SplitFullName(row.RepositoryFullName);
+
+				await new OctokitGitHubWriteApi(github)
+					.CommentAsync(owner, name, issue.Number, verdict.DraftReply!, cancellationToken)
+					.ConfigureAwait(false);
+
+				Say($"💬 #{issue.Number}: replied. {decision.Reason}");
+				return;
+			}
+
+			Say($"⏸️ #{issue.Number}: a reply is drafted but waits for you — {decision.Reason}");
+			return;
+		}
+
+		// Reject and Escalate both stop here, and Reject stops here however sure the model was.
+		// Closing a real person's issue — or saying in public that it looked like an attack — is not
+		// worth automating, and a rejection is also exactly what somebody would aim for who wanted a
+		// genuine report closed unread.
+		Say(verdict.Action is IssueAction.Reject
+			? $"⏸️ #{issue.Number}: a rejection is drafted and waits for you. Rejections are never posted "
+				+ "automatically."
+			: $"⏸️ #{issue.Number}: left for you. {verdict.Reasoning}");
+	}
+
+	/// <summary>
+	/// Acts on the brief one analysis produced, seeing the brief and never the issue.
+	/// </summary>
+	/// <remarks>
+	/// Two things make this different from a rule-driven fix. The session may write only the files the
+	/// brief named, because there is no rule to notice it wandering; and a failed attempt is undone,
+	/// because a rule-driven mess announces itself at the next assessment while this one would not.
+	/// </remarks>
+	private async Task FixWithAiIssueAsync(
+		WorkItem item,
+		IProgress<string> progress,
+		CancellationToken cancellationToken)
+	{
+		var row = RowFor(item);
+
+		if (row is null)
+		{
+			SayRepositoryGone(item);
+			return;
+		}
+
+		var issueNumber = int.Parse(item.Descriptor.Parameter("issueNumber")!, CultureInfo.InvariantCulture);
+		var ollama = runtimeSettings.Ollama;
+
+		if (!ollama.IsConfigured)
+		{
+			Say("⚠️ No Ollama server is configured — set one under Settings, Ollama Config.");
+			return;
+		}
+
+		if (row.LocalPath is null || !row.IsClonedLocally)
+		{
+			Say($"⏭️ {row.RepositoryFullName} is not cloned locally, and the model edits files on disk.");
+			return;
+		}
+
+		var issue = row.OpenIssues.FirstOrDefault(candidate => candidate.Number == issueNumber);
+		var brief = issue?.Analysis?.Brief;
+
+		if (issue is null || brief is null)
+		{
+			Say($"⏭️ #{issueNumber} has no fix brief any more.");
+			return;
+		}
+
+		// Screened again here, and not only at the gate. The clone moves — another session commits, a
+		// remediation rewrites a file, a branch changes underneath — and the allowlist this session is
+		// about to be handed must describe the repository as it is now, not as it was when a model
+		// looked at it.
+		var screen = IssuePathScreen.Screen(row.LocalPath, brief.Paths, RemediationOwnedPaths(row));
+
+		if (!screen.Accepted)
+		{
+			Say($"⏭️ #{issueNumber}: {screen.Refusal}");
+			return;
+		}
+
+		var snapshot = IssueFixSnapshot.Capture(row.LocalPath, brief.Paths);
+		var succeeded = false;
+
+		try
+		{
+			Say($"⏳ Waiting for the model ({ollama.Model})...");
+			using var hold = await ollamaGate.EnterAsync(cancellationToken).ConfigureAwait(false);
+
+			using var client = new Ollama.Api.OllamaClient(new Ollama.Api.OllamaClientOptions
+			{
+				Uri = new Uri(ollama.BaseUrl!),
+				ApiKey = ollama.ApiKey,
+				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
+			});
+
+			var toolbox = new AiFixToolbox(
+				row.LocalPath,
+				build: async token =>
+				{
+					var captured = new List<string>();
+					await dashboard.BuildAsync(row, captured.Add, token).ConfigureAwait(false);
+					return SummariseRun("Build", row.Status == PackageStatus.BuildSucceeded, captured);
+				},
+				test: async token =>
+				{
+					var captured = new List<string>();
+					await dashboard.RunTestsAsync(row, captured.Add, token).ConfigureAwait(false);
+					return SummariseRun("Tests", row.Status == PackageStatus.TestsPassed, captured);
+				},
+				writablePaths: brief.Paths);
+
+			var oracle = new IssueFixOracle(
+				async token =>
+				{
+					var captured = new List<string>();
+					await dashboard.BuildAsync(row, captured.Add, token).ConfigureAwait(false);
+					return new IssueFixCheckStep(
+						row.Status == PackageStatus.BuildSucceeded, string.Join("\n", captured));
+				},
+				async token =>
+				{
+					var captured = new List<string>();
+					await dashboard.RunTestsAsync(row, captured.Add, token).ConfigureAwait(false);
+					return new IssueFixCheckStep(
+						row.Status == PackageStatus.TestsPassed, string.Join("\n", captured));
+				});
+
+			var session = new AiFixSession(
+				new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow),
+				toolbox,
+				new AiFixOptions
+				{
+					MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
+					MaxAttempts = ollama.MaxAttemptsPerRule
+				},
+				Say,
+				AiTranscriptSink.For(item.Transcript));
+
+			var request = new AiFixRequest(
+				row.RepositoryFullName,
+				$"issue-{issueNumber}",
+				$"Issue #{issueNumber}",
+				IssueFixPrompt.BuildTask(brief, row.RepositoryFullName, issueNumber),
+				AiFixPrompt.SystemPrompt);
+
+			item.Transcript.Append(WorkLineKind.Prompt, $"System prompt:\n{request.SystemPrompt}");
+			item.Transcript.Append(WorkLineKind.Prompt, $"Task:\n{request.Task}");
+
+			Say($"▶ #{issueNumber} on {row.RepositoryFullName} via {ollama.Model}, "
+				+ $"writing only {string.Join(", ", brief.Paths)}.");
+
+			var outcome = await session
+				.RunAsync(request, oracle.CheckAsync, cancellationToken)
+				.ConfigureAwait(false);
+
+			succeeded = outcome.Succeeded;
+
+			if (succeeded)
+			{
+				await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+				cache.UpsertRow(row);
+
+				// Said this way on purpose. There was no rule behind this change, so nothing here has
+				// established that the reporter's problem is solved — only that the change compiles and
+				// broke nothing. The issue is left open and uncommented; both are a person's call.
+				Say($"✅ #{issueNumber}: {string.Join(", ", toolbox.FilesWritten)} changed, and it builds "
+					+ "and tests green. That is not proof the issue is fixed — read the diff. Nothing has "
+					+ "been committed and the issue has not been touched.");
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			Say($"⏹️ Stopped the fix for #{issueNumber}.");
+			throw;
+		}
+		finally
+		{
+			if (!succeeded)
+			{
+				// Only the allowlisted files, unlike a rule-driven revert: this clone is shared with
+				// whoever else is working in it, and discarding everything would take their work with it.
+				snapshot.Restore();
+				await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
+
+				Say($"↩️ #{issueNumber}: gave up and put {string.Join(", ", brief.Paths)} back as they were.");
+			}
+		}
+	}
+
+	/// <summary>
+	/// The repository's file paths, for an analysis that is given paths and never contents.
+	/// </summary>
+	private static IReadOnlyList<string> RepositoryFileList(RepositoryDashboardRow row)
+	{
+		if (row.LocalPath is null || !Directory.Exists(row.LocalPath))
+		{
+			return [];
+		}
+
+		var root = Path.GetFullPath(row.LocalPath);
+
+		return
+		[
+			.. Directory
+				.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+				.Where(path => !path.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}",
+						StringComparison.OrdinalIgnoreCase)
+					&& !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+						StringComparison.OrdinalIgnoreCase)
+					&& !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+						StringComparison.OrdinalIgnoreCase))
+				.Select(path => Path.GetRelativePath(root, path).Replace('\\', '/'))
+				.Order(StringComparer.OrdinalIgnoreCase)
+				.Take(IssueAnalysisSession.MaxFilesListed)
+		];
+	}
+
+	/// <summary>
+	/// The files a deterministic remediation already maintains, which an issue fix may not also write.
+	/// </summary>
+	/// <remarks>
+	/// Two writers for one file means a rule and an issue undoing each other's work on alternate runs,
+	/// and the rule is the one with a specification behind it.
+	/// </remarks>
+	private IReadOnlyCollection<string> RemediationOwnedPaths(RepositoryDashboardRow row)
+		=> [.. (row.Assessment?.RuleResults ?? [])
+			.Where(result => !result.Passed && remediations.Get(result.RuleId) is not null)
+			.SelectMany(result => result.Advisory?.Targets?.Select(target => target.Path) ?? [])
+			.Where(path => !string.IsNullOrWhiteSpace(path))
+			.Distinct(StringComparer.OrdinalIgnoreCase)];
+
+	private static (string Owner, string Name) SplitFullName(string repositoryFullName)
+	{
+		var parts = repositoryFullName.Split('/');
+		return (parts[0], parts.Length > 1 ? parts[1] : string.Empty);
 	}
 
 	/// <summary>

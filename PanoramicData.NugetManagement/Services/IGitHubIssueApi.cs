@@ -39,6 +39,47 @@ public record GitHubIssueComment(
 	bool IsFromMaintainer);
 
 /// <summary>
+/// One comment with its text, for the analysis of a human-raised issue.
+/// </summary>
+/// <param name="AuthorLogin">Who wrote it.</param>
+/// <param name="AuthorAssociation">
+/// GitHub's own association word, passed through rather than reduced to a maintainer flag. The
+/// analysis weighs "has this project taken work from them before", which is a different question from
+/// "does this stop the staleness clock".
+/// </param>
+/// <param name="CreatedAtUtc">When it was written.</param>
+/// <param name="Body">What it says. Untrusted.</param>
+public record GitHubThreadComment(
+	string AuthorLogin,
+	string AuthorAssociation,
+	DateTimeOffset CreatedAtUtc,
+	string Body);
+
+/// <summary>
+/// One issue and its whole conversation, fetched only when something is about to analyse it.
+/// </summary>
+/// <param name="Number">The issue number.</param>
+/// <param name="Title">Its title. Untrusted.</param>
+/// <param name="Body">Its body. Untrusted.</param>
+/// <param name="AuthorLogin">Who raised it.</param>
+/// <param name="AuthorAssociation">Their association with the repository.</param>
+/// <param name="CreatedAtUtc">When it was raised.</param>
+/// <param name="Comments">The rest of the conversation, oldest first. Untrusted.</param>
+/// <remarks>
+/// Separate from <see cref="GitHubOpenItem"/> and fetched separately on purpose. The staleness sweep
+/// reads every open item of every repository and needs none of this text; carrying comment bodies
+/// through it would multiply the cost of the cheap pass to serve the rare one.
+/// </remarks>
+public record GitHubIssueThread(
+	int Number,
+	string Title,
+	string? Body,
+	string AuthorLogin,
+	string AuthorAssociation,
+	DateTimeOffset CreatedAtUtc,
+	IReadOnlyList<GitHubThreadComment> Comments);
+
+/// <summary>
 /// The narrow slice of the GitHub issue API this feature needs.
 /// </summary>
 /// <remarks>
@@ -81,6 +122,24 @@ public interface IGitHubIssueApi
 	/// <param name="issueNumber">The issue or pull request number.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	Task<IReadOnlyList<GitHubIssueComment>> GetCommentsForItemAsync(
+		string owner,
+		string name,
+		int issueNumber,
+		CancellationToken cancellationToken);
+
+	/// <summary>
+	/// One issue with its title, body, author association and every comment's text.
+	/// </summary>
+	/// <param name="owner">The repository owner.</param>
+	/// <param name="name">The repository name.</param>
+	/// <param name="issueNumber">The issue number.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// The only call in this interface that returns anybody's prose, and the only one made per issue
+	/// rather than per repository. Both follow from what reads it: an analysis that is queued
+	/// deliberately, runs a slow local model, and is worth a round trip of its own.
+	/// </remarks>
+	Task<GitHubIssueThread> GetThreadAsync(
 		string owner,
 		string name,
 		int issueNumber,
