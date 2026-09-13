@@ -46,6 +46,7 @@ public class RepositoryContextBuilder : IDisposable
 	private readonly HttpClient _rawClient;
 	private readonly bool _ownsHttpClient;
 	private readonly ILogger<RepositoryContextBuilder> _logger;
+	private readonly ICodacyCoverageService _coverage = new CodacyCoverageService();
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="RepositoryContextBuilder"/> class.
@@ -117,6 +118,14 @@ public class RepositoryContextBuilder : IDisposable
 		fileContents.TryGetValue(NugetManagementRepositoryConfig.FileName, out var repoConfigRaw);
 		var repositoryConfig = NugetManagementRepositoryConfigParser.Parse(repoConfigRaw);
 
+		var lineCoveragePercent = await ResolveCoverageAsync(
+			_coverage,
+			options.Codacy?.ApiToken,
+			owner,
+			repoName,
+			defaultBranch,
+			cancellationToken).ConfigureAwait(false);
+
 		return new RepositoryContext
 		{
 			FullName = repository.FullName,
@@ -126,8 +135,44 @@ public class RepositoryContextBuilder : IDisposable
 			Options = options,
 			FilePaths = filePaths,
 			FileContents = fileContents,
-			RepositoryConfig = repositoryConfig
+			RepositoryConfig = repositoryConfig,
+			LineCoveragePercent = lineCoveragePercent
 		};
+	}
+
+	/// <summary>
+	/// The repository's line coverage according to Codacy, or null when it cannot be established.
+	/// </summary>
+	/// <remarks>
+	/// Swallowing the failure here is deliberate, and is the one place it is correct to do so.
+	/// <see cref="CodacyCoverageService"/> distinguishes a 404 from an outage precisely so that
+	/// distinction survives; but an assessment that aborted because Codacy was unreachable would lose
+	/// every other finding for that repository. An unread figure becomes RED, which claims only that
+	/// nothing was shown.
+	/// </remarks>
+	internal static async Task<double?> ResolveCoverageAsync(
+		ICodacyCoverageService coverage,
+		string? apiToken,
+		string organizationName,
+		string repositoryName,
+		string? branch,
+		CancellationToken cancellationToken)
+	{
+		if (string.IsNullOrWhiteSpace(apiToken))
+		{
+			return null;
+		}
+
+		try
+		{
+			return await coverage
+				.GetLineCoveragePercentAsync(apiToken, organizationName, repositoryName, branch, cancellationToken)
+				.ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			return null;
+		}
 	}
 
 	/// <inheritdoc />
