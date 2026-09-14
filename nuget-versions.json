@@ -355,9 +355,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Grpc.Tools": {
-    "latestVersion": "2.83.0",
-    "published": "2026-07-23T08:16:50.08+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "2.84.0",
+    "published": "2026-09-14T09:51:41.457+01:00",
+    "refreshedAtUtc": "2026-09-14T10:06:29.3396649+00:00"
   },
   "HaloPsa.Api": {
     "latestVersion": "2.196.81",
@@ -1690,9 +1690,9 @@
     "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
   },
   "Uk.Parliament": {
-    "latestVersion": "10.1.28",
-    "published": "2026-09-13T13:30:13.803+01:00",
-    "refreshedAtUtc": "2026-09-13T18:52:00.3935398+00:00"
+    "latestVersion": "10.1.30",
+    "published": "2026-09-13T23:33:33.23+01:00",
+    "refreshedAtUtc": "2026-09-14T04:06:29.336043+00:00"
   },
   "Whois": {
     "latestVersion": "3.0.1",
