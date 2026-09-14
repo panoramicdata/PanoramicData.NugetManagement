@@ -23,7 +23,10 @@ if ($LASTEXITCODE -ne 0) {
 	exit 1
 }
 
-$testExecutable = Join-Path $testProject 'bin/Debug/net10.0/PanoramicData.NugetManagement.Test.exe'
+# The Microsoft.Testing.Platform host is a native executable, so its name is platform-dependent:
+# ".exe" on Windows, no extension anywhere else. $IsWindows is an automatic variable in PowerShell 7.
+$executableName = if ($IsWindows) { 'PanoramicData.NugetManagement.Test.exe' } else { 'PanoramicData.NugetManagement.Test' }
+$testExecutable = Join-Path $testProject "bin/Debug/net10.0/$executableName"
 
 & $testExecutable `
 	--coverage `
