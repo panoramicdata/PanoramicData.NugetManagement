@@ -40,9 +40,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "AutoTask.Api": {
-    "latestVersion": "1.7.40",
-    "published": "2026-09-13T20:13:30.477+01:00",
-    "refreshedAtUtc": "2026-09-13T22:06:29.3321773+00:00"
+    "latestVersion": "1.7.41",
+    "published": "2026-09-14T13:22:58.997+01:00",
+    "refreshedAtUtc": "2026-09-14T13:24:46.4741027+00:00"
   },
   "AutoTask.Psa.Api": {
     "latestVersion": "1.1.36",
@@ -125,9 +125,9 @@
     "refreshedAtUtc": "2026-09-13T18:52:00.3935398+00:00"
   },
   "Cherwell.Api": {
-    "latestVersion": "1.0.79",
-    "published": "2026-09-12T14:07:48.647+01:00",
-    "refreshedAtUtc": "2026-09-12T16:16:24.0536693+00:00"
+    "latestVersion": "1.0.84",
+    "published": "2026-09-14T13:23:23.78+01:00",
+    "refreshedAtUtc": "2026-09-14T13:24:46.4741027+00:00"
   },
   "Cisco.Api": {
     "latestVersion": "3.0.179",
@@ -1190,9 +1190,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "PanoramicData.Mapper": {
-    "latestVersion": "10.0.47",
-    "published": "2026-09-03T13:42:11.923+01:00",
-    "refreshedAtUtc": "2026-09-03T16:19:02.8622546+00:00"
+    "latestVersion": "10.0.52",
+    "published": "2026-09-14T13:17:35.577+01:00",
+    "refreshedAtUtc": "2026-09-14T13:24:46.4741027+00:00"
   },
   "PanoramicData.NCalcExtensions": {
     "latestVersion": "6.1.39",
@@ -1260,9 +1260,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Polly": {
-    "latestVersion": "8.7.0",
-    "published": "2026-06-10T17:49:54.043+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "8.8.0",
+    "published": "2026-09-14T14:23:39.513+01:00",
+    "refreshedAtUtc": "2026-09-14T19:24:46.4725431+00:00"
   },
   "PowerShellStandard.Library": {
     "latestVersion": "5.1.1",
