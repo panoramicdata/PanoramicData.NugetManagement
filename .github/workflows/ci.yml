@@ -16,9 +16,14 @@ env:
   NUGET_XMLDOC_MODE: skip
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# pdl-public, not pdl-prod-cluster. This repository is public, and GitHub disallows self-hosted
+# runners for public repositories unless the runner group opts in — because a fork pull request is
+# untrusted code from a stranger. pdl-prod-cluster runs a privileged Docker-in-Docker sidecar with
+# hostPath mounts on a production node, so it must never opt in. pdl-public is the hardened scale
+# set that may: no dind, no privileged container, no hostPath, nothing shared between jobs.
 jobs:
   build:
-    runs-on: [pdl-prod-cluster]
+    runs-on: [pdl-public]
 
     steps:
     - uses: actions/checkout@v7
@@ -49,7 +54,7 @@ jobs:
         retention-days: 1
 
   coverage:
-    runs-on: [pdl-prod-cluster]
+    runs-on: [pdl-public]
 
     env:
       # The integration tests read these through IConfiguration, so the double underscore is the
@@ -100,7 +105,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: [pdl-prod-cluster]
+    runs-on: [pdl-public]
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       id-token: write
