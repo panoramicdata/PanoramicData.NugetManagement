@@ -66,11 +66,11 @@ public static class IssueVerdictParser
 			return Escalated($"The model asked for an action nobody here implements. It said: {reasoning}");
 		}
 
-		if (!TryReadRisks(root, out var risks))
+		if (!TryReadRisks(root, out var risks, out var unrecognised))
 		{
 			return Escalated(
-				$"The model flagged a risk nobody here recognises, so it is being treated as a "
-					+ $"warning rather than dropped. It said: {reasoning}");
+				$"The model flagged '{unrecognised}', which is not a risk this application knows, so "
+					+ $"it is being treated as a warning rather than dropped. It said: {reasoning}");
 		}
 
 		var confidence = TryReadEnum<IssueConfidence>(root, "confidence", out var parsed)
@@ -189,7 +189,22 @@ public static class IssueVerdictParser
 			&& Enum.IsDefined(value);
 	}
 
-	private static bool TryReadRisks(JsonElement root, out IReadOnlyList<IssueRiskFlag> risks)
+	/// <summary>
+	/// Reads the risk flags, refusing the lot if any one of them is unknown.
+	/// </summary>
+	/// <param name="root">The verdict object.</param>
+	/// <param name="risks">The flags, when every one was recognised.</param>
+	/// <param name="unrecognised">The first name that was not, for the note.</param>
+	/// <remarks>
+	/// The offending name is carried out rather than discarded because it is the only evidence of
+	/// which risk this vocabulary is missing. A model reaching for a word the enum does not have is
+	/// reporting a real gap — the first two runs of the injection corpus produced exactly that, and
+	/// without the name every such escalation looks identical in the log.
+	/// </remarks>
+	private static bool TryReadRisks(
+		JsonElement root,
+		out IReadOnlyList<IssueRiskFlag> risks,
+		out string? unrecognised)
 	{
 		var flags = new List<IssueRiskFlag>();
 
@@ -199,6 +214,7 @@ public static class IssueVerdictParser
 				|| !Enum.IsDefined(flag))
 			{
 				risks = [];
+				unrecognised = name;
 				return false;
 			}
 
@@ -206,6 +222,7 @@ public static class IssueVerdictParser
 		}
 
 		risks = flags;
+		unrecognised = null;
 		return true;
 	}
 }

@@ -92,6 +92,22 @@ public class IssueVerdictParserTests(ITestOutputHelper output) : TestWithOutput(
 	}
 
 	[Fact]
+	public void Parse_NamesTheRiskFlagItDidNotRecognise()
+	{
+		var result = IssueVerdictParser.Parse("""
+			{
+			  "action": "Fix", "confidence": "High", "risks": ["SocialEngineering"],
+			  "reasoning": "why",
+			  "brief": { "goal": "g", "paths": ["a.cs"], "expectedEndState": "e" }
+			}
+			""");
+
+		result.Verdict.Reasoning.Should().Contain("SocialEngineering",
+			"the name the model reached for is the only evidence of which risk this vocabulary is "
+				+ "missing, and without it every unrecognised flag looks identical in the logs");
+	}
+
+	[Fact]
 	public void Parse_ToleratesTheMarkdownFenceModelsWrapJsonIn()
 	{
 		var result = IssueVerdictParser.Parse("""

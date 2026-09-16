@@ -1,4 +1,5 @@
 @using PanoramicData.NugetManagement.Models
+@using PanoramicData.NugetManagement.Services
 
 @* One repository's inbox. The per-item panel is RepositoryIssueView; this is the branch above it,
    and the place a Dependabot backlog is actually looked at — so it is where triage is started. *@
@@ -76,7 +77,7 @@ else
 						}
 						else
 						{
-							<span class="text-muted small">Not triaged</span>
+							<span class="text-muted small">@UnjudgedLabel(issue)</span>
 						}
 					</td>
 				</tr>
@@ -111,6 +112,18 @@ else
 	private int DependabotCount => Issues.Count(issue =>
 		issue.IsPullRequest
 		&& string.Equals(issue.AuthorLogin, "dependabot[bot]", StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// What to say about an item nothing has judged yet, which depends on what would judge it.
+	/// </summary>
+	/// <param name="issue">The item.</param>
+	/// <remarks>
+	/// A human-raised issue is never triaged — triage is Dependabot's pass, and it will skip this
+	/// item for ever. Saying "Not triaged" about it describes a queue it is not in, and teaches
+	/// whoever reads the column the wrong model of what the application does.
+	/// </remarks>
+	private static string UnjudgedLabel(RepositoryIssue issue)
+		=> HumanIssueFilter.IsHumanRaised(issue) ? "Not analysed" : "Not triaged";
 
 	/// <summary>A verdict on a human-raised issue, in the fewest words that stay honest.</summary>
 	/// <param name="action">The verdict.</param>
