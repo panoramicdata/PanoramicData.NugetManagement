@@ -81,7 +81,11 @@ jobs:
     # The actions-runner image ships no pwsh, and installing it through the SDK needs neither root
     # nor apt. Run-Coverage.ps1 is deliberately the single invocation used both here and locally.
     - name: Install PowerShell
-      run: dotnet tool install --global PowerShell
+      run: |
+        dotnet tool install --global PowerShell
+        # dotnet puts global tools in $HOME/.dotnet/tools, which is not on PATH on this image, so
+        # the next step would fail with "pwsh: command not found" despite the install succeeding.
+        echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
     - name: Run tests with coverage
       run: pwsh ./Run-Coverage.ps1
