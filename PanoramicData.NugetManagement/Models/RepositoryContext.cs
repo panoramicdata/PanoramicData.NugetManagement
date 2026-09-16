@@ -106,6 +106,17 @@ public class RepositoryContext
 	public ReleaseRun? ReleaseRun { get; init; }
 
 	/// <summary>
+	/// The names of this repository's GitHub Actions secrets, or null when they could not be read.
+	/// </summary>
+	/// <remarks>
+	/// Names only — the API never returns values, which is what makes this safe to hold. Null means
+	/// the question went unanswered (no client, or the token lacks the admin rights the endpoint
+	/// needs) and must never be read as "no secrets": a rule that treats an unreadable list as an
+	/// empty one reports every repository as misconfigured the moment a permission changes.
+	/// </remarks>
+	public IReadOnlyList<string>? ActionsSecretNames { get; init; }
+
+	/// <summary>
 	/// Measured line coverage as a percentage, or null when this repository's tests have not been run
 	/// with coverage collection.
 	/// </summary>
