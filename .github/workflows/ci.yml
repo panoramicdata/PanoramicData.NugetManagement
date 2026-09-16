@@ -57,15 +57,10 @@ jobs:
     runs-on: [pdl-public]
 
     env:
-      # The integration tests read these through IConfiguration, so the double underscore is the
-      # section separator. Neither the Ollama host nor the model name is a secret, and holding them
-      # inline keeps a failing run readable — a masked URL in a log is a debugging tax for nothing.
-      #
-      # They have to be supplied at all because xunit.runner.json sets failSkips: true (the estate's
-      # own TST-05). Under it a skipped test is a failed test, so an unconfigured integration test
-      # does not go quiet here, it goes red.
-      Ollama__BaseUrl: http://pdl-rune-01.panoramicdata.com:11434
-      Ollama__Model: qwen3.8:27b-mtp-q4_K_M
+      # The GitHub integration tests read this through IConfiguration, so the double underscore is
+      # the section separator. It has to be supplied at all because xunit.runner.json sets
+      # failSkips: true (the estate's own TST-05): under it a skipped test is a failed test, so an
+      # unconfigured integration test does not go quiet here, it goes red.
       GitHub__Token: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
@@ -87,8 +82,13 @@ jobs:
         # the next step would fail with "pwsh: command not found" despite the install succeeding.
         echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
+    # The Ollama integration tests are excluded and run in their own job. Measured on 2026-09-16:
+    # with them this step takes 7m07s locally and over 45 minutes on a contended GPU; without them,
+    # 12.8 seconds. They contribute nothing to the figure either - 56.1% line coverage without them
+    # against 56.0% with. They were costing about 97% of the runtime for none of the coverage, and
+    # sitting in front of the upload below, so a busy GPU delayed the whole point of this job.
     - name: Run tests with coverage
-      run: pwsh ./Run-Coverage.ps1
+      run: pwsh ./Run-Coverage.ps1 -Filter "FullyQualifiedName!~AiFixIntegrationTests"
 
     # continue-on-error: a Codacy outage must not turn a passing test run red. The trade-off is that
     # an expired project token fails silently — the token expires 2027-09-13.
@@ -106,6 +106,44 @@ jobs:
         name: coverage
         path: PanoramicData.NugetManagement.Test/bin/Debug/net10.0/TestResults/coverage.cobertura.xml
         retention-days: 7
+
+  # The Ollama integration tests, in their own job so their runtime is nobody else's problem. They
+  # still run on every push and still fail the build, but they no longer sit in front of the Codacy
+  # upload: four tests that take longer than the other fifteen hundred combined should not decide
+  # when a coverage figure is published.
+  #
+  # They are the only tests that exercise the AI fix prompt against a real model, which is why they
+  # are separated rather than deleted. Everything below them in value is already covered by the
+  # scripted-model tests in the main suite.
+  ai-integration:
+    runs-on: [pdl-public]
+
+    # One at a time across the whole repository, whatever the branch. pdl-rune-01 serves one model
+    # on one GPU, shared with everything else that uses it; two of these running at once serialise
+    # there and each takes several times longer than it would alone. Not cancel-in-progress: a
+    # half-run model test tells you nothing, so let the one in flight finish.
+    concurrency:
+      group: ollama-integration-${{ github.repository }}
+      cancel-in-progress: false
+
+    env:
+      # Neither the host nor the model name is a secret, and holding them inline keeps a failing run
+      # readable - a masked URL in a log is a debugging tax for nothing.
+      Ollama__BaseUrl: http://pdl-rune-01.panoramicdata.com:11434
+      Ollama__Model: qwen3.8:27b-mtp-q4_K_M
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Run the AI fix integration tests
+      run: dotnet test --filter "FullyQualifiedName~AiFixIntegrationTests"
 
   publish:
     needs: build
