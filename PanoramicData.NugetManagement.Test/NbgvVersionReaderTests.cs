@@ -69,11 +69,17 @@ public class NbgvVersionReaderTests(ITestOutputHelper output) : TestWithOutput(o
 		// nbgv is a global dotnet tool. It resolved from one shell on this machine and not from
 		// another, so the executable is named where it is actually installed rather than trusted to
 		// the PATH of whatever process the app happens to be.
-		var resolved = NbgvVersionReader.ResolveExecutable(
-			@"C:\Users\someone",
-			path => path == @"C:\Users\someone\.dotnet\tools\nbgv.exe");
+		//
+		// Built with Path.Combine and a platform-dependent executable name rather than a literal
+		// Windows path: the separator and the ".exe" suffix are both wrong on Linux, and asserting
+		// the Windows spelling hid a real defect until this suite first ran on a Linux CI runner.
+		var profile = OperatingSystem.IsWindows() ? @"C:\Users\someone" : "/home/someone";
+		var executableName = OperatingSystem.IsWindows() ? "nbgv.exe" : "nbgv";
+		var expected = Path.Combine(profile, ".dotnet", "tools", executableName);
 
-		resolved.Should().Be(@"C:\Users\someone\.dotnet\tools\nbgv.exe");
+		var resolved = NbgvVersionReader.ResolveExecutable(profile, path => path == expected);
+
+		resolved.Should().Be(expected);
 	}
 
 	[Fact]
@@ -81,7 +87,9 @@ public class NbgvVersionReaderTests(ITestOutputHelper output) : TestWithOutput(o
 	{
 		// A machine that installed it some other way still works; one without it at all fails to
 		// launch, which the caller reads as "no version known".
-		NbgvVersionReader.ResolveExecutable(@"C:\Users\someone", _ => false).Should().Be("nbgv");
+		var profile = OperatingSystem.IsWindows() ? @"C:\Users\someone" : "/home/someone";
+
+		NbgvVersionReader.ResolveExecutable(profile, _ => false).Should().Be("nbgv");
 	}
 
 	[Fact]
