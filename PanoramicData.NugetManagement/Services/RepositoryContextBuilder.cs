@@ -30,6 +30,8 @@ public class RepositoryContextBuilder : IDisposable
 		".github/dependabot.yml",
 		".github/dependabot.yaml",
 		".github/workflows/ci.yml",
+		"AGENTS.md",
+		"CLAUDE.md",
 		"CONTRIBUTING.md",
 		"Directory.Build.props",
 		"Directory.Packages.props",
