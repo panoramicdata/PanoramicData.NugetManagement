@@ -32,7 +32,12 @@ public static class NbgvVersionReader
 			return "nbgv";
 		}
 
-		var installed = Path.Combine(userProfilePath, ".dotnet", "tools", "nbgv.exe");
+		// The extension is platform-dependent: a global dotnet tool is "nbgv.exe" on Windows and
+		// "nbgv" everywhere else. Hardcoding the Windows name meant this never found the installed
+		// tool on Linux and always fell back to the PATH — which is the exact failure this method
+		// exists to avoid, silently, on the platform CI runs on.
+		var executableName = OperatingSystem.IsWindows() ? "nbgv.exe" : "nbgv";
+		var installed = Path.Combine(userProfilePath, ".dotnet", "tools", executableName);
 		return fileExists(installed) ? installed : "nbgv";
 	}
 

@@ -25,6 +25,18 @@ public class GitHubIntegrationTests : TestWithOutput
 	private static readonly string[] _graceDependentRuleIds = ["PKG-05", "PKG-06", "PKG-07"];
 
 	/// <summary>
+	/// The rules whose verdict is a fact about a service outside the repository rather than about its
+	/// contents.
+	/// </summary>
+	/// <remarks>
+	/// TST-10 grades the coverage Codacy holds. This assessment builds its context with no Codacy
+	/// token, so it reads "no figure" and reports RED regardless of how well tested the repository
+	/// is. Enforcing it here would assert that Codacy has been uploaded to, which is not a property
+	/// of the repository being assessed. Printed below so it stays visible.
+	/// </remarks>
+	private static readonly string[] _externallyMeasuredRuleIds = ["TST-10"];
+
+	/// <summary>
 	/// Whether a GitHub token is configured. Referenced by <c>SkipUnless</c> on each test so these
 	/// tests are reported as skipped, not failed, on a machine with no GitHub secret configured.
 	/// </summary>
@@ -84,8 +96,13 @@ public class GitHubIntegrationTests : TestWithOutput
 			Output.WriteLine($"[grace] {graced.RuleId}: {graced.Message}");
 		}
 
+		foreach (var external in failures.Where(r => _externallyMeasuredRuleIds.Contains(r.RuleId)))
+		{
+			Output.WriteLine($"[external] {external.RuleId}: {external.Message}");
+		}
+
 		failures
-			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId))
+			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId) && !_externallyMeasuredRuleIds.Contains(r.RuleId))
 			.Should().BeEmpty("the live panoramicdata/PanoramicData.NugetManagement repository should satisfy all assessment rules");
 	}
 

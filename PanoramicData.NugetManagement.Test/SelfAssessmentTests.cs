@@ -21,6 +21,29 @@ public class SelfAssessmentTests : TestWithOutput
 	/// </remarks>
 	private static readonly string[] _graceDependentRuleIds = ["PKG-05", "PKG-06", "PKG-07"];
 
+	/// <summary>
+	/// The rules whose verdict is a fact about a service outside this repository rather than about
+	/// its contents.
+	/// </summary>
+	/// <remarks>
+	/// TST-10 grades the coverage Codacy holds. This assessment runs against a local clone with no
+	/// Codacy token, so it reads "no figure" and reports RED — and even with a token, coverage only
+	/// reaches Codacy once CI has run on main. Enforcing it here would be a deadlock: the branch that
+	/// first uploads coverage could never merge, because it has not uploaded coverage yet.
+	/// <para>
+	/// The dashboard is where TST-10 is meant to bite, against the real Codacy figure. Its result is
+	/// still printed below, so a repository sliding down the bands stays visible here.
+	/// </para>
+	/// </remarks>
+	private static readonly string[] _externallyMeasuredRuleIds = ["TST-10"];
+
+	/// <summary>
+	/// Rules this repository's own assessment reports but does not enforce.
+	/// </summary>
+	private static bool IsExcluded(RuleResult result)
+		=> _graceDependentRuleIds.Contains(result.RuleId)
+			|| _externallyMeasuredRuleIds.Contains(result.RuleId);
+
 	private readonly RepositoryContext _context;
 
 	/// <summary>
@@ -76,8 +99,13 @@ public class SelfAssessmentTests : TestWithOutput
 			Output.WriteLine($"[grace] {graced.RuleId}: {graced.Message}");
 		}
 
+		foreach (var external in failures.Where(r => _externallyMeasuredRuleIds.Contains(r.RuleId)))
+		{
+			Output.WriteLine($"[external] {external.RuleId}: {external.Message}");
+		}
+
 		failures
-			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId))
+			.Where(r => !IsExcluded(r))
 			.Should().BeEmpty("this repository should pass all of its own rules");
 	}
 
@@ -103,8 +131,13 @@ public class SelfAssessmentTests : TestWithOutput
 			Output.WriteLine($"[grace] {graced.RuleId}: {graced.Message}");
 		}
 
+		foreach (var external in failures.Where(r => _externallyMeasuredRuleIds.Contains(r.RuleId)))
+		{
+			Output.WriteLine($"[external] {external.RuleId}: {external.Message}");
+		}
+
 		failures
-			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId))
+			.Where(r => !IsExcluded(r))
 			.Should().BeEmpty("all Critical- and Error-severity rules must pass on this repository");
 	}
 
@@ -158,9 +191,14 @@ public class SelfAssessmentTests : TestWithOutput
 			Output.WriteLine($"[grace] {graced.RuleId}: {graced.Message}");
 		}
 
+		foreach (var external in criticalOrErrorFailures.Where(r => _externallyMeasuredRuleIds.Contains(r.RuleId)))
+		{
+			Output.WriteLine($"[external] {external.RuleId}: {external.Message}");
+		}
+
 		criticalOrErrorFailures
-			.Where(r => !_graceDependentRuleIds.Contains(r.RuleId))
-			.Should().BeEmpty("the repository should have zero Critical- or Error-severity failures outside the grace-dependent rules");
+			.Where(r => !IsExcluded(r))
+			.Should().BeEmpty("the repository should have zero Critical- or Error-severity failures outside the grace-dependent and externally measured rules");
 	}
 
 	private static string? FindRepoRoot(string startDir)

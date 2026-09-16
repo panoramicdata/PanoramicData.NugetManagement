@@ -7,9 +7,23 @@ on:
   pull_request:
     branches: [main]
 
+# FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 is not optional on this runner: the actions-runner image the
+# pdl-prod-cluster scale set uses does not offer the Node version several of these actions request by
+# default, and without it they fail before their first step runs.
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  NUGET_XMLDOC_MODE: skip
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# pdl-public, not pdl-prod-cluster. This repository is public, and GitHub disallows self-hosted
+# runners for public repositories unless the runner group opts in — because a fork pull request is
+# untrusted code from a stranger. pdl-prod-cluster runs a privileged Docker-in-Docker sidecar with
+# hostPath mounts on a production node, so it must never opt in. pdl-public is the hardened scale
+# set that may: no dind, no privileged container, no hostPath, nothing shared between jobs.
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [pdl-public]
 
     steps:
     - uses: actions/checkout@v7
@@ -39,9 +53,63 @@ jobs:
           ./artifacts/*.snupkg
         retention-days: 1
 
+  coverage:
+    runs-on: [pdl-public]
+
+    env:
+      # The integration tests read these through IConfiguration, so the double underscore is the
+      # section separator. Neither the Ollama host nor the model name is a secret, and holding them
+      # inline keeps a failing run readable — a masked URL in a log is a debugging tax for nothing.
+      #
+      # They have to be supplied at all because xunit.runner.json sets failSkips: true (the estate's
+      # own TST-05). Under it a skipped test is a failed test, so an unconfigured integration test
+      # does not go quiet here, it goes red.
+      Ollama__BaseUrl: http://pdl-rune-01.panoramicdata.com:11434
+      Ollama__Model: qwen3.8:27b-mtp-q4_K_M
+      GitHub__Token: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.x'
+
+    # The actions-runner image ships no pwsh, and installing it through the SDK needs neither root
+    # nor apt. Run-Coverage.ps1 is deliberately the single invocation used both here and locally.
+    - name: Install PowerShell
+      run: |
+        dotnet tool install --global PowerShell
+        # dotnet puts global tools in $HOME/.dotnet/tools, which is not on PATH on this image, so
+        # the next step would fail with "pwsh: command not found" despite the install succeeding.
+        echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+    - name: Run tests with coverage
+      run: pwsh ./Run-Coverage.ps1
+
+    # continue-on-error: a Codacy outage must not turn a passing test run red. The trade-off is that
+    # an expired project token fails silently — the token expires 2027-09-13.
+    - name: Upload coverage to Codacy
+      continue-on-error: true
+      uses: codacy/codacy-coverage-reporter-action@v1
+      with:
+        project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+        coverage-reports: PanoramicData.NugetManagement.Test/bin/Debug/net10.0/TestResults/coverage.cobertura.xml
+
+    - name: Upload coverage artifact
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage
+        path: PanoramicData.NugetManagement.Test/bin/Debug/net10.0/TestResults/coverage.cobertura.xml
+        retention-days: 7
+
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [pdl-public]
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       id-token: write
