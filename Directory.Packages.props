@@ -16,7 +16,7 @@
     <PackageVersion Include="NuGet.Protocol" Version="7.9.0" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="Ollama.Api" Version="1.0.24" />
-    <PackageVersion Include="PanoramicData.Blazor" Version="10.0.215" />
+    <PackageVersion Include="PanoramicData.Blazor" Version="10.0.227" />
     <PackageVersion Include="Refit" Version="15.2.0" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <!-- Pinned transitively (see CentralPackageTransitivePinningEnabled above), not referenced
