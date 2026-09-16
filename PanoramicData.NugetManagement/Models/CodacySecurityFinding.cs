@@ -24,6 +24,27 @@ public enum CodacySecurityPriority
 }
 
 /// <summary>
+/// Where a finding stands against the organization's Codacy SLA, and the axis the advisory groups
+/// by: <see cref="Overdue"/> first, then <see cref="DueSoon"/>, then <see cref="OnTrack"/>.
+/// </summary>
+/// <remarks>
+/// Declared in urgency order, so ordering a group by this enum needs no lookup table. Only the
+/// three open statuses appear: closed and ignored findings are excluded at the Codacy search, so a
+/// finding that reaches this model is always outstanding.
+/// </remarks>
+public enum CodacySecuritySlaStatus
+{
+	/// <summary>Past its SLA due date.</summary>
+	Overdue,
+
+	/// <summary>Approaching its SLA due date.</summary>
+	DueSoon,
+
+	/// <summary>Open and within its SLA.</summary>
+	OnTrack
+}
+
+/// <summary>
 /// A single open security finding reported by Codacy for a repository.
 /// </summary>
 public sealed class CodacySecurityFinding
@@ -38,10 +59,10 @@ public sealed class CodacySecurityFinding
 	public required CodacySecurityPriority Priority { get; init; }
 
 	/// <summary>
-	/// Codacy's SLA status for the finding — <c>OnTrack</c>, <c>DueSoon</c> or <c>Overdue</c>.
-	/// Only open findings are ever fetched, so a closed or ignored status never appears here.
+	/// Codacy's SLA status for the finding. Only open findings are ever fetched, so a closed or
+	/// ignored status never appears here.
 	/// </summary>
-	public required string Status { get; init; }
+	public required CodacySecuritySlaStatus SlaStatus { get; init; }
 
 	/// <summary>
 	/// The security category, for example <c>CommandInjection</c>. Null for a finding Codacy has

@@ -20,7 +20,7 @@ internal static class CodacySecurityMapper
 		Id = item.Id,
 		Title = item.Title,
 		Priority = MapPriority(item.Priority),
-		Status = item.Status.ToString(),
+		SlaStatus = MapSlaStatus(item.Status),
 		SecurityCategory = item.SecurityCategory,
 		ScanType = item.ScanType,
 		HtmlUrl = item.HtmlUrl,
@@ -42,5 +42,24 @@ internal static class CodacySecurityMapper
 			nameof(priority),
 			priority,
 			"Codacy reported a security priority this build does not know how to grade.")
+	};
+
+	/// <summary>
+	/// Maps Codacy's SLA status onto ours. Exhaustive for the same reason as the priority: a status
+	/// quietly treated as on track would bury an overdue finding at the bottom of the advisory.
+	/// </summary>
+	/// <remarks>
+	/// The closed and ignored statuses are unreachable here — the search asks only for open ones —
+	/// so they throw alongside anything Codacy adds later rather than being mapped to a fiction.
+	/// </remarks>
+	private static CodacySecuritySlaStatus MapSlaStatus(SrmStatus status) => status switch
+	{
+		SrmStatus.Overdue => CodacySecuritySlaStatus.Overdue,
+		SrmStatus.DueSoon => CodacySecuritySlaStatus.DueSoon,
+		SrmStatus.OnTrack => CodacySecuritySlaStatus.OnTrack,
+		_ => throw new ArgumentOutOfRangeException(
+			nameof(status),
+			status,
+			"Codacy reported a security SLA status this build does not know how to group.")
 	};
 }

@@ -28,13 +28,14 @@ public class CodacySecurityRuleTests(ITestOutputHelper output) : TestWithOutput(
 		CodacySecurityPriority priority,
 		string title = "OS command injection",
 		string? securityCategory = "CommandInjection",
-		string? scanType = "SAST")
+		string? scanType = "SAST",
+		CodacySecuritySlaStatus slaStatus = CodacySecuritySlaStatus.Overdue)
 		=> new()
 		{
 			Id = Guid.NewGuid(),
 			Title = title,
 			Priority = priority,
-			Status = "Overdue",
+			SlaStatus = slaStatus,
 			SecurityCategory = securityCategory,
 			ScanType = scanType,
 			HtmlUrl = "https://app.codacy.com/p/848725/issues/index?resultDataId=1",
@@ -238,6 +239,85 @@ public class CodacySecurityRuleTests(ITestOutputHelper output) : TestWithOutput(
 
 		result.Passed.Should().BeFalse("an uncategorised finding is still a finding");
 		result.Message.Should().Contain("Uncategorised");
+	}
+
+	private static Task<RuleResult> Sec01(params CodacySecurityFinding[] findings)
+		=> new CriticalSecurityFindingsRule(new FakeService(Tracked(findings)))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+	[Fact]
+	public async Task Advisory_GroupsFindingsByHowLateTheyAre_MostUrgentFirst()
+	{
+		var result = await Sec01(
+			Finding(CodacySecurityPriority.Critical, "Fine one", slaStatus: CodacySecuritySlaStatus.OnTrack),
+			Finding(CodacySecurityPriority.Critical, "Late one", slaStatus: CodacySecuritySlaStatus.Overdue),
+			Finding(CodacySecurityPriority.Critical, "Soon one", slaStatus: CodacySecuritySlaStatus.DueSoon));
+
+		var detail = result.Advisory!.Detail;
+		detail.Should().Contain("## Overdue (1)").And.Contain("## Due soon (1)").And.Contain("## On track (1)");
+		detail.IndexOf("## Overdue", StringComparison.Ordinal)
+			.Should().BeLessThan(detail.IndexOf("## Due soon", StringComparison.Ordinal));
+		detail.IndexOf("## Due soon", StringComparison.Ordinal)
+			.Should().BeLessThan(detail.IndexOf("## On track", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task Advisory_OmitsAnSlaGroupNothingFallsInto()
+	{
+		var result = await Sec01(
+			Finding(CodacySecurityPriority.Critical, "Fine one", slaStatus: CodacySecuritySlaStatus.OnTrack));
+
+		var detail = result.Advisory!.Detail;
+		detail.Should().Contain("## On track (1)");
+		detail.Should().NotContain("## Overdue").And.NotContain("## Due soon");
+	}
+
+	[Fact]
+	public async Task Advisory_KeepsTheCategoryBreakdownInsideEachSlaGroup()
+	{
+		var result = await Sec01(
+			Finding(CodacySecurityPriority.Critical, "SQL A", "SQLInjection", slaStatus: CodacySecuritySlaStatus.Overdue),
+			Finding(CodacySecurityPriority.Critical, "SQL B", "SQLInjection", slaStatus: CodacySecuritySlaStatus.Overdue),
+			Finding(CodacySecurityPriority.Critical, "Weak random", "Cryptography", slaStatus: CodacySecuritySlaStatus.OnTrack));
+
+		var detail = result.Advisory!.Detail;
+		detail.Should().Contain("### SQLInjection (2)").And.Contain("### Cryptography (1)");
+	}
+
+	[Fact]
+	public async Task Summary_CountsOverdueAndDueSoonSeparately()
+	{
+		var result = await Sec01(
+			Finding(CodacySecurityPriority.Critical, "Late one", slaStatus: CodacySecuritySlaStatus.Overdue),
+			Finding(CodacySecurityPriority.Critical, "Late two", slaStatus: CodacySecuritySlaStatus.Overdue),
+			Finding(CodacySecurityPriority.Critical, "Soon one", slaStatus: CodacySecuritySlaStatus.DueSoon),
+			Finding(CodacySecurityPriority.Critical, "Fine one", slaStatus: CodacySecuritySlaStatus.OnTrack));
+
+		result.Message.Should().Contain("2 overdue").And.Contain("1 due soon");
+	}
+
+	[Fact]
+	public async Task Summary_SaysNothingAboutTheSlaWhenEverythingIsOnTrack()
+	{
+		var result = await Sec01(
+			Finding(CodacySecurityPriority.Critical, "Fine one", slaStatus: CodacySecuritySlaStatus.OnTrack));
+
+		result.Message.Should().NotContainEquivalentOf("overdue").And.NotContainEquivalentOf("due soon");
+	}
+
+	[Fact]
+	public async Task AdvisoryData_CountsEverySlaStatusSoTheUiNeedNotParseTheProse()
+	{
+		var result = await Sec01(
+			Finding(CodacySecurityPriority.Critical, "Late one", slaStatus: CodacySecuritySlaStatus.Overdue),
+			Finding(CodacySecurityPriority.Critical, "Soon one", slaStatus: CodacySecuritySlaStatus.DueSoon),
+			Finding(CodacySecurityPriority.Critical, "Fine one", slaStatus: CodacySecuritySlaStatus.OnTrack),
+			Finding(CodacySecurityPriority.Critical, "Fine two", slaStatus: CodacySecuritySlaStatus.OnTrack));
+
+		var data = result.Advisory!.Data;
+		data["overdue_count"].Should().Be(1);
+		data["due_soon_count"].Should().Be(1);
+		data["on_track_count"].Should().Be(2);
 	}
 
 	[Fact]

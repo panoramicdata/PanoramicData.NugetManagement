@@ -36,11 +36,8 @@ public static class CodacySecurityFormatter
 			.ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
 			.Select(group => $"{group.Count()} {group.Key}");
 
-		var overdue = CountOverdue(findings);
-		var overdueNote = overdue > 0 ? $" {overdue} past the SLA due date." : string.Empty;
-
 		return $"Codacy reports {findings.Count} open {bandName} security finding(s): "
-			+ $"{string.Join(", ", byCategory)}.{overdueNote}";
+			+ $"{string.Join(", ", byCategory)}.{BuildSlaNote(findings)}";
 	}
 
 	/// <summary>
@@ -70,24 +67,42 @@ public static class CodacySecurityFormatter
 		sb.AppendLine("pushing; the finding clears on Codacy's next analysis rather than immediately.");
 		sb.AppendLine();
 
-		var groups = findings
-			.GroupBy(CategoryOf, StringComparer.OrdinalIgnoreCase)
-			.OrderByDescending(group => group.Count())
-			.ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+		// SLA first, category second. A reader triaging a long list wants the late work at the top;
+		// which kind of problem it is only matters once they have decided what to pick up.
+		var slaGroups = findings
+			.GroupBy(finding => finding.SlaStatus)
+			.OrderBy(group => group.Key);
 
-		foreach (var group in groups)
+		foreach (var slaGroup in slaGroups)
 		{
-			sb.AppendLine($"## {group.Key} ({group.Count()})");
+			sb.AppendLine($"## {LabelOf(slaGroup.Key)} ({slaGroup.Count()})");
 			sb.AppendLine();
 
-			foreach (var finding in group.OrderBy(f => f.DueAt).ThenBy(f => f.Title, StringComparer.OrdinalIgnoreCase))
+			var categoryGroups = slaGroup
+				.GroupBy(CategoryOf, StringComparer.OrdinalIgnoreCase)
+				.OrderByDescending(group => group.Count())
+				.ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+
+			foreach (var categoryGroup in categoryGroups)
 			{
-				var scan = string.IsNullOrWhiteSpace(finding.ScanType) ? string.Empty : $" [{finding.ScanType}]";
-				var link = string.IsNullOrWhiteSpace(finding.HtmlUrl) ? string.Empty : $" — {finding.HtmlUrl}";
-				sb.AppendLine($"- {finding.Title}{scan} ({finding.Status}, due {finding.DueAt:yyyy-MM-dd}){link}");
-			}
+				sb.AppendLine($"### {categoryGroup.Key} ({categoryGroup.Count()})");
+				sb.AppendLine();
 
-			sb.AppendLine();
+				var ordered = categoryGroup
+					.OrderBy(f => f.DueAt)
+					.ThenBy(f => f.Title, StringComparer.OrdinalIgnoreCase);
+
+				foreach (var finding in ordered)
+				{
+					var scan = string.IsNullOrWhiteSpace(finding.ScanType) ? string.Empty : $" [{finding.ScanType}]";
+					var link = string.IsNullOrWhiteSpace(finding.HtmlUrl) ? string.Empty : $" — {finding.HtmlUrl}";
+
+					// No status on the bullet: the heading it sits under already says it.
+					sb.AppendLine($"- {finding.Title}{scan} (due {finding.DueAt:yyyy-MM-dd}){link}");
+				}
+
+				sb.AppendLine();
+			}
 		}
 
 		return sb.ToString();
@@ -105,7 +120,9 @@ public static class CodacySecurityFormatter
 		{
 			["band"] = bandName,
 			["finding_count"] = findings.Count,
-			["overdue_count"] = CountOverdue(findings),
+			["overdue_count"] = CountOf(findings, CodacySecuritySlaStatus.Overdue),
+			["due_soon_count"] = CountOf(findings, CodacySecuritySlaStatus.DueSoon),
+			["on_track_count"] = CountOf(findings, CodacySecuritySlaStatus.OnTrack),
 			["categories"] = findings
 				.GroupBy(CategoryOf, StringComparer.OrdinalIgnoreCase)
 				.OrderByDescending(group => group.Count())
@@ -118,8 +135,40 @@ public static class CodacySecurityFormatter
 				.ToList()
 		};
 
-	private static int CountOverdue(IReadOnlyList<CodacySecurityFinding> findings)
-		=> findings.Count(finding => string.Equals(finding.Status, "Overdue", StringComparison.OrdinalIgnoreCase));
+	/// <summary>
+	/// The SLA clause appended to the summary: the two statuses worth acting on, and nothing at all
+	/// when every finding is on track — a trailing "0 overdue" would be noise on every clean band.
+	/// </summary>
+	private static string BuildSlaNote(IReadOnlyList<CodacySecurityFinding> findings)
+	{
+		var clauses = new List<string>(2);
+
+		var overdue = CountOf(findings, CodacySecuritySlaStatus.Overdue);
+		if (overdue > 0)
+		{
+			clauses.Add($"{overdue} overdue");
+		}
+
+		var dueSoon = CountOf(findings, CodacySecuritySlaStatus.DueSoon);
+		if (dueSoon > 0)
+		{
+			clauses.Add($"{dueSoon} due soon");
+		}
+
+		return clauses.Count == 0 ? string.Empty : $" {string.Join(", ", clauses)}.";
+	}
+
+	/// <summary>How a status is named in prose, which is not how the enum spells it.</summary>
+	private static string LabelOf(CodacySecuritySlaStatus status) => status switch
+	{
+		CodacySecuritySlaStatus.Overdue => "Overdue",
+		CodacySecuritySlaStatus.DueSoon => "Due soon",
+		CodacySecuritySlaStatus.OnTrack => "On track",
+		_ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown SLA status.")
+	};
+
+	private static int CountOf(IReadOnlyList<CodacySecurityFinding> findings, CodacySecuritySlaStatus status)
+		=> findings.Count(finding => finding.SlaStatus == status);
 
 	private static string CategoryOf(CodacySecurityFinding finding)
 		=> string.IsNullOrWhiteSpace(finding.SecurityCategory) ? Uncategorised : finding.SecurityCategory!;

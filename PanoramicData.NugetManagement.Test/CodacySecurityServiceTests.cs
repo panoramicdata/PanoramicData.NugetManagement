@@ -49,10 +49,26 @@ public class CodacySecurityServiceTests(ITestOutputHelper output) : TestWithOutp
 		finding.Title.Should().Be("OS command injection is a critical vulnerability.");
 		finding.SecurityCategory.Should().Be("CommandInjection");
 		finding.ScanType.Should().Be("SAST");
-		finding.Status.Should().Be("Overdue");
+		finding.SlaStatus.Should().Be(CodacySecuritySlaStatus.Overdue);
 		finding.HtmlUrl.Should().Be("https://app.codacy.com/p/848725/issues/index?resultDataId=131466833554");
 		finding.OpenedAt.Should().Be(new DateTimeOffset(2026, 4, 3, 14, 16, 17, TimeSpan.Zero));
 		finding.DueAt.Should().Be(new DateTimeOffset(2026, 5, 3, 14, 16, 17, TimeSpan.Zero));
+	}
+
+	[Theory]
+	[InlineData(SrmStatus.OnTrack, CodacySecuritySlaStatus.OnTrack)]
+	[InlineData(SrmStatus.DueSoon, CodacySecuritySlaStatus.DueSoon)]
+	[InlineData(SrmStatus.Overdue, CodacySecuritySlaStatus.Overdue)]
+	public void Map_CarriesTheSlaStatusTheAdvisoryGroupsBy(SrmStatus status, CodacySecuritySlaStatus expected)
+		=> CodacySecurityMapper.Map(Item(status: status)).SlaStatus.Should().Be(expected);
+
+	[Fact]
+	public void Map_RefusesAnSlaStatusThisBuildCannotGroup()
+	{
+		var act = () => CodacySecurityMapper.Map(Item(status: (SrmStatus)999));
+
+		act.Should().Throw<ArgumentOutOfRangeException>(
+			"a status silently grouped as on track would hide an overdue finding");
 	}
 
 	[Fact]
