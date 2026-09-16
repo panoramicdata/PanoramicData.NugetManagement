@@ -2421,6 +2421,80 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Advisory!.Data.Should().NotContainKey("remediation_type");
 	}
 
+	// ── AI-01 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task AI01_ShouldPass_WhenClaudeMdReferencesSharedSkills()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["CLAUDE.md"] = "@.github/copilot-instructions.md\n@../PanoramicData.Skills/.github/skills/copilot-instructions.md\n"
+		});
+
+		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task AI01_ShouldFail_WhenClaudeMdMissing()
+	{
+		var context = CreateEmptyContext();
+
+		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data.Should().ContainKey("expected_path");
+	}
+
+	[Fact]
+	public async Task AI01_ShouldFail_WhenClaudeMdDoesNotReferenceSharedSkills()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["CLAUDE.md"] = "@.github/copilot-instructions.md\n"
+		});
+
+		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data.Should().ContainKey("remediation_type");
+	}
+
+	// ── AI-02 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task AI02_ShouldPass_WhenAgentsMdReferencesSharedSkills()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["AGENTS.md"] = "See ../PanoramicData.Skills/.github/skills/copilot-instructions.md if it exists."
+		});
+
+		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task AI02_ShouldFail_WhenAgentsMdMissing()
+	{
+		var context = CreateEmptyContext();
+
+		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data.Should().ContainKey("expected_path");
+	}
+
+	[Fact]
+	public async Task AI02_ShouldFail_WhenAgentsMdDoesNotReferenceSharedSkills()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["AGENTS.md"] = "# Agent Instructions\n"
+		});
+
+		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data.Should().ContainKey("remediation_type");
+	}
+
 	private static IRule GetRule(string ruleId)
 		=> RuleRegistry.Rules.Single(r => r.RuleId == ruleId);
 

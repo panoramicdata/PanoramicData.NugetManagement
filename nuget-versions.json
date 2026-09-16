@@ -995,14 +995,14 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "MSTest.TestAdapter": {
-    "latestVersion": "4.4.0",
-    "published": "2026-09-02T21:54:39.54+01:00",
-    "refreshedAtUtc": "2026-09-03T00:41:10.1227001+00:00"
+    "latestVersion": "4.4.1",
+    "published": "2026-09-16T15:22:21.77+01:00",
+    "refreshedAtUtc": "2026-09-16T15:19:04.1854312+00:00"
   },
   "MSTest.TestFramework": {
-    "latestVersion": "4.4.0",
-    "published": "2026-09-02T21:54:52.75+01:00",
-    "refreshedAtUtc": "2026-09-03T00:41:10.1227001+00:00"
+    "latestVersion": "4.4.1",
+    "published": "2026-09-16T15:22:22.887+01:00",
+    "refreshedAtUtc": "2026-09-16T15:19:04.1854312+00:00"
   },
   "NAudio": {
     "latestVersion": "3.1.0",

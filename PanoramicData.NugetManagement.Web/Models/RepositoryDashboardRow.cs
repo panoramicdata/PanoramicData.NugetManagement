@@ -303,6 +303,15 @@ public class RepositoryDashboardRow
 				return PackageHealthStatus.Pending;
 			}
 
+			// An assessment attempt that threw before producing a result leaves Assessment null but
+			// records why on Status/StatusMessage. Without this check that failure read as "not yet
+			// assessed" — the same grey/unknown icon as a repository nobody has looked at — and the
+			// failure was visible nowhere in the tree.
+			if (Assessment is null && Status == PackageStatus.Error)
+			{
+				return PackageHealthStatus.Error;
+			}
+
 			// No assessment and nothing running → not assessable / not yet assessed (static icon, no spinner).
 			if (Assessment is null)
 			{

@@ -26,6 +26,13 @@ public class RepoAssessment
 	public required List<RuleResult> RuleResults { get; init; }
 
 	/// <summary>
+	/// Set when the assessment itself could not be completed (e.g. the repository could not be cloned
+	/// or read), as opposed to completing and finding rule failures. <see cref="RuleResults"/> is empty
+	/// in this case — no rule was ever evaluated, so none can be reported as passed or failed.
+	/// </summary>
+	public string? AssessmentError { get; init; }
+
+	/// <summary>
 	/// The total number of rules that passed.
 	/// </summary>
 	public int PassedCount => RuleResults.Count(r => r.Passed && r.Waiver is null);
@@ -41,14 +48,17 @@ public class RepoAssessment
 	public int StaleWaiverCount => RuleResults.Count(r => r.Waiver is { IsStale: true });
 
 	/// <summary>
-	/// The total number of rules that failed.
+	/// The total number of rules that failed, plus one when the assessment itself failed to run.
 	/// </summary>
-	public int FailedCount => RuleResults.Count(r => !r.Passed);
+	public int FailedCount => RuleResults.Count(r => !r.Passed) + (AssessmentError is null ? 0 : 1);
 
 	/// <summary>
-	/// The number of critical failures (failed rules with Critical severity).
+	/// The number of critical failures (failed rules with Critical severity), plus one when the
+	/// assessment itself failed to run: an unassessable repository is not a compliant one.
 	/// </summary>
-	public int CriticalCount => RuleResults.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Critical);
+	public int CriticalCount
+		=> RuleResults.Count(r => !r.Passed && r.Severity == AssessmentSeverity.Critical)
+			+ (AssessmentError is null ? 0 : 1);
 
 	/// <summary>
 	/// The number of errors (failed rules with Error severity).

@@ -537,6 +537,50 @@ public static class Standards
 		""";
 
 	/// <summary>
+	/// The relative path, from a repository root, to the shared Panoramic Data skills instructions
+	/// maintained in the private <c>PanoramicData.Skills</c> sibling repository.
+	/// </summary>
+	public const string SharedSkillsCopilotInstructionsPath = "../PanoramicData.Skills/.github/skills/copilot-instructions.md";
+
+	/// <summary>
+	/// The standard CLAUDE.md content: local Copilot instructions plus an <c>@import</c> of the shared
+	/// Panoramic Data skills. The <c>@import</c> syntax degrades gracefully — Claude Code simply skips
+	/// a path that does not resolve, so a contributor without access to the private
+	/// <c>PanoramicData.Skills</c> repository is unaffected.
+	/// </summary>
+	public static string ClaudeMdContent => $"""
+		@.github/copilot-instructions.md
+		@{SharedSkillsCopilotInstructionsPath}
+		""";
+
+	/// <summary>
+	/// The standard AGENTS.md content for agents (Codex and similar) that do not support Claude Code's
+	/// <c>@import</c> syntax. Unlike Claude Code's silent skip, these agents need to be told in prose
+	/// to treat the shared skills reference as optional, so a contributor without access to the
+	/// private <c>PanoramicData.Skills</c> repository is not blocked or told to stop.
+	/// </summary>
+	public static string AgentsMdContent => $"""
+		# Agent Instructions
+
+		Read `.github/copilot-instructions.md` for repository-specific conventions.
+
+		## Shared Panoramic Data conventions (optional)
+
+		Panoramic Data maintains shared skills in a private sibling repository, reached from this
+		repository's root at:
+
+		    {SharedSkillsCopilotInstructionsPath}
+
+		If that path exists, read it before starting work — it documents organization-wide
+		conventions and skills.
+
+		**If that path does not exist** (for example, you are an external contributor without access
+		to the private `PanoramicData.Skills` repository), ignore this section and continue. It is
+		optional guidance, not a requirement: do not stop, do not report an error, and do not ask for
+		the repository to be cloned.
+		""";
+
+	/// <summary>
 	/// The standard Publish.ps1 script content for tag-based publishing.
 	/// </summary>
 	public const string PublishPs1Content = """

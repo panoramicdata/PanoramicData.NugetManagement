@@ -71,6 +71,21 @@ public class OrganizationAssessor : IDisposable
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Failed to assess repository {FullName}", repo.FullName);
+
+				// Recorded rather than dropped: a repository whose clone or read throws must still
+				// appear in the result, or it silently vanishes from the tree with nothing to show
+				// why -- indistinguishable from a repository nobody has looked at yet.
+				lock (assessments)
+				{
+					assessments.Add(new RepoAssessment
+					{
+						RepositoryFullName = repo.FullName,
+						DefaultBranch = repo.DefaultBranch ?? string.Empty,
+						AssessedAtUtc = DateTimeOffset.UtcNow,
+						RuleResults = [],
+						AssessmentError = ex.Message
+					});
+				}
 			}
 			finally
 			{

@@ -91,6 +91,10 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	public static string CategoryKey(string repositoryFullName, AssessmentCategory category)
 		=> $"cat:{repositoryFullName}:{category}";
 
+	/// <summary>Builds the key for the node reporting that a repository's assessment itself failed.</summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public static string AssessmentErrorKey(string repositoryFullName) => $"assessmenterror:{repositoryFullName}";
+
 	/// <summary>Builds the key for one failing rule of a repository.</summary>
 	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
 	/// <param name="ruleId">The rule identifier.</param>
@@ -440,8 +444,9 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		{
 			var repoKey = RepoKey(row.RepositoryFullName);
 			var repoLaneKey = RepositoryLaneKey(row.RepositoryFullName);
+			var assessmentFailed = row.Assessment is null && row.Status == PackageStatus.Error;
 			var repoIssues = row.TotalFailures;
-			var repoHasErrors = row.TotalCriticals > 0 || row.TotalErrors > 0;
+			var repoHasErrors = row.TotalCriticals > 0 || row.TotalErrors > 0 || assessmentFailed;
 			var repoHasWarnings = row.TotalWarnings > 0;
 
 			items.Add(new NavItem
@@ -603,9 +608,30 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 				});
 			}
 
-			// Category sub-nodes (only if assessed)
+			// Category sub-nodes (only if assessed). An assessment that threw before producing a result
+			// leaves Assessment null with the reason recorded on StatusMessage — silently skipping past
+			// it here is exactly how a repository could look unassessed forever instead of broken.
 			if (row.Assessment is null)
 			{
+				if (assessmentFailed)
+				{
+					items.Add(new NavItem
+					{
+						Key = AssessmentErrorKey(row.RepositoryFullName),
+						Text = string.IsNullOrWhiteSpace(row.StatusMessage)
+							? "Assessment failed"
+							: $"Assessment failed: {row.StatusMessage}",
+						ParentKey = repoKey,
+						IconCss = "fas fa-triangle-exclamation text-danger",
+						HealthStatus = PackageHealthStatus.Error,
+						View = NavView.None,
+						Organization = organization,
+						RepositoryFullName = row.RepositoryFullName,
+						IsLeaf = true,
+						SortOrder = 3
+					});
+				}
+
 				continue;
 			}
 

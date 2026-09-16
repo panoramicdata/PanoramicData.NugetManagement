@@ -93,5 +93,10 @@ public enum AssessmentCategory
 	/// <summary>
 	/// Security findings reported by Codacy's security and risk management analysis.
 	/// </summary>
-	Security
+	Security,
+
+	/// <summary>
+	/// AI assistant instructions (CLAUDE.md, AGENTS.md) and their reference to shared conventions.
+	/// </summary>
+	AI
 }
