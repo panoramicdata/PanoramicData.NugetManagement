@@ -8,7 +8,14 @@
 param(
 	# Fails the run when line coverage is below this percentage. Off by default: coverage is
 	# informational while the estate climbs towards a level worth enforcing.
-	[double]$MinimumLineCoverage = 0
+	[double]$MinimumLineCoverage = 0,
+
+	# A VSTest filter expression passed straight to the test application, e.g.
+	# "FullyQualifiedName!~AiFixIntegrationTests". CI uses it to leave the Ollama integration tests
+	# to their own job: four of them routinely take longer than the other fifteen hundred combined,
+	# and they sit in front of the coverage upload, so a busy GPU used to delay the coverage figure
+	# by three quarters of an hour. Empty by default, so a local run still measures everything.
+	[string]$Filter = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,11 +35,19 @@ if ($LASTEXITCODE -ne 0) {
 $executableName = if ($IsWindows) { 'PanoramicData.NugetManagement.Test.exe' } else { 'PanoramicData.NugetManagement.Test' }
 $testExecutable = Join-Path $testProject "bin/Debug/net10.0/$executableName"
 
-& $testExecutable `
-	--coverage `
-	--coverage-settings (Join-Path $PSScriptRoot 'coverage.config') `
-	--coverage-output-format cobertura `
-	--coverage-output coverage.cobertura.xml
+$testArguments = @(
+	'--coverage'
+	'--coverage-settings'; (Join-Path $PSScriptRoot 'coverage.config')
+	'--coverage-output-format'; 'cobertura'
+	'--coverage-output'; 'coverage.cobertura.xml'
+)
+
+if (-not [string]::IsNullOrWhiteSpace($Filter)) {
+	$testArguments += '--filter'
+	$testArguments += $Filter
+}
+
+& $testExecutable @testArguments
 $testExitCode = $LASTEXITCODE
 
 if (-not (Test-Path $coverageFile)) {
