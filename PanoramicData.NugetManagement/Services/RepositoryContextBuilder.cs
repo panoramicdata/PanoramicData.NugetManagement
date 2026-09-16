@@ -120,6 +120,9 @@ public class RepositoryContextBuilder : IDisposable
 		fileContents.TryGetValue(NugetManagementRepositoryConfig.FileName, out var repoConfigRaw);
 		var repositoryConfig = NugetManagementRepositoryConfigParser.Parse(repoConfigRaw);
 
+		var actionsSecretNames = await ResolveActionsSecretNamesAsync(owner, repoName, cancellationToken)
+			.ConfigureAwait(false);
+
 		var lineCoveragePercent = await ResolveCoverageAsync(
 			_coverage,
 			options.Codacy?.ApiToken,
@@ -138,8 +141,40 @@ public class RepositoryContextBuilder : IDisposable
 			FilePaths = filePaths,
 			FileContents = fileContents,
 			RepositoryConfig = repositoryConfig,
+			ActionsSecretNames = actionsSecretNames,
 			LineCoveragePercent = lineCoveragePercent
 		};
+	}
+
+	/// <summary>
+	/// The names of the repository's Actions secrets, or null when they cannot be read.
+	/// </summary>
+	/// <remarks>
+	/// Names only; the API does not return values. Reading them needs admin rights on the repository,
+	/// which the assessing token may not have, so a failure here is an unanswered question rather
+	/// than an answer — CQ-07 renders null as "unknown" and never as "no token configured".
+	/// </remarks>
+	private async Task<IReadOnlyList<string>?> ResolveActionsSecretNamesAsync(
+		string owner,
+		string repositoryName,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			var secrets = await _github.Repository.Actions.Secrets
+				.GetAll(owner, repositoryName)
+				.ConfigureAwait(false);
+
+			return [.. secrets.Secrets.Select(secret => secret.Name)];
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			_logger.LogDebug(
+				"Could not read Actions secrets for {Owner}/{Repository}: {Message}",
+				owner, repositoryName, ex.Message);
+
+			return null;
+		}
 	}
 
 	/// <summary>
