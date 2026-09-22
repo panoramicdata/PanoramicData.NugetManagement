@@ -8,6 +8,12 @@ namespace PanoramicData.NugetManagement.Rules;
 /// by coverlet, which only functions as a VSTest data collector and so collects nothing under
 /// Microsoft.Testing.Platform.
 /// </summary>
+/// <remarks>
+/// Asked only of a repository whose tests actually run on Microsoft.Testing.Platform. On the others
+/// the two packages swap roles and the rule inverts with them: coverlet is the collector that works,
+/// and the Microsoft.Testing.Platform collector is the defect, because it selects a platform xunit v2
+/// cannot serve.
+/// </remarks>
 public class CodeCoverageCollectorRule : RuleBase
 {
 	/// <inheritdoc />
@@ -33,10 +39,22 @@ public class CodeCoverageCollectorRule : RuleBase
 
 		var dirPackages = context.GetFileContent("Directory.Packages.props");
 		var usesCpm = UsesCentralPackageManagement(dirPackages);
-		var pinnedInProps = PinsPackageVersion(dirPackages, Standards.CodeCoveragePackage);
 		var testProjectContents = testProjects
 			.Select(tp => (Project: tp, Content: context.GetFileContent(tp)))
 			.ToList();
+
+		// Only an xunit.v3 repository runs on Microsoft.Testing.Platform, and on the others this
+		// collector is not merely useless. It depends on Microsoft.Testing.Platform, so referencing it
+		// is enough to put the platform in the dependency graph; the SDK then selects it, xunit v2 has
+		// no entry point for it, and no test is discovered at all. TST-06 guards the same mistake in
+		// global.json. Nothing else catches this one: the project still builds with no errors and no
+		// warnings, so only a test count would show it.
+		if (!UsesMicrosoftTestingPlatform(context))
+		{
+			return Task.FromResult(EvaluateVsTestRepository(usesCpm, dirPackages, testProjectContents));
+		}
+
+		var pinnedInProps = PinsPackageVersion(dirPackages, Standards.CodeCoveragePackage);
 
 		var referencedInTestProject = testProjectContents
 			.Any(tp => ReferencesPackageDirectly(tp.Content, Standards.CodeCoveragePackage));
@@ -156,6 +174,111 @@ public class CodeCoverageCollectorRule : RuleBase
 				["target_project"] = testProjects.FirstOrDefault() ?? string.Empty
 			}
 		};
+
+	/// <summary>
+	/// Evaluates a repository whose tests still run on VSTest, where the two packages swap roles:
+	/// <see cref="Standards.VsTestCodeCoveragePackage"/> is the collector that works and
+	/// <see cref="Standards.CodeCoveragePackage"/> is the defect.
+	/// </summary>
+	/// <remarks>
+	/// Inverted rather than skipped, for the same reason TST-06 removes a stranded test.runner: a
+	/// governance remediation put this package here, so only a remediation takes it back out.
+	/// </remarks>
+	/// <param name="usesCpm">Whether the repository manages package versions centrally.</param>
+	/// <param name="dirPackages">The content of Directory.Packages.props, if any.</param>
+	/// <param name="testProjectContents">Each test project and its content.</param>
+	/// <returns>The rule result for a VSTest repository.</returns>
+	private RuleResult EvaluateVsTestRepository(
+		bool usesCpm,
+		string? dirPackages,
+		List<(string Project, string? Content)> testProjectContents)
+	{
+		var mtpPinnedInProps = PinsPackageVersion(dirPackages, Standards.CodeCoveragePackage);
+		var projectsWithMtpCollector = testProjectContents
+			.Where(tp => ReferencesPackageDirectly(tp.Content, Standards.CodeCoveragePackage))
+			.Select(tp => tp.Project)
+			.ToArray();
+
+		if (!mtpPinnedInProps && projectsWithMtpCollector.Length == 0)
+		{
+			// Nothing to ask for until TST-02 moves the repository to xunit.v3. Asking for the
+			// Microsoft.Testing.Platform collector here is what stopped test discovery on the
+			// repositories that took the advice.
+			return NotApplicable(
+				$"No xunit.v3 reference found; {Standards.VsTestCodeCoveragePackage} is the collector that works under VSTest, so {Standards.CodeCoveragePackage} does not apply.");
+		}
+
+		return Broken(
+			$"{Standards.CodeCoveragePackage} is referenced, but this repository's tests do not run on Microsoft.Testing.Platform. It brings Microsoft.Testing.Platform into the dependency graph, which xunit v2 cannot serve, so no test can be discovered.",
+			new RuleAdvisory
+			{
+				Summary = $"Remove {Standards.CodeCoveragePackage} and restore {Standards.VsTestCodeCoveragePackage}, or migrate the tests to xunit.v3.",
+				Detail = $$"""
+					`{{Standards.CodeCoveragePackage}}` depends on `Microsoft.Testing.Platform`, so
+					referencing it is enough to put the platform in the dependency graph. The SDK then
+					selects it, xunit v2 has no entry point for it, and nothing is discoverable:
+
+					```
+					Not all tests from the test run selection could be discovered.
+					Make sure to build your test project.
+					```
+
+					Nothing else catches this. The test project still builds with 0 errors and 0 warnings,
+					and a CI job that does not assert a non-zero test count reports success.
+
+					Removing the `test.runner` key from global.json is not enough on its own, which is all
+					TST-06 can do: while this package remains it is still the only thing putting
+					`Microsoft.Testing.Platform` into `project.assets.json`, so the platform is still
+					selected.
+
+					On a repository still on VSTest, `{{Standards.VsTestCodeCoveragePackage}}` is the
+					collector that works. Take this package out and put that one back, or migrate the test
+					project to `xunit.v3` (TST-02), after which this package becomes required rather than
+					harmful.
+					""",
+				Data = new()
+				{
+					// Deliberately the same remediation type as the forward case. That remediation is
+					// already symmetric, "ensure this package, remove these dead ones", so inverting the
+					// roles in the payload inverts the fix with no new type to register.
+					["remediation_type"] = "ensure_code_coverage_setup",
+					["package_name"] = Standards.VsTestCodeCoveragePackage,
+					["package_version"] = Standards.VsTestCodeCoverageVersion,
+					["uses_cpm"] = usesCpm,
+					["pinned_in_props"] = PinsPackageVersion(dirPackages, Standards.VsTestCodeCoveragePackage),
+					["referenced_in_test_project"] = testProjectContents
+						.Any(tp => ReferencesPackageDirectly(tp.Content, Standards.VsTestCodeCoveragePackage)),
+					["dead_packages"] = new[] { Standards.CodeCoveragePackage },
+					["projects"] = projectsWithMtpCollector,
+					// The project the collector came out of, so coverlet goes back where it was taken from.
+					["target_project"] = projectsWithMtpCollector.FirstOrDefault()
+						?? testProjectContents[0].Project
+				}
+			});
+	}
+
+	/// <summary>
+	/// A failing result carrying <see cref="AssessmentSeverity.Error"/> rather than the rule's declared
+	/// <see cref="Severity"/>.
+	/// </summary>
+	/// <remarks>
+	/// The rule is a warning because inert coverage configuration collects nothing while everything
+	/// else keeps working. The VSTest case is not that: no test runs at all, which is what TST-06 calls
+	/// an error for the same cause.
+	/// </remarks>
+	/// <param name="message">The failure message.</param>
+	/// <param name="advisory">Structured advisory for remediation.</param>
+	/// <returns>A failing result at error severity.</returns>
+	private RuleResult Broken(string message, RuleAdvisory advisory) => new()
+	{
+		RuleId = RuleId,
+		RuleName = RuleName,
+		Category = Category,
+		Severity = AssessmentSeverity.Error,
+		Passed = false,
+		Message = message,
+		Advisory = advisory
+	};
 
 	private static bool UsesCentralPackageManagement(string? dirPackages)
 		=> TryParse(dirPackages, out var doc)

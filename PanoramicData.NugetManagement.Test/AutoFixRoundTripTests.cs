@@ -314,6 +314,98 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 	}
 
 	/// <summary>
+	/// A repository still on xunit v2 that took the TST-04 remediation: the Microsoft.Testing.Platform
+	/// collector replaced coverlet, so no test can be discovered any more. Reproduces
+	/// panoramicdata/winforms-datavisualization, and the state panoramicdata/LogicMonitor.Datamart was
+	/// in between ae96519 and 8f12693.
+	/// </summary>
+	[Fact]
+	public async Task TST04_TakesTheMtpCollectorBackOutOfAVsTestRepository()
+	{
+		const string testProjectPath = "Acme.Widget.Test/Acme.Widget.Test.csproj";
+		var files = new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] =
+				"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup>"
+				+ "<PackageVersion Include=\"xunit\" Version=\"2.9.3\" />"
+				+ "<PackageVersion Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.11.2\" />"
+				+ "</ItemGroup></Project>",
+			[testProjectPath] =
+				"<Project><ItemGroup>"
+				+ "<PackageReference Include=\"xunit\" />"
+				+ "<PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" PrivateAssets=\"all\" />"
+				+ "</ItemGroup></Project>"
+		};
+
+		var result = await Rule("TST-04")
+			.EvaluateAsync(FilesContext(files), TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeFalse("the fixture is meant to violate the rule");
+		Apply(result);
+
+		var fixedProps = await ReadFixedAsync("Directory.Packages.props");
+		var fixedProject = await ReadFixedAsync(testProjectPath);
+
+		fixedProps.Should().NotContain(
+			"Microsoft.Testing.Extensions.CodeCoverage",
+			"the pin is the last thing putting Microsoft.Testing.Platform in the graph once the reference is gone");
+		fixedProject.Should().NotContain("Microsoft.Testing.Extensions.CodeCoverage");
+		fixedProject.Should().Contain("coverlet.collector", "coverlet is the collector that works under VSTest");
+
+		var reassessed = await Rule("TST-04").EvaluateAsync(
+			FilesContext(
+				new Dictionary<string, string>
+				{
+					["Directory.Packages.props"] = fixedProps,
+					[testProjectPath] = fixedProject
+				},
+				write: false),
+			TestContext.Current.CancellationToken);
+
+		reassessed.Passed.Should().BeTrue("the remediation is supposed to satisfy the rule it came from");
+		reassessed.IsApplicable.Should().BeFalse("the repository is still on VSTest, so the rule has nothing left to ask for");
+	}
+
+	/// <summary>
+	/// Reads a file back out of the working copy after a remediation has edited it.
+	/// </summary>
+	private async Task<string> ReadFixedAsync(string relativePath)
+	{
+		var content = await File.ReadAllTextAsync(
+			Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar)),
+			TestContext.Current.CancellationToken).ConfigureAwait(false);
+
+		Output.WriteLine(content);
+		return content;
+	}
+
+	/// <summary>
+	/// Builds a context from an explicit set of files, writing them to the working copy unless the
+	/// caller is re-assessing content it has just read back out of it.
+	/// </summary>
+	private RepositoryContext FilesContext(Dictionary<string, string> files, bool write = true)
+	{
+		if (write)
+		{
+			foreach (var file in files)
+			{
+				WriteFile(file.Key, file.Value);
+			}
+		}
+
+		return new RepositoryContext
+		{
+			FullName = "panoramicdata/Sample",
+			Name = "Sample",
+			DefaultBranch = "main",
+			CurrentBranch = "main",
+			Options = new RepoOptions(),
+			FilePaths = [.. files.Keys],
+			FileContents = files
+		};
+	}
+
+	/// <summary>
 	/// Writes the workflow to disk, assesses it, applies the remediation, and re-assesses — returning
 	/// the fixed workflow only once the rule it was meant to satisfy actually passes.
 	/// </summary>

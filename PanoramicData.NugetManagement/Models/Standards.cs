@@ -74,11 +74,26 @@ public static class Standards
 	public const string CodeCoverageVersion = "18.10.0";
 
 	/// <summary>
+	/// The code coverage collector for a repository still on VSTest, where
+	/// <see cref="CodeCoveragePackage"/> cannot be used at all: it depends on
+	/// Microsoft.Testing.Platform, so referencing it selects a platform xunit v2 cannot serve.
+	/// </summary>
+	public const string VsTestCodeCoveragePackage = "coverlet.collector";
+
+	/// <summary>
+	/// The expected <see cref="VsTestCodeCoveragePackage"/> version, matching its nuget-floors.json
+	/// floor.
+	/// </summary>
+	public const string VsTestCodeCoverageVersion = "10.0.1";
+
+	/// <summary>
 	/// Coverlet packages that are inert under Microsoft.Testing.Platform: both hook the VSTest
 	/// target that no longer runs on the .NET 10 SDK, so their presence signals coverage config
-	/// that looks alive but collects nothing.
+	/// that looks alive but collects nothing. Dead only there: on a repository still on VSTest,
+	/// coverlet is the collector that works, which is why TST-04 reports these only once xunit.v3
+	/// is in use.
 	/// </summary>
-	public static readonly string[] DeadCoverletPackages = ["coverlet.collector", "coverlet.msbuild"];
+	public static readonly string[] DeadCoverletPackages = [VsTestCodeCoveragePackage, "coverlet.msbuild"];
 
 	/// <summary>
 	/// The VSTest adapter for xUnit, unnecessary under Microsoft.Testing.Platform.
