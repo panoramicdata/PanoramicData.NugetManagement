@@ -2053,7 +2053,7 @@ public class RuleEvaluationTests : TestWithOutput
 		var context = CreateContext(new Dictionary<string, string>
 		{
 			["Directory.Packages.props"] = "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>",
-			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup></ItemGroup></Project>"
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" /></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
@@ -2068,7 +2068,7 @@ public class RuleEvaluationTests : TestWithOutput
 		var context = CreateContext(new Dictionary<string, string>
 		{
 			["Directory.Packages.props"] = "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>",
-			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" /></ItemGroup></Project>"
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" /><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" /></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
@@ -2080,7 +2080,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>"
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" /><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
@@ -2093,7 +2093,7 @@ public class RuleEvaluationTests : TestWithOutput
 		var context = CreateContext(new Dictionary<string, string>
 		{
 			["Directory.Packages.props"] = "<Project><ItemGroup></ItemGroup></Project>",
-			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup></ItemGroup></Project>"
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" /></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
@@ -2109,6 +2109,7 @@ public class RuleEvaluationTests : TestWithOutput
 		{
 			["MyProject.Test/MyProject.Test.csproj"] =
 				"<Project><ItemGroup>"
+				+ "<PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" />"
 				+ "<PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" />"
 				+ "<PackageReference Include=\"coverlet.collector\" Version=\"10.0.1\" />"
 				+ "</ItemGroup></Project>"
@@ -2126,7 +2127,7 @@ public class RuleEvaluationTests : TestWithOutput
 		var context = CreateContext(new Dictionary<string, string>
 		{
 			["Directory.Packages.props"] = "<Project><ItemGroup><PackageVersion Include=\"coverlet.msbuild\" Version=\"10.0.1\" /></ItemGroup></Project>",
-			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>"
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" /><PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.9.0\" /></ItemGroup></Project>"
 		});
 
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
@@ -2145,6 +2146,64 @@ public class RuleEvaluationTests : TestWithOutput
 		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
 		result.IsApplicable.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task TST04_ShouldNotApply_WhenTheRepositoryIsNotOnXunitV3()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] =
+				"<Project><ItemGroup>"
+				+ "<PackageReference Include=\"xunit\" Version=\"2.9.3\" />"
+				+ "<PackageReference Include=\"coverlet.collector\" Version=\"10.0.1\" />"
+				+ "</ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeFalse("coverlet is the collector that works under VSTest, so there is nothing to ask for");
+	}
+
+	[Fact]
+	public async Task TST04_ShouldFail_WhenTheMtpCollectorIsOnAVsTestRepository()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["MyProject.Test/MyProject.Test.csproj"] =
+				"<Project><ItemGroup>"
+				+ "<PackageReference Include=\"xunit\" Version=\"2.9.3\" />"
+				+ "<PackageReference Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.11.2\" />"
+				+ "</ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("it selects a platform xunit v2 cannot serve, so no test is discovered");
+		result.Severity.Should().Be(AssessmentSeverity.Error, "nothing runs at all, which is what TST-06 calls an error");
+		result.Advisory!.Data["package_name"].Should().Be("coverlet.collector");
+		result.Advisory!.Data["dead_packages"].Should().BeEquivalentTo(new[] { "Microsoft.Testing.Extensions.CodeCoverage" });
+		result.Advisory!.Data["projects"].Should().BeEquivalentTo(new[] { "MyProject.Test/MyProject.Test.csproj" });
+		result.Advisory!.Data["target_project"].Should().Be("MyProject.Test/MyProject.Test.csproj");
+	}
+
+	[Fact]
+	public async Task TST04_ShouldFail_WhenTheMtpCollectorIsOnlyPinnedOnAVsTestRepository()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Directory.Packages.props"] =
+				"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup>"
+				+ "<PackageVersion Include=\"xunit\" Version=\"2.9.3\" />"
+				+ "<PackageVersion Include=\"Microsoft.Testing.Extensions.CodeCoverage\" Version=\"18.11.2\" />"
+				+ "</ItemGroup></Project>",
+			["MyProject.Test/MyProject.Test.csproj"] = "<Project><ItemGroup><PackageReference Include=\"xunit\" /></ItemGroup></Project>"
+		});
+
+		var result = await GetRule("TST-04").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("the pin alone is still the only thing putting Microsoft.Testing.Platform in the graph");
+		result.Advisory!.Data["package_name"].Should().Be("coverlet.collector", "coverlet is what a VSTest repository should be collecting with");
+		result.Advisory!.Data["projects"].Should().BeEquivalentTo(Array.Empty<string>());
+		result.Advisory!.Data["target_project"].Should().Be("MyProject.Test/MyProject.Test.csproj");
 	}
 
 	// ── TST-06 ──────────────────────────────────────────────────────────
