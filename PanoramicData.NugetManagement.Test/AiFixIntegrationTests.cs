@@ -19,6 +19,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// server sees them skipped rather than red.
 /// </para>
 /// </remarks>
+[Trait("Category", OllamaIntegrationSettings.Category)]
 public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(output)
 {
 	/// <summary>

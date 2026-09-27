@@ -19,6 +19,18 @@ internal static class OllamaIntegrationSettings
 {
 	private sealed class SecretMarker;
 
+	/// <summary>
+	/// The test category every class that needs a real model carries, as
+	/// <c>[Trait("Category", OllamaIntegrationSettings.Category)]</c>.
+	/// </summary>
+	/// <remarks>
+	/// CI selects on it: the coverage job runs <c>Category!=Ollama</c> and the ai-integration job runs
+	/// <c>Category=Ollama</c> against pdl-rune-01. Filtering by class name instead let
+	/// <see cref="IssueAnalysisInjectionTests"/> land in the coverage job with no model configured,
+	/// where failSkips turned its skips into failures and stopped every Codacy upload.
+	/// </remarks>
+	public const string Category = "Ollama";
+
 	private static readonly Lazy<IConfigurationRoot> _configuration = new(() => new ConfigurationBuilder()
 		.AddUserSecrets<SecretMarker>()
 		.AddEnvironmentVariables()
