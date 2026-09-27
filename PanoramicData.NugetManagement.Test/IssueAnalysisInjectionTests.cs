@@ -33,6 +33,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// <see cref="AiFixIntegrationTests"/>.
 /// </para>
 /// </remarks>
+[Trait("Category", OllamaIntegrationSettings.Category)]
 public class IssueAnalysisInjectionTests(ITestOutputHelper output) : TestWithOutput(output), IDisposable
 {
 	/// <summary>Whether a server and model are configured. Referenced by <c>SkipUnless</c>.</summary>

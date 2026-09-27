@@ -88,7 +88,7 @@ jobs:
     # against 56.0% with. They were costing about 97% of the runtime for none of the coverage, and
     # sitting in front of the upload below, so a busy GPU delayed the whole point of this job.
     - name: Run tests with coverage
-      run: pwsh ./Run-Coverage.ps1 -Filter "FullyQualifiedName!~AiFixIntegrationTests"
+      run: pwsh ./Run-Coverage.ps1 -Filter "Category!=Ollama"
 
     # continue-on-error: a Codacy outage must not turn a passing test run red. The trade-off is that
     # an expired project token fails silently — the token expires 2027-09-13.
@@ -142,8 +142,8 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
-    - name: Run the AI fix integration tests
-      run: dotnet test --filter "FullyQualifiedName~AiFixIntegrationTests"
+    - name: Run the Ollama integration tests
+      run: dotnet test --filter "Category=Ollama"
 
   publish:
     needs: build
