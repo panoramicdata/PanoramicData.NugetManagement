@@ -9,6 +9,7 @@
   "actions/upload-artifact": "v7",
   "actions/upload-pages-artifact": "v5",
   "Azure/functions-action": "v1",
+  "codacy/codacy-coverage-reporter-action": "v1",
   "dchourasia/ms-teams-notification": "v1",
   "docker/login-action": "v4",
   "docker/setup-buildx-action": "v4",

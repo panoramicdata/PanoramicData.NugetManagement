@@ -558,14 +558,52 @@ public static class Standards
 	public const string SharedSkillsCopilotInstructionsPath = "../PanoramicData.Skills/.github/skills/copilot-instructions.md";
 
 	/// <summary>
+	/// The version marker written into <see cref="ClaudeMdContent"/> and <see cref="AgentsMdContent"/>.
+	/// Bump this when either template's content changes materially.
+	/// </summary>
+	public const string AiInstructionsTemplateVersion = "1.1";
+
+	/// <summary>
 	/// The standard CLAUDE.md content: local Copilot instructions plus an <c>@import</c> of the shared
 	/// Panoramic Data skills. The <c>@import</c> syntax degrades gracefully — Claude Code simply skips
 	/// a path that does not resolve, so a contributor without access to the private
 	/// <c>PanoramicData.Skills</c> repository is unaffected.
 	/// </summary>
+	/// <remarks>
+	/// Structured with headings, an identity, boundaries, and tool notes (not just the bare
+	/// <c>@import</c> lines) because Codacy's Agentlinter grades instruction files on exactly those
+	/// things — a two-line file grades F even though the imports it points at are complete.
+	/// </remarks>
 	public static string ClaudeMdContent => $"""
+		# CLAUDE.md
+
+		Version: {AiInstructionsTemplateVersion}
+
+		## Identity
+
+		You are Claude Code, acting as a careful, security-conscious contributor to this repository,
+		following Panoramic Data's engineering conventions.
+
+		## Scope and boundaries
+
+		- Do not weaken `TreatWarningsAsErrors`, delete or skip tests to make a build pass, or bypass
+		  CI/CD checks.
+		- Do not commit secrets, credentials, or API tokens.
+		- Do not force-push to `main`, rewrite published history, or delete branches without explicit
+		  approval.
+
+		## Tools
+
+		- Build and test with `dotnet build` / `dotnet test`.
+		- Use `git` for version control, following `CONTRIBUTING.md` where present.
+
+		## Shared instructions
+
 		@.github/copilot-instructions.md
 		@{SharedSkillsCopilotInstructionsPath}
+
+		The second import above is optional: if the private `PanoramicData.Skills` sibling repository
+		is not checked out next to this one, Claude Code silently skips it.
 		""";
 
 	/// <summary>
@@ -576,6 +614,8 @@ public static class Standards
 	/// </summary>
 	public static string AgentsMdContent => $"""
 		# Agent Instructions
+
+		Version: {AiInstructionsTemplateVersion}
 
 		Read `.github/copilot-instructions.md` for repository-specific conventions.
 
