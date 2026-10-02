@@ -39,6 +39,23 @@ public class AgentsMdReferencesSharedSkillsRule : RuleBase
 				}));
 		}
 
+		if (Standards.IsGeneratedContent(content, Standards.LegacyAgentsMdContent))
+		{
+			return Task.FromResult(Fail(
+				"AGENTS.md is the earlier generated template, which lacks the sections Codacy grades.",
+				new RuleAdvisory
+				{
+					Summary = "Replace the generated AGENTS.md with the current template",
+					Detail = "The file is byte-for-byte what this tool previously generated, so it is replaced; a hand-written file is never touched.",
+					Data = new()
+					{
+						["remediation_type"] = "replace_file_content",
+						["file"] = "AGENTS.md",
+						["new_content"] = Standards.AgentsMdContent
+					}
+				}));
+		}
+
 		return Task.FromResult(Contains(content, Standards.SharedSkillsCopilotInstructionsPath)
 			? Pass("AGENTS.md found and references the shared Panoramic Data skills.")
 			: Fail(

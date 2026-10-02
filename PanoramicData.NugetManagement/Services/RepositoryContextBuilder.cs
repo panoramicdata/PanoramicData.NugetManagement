@@ -142,8 +142,46 @@ public class RepositoryContextBuilder : IDisposable
 			FileContents = fileContents,
 			RepositoryConfig = repositoryConfig,
 			ActionsSecretNames = actionsSecretNames,
-			LineCoveragePercent = lineCoveragePercent
+			LineCoveragePercent = lineCoveragePercent,
+			PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(_github, owner, repoName).ConfigureAwait(false)
 		};
+	}
+
+	/// <summary>
+	/// The JSON GitHub returns from the private vulnerability reporting endpoint.
+	/// </summary>
+	public sealed class PrivateVulnerabilityReportingStatus
+	{
+		/// <summary>Whether the setting is on.</summary>
+		public bool Enabled { get; set; }
+	}
+
+	/// <summary>
+	/// Whether private vulnerability reporting is enabled, or null when GitHub would not say.
+	/// </summary>
+	/// <remarks>
+	/// Any failure becomes null rather than false: an unreadable setting reported as "off" would tell
+	/// the fixer to switch on something that may already be on.
+	/// </remarks>
+	public static async Task<bool?> ResolvePrivateVulnerabilityReportingAsync(
+		IGitHubClient github,
+		string owner,
+		string repositoryName)
+	{
+		try
+		{
+			var response = await github.Connection
+				.Get<PrivateVulnerabilityReportingStatus>(
+					new Uri($"repos/{owner}/{repositoryName}/private-vulnerability-reporting", UriKind.Relative),
+					null)
+				.ConfigureAwait(false);
+
+			return response.Body?.Enabled;
+		}
+		catch (Exception ex) when (ex is ApiException or HttpRequestException)
+		{
+			return null;
+		}
 	}
 
 	/// <summary>
@@ -187,7 +225,7 @@ public class RepositoryContextBuilder : IDisposable
 	/// every other finding for that repository. An unread figure becomes RED, which claims only that
 	/// nothing was shown.
 	/// </remarks>
-	internal static async Task<double?> ResolveCoverageAsync(
+	public static async Task<double?> ResolveCoverageAsync(
 		ICodacyCoverageService coverage,
 		string? apiToken,
 		string organizationName,

@@ -117,6 +117,13 @@ public class RepositoryContext
 	public IReadOnlyList<string>? ActionsSecretNames { get; init; }
 
 	/// <summary>
+	/// Whether GitHub private vulnerability reporting is switched on for this repository, or null when
+	/// it could not be read (no client, or the token lacks the rights). Null is an unanswered question,
+	/// never "off".
+	/// </summary>
+	public bool? PrivateVulnerabilityReportingEnabled { get; init; }
+
+	/// <summary>
 	/// Measured line coverage as a percentage, or null when this repository's tests have not been run
 	/// with coverage collection.
 	/// </summary>

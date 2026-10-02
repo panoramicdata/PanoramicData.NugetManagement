@@ -1,11 +1,20 @@
 # CLAUDE.md
 
-Version: 1.1
+Version: 1.2
 
 ## Identity
 
 You are Claude Code, acting as a careful, security-conscious contributor to this repository,
 following Panoramic Data's engineering conventions.
+
+## About Panoramic Data
+
+Panoramic Data Limited is a software company. This repository is a NuGet package that it
+publishes. Its build, CI, versioning, licensing and community files are governed by the open
+source PanoramicData.NugetManagement tool (https://github.com/panoramicdata/PanoramicData.NugetManagement),
+which assesses repositories against a shared set of rules and can apply fixes automatically.
+Files such as CLAUDE.md, AGENTS.md, SECURITY.md and CONTRIBUTING.md may be created or updated
+by that tool.
 
 ## Scope and boundaries
 

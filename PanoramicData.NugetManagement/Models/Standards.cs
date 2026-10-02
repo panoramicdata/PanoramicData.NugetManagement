@@ -153,9 +153,10 @@ public static class Standards
 	public const string NuGetUser = "david_n_m_bond";
 
 	/// <summary>
-	/// The standard SECURITY.md content for all repositories.
+	/// The SECURITY.md this tool wrote while it still published a mailbox address. Replaceable when a
+	/// file holds exactly this, because it was generated; Codacy flags the address as PII.
 	/// </summary>
-	public const string SecurityMdContent = """
+	public const string LegacySecurityMdContent = """
 		# Security Policy
 
 		## Supported Versions
@@ -169,6 +170,51 @@ public static class Standards
 		**Do NOT open a public GitHub issue.**
 
 		Instead, please email security@panoramicdata.com with:
+
+		- A description of the vulnerability
+		- Steps to reproduce the issue
+		- Any relevant logs or screenshots
+
+		We will acknowledge receipt within 48 hours and aim to provide a fix or mitigation within 7 business days.
+
+		## Disclosure Policy
+
+		We follow a coordinated disclosure process. We ask that you:
+
+		1. Allow us reasonable time to investigate and address the issue
+		2. Avoid exploiting the vulnerability beyond what is necessary to demonstrate it
+		3. Do not disclose the issue publicly until we have released a fix
+
+		Thank you for helping keep our software and users safe.
+		""";
+
+	/// <summary>
+	/// The standard SECURITY.md content for a repository.
+	/// </summary>
+	/// <remarks>
+	/// Points at GitHub's private vulnerability reporting rather than a mailbox: reports stay private
+	/// and tracked per repository, there is no inbox to watch, and no address sits in the file for
+	/// Codacy to flag as PII. COM-05 checks the setting is actually switched on.
+	/// </remarks>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public static string GetSecurityMdContent(string repositoryFullName) => $"""
+		# Security Policy
+
+		## Supported Versions
+
+		Only the latest released version is supported with security updates.
+
+		## Reporting a Vulnerability
+
+		If you discover a security vulnerability, please report it responsibly.
+
+		**Do not open a public GitHub issue.**
+
+		Instead, use GitHub's private vulnerability reporting: open this repository's **Security** tab
+		and choose **Report a vulnerability**, or go straight to
+		https://github.com/{repositoryFullName}/security/advisories/new
+
+		Please include:
 
 		- A description of the vulnerability
 		- Steps to reproduce the issue
@@ -558,10 +604,36 @@ public static class Standards
 	public const string SharedSkillsCopilotInstructionsPath = "../PanoramicData.Skills/.github/skills/copilot-instructions.md";
 
 	/// <summary>
+	/// The heading of the section that says who Panoramic Data is and how the repository is governed.
+	/// AI-03 looks for the tool's name, which only this section carries.
+	/// </summary>
+	public const string AboutSectionHeading = "## About Panoramic Data";
+
+	/// <summary>
+	/// The marker AI-03 requires: the governance tool's name, present only where the About section is.
+	/// </summary>
+	public const string GovernanceToolName = "PanoramicData.NugetManagement";
+
+	/// <summary>
+	/// A short, deliberately unrevealing statement of who publishes the repository and how it is
+	/// managed. Written for any agent or contributor, so it names no people, systems or customers.
+	/// </summary>
+	public const string AboutSectionContent = """
+		## About Panoramic Data
+
+		Panoramic Data Limited is a software company. This repository is a NuGet package that it
+		publishes. Its build, CI, versioning, licensing and community files are governed by the open
+		source PanoramicData.NugetManagement tool (https://github.com/panoramicdata/PanoramicData.NugetManagement),
+		which assesses repositories against a shared set of rules and can apply fixes automatically.
+		Files such as CLAUDE.md, AGENTS.md, SECURITY.md and CONTRIBUTING.md may be created or updated
+		by that tool.
+		""";
+
+	/// <summary>
 	/// The version marker written into <see cref="ClaudeMdContent"/> and <see cref="AgentsMdContent"/>.
 	/// Bump this when either template's content changes materially.
 	/// </summary>
-	public const string AiInstructionsTemplateVersion = "1.1";
+	public const string AiInstructionsTemplateVersion = "1.2";
 
 	/// <summary>
 	/// The standard CLAUDE.md content: local Copilot instructions plus an <c>@import</c> of the shared
@@ -583,6 +655,8 @@ public static class Standards
 
 		You are Claude Code, acting as a careful, security-conscious contributor to this repository,
 		following Panoramic Data's engineering conventions.
+
+		{AboutSectionContent}
 
 		## Scope and boundaries
 
@@ -619,6 +693,8 @@ public static class Standards
 
 		Read `.github/copilot-instructions.md` for repository-specific conventions.
 
+		{AboutSectionContent}
+
 		## Shared Panoramic Data conventions (optional)
 
 		Panoramic Data maintains shared skills in a private sibling repository, reached from this
@@ -634,6 +710,50 @@ public static class Standards
 		optional guidance, not a requirement: do not stop, do not report an error, and do not ask for
 		the repository to be cloned.
 		""";
+
+	/// <summary>
+	/// The CLAUDE.md this tool wrote before the template gained headings, an identity, boundaries and
+	/// tool notes. Files holding exactly this were generated, never hand-written, so they are safe to
+	/// replace; anything else is someone's own and is left alone.
+	/// </summary>
+	public static string LegacyClaudeMdContent => $"""
+		@.github/copilot-instructions.md
+		@{SharedSkillsCopilotInstructionsPath}
+		""";
+
+	/// <summary>
+	/// The AGENTS.md this tool wrote before the template carried a version marker. Replaceable for the
+	/// same reason as <see cref="LegacyClaudeMdContent"/>.
+	/// </summary>
+	public static string LegacyAgentsMdContent => $"""
+		# Agent Instructions
+
+		Read `.github/copilot-instructions.md` for repository-specific conventions.
+
+		## Shared Panoramic Data conventions (optional)
+
+		Panoramic Data maintains shared skills in a private sibling repository, reached from this
+		repository's root at:
+
+		    {SharedSkillsCopilotInstructionsPath}
+
+		If that path exists, read it before starting work — it documents organization-wide
+		conventions and skills.
+
+		**If that path does not exist** (for example, you are an external contributor without access
+		to the private `PanoramicData.Skills` repository), ignore this section and continue. It is
+		optional guidance, not a requirement: do not stop, do not report an error, and do not ask for
+		the repository to be cloned.
+		""";
+
+	/// <summary>
+	/// Whether <paramref name="content"/> is, line endings and surrounding whitespace aside, exactly
+	/// <paramref name="generated"/>.
+	/// </summary>
+	public static bool IsGeneratedContent(string content, string generated)
+		=> Normalise(content) == Normalise(generated);
+
+	private static string Normalise(string text) => text.Replace("\r\n", "\n").Trim();
 
 	/// <summary>
 	/// The standard Publish.ps1 script content for tag-based publishing.

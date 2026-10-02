@@ -366,6 +366,35 @@ public class DashboardService
 		return repoOptions;
 	}
 
+	/// <summary>Whether private vulnerability reporting is on for a repository, or null when unknown.</summary>
+	private static async Task<bool?> ResolvePrivateVulnerabilityReportingAsync(IGitHubClient? github, string repositoryFullName)
+	{
+		var parts = repositoryFullName.Split('/');
+		return github is null || parts.Length != 2
+			? null
+			: await RepositoryContextBuilder.ResolvePrivateVulnerabilityReportingAsync(github, parts[0], parts[1]).ConfigureAwait(false);
+	}
+
+	/// <summary>The line coverage Codacy holds for a repository, or null when it cannot be read.</summary>
+	/// <remarks>The local clone cannot know this, so without it every locally assessed repository grades RED on TST-10.</remarks>
+	private static async Task<double?> ResolveLineCoverageAsync(
+		string repositoryFullName,
+		RepoOptions repoOptions,
+		string branch,
+		CancellationToken cancellationToken)
+	{
+		var parts = repositoryFullName.Split('/');
+		return parts.Length != 2
+			? null
+			: await RepositoryContextBuilder.ResolveCoverageAsync(
+				new CodacyCoverageService(),
+				repoOptions.Codacy?.ApiToken,
+				parts[0],
+				parts[1],
+				branch,
+				cancellationToken).ConfigureAwait(false);
+	}
+
 	/// <summary>
 	/// Builds the repository context Dependabot triage reads declared versions from, preferring the
 	/// local clone when there is one.
@@ -401,7 +430,9 @@ public class DashboardService
 					row.ReleaseRun,
 					await _localRepo.GetHeadShaAsync(row.RepositoryFullName, cancellationToken).ConfigureAwait(false),
 					row.NextVersion,
-					RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow));
+					RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
+					await ResolveLineCoverageAsync(row.RepositoryFullName, repoOptions, "main", cancellationToken).ConfigureAwait(false),
+				await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false));
 		}
 
 		var parts = row.RepositoryFullName.Split('/');
@@ -758,7 +789,9 @@ public class DashboardService
 				row.ReleaseRun,
 				headSha,
 				row.NextVersion,
-				RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow));
+				RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
+				await ResolveLineCoverageAsync(row.RepositoryFullName, repoOptions, defaultBranch, cancellationToken).ConfigureAwait(false),
+				await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false));
 
 			var rules = RuleRegistry.Rules;
 			var results = new List<RuleResult>();

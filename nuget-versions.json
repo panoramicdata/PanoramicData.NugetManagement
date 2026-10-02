@@ -75,9 +75,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Azure.Storage.Blobs": {
-    "latestVersion": "12.29.2",
-    "published": "2026-08-25T00:49:39.467+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "12.30.0",
+    "published": "2026-09-30T21:29:17.11+01:00",
+    "refreshedAtUtc": "2026-10-01T02:32:53.5284527+00:00"
   },
   "BenchmarkDotNet": {
     "latestVersion": "0.15.8",
@@ -315,9 +315,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Google.Apis.Sheets.v4": {
-    "latestVersion": "1.75.0.4178",
-    "published": "2026-06-18T09:28:32.653+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "1.77.0.4281",
+    "published": "2026-10-01T09:27:00.307+01:00",
+    "refreshedAtUtc": "2026-10-02T10:57:11.9972092+00:00"
   },
   "Google.Protobuf": {
     "latestVersion": "3.36.2",
@@ -435,14 +435,14 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "LogicMonitor.Api": {
-    "latestVersion": "3.240.90",
-    "published": "2026-09-22T06:24:56.67+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "3.240.97",
+    "published": "2026-10-01T07:58:40.577+01:00",
+    "refreshedAtUtc": "2026-10-01T08:32:53.5327518+00:00"
   },
   "LogicMonitor.Datamart": {
-    "latestVersion": "3.240.24",
-    "published": "2026-09-22T04:45:38.663+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "3.240.27",
+    "published": "2026-09-29T12:07:16.323+01:00",
+    "refreshedAtUtc": "2026-09-29T14:32:53.5506774+00:00"
   },
   "LTAF.Navigator": {
     "latestVersion": "0.1.0",
@@ -470,9 +470,9 @@
     "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
   },
   "Meraki.Api": {
-    "latestVersion": "1.70.145",
-    "published": "2026-09-24T07:07:51.313+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "1.74.16",
+    "published": "2026-09-29T16:07:33.15+01:00",
+    "refreshedAtUtc": "2026-09-29T20:32:53.5383391+00:00"
   },
   "Microsoft.ApplicationInsights.WorkerService": {
     "latestVersion": "3.1.2",
@@ -655,14 +655,14 @@
     "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
   },
   "Microsoft.Data.SqlClient": {
-    "latestVersion": "7.1.0",
-    "published": "2026-09-18T02:47:45.347+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "7.1.1",
+    "published": "2026-09-29T23:38:05.647+01:00",
+    "refreshedAtUtc": "2026-09-30T02:32:53.5289117+00:00"
   },
   "Microsoft.Data.SqlClient.Extensions.Azure": {
-    "latestVersion": "7.1.0",
-    "published": "2026-09-18T02:39:23.083+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "7.1.1",
+    "published": "2026-09-29T23:38:04.113+01:00",
+    "refreshedAtUtc": "2026-09-30T02:32:53.5289117+00:00"
   },
   "Microsoft.EntityFrameworkCore": {
     "latestVersion": "10.0.12",
@@ -855,9 +855,9 @@
     "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
   },
   "Microsoft.Identity.Web": {
-    "latestVersion": "4.15.0",
-    "published": "2026-09-21T11:02:05.3+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "4.16.0",
+    "published": "2026-10-01T18:27:08.923+01:00",
+    "refreshedAtUtc": "2026-10-02T10:57:11.9972092+00:00"
   },
   "Microsoft.JSInterop": {
     "latestVersion": "10.0.12",
@@ -1140,14 +1140,14 @@
     "refreshedAtUtc": "2026-09-13T22:06:29.3321773+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.236",
-    "published": "2026-09-28T17:54:46.493+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "10.0.283",
+    "published": "2026-09-29T23:30:12.16+01:00",
+    "refreshedAtUtc": "2026-09-30T02:32:53.5289117+00:00"
   },
   "PanoramicData.ChartMagic": {
-    "latestVersion": "9.1.40",
-    "published": "2026-09-28T12:04:33.273+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "9.2.3",
+    "published": "2026-10-01T16:39:05.917+01:00",
+    "refreshedAtUtc": "2026-10-02T10:57:11.9972092+00:00"
   },
   "PanoramicData.DeepCloner": {
     "latestVersion": "1.0.8",
@@ -1195,9 +1195,9 @@
     "refreshedAtUtc": "2026-09-14T13:24:46.4741027+00:00"
   },
   "PanoramicData.NCalcExtensions": {
-    "latestVersion": "6.1.39",
-    "published": "2026-09-13T15:06:11.44+01:00",
-    "refreshedAtUtc": "2026-09-13T18:52:00.3935398+00:00"
+    "latestVersion": "6.1.45",
+    "published": "2026-09-29T16:21:44.787+01:00",
+    "refreshedAtUtc": "2026-09-29T20:32:53.5383391+00:00"
   },
   "PanoramicData.NetFlowServer": {
     "latestVersion": "1.0.22",
@@ -1210,9 +1210,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "PanoramicData.OData.Client": {
-    "latestVersion": "10.0.123",
-    "published": "2026-09-03T04:18:54.633+01:00",
-    "refreshedAtUtc": "2026-09-03T06:41:10.1206156+00:00"
+    "latestVersion": "10.0.142",
+    "published": "2026-10-01T15:16:06.653+01:00",
+    "refreshedAtUtc": "2026-10-02T10:57:11.9972092+00:00"
   },
   "PanoramicData.Render": {
     "latestVersion": "1.0.289",
@@ -1345,19 +1345,19 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Selenium.Support": {
-    "latestVersion": "4.49.0",
-    "published": "2026-09-09T16:30:22.823+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "4.50.0",
+    "published": "2026-09-30T21:16:40.387+01:00",
+    "refreshedAtUtc": "2026-09-30T20:32:53.5275656+00:00"
   },
   "Selenium.WebDriver": {
-    "latestVersion": "4.49.0",
-    "published": "2026-09-09T16:30:24.28+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "4.50.0",
+    "published": "2026-09-30T21:16:42.88+01:00",
+    "refreshedAtUtc": "2026-09-30T20:32:53.5275656+00:00"
   },
   "Selenium.WebDriver.ChromeDriver": {
-    "latestVersion": "154.0.8037.5700",
-    "published": "2026-09-24T00:23:50.383+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "154.0.8037.9200",
+    "published": "2026-09-30T09:52:28.71+01:00",
+    "refreshedAtUtc": "2026-09-30T14:32:53.5249114+00:00"
   },
   "Serilog": {
     "latestVersion": "4.4.0",
@@ -1435,9 +1435,9 @@
     "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "ServiceStack": {
-    "latestVersion": "10.2.0",
-    "published": "2026-09-09T13:51:22.76+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "10.3.0",
+    "published": "2026-09-29T14:59:19.28+01:00",
+    "refreshedAtUtc": "2026-09-29T14:32:53.5506774+00:00"
   },
   "SharpZipLib": {
     "latestVersion": "1.4.2",
@@ -1460,29 +1460,29 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "SkiaSharp": {
-    "latestVersion": "4.153.0",
-    "published": "2026-09-29T03:58:52.487+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "4.153.1",
+    "published": "2026-09-30T04:41:47.953+01:00",
+    "refreshedAtUtc": "2026-09-30T08:32:53.5707007+00:00"
   },
   "SkiaSharp.HarfBuzz": {
-    "latestVersion": "4.153.0",
-    "published": "2026-09-29T03:58:54.863+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "4.153.1",
+    "published": "2026-09-30T04:41:50.397+01:00",
+    "refreshedAtUtc": "2026-09-30T08:32:53.5707007+00:00"
   },
   "SkiaSharp.NativeAssets.Linux": {
-    "latestVersion": "4.153.0",
-    "published": "2026-09-29T03:59:00.613+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "4.153.1",
+    "published": "2026-09-30T04:41:55.537+01:00",
+    "refreshedAtUtc": "2026-09-30T08:32:53.5707007+00:00"
   },
   "SkiaSharp.NativeAssets.Linux.NoDependencies": {
-    "latestVersion": "4.153.0",
-    "published": "2026-09-29T03:59:04.16+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "4.153.1",
+    "published": "2026-09-30T04:41:58.74+01:00",
+    "refreshedAtUtc": "2026-09-30T08:32:53.5707007+00:00"
   },
   "SkiaSharp.NativeAssets.WebAssembly": {
-    "latestVersion": "4.153.0",
-    "published": "2026-09-29T03:59:13.047+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "4.153.1",
+    "published": "2026-09-30T04:42:10.167+01:00",
+    "refreshedAtUtc": "2026-09-30T08:32:53.5707007+00:00"
   },
   "Snappier": {
     "latestVersion": "1.3.1",
@@ -1500,9 +1500,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Spectre.Console.Cli": {
-    "latestVersion": "0.56.1",
-    "published": "2026-09-29T09:14:13.613+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "0.57.2",
+    "published": "2026-09-29T18:30:49.12+01:00",
+    "refreshedAtUtc": "2026-09-29T20:32:53.5383391+00:00"
   },
   "SSH.NET": {
     "latestVersion": "2026.0.0",

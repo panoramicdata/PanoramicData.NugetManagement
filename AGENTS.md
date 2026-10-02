@@ -1,8 +1,17 @@
 # Agent Instructions
 
-Version: 1.1
+Version: 1.2
 
 Read `.github/copilot-instructions.md` for repository-specific conventions.
+
+## About Panoramic Data
+
+Panoramic Data Limited is a software company. This repository is a NuGet package that it
+publishes. Its build, CI, versioning, licensing and community files are governed by the open
+source PanoramicData.NugetManagement tool (https://github.com/panoramicdata/PanoramicData.NugetManagement),
+which assesses repositories against a shared set of rules and can apply fixes automatically.
+Files such as CLAUDE.md, AGENTS.md, SECURITY.md and CONTRIBUTING.md may be created or updated
+by that tool.
 
 ## Shared Panoramic Data conventions (optional)
 

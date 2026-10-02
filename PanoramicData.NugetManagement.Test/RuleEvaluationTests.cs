@@ -2487,7 +2487,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["CLAUDE.md"] = "@.github/copilot-instructions.md\n@../PanoramicData.Skills/.github/skills/copilot-instructions.md\n"
+			["CLAUDE.md"] = "# Mine\n@.github/copilot-instructions.md\n@../PanoramicData.Skills/.github/skills/copilot-instructions.md\n"
 		});
 
 		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
@@ -2554,6 +2554,122 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Advisory!.Data.Should().ContainKey("remediation_type");
 	}
 
+	// ── AI-01 / AI-02 legacy templates ──────────────────────────────────
+
+	[Fact]
+	public async Task AI01_ShouldOfferReplacement_WhenClaudeMdIsTheGeneratedLegacyTemplate()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["CLAUDE.md"] = Standards.LegacyClaudeMdContent
+		});
+
+		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+	}
+
+	[Fact]
+	public async Task AI02_ShouldOfferReplacement_WhenAgentsMdIsTheGeneratedLegacyTemplate()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["AGENTS.md"] = Standards.LegacyAgentsMdContent.Replace("\n", "\r\n")
+		});
+
+		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+	}
+
+	[Fact]
+	public async Task AI01_ShouldNotReplace_WhenClaudeMdIsHandWritten()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["CLAUDE.md"] = "# Mine\n" + Standards.LegacyClaudeMdContent
+		});
+
+		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	// ── AI-03 ───────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task AI03_ShouldPass_WhenCurrentTemplate()
+	{
+		var context = CreateContext(new Dictionary<string, string> { ["CLAUDE.md"] = Standards.ClaudeMdContent });
+
+		var result = await GetRule("AI-03").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task AI03_ShouldFail_WhenClaudeMdLacksTheAboutSection()
+	{
+		var context = CreateContext(new Dictionary<string, string> { ["CLAUDE.md"] = "# CLAUDE.md\n" });
+
+		var result = await GetRule("AI-03").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("append_line");
+	}
+
+	[Fact]
+	public async Task AI03_ShouldBeNotApplicable_WhenClaudeMdMissing()
+	{
+		var result = await GetRule("AI-03").EvaluateAsync(CreateEmptyContext(), CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeFalse();
+	}
+
+	// ── COM-01 legacy / COM-05 ──────────────────────────────────────────
+
+	[Fact]
+	public async Task COM01_ShouldOfferReplacement_WhenSecurityMdIsTheGeneratedMailboxVersion()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["SECURITY.md"] = Standards.LegacySecurityMdContent
+		});
+
+		var result = await GetRule("COM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+		((string)result.Advisory.Data["new_content"]).Should().NotContain("@panoramicdata.com");
+	}
+
+	[Fact]
+	public void SecurityMdTemplate_ShouldPublishNoMailboxAddress()
+		=> Standards.GetSecurityMdContent("test-org/test-repo").Should()
+			.NotContain("@").And.Contain("https://github.com/test-org/test-repo/security/advisories/new");
+
+	[Fact]
+	public async Task COM05_ShouldPass_WhenEnabled()
+	{
+		var context = CreateContext(new Dictionary<string, string>(), privateVulnerabilityReporting: true);
+
+		var result = await GetRule("COM-05").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task COM05_ShouldFail_WhenDisabled()
+	{
+		var context = CreateContext(new Dictionary<string, string>(), privateVulnerabilityReporting: false);
+
+		var result = await GetRule("COM-05").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task COM05_ShouldBeNotApplicable_WhenUnknown()
+	{
+		var result = await GetRule("COM-05").EvaluateAsync(CreateEmptyContext(), CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeFalse();
+	}
+
 	private static IRule GetRule(string ruleId)
 		=> RuleRegistry.Rules.Single(r => r.RuleId == ruleId);
 
@@ -2574,7 +2690,8 @@ public class RuleEvaluationTests : TestWithOutput
 		RepoOptions? options = null,
 		string defaultBranch = "main",
 		string? currentBranch = "main",
-		NugetManagementRepositoryConfig? config = null) => new()
+		NugetManagementRepositoryConfig? config = null,
+		bool? privateVulnerabilityReporting = null) => new()
 	{
 		FullName = "test-org/test-repo",
 		Name = "test-repo",
@@ -2583,6 +2700,7 @@ public class RuleEvaluationTests : TestWithOutput
 		Options = options ?? new RepoOptions(),
 		FilePaths = [.. files.Keys],
 		FileContents = files,
-		RepositoryConfig = config
+		RepositoryConfig = config,
+		PrivateVulnerabilityReportingEnabled = privateVulnerabilityReporting
 	};
 }

@@ -105,6 +105,13 @@ public class LocalRepositoryContextBuilder
 	/// Whether this clone was recently confirmed to match origin. VER-05 reports nothing without it,
 	/// because a stale clone's own commits look exactly like work waiting to be released.
 	/// </param>
+	/// <param name="lineCoveragePercent">
+	/// The line coverage Codacy holds for the repository, resolved by the caller because the clone
+	/// cannot know it. Null leaves TST-10 reporting RED, so the local path must supply it.
+	/// </param>
+	/// <param name="privateVulnerabilityReportingEnabled">
+	/// Whether GitHub private vulnerability reporting is on, resolved by the caller; null when unknown.
+	/// </param>
 	public RepositoryContext Build(
 		string localPath,
 		string repositoryFullName,
@@ -116,7 +123,9 @@ public class LocalRepositoryContextBuilder
 		ReleaseRun? releaseRun = null,
 		string? headSha = null,
 		string? nextVersion = null,
-		bool isConfirmedInSyncWithOrigin = false)
+		bool isConfirmedInSyncWithOrigin = false,
+		double? lineCoveragePercent = null,
+		bool? privateVulnerabilityReportingEnabled = null)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]
@@ -144,7 +153,9 @@ public class LocalRepositoryContextBuilder
 			LatestPublishedVersion = latestPublishedVersion,
 			ReleaseRun = releaseRun,
 			NextVersion = nextVersion,
-			IsConfirmedInSyncWithOrigin = isConfirmedInSyncWithOrigin
+			IsConfirmedInSyncWithOrigin = isConfirmedInSyncWithOrigin,
+			LineCoveragePercent = lineCoveragePercent,
+			PrivateVulnerabilityReportingEnabled = privateVulnerabilityReportingEnabled
 		};
 	}
 

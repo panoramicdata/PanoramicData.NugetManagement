@@ -39,6 +39,23 @@ public class ClaudeMdReferencesSharedSkillsRule : RuleBase
 				}));
 		}
 
+		if (Standards.IsGeneratedContent(content, Standards.LegacyClaudeMdContent))
+		{
+			return Task.FromResult(Fail(
+				"CLAUDE.md is the earlier generated template, which lacks the sections Codacy grades.",
+				new RuleAdvisory
+				{
+					Summary = "Replace the generated CLAUDE.md with the current template",
+					Detail = "The file is byte-for-byte what this tool previously generated, so it is replaced; a hand-written file is never touched.",
+					Data = new()
+					{
+						["remediation_type"] = "replace_file_content",
+						["file"] = "CLAUDE.md",
+						["new_content"] = Standards.ClaudeMdContent
+					}
+				}));
+		}
+
 		return Task.FromResult(Contains(content, Standards.SharedSkillsCopilotInstructionsPath)
 			? Pass("CLAUDE.md found and references the shared Panoramic Data skills.")
 			: Fail(
