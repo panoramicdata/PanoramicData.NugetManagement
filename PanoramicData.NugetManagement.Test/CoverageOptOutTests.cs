@@ -59,6 +59,45 @@ public class CoverageOptOutTests
 		};
 
 	[Fact]
+	public void TheDeclarationAsCommittedToARepository_ParsesAndIsHonoured()
+	{
+		// The exact shape committed to Rundeck.Api and Highlight.Api: no $schema (the schema file lives
+		// only in this repository), and a comment explaining why. The parser returns null on any
+		// exception, so a file that fails to parse would silently declare nothing and the repository
+		// would go on being asked to copy a coverage job. This pins that it does not.
+		const string committed = """
+			{
+				"version": 1,
+				"projects": {
+					// Every test calls a live service, and CI has none.
+					"Rundeck.Api.Test/Rundeck.Api.Test.csproj": {
+						"defaultTestingLevel": "None"
+					}
+				}
+			}
+			""";
+
+		var config = NugetManagementRepositoryConfigParser.Parse(committed);
+
+		config.Should().NotBeNull("a config that fails to parse silently declares nothing");
+
+		var context = new RepositoryContext
+		{
+			FullName = "test-org/Rundeck.Api",
+			Name = "Rundeck.Api",
+			DefaultBranch = "main",
+			CurrentBranch = "main",
+			Options = new RepoOptions(),
+			FilePaths = ["Rundeck.Api.Test/Rundeck.Api.Test.csproj"],
+			FileContents = new() { ["Rundeck.Api.Test/Rundeck.Api.Test.csproj"] = "<Project/>" },
+			RepositoryConfig = config
+		};
+
+		context.FindCoverageTestProjectFiles().Should().BeEmpty();
+		context.FindTestProjectFiles().Should().ContainSingle();
+	}
+
+	[Fact]
 	public void AProjectDeclaredNone_IsNotACoverageTestProject()
 		=> ContextWith(ProjectTestingLevel.None).FindCoverageTestProjectFiles().Should().BeEmpty();
 
