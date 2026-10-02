@@ -42,11 +42,12 @@ public class CodeCoverageBandRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.FindTestProjectFiles().Any())
+		// Not RED. A repository with no tests is TST-01's finding, and reporting it twice makes the fix
+		// list longer without making it more informative. One whose tests are declared as unable to
+		// run unattended is not RED either: nothing was left unmeasured that anyone could measure.
+		if (NoCoverageToMeasure(context, "nothing to measure") is { } notApplicable)
 		{
-			// Not RED. A repository with no tests is TST-01's finding, and reporting it twice makes
-			// the fix list longer without making it more informative.
-			return Task.FromResult(NotApplicable("No test projects found; there is nothing to measure."));
+			return Task.FromResult(notApplicable);
 		}
 
 		var line = context.LineCoveragePercent;

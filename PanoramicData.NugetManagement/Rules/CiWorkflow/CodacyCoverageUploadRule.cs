@@ -41,9 +41,9 @@ public class CodacyCoverageUploadRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.FindTestProjectFiles().Any())
+		if (NoCoverageToMeasure(context, "no coverage to upload") is { } notApplicable)
 		{
-			return Task.FromResult(NotApplicable("No test projects found; there is no coverage to upload."));
+			return Task.FromResult(notApplicable);
 		}
 
 		var workflows = context.FilePaths
@@ -75,6 +75,17 @@ public class CodacyCoverageUploadRule : RuleBase
 
 						The upload step should be continue-on-error, so a Codacy outage cannot turn a
 						passing test run red.
+
+						Do not do this if the tests cannot run in CI. A test project that calls a live
+						service CI does not have (a vendor portal, a database, a device) would only turn
+						the new job red. Such a repository should declare it instead, in
+						PanoramicData.NugetManagement.config.json:
+
+						  "projects": { "<Project>.Test.csproj": { "defaultTestingLevel": "None" } }
+
+						and this rule, CQ-07 and TST-10 then report not-applicable for it. Check the
+						existing ci.yml first: a comment explaining why there is no Test step is the
+						signal that this is the case.
 
 						The token is a separate problem: CQ-07 reports whether this repository has one,
 						and it cannot be created by editing files.
