@@ -1,0 +1,119 @@
+{
+	"permissions": {
+		"additionalDirectories": [
+			"../PanoramicData.Skills"
+		]
+	},
+	"hooks": {
+		"SessionStart": [
+			{
+				"matcher": "startup",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "pwsh",
+						"args": [
+							"-NoProfile",
+							"-ExecutionPolicy",
+							"Bypass",
+							"-File",
+							"${CLAUDE_PROJECT_DIR}/../PanoramicData.Skills/.github/skills/_common/Write-CoreRulesDigest.ps1"
+						],
+						"timeout": 15
+					}
+				]
+			},
+			{
+				"matcher": "resume",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "pwsh",
+						"args": [
+							"-NoProfile",
+							"-ExecutionPolicy",
+							"Bypass",
+							"-File",
+							"${CLAUDE_PROJECT_DIR}/../PanoramicData.Skills/.github/skills/_common/Write-CoreRulesDigest.ps1"
+						],
+						"timeout": 15
+					}
+				]
+			},
+			{
+				"matcher": "clear",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "pwsh",
+						"args": [
+							"-NoProfile",
+							"-ExecutionPolicy",
+							"Bypass",
+							"-File",
+							"${CLAUDE_PROJECT_DIR}/../PanoramicData.Skills/.github/skills/_common/Write-CoreRulesDigest.ps1"
+						],
+						"timeout": 15
+					}
+				]
+			},
+			{
+				"matcher": "compact",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "pwsh",
+						"args": [
+							"-NoProfile",
+							"-ExecutionPolicy",
+							"Bypass",
+							"-File",
+							"${CLAUDE_PROJECT_DIR}/../PanoramicData.Skills/.github/skills/_common/Write-CoreRulesDigest.ps1"
+						],
+						"timeout": 15
+					}
+				]
+			}
+		],
+		"PreToolUse": [
+			{
+				"matcher": "PowerShell",
+				"hooks": [
+					{
+						"type": "command",
+						"if": "PowerShell(*PanoramicData.Skills*)",
+						"command": "pwsh",
+						"args": [
+							"-NoProfile",
+							"-NonInteractive",
+							"-ExecutionPolicy",
+							"Bypass",
+							"-File",
+							"${CLAUDE_PROJECT_DIR}/../PanoramicData.Skills/.github/skills/_common/Assert-SkillsCheckoutFresh.ps1"
+						],
+						"timeout": 30
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"if": "Bash(*PanoramicData.Skills*)",
+						"command": "pwsh",
+						"args": [
+							"-NoProfile",
+							"-NonInteractive",
+							"-ExecutionPolicy",
+							"Bypass",
+							"-File",
+							"${CLAUDE_PROJECT_DIR}/../PanoramicData.Skills/.github/skills/_common/Assert-SkillsCheckoutFresh.ps1"
+						],
+						"timeout": 30
+					}
+				]
+			}
+		]
+	}
+}
