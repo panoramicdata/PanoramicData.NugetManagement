@@ -109,6 +109,32 @@ public abstract class RuleBase : IRule
 				.Any(testProject => ReferencesPackageDirectly(context.GetFileContent(testProject), "xunit.v3", includeVariants: true));
 
 	/// <summary>
+	/// The not-applicable result a coverage rule should return when there are no tests whose coverage
+	/// can be measured, or null when there is work to do.
+	/// </summary>
+	/// <param name="context">The repository being assessed.</param>
+	/// <param name="whatIsMissing">What the caller would otherwise have measured or uploaded.</param>
+	/// <remarks>
+	/// Two different reasons, said differently, because they send the reader to different places:
+	/// a repository with no test projects is TST-01's finding, while one whose tests are all declared
+	/// <c>DefaultTestingLevel: None</c> has made a deliberate statement that they cannot run
+	/// unattended — typically because they call a live service CI does not have — and asking it to
+	/// copy a coverage job would only produce a job that fails.
+	/// </remarks>
+	protected RuleResult? NoCoverageToMeasure(RepositoryContext context, string whatIsMissing)
+	{
+		if (!context.FindTestProjectFiles().Any())
+		{
+			return NotApplicable($"No test projects found; there is {whatIsMissing}.");
+		}
+
+		return context.FindCoverageTestProjectFiles().Any()
+			? null
+			: NotApplicable(
+				$"Every test project is declared DefaultTestingLevel: None, so its tests are not run unattended and there is {whatIsMissing}.");
+	}
+
+	/// <summary>
 	/// The projects a packaging rule should check, or the result to return instead when there are
 	/// none to check.
 	/// </summary>
