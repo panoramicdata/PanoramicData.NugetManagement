@@ -15,18 +15,14 @@ namespace PanoramicData.NugetManagement.Test;
 /// fix. A failure in the first says the server is wrong; a failure in the second says the model cannot
 /// use tools at all; only a failure in the third is about the prompt.
 /// <para>
-/// Skipped unless <c>Ollama:BaseUrl</c> and <c>Ollama:Model</c> are configured, so a developer without a
-/// server sees them skipped rather than red.
+/// Fail unless <c>Ollama:BaseUrl</c> and <c>Ollama:Model</c> are configured. CI never runs them: they carry
+/// Category=Integration and are run on demand by the manual Ollama integration workflow.
 /// </para>
 /// </remarks>
+[Trait("Category", "Integration")]
 [Trait("Category", OllamaIntegrationSettings.Category)]
 public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(output)
 {
-	/// <summary>
-	/// Whether a server and model are configured. Referenced by <c>SkipUnless</c> on each test.
-	/// </summary>
-	public static bool IsOllamaConfigured => OllamaIntegrationSettings.IsConfigured;
-
 	private static OllamaClient CreateClient()
 		=> new(new OllamaClientOptions
 		{
@@ -45,7 +41,7 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 	/// The configured model answers at all. If this fails, the URL, the key or the model name is wrong
 	/// and nothing below it is worth reading.
 	/// </summary>
-	[Fact(SkipUnless = nameof(IsOllamaConfigured), Skip = "Ollama:BaseUrl and Ollama:Model are not configured")]
+	[Fact]
 	public async Task TheModelIsReachable()
 	{
 		using var client = CreateClient();
@@ -79,7 +75,7 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 	/// The model can call one of our tools. If this fails, the model does not do tool calling usefully
 	/// and no prompt will save it — try a different one.
 	/// </summary>
-	[Fact(SkipUnless = nameof(IsOllamaConfigured), Skip = "Ollama:BaseUrl and Ollama:Model are not configured")]
+	[Fact]
 	public async Task TheModelCanCallATool()
 	{
 		using var copy = FailArmyWorkingCopy.Create();
@@ -105,14 +101,14 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 	/// META-04 fails against a fresh copy of the fixture, the model fixes it, and the rule then passes.
 	/// This is the test that says whether the prompt works.
 	/// </summary>
-	[Fact(SkipUnless = nameof(IsOllamaConfigured), Skip = "Ollama:BaseUrl and Ollama:Model are not configured")]
+	[Fact]
 	public async Task ItFixesTheMissingPackageProjectUrl()
 		=> await AssertFixesRuleAsync("META-04").ConfigureAwait(true);
 
 	/// <summary>
 	/// The same, for META-05, which needs two edits in one file that have to agree — a harder ask.
 	/// </summary>
-	[Fact(SkipUnless = nameof(IsOllamaConfigured), Skip = "Ollama:BaseUrl and Ollama:Model are not configured")]
+	[Fact]
 	public async Task ItFixesTheMissingPackageIcon()
 		=> await AssertFixesRuleAsync("META-05").ConfigureAwait(true);
 

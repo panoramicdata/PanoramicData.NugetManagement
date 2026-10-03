@@ -8,6 +8,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// <summary>
 /// End-to-end integration tests against live GitHub repositories.
 /// </summary>
+[Trait("Category", "Integration")]
 public class GitHubIntegrationTests : TestWithOutput
 {
 	private static readonly string[] _excludedPathPrefixes = ["PanoramicData.NugetManagement.Test/Fixtures/"];
@@ -36,17 +37,10 @@ public class GitHubIntegrationTests : TestWithOutput
 	/// </remarks>
 	private static readonly string[] _externallyMeasuredRuleIds = ["TST-10"];
 
-	/// <summary>
-	/// Whether a GitHub token is configured. Referenced by <c>SkipUnless</c> on each test so these
-	/// tests are reported as skipped, not failed, on a machine with no GitHub secret configured.
-	/// </summary>
-	public static bool IsGitHubConfigured => GitHubIntegrationSettings.IsConfigured;
-
 	private readonly Lazy<IGitHubClient> _lazyGitHub;
 	private readonly Lazy<RepositoryContextBuilder> _lazyContextBuilder;
 
-	// Created on first use: building a client requires the token, so constructing it eagerly would
-	// throw in the constructor before a skip condition could take effect.
+	// Created on first use, so a missing token fails the test with its message rather than the constructor.
 	private IGitHubClient _github => _lazyGitHub.Value;
 	private RepositoryContextBuilder _contextBuilder => _lazyContextBuilder.Value;
 
@@ -61,7 +55,7 @@ public class GitHubIntegrationTests : TestWithOutput
 			() => new RepositoryContextBuilder(_github, CreateLogger<RepositoryContextBuilder>()));
 	}
 
-	[Fact(SkipUnless = nameof(IsGitHubConfigured), Skip = "GitHub:Token is not configured in user secrets")]
+	[Fact]
 	public async Task GitHubContextBuilder_ShouldFetchExpectedFiles_ForThisRepository()
 	{
 		var repository = await _github.Repository.Get("panoramicdata", "PanoramicData.NugetManagement");
@@ -74,7 +68,7 @@ public class GitHubIntegrationTests : TestWithOutput
 		context.GetFileContent("README.md").Should().NotBeNullOrWhiteSpace();
 	}
 
-	[Fact(SkipUnless = nameof(IsGitHubConfigured), Skip = "GitHub:Token is not configured in user secrets")]
+	[Fact]
 	public async Task GitHubAssessment_ThisRepository_ShouldBeCompliant()
 	{
 		var repository = await _github.Repository.Get("panoramicdata", "PanoramicData.NugetManagement");
@@ -106,7 +100,7 @@ public class GitHubIntegrationTests : TestWithOutput
 			.Should().BeEmpty("the live panoramicdata/PanoramicData.NugetManagement repository should satisfy all assessment rules");
 	}
 
-	[Fact(SkipUnless = nameof(IsGitHubConfigured), Skip = "GitHub:Token is not configured in user secrets")]
+	[Fact]
 	public async Task GitHubAssessment_FailArmyRepository_ShouldNotBeCompliant()
 	{
 		var repository = await _github.Repository.Get("panoramicdata", "PanoramicData.NugetFailArmy");
