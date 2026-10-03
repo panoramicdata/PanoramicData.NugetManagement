@@ -14,6 +14,7 @@
   "Divoom.Api",
   "DocMagic.Api",
   "DocumentFormat.OpenXml.DotNet.Core",
+  "Entuity.Api",
   "ExampleApp",
   "HaloPsa.Api",
   "Harvest",
