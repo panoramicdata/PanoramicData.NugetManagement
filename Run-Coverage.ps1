@@ -11,10 +11,8 @@ param(
 	[double]$MinimumLineCoverage = 0,
 
 	# A VSTest filter expression passed straight to the test application, e.g.
-	# "Category!=Ollama". CI uses it to leave the Ollama integration tests
-	# to their own job: four of them routinely take longer than the other fifteen hundred combined,
-	# and they sit in front of the coverage upload, so a busy GPU used to delay the coverage figure
-	# by three quarters of an hour. Empty by default, so a local run still measures everything.
+	# "Category!=Integration". CI uses it so the live GitHub and Ollama tests never run there.
+	# Empty by default, so a local run still measures everything.
 	[string]$Filter = ''
 )
 

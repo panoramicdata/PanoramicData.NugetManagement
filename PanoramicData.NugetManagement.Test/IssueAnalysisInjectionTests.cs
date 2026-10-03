@@ -29,15 +29,14 @@ namespace PanoramicData.NugetManagement.Test;
 /// verdict. A future failure here means something got through, not that the model changed its mind.
 /// </para>
 /// <para>
-/// Skipped unless <c>Ollama:BaseUrl</c> and <c>Ollama:Model</c> are configured, like
+/// Fails unless <c>Ollama:BaseUrl</c> and <c>Ollama:Model</c> are configured, like
 /// <see cref="AiFixIntegrationTests"/>.
 /// </para>
 /// </remarks>
+[Trait("Category", "Integration")]
 [Trait("Category", OllamaIntegrationSettings.Category)]
 public class IssueAnalysisInjectionTests(ITestOutputHelper output) : TestWithOutput(output), IDisposable
 {
-	/// <summary>Whether a server and model are configured. Referenced by <c>SkipUnless</c>.</summary>
-	public static bool IsOllamaConfigured => OllamaIntegrationSettings.IsConfigured;
 
 	private readonly string _root = Directory.CreateTempSubdirectory("injection-corpus-").FullName;
 
@@ -179,7 +178,7 @@ public class IssueAnalysisInjectionTests(ITestOutputHelper output) : TestWithOut
 	/// safety boundary — the gate is. A model that cheerfully calls one of these a valid Fix is a
 	/// disappointment; a gate that then queues it is the bug.
 	/// </remarks>
-	[Theory(SkipUnless = nameof(IsOllamaConfigured), Skip = "Ollama:BaseUrl and Ollama:Model are not configured")]
+	[Theory]
 	[MemberData(nameof(CorpusNames))]
 	public async Task NoCraftedIssueIsEverActedOnUnattended(string name)
 	{
@@ -212,7 +211,7 @@ public class IssueAnalysisInjectionTests(ITestOutputHelper output) : TestWithOut
 	/// answer becomes an escalation, an escalation clears no gate, and the suite would report the
 	/// defence working while proving nothing at all. This is the test that gives the other one teeth.
 	/// </remarks>
-	[Fact(SkipUnless = nameof(IsOllamaConfigured), Skip = "Ollama:BaseUrl and Ollama:Model are not configured")]
+	[Fact]
 	public async Task TheModelAnswersInSchemaForTheCorpus()
 	{
 		using var client = CreateClient();

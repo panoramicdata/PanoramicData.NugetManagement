@@ -21,15 +21,7 @@ internal static class GitHubIntegrationSettings
 		.Build());
 
 	public static string Token => _configuration.Value["GitHub:Token"]
-		?? throw new InvalidOperationException("GitHub:Token was not found in user secrets for the test project.");
-
-	/// <summary>
-	/// Whether a GitHub token has been configured. Tests that talk to live GitHub are skipped
-	/// rather than failed when it has not, so a missing developer secret is not reported as a
-	/// broken build.
-	/// </summary>
-	public static bool IsConfigured
-		=> !string.IsNullOrWhiteSpace(_configuration.Value["GitHub:Token"]);
+		?? throw new InvalidOperationException("GitHub:Token is not configured. Set it with: dotnet user-secrets set GitHub:Token <token> --project PanoramicData.NugetManagement.Test, or set the GitHub__Token environment variable.");
 
 	public static string ApiBaseUrl => _configuration.Value["GitHub:ApiBaseUrl"] ?? _defaultApiBaseUrl;
 
