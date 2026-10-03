@@ -765,6 +765,8 @@ public static class Standards
 			[switch]$SkipPublishVerification
 		)
 
+		$InformationPreference = 'Continue'
+
 		# Ensure we are on the main branch
 		$branch = git rev-parse --abbrev-ref HEAD
 		if ($branch -ne 'main') {
@@ -820,7 +822,7 @@ public static class Standards
 			exit 1
 		}
 		$version = ($buildOutput | Select-Object -Last 1).ToString().Trim()
-		Write-Host "Version: $version"
+		Write-Information "Version: $version"
 
 		# Check if tag already exists
 		$existingTag = git tag -l $version
@@ -832,7 +834,7 @@ public static class Standards
 		# Create and push tag
 		git tag $version
 		git push origin $version
-		Write-Host "Tag $version pushed."
+		Write-Information "Tag $version pushed."
 
 		if ($SkipPublishVerification) {
 			Write-Warning "Not waiting for the release run (-SkipPublishVerification). Nothing has confirmed that a package reached nuget.org."
@@ -843,7 +845,7 @@ public static class Standards
 		$originUrl = git remote get-url origin
 		$repoFullName = ($originUrl -replace '^.*github\.com[:/]', '') -replace '\.git$', ''
 
-		Write-Host "Waiting for the release run for $version..."
+		Write-Information "Waiting for the release run for $version..."
 
 		# The run takes a few seconds to appear after the tag push.
 		$runId = $null
@@ -861,13 +863,13 @@ public static class Standards
 			exit 1
 		}
 
-		Write-Host "Run: https://github.com/$repoFullName/actions/runs/$runId"
+		Write-Information "Run: https://github.com/$repoFullName/actions/runs/$runId"
 		gh run watch $runId --repo $repoFullName --exit-status --interval 20
 		$runExitCode = $LASTEXITCODE
 
 		if ($runExitCode -ne 0) {
-			Write-Host ""
-			Write-Host "The release run did not succeed: https://github.com/$repoFullName/actions/runs/$runId" -ForegroundColor Red
+			Write-Information ""
+			Write-Warning "The release run did not succeed: https://github.com/$repoFullName/actions/runs/$runId"
 
 			# A refused job — an exhausted Actions budget, for instance — fails before any step runs, so it
 			# has no failed step to report. The check-run annotation is the only place the reason appears.
@@ -875,16 +877,16 @@ public static class Standards
 			if ($LASTEXITCODE -eq 0 -and $jobId) {
 				$annotation = gh api "repos/$repoFullName/check-runs/$jobId/annotations" --jq '.[0].message' 2>$null
 				if ($LASTEXITCODE -eq 0 -and $annotation) {
-					Write-Host "Reason: $annotation" -ForegroundColor Red
+					Write-Warning "Reason: $annotation"
 				}
 			}
 
-			Write-Host ""
-			Write-Host "Tag $version is pushed but no package was published. Once the cause is fixed:" -ForegroundColor Yellow
-			Write-Host "  gh run rerun $runId --repo $repoFullName --failed" -ForegroundColor Cyan
+			Write-Information ""
+			Write-Warning "Tag $version is pushed but no package was published. Once the cause is fixed:"
+			Write-Information "  gh run rerun $runId --repo $repoFullName --failed"
 			exit 1
 		}
 
-		Write-Host "Package $version published." -ForegroundColor Green
+		Write-Information "Package $version published."
 		""";
 }

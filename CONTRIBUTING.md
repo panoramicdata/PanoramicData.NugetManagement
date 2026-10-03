@@ -1,47 +1,31 @@
-# Contributing to PanoramicData.NugetManagement
+# Contributing
 
-We welcome contributions! Please follow these guidelines to keep things smooth.
+Thank you for your interest in contributing to this project!
 
-## Getting Started
+## How to Contribute
 
-1. Fork the repository
-2. Create a feature branch from `main`
-3. Make your changes
-4. Ensure all tests pass (`dotnet test`)
-5. Open a pull request
+1. **Fork** the repository
+2. **Create a branch** for your feature or fix (`git checkout -b feature/my-feature`)
+3. **Make your changes** following the coding standards below
+4. **Write or update tests** as appropriate
+5. **Ensure the build passes** with zero errors, zero warnings, and zero messages
+6. **Submit a Pull Request** against the `main` branch
 
-## Development Requirements
+## Coding Standards
 
-- .NET 10.0 SDK
-- An IDE that supports .editorconfig (e.g. Visual Studio, Rider, VS Code with C# Dev Kit)
-
-## Code Standards
-
-- Follow the `.editorconfig` rules
+- All public members must have XML documentation comments
+- Use `System.Text.Json` — do not introduce `Newtonsoft.Json`
+- Use Refit for HTTP client interfaces
 - Use file-scoped namespaces
-- Add XML documentation comments to all public members
-- Use `required` keyword for required DTO properties
-- Prefer `System.Text.Json` over `Newtonsoft.Json`
-- Use Refit for any HTTP client interfaces
-- Keep `TreatWarningsAsErrors` enabled — fix warnings, don't suppress them
+- Use the `required` keyword for DTO properties where appropriate
+- Ensure `TreatWarningsAsErrors` remains enabled
+- All code must compile with zero diagnostics
 
-## Adding New Rules
+## Testing
 
-1. Create a new class extending `RuleBase` in the `Rules/` directory
-2. Group related rules in the same file by category
-3. Assign a unique `RuleId` following the pattern: `{CATEGORY}-{NN}` (e.g. `CI-08`)
-4. Add the appropriate `AssessmentCategory` and `AssessmentSeverity`
-5. Provide clear `Message` and `Remediation` text in `Fail()` results
-6. The rule will be automatically discovered by `RuleRegistry`
-
-## Pull Request Checklist
-
-- [ ] Code compiles with zero warnings
-- [ ] All existing tests pass
-- [ ] New rules have corresponding tests
-- [ ] XML documentation on public API
-- [ ] No Newtonsoft.Json references
-- [ ] No suppressed warnings without justification
+- Use xUnit v3 for all tests
+- Use AwesomeAssertions for fluent assertions
+- Ensure all existing tests pass before submitting a PR
 
 ## License
 

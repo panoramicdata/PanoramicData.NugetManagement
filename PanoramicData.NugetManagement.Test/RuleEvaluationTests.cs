@@ -279,7 +279,7 @@ public class RuleEvaluationTests : TestWithOutput
 			["LICENSE"] = "MIT",
 			["README.md"] = "# Readme",
 			["SECURITY.md"] = "# Security",
-			["CONTRIBUTING.md"] = "# Contributing",
+			["CONTRIBUTING.md"] = Standards.ContributingMdContent,
 			["version.json"] = "{}"
 		});
 
@@ -984,11 +984,24 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["CONTRIBUTING.md"] = "# Contributing"
+			["CONTRIBUTING.md"] = Standards.ContributingMdContent
 		});
 
 		var result = await GetRule("COM-02").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task COM02_ShouldOfferReplacement_WhenContributingMdDiffersFromTheStandard()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["CONTRIBUTING.md"] = "# Contributing\nDo it our way.\n"
+		});
+
+		var result = await GetRule("COM-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
 	}
 
 	[Fact]
