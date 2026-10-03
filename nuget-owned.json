@@ -102,6 +102,7 @@
   "Solidtime.Api",
   "SymphonyAi.Summit.Api",
   "TeamViewer.Api",
+  "TheHive.Api",
   "Toggl.Api",
   "Uk.CompaniesHouse.Api",
   "Uk.Legislation",
@@ -109,5 +110,6 @@
   "Uk.Nhs.CyberAlerts.Api",
   "Uk.Parliament",
   "Vizor.ECharts.Net80",
-  "XWiki.Api"
+  "XWiki.Api",
+  "YardStickOne.Api"
 ]

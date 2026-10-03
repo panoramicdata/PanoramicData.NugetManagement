@@ -1140,9 +1140,9 @@
     "refreshedAtUtc": "2026-09-13T22:06:29.3321773+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.283",
-    "published": "2026-09-29T23:30:12.16+01:00",
-    "refreshedAtUtc": "2026-09-30T02:32:53.5289117+00:00"
+    "latestVersion": "10.0.301",
+    "published": "2026-10-03T22:38:50.543+01:00",
+    "refreshedAtUtc": "2026-10-03T21:58:24.9377519+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.3",
