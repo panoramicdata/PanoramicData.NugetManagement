@@ -364,6 +364,8 @@ public static class Standards
 			steps:
 			- name: Checkout repository
 			  uses: actions/checkout@v7
+			  with:
+				fetch-depth: 0 # Nerdbank.GitVersioning needs full history, or the build fails
 
 			- name: Initialize CodeQL
 			  uses: github/codeql-action/init@v4
