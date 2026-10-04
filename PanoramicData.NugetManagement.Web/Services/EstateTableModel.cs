@@ -197,7 +197,8 @@ public sealed class EstateTableModel
 
 		if (!string.IsNullOrWhiteSpace(filter))
 		{
-			visible = visible.Where(row => row.FullName.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase));
+			var text = filter.Trim();
+			visible = visible.Where(row => row.Name.Contains(text, StringComparison.OrdinalIgnoreCase));
 		}
 
 		var ordered = Order(visible, sort, sortCategory).ToList();

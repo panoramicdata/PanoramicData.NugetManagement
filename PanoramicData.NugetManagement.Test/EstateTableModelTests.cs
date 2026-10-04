@@ -333,6 +333,11 @@ public class EstateTableModelTests(ITestOutputHelper output) : TestWithOutput(ou
 	}
 
 	[Fact]
+	public void Filter_DoesNotMatchTheOrganisationPrefix()
+		=> Build([Row("Alpha.Api"), Row("Beta.Api")], filter: "panoramic")
+			.Rows.Should().BeEmpty("every repository shares the organisation, so matching it filters nothing");
+
+	[Fact]
 	public void HiddenSelectedCount_CountsTickedRowsTheFilterHides()
 	{
 		var model = Build([Row("Alpha.Api"), Row("Beta.Api"), Row("Gamma.Api")], filter: "alpha");
