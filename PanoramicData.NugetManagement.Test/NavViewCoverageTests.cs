@@ -121,6 +121,15 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 		=> ReadToolbarButton("reassess")
 			.Should().Contain("IsEstateWide");
 
+	/// <summary>
+	/// Fix with AI used to read only the single selected repository, so on the estate it was never
+	/// offered at all.
+	/// </summary>
+	[Fact]
+	public void FixWithAiShouldBeOfferedForTheTickedRepositories()
+		=> ReadToolbarButton("fix-with-ai")
+			.Should().Contain("IsEstateWide");
+
 	[Fact]
 	public void PublishShouldNeverBeOfferedForTheEstate()
 		=> ReadToolbarButton("publish")

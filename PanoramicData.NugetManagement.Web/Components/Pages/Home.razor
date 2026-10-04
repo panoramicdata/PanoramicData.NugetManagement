@@ -494,7 +494,7 @@ else
 							<PDToolbarButton Key="fix-with-ai"
 											 Text="Fix with AI"
 											 IconCssClass="fas fa-robot"
-											 IsVisible="@(_selectedRow is not null && AiFixCandidateCount() > 0)"
+											 IsVisible="@((_selectedRow is not null || IsEstateWide) && AiFixCandidateCount() > 0)"
 											 IsEnabled="@IsFixWithAiEnabled()"
 											 ToolTip="@GetFixWithAiTooltip()"
 											 Click="OnToolbarClick" />
@@ -4642,9 +4642,17 @@ else
 	}
 
 	private int AiFixCandidateCount()
-		=> _selectedRow is null
-			? 0
-			: AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
+		=> IsEstateWide
+			? EstateAiFixRows().Count
+			: _selectedRow is null
+				? 0
+				: AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
+
+	/// <summary>
+	/// The ticked repositories that have something only a local model can do.
+	/// </summary>
+	private List<RepositoryDashboardRow> EstateAiFixRows()
+		=> [.. EstateTargets(WorkflowStep.Fix).Where(row => AiFixTargets.WorkCount(row, Remediations) > 0)];
 
 	/// <summary>
 	/// The human-raised issues in the selected repository that no analysis has judged yet.
@@ -4659,26 +4667,12 @@ else
 	/// </para>
 	/// </remarks>
 	private IReadOnlyList<RepositoryIssue> UnanalysedHumanIssues()
-	{
-		if (_selectedRow is null)
-		{
-			return [];
-		}
-
-		return
-		[
-			.. _selectedRow.OpenIssues
-				.Where(HumanIssueFilter.IsHumanRaised)
-				.Where(issue => issue.Analysis is null || IsVerdictStale(issue))
-		];
-	}
+		=> _selectedRow is null ? [] : AiFixTargets.UnanalysedHumanIssues(_selectedRow);
 
 	/// <summary>Whether the conversation has moved on since the verdict was reached.</summary>
 	/// <param name="issue">The issue.</param>
 	private static bool IsVerdictStale(RepositoryIssue issue)
-		=> issue.AnalysedAtIssueUpdatedUtc is { } analysed
-			&& issue.LastMaintainerReplyUtc is { } replied
-			&& replied > analysed;
+		=> AiFixTargets.IsVerdictStale(issue);
 
 	/// <summary>
 	/// Whether fixing locally is possible right now.
@@ -4697,6 +4691,17 @@ else
 	/// </summary>
 	private string GetFixWithAiTooltip()
 	{
+		if (IsEstateWide)
+		{
+			var withWork = EstateAiFixRows().Count;
+			return !RuntimeSettings.Ollama.IsConfigured
+				? "No local model is configured — set one under Settings, Ollama Config."
+				: withWork == 0
+					? "Nothing ticked needs the model."
+					: $"Start local-model work in {withWork} ticked "
+						+ $"{(withWork == 1 ? "repository" : "repositories")}.";
+		}
+
 		var count = AiFixCandidateCount();
 		var ollama = RuntimeSettings.Ollama;
 
@@ -4733,54 +4738,108 @@ else
 	/// This one runs on the configured Ollama server instead, which costs nothing and needs no IDE — and
 	/// is far weaker, which is why every fix is checked against the rule that asked for it.
 	/// </remarks>
-	private Task FixWithAiAsync()
+	private async Task FixWithAiAsync()
 	{
+		if (IsEstateWide)
+		{
+			await FixWithAiAcrossEstateAsync();
+			return;
+		}
+
 		if (_selectedRow is null)
 		{
-			return Task.CompletedTask;
+			return;
 		}
 
 		EnsureSelectedRowIsCurrent();
+		QueueAiFixFor(_selectedRow, announceNothingToDo: true);
+	}
 
-		var candidates = AiFixCandidates.For(_selectedRow, Remediations);
-		var issues = UnanalysedHumanIssues();
+	/// <summary>
+	/// Starts local-model work in every ticked repository that has any, asking first when that is more
+	/// than one, and saying which it left out.
+	/// </summary>
+	private async Task FixWithAiAcrossEstateAsync()
+	{
+		var targets = EstateTargets(WorkflowStep.Fix);
+		var withWork = targets.Where(row => AiFixTargets.WorkCount(row, Remediations) > 0).ToList();
+
+		AppendConsole(ToolbarScope.DescribeSelection("Fix with AI", targets.Count, _selection.Count));
+
+		if (withWork.Count == 0)
+		{
+			return;
+		}
+
+		if (ToolbarScope.RequiresAiFixConfirmation(withWork.Count)
+			&& !await ConfirmAsync(ToolbarScope.ConfirmationMessage(
+				"Start local-model fixes in",
+				[.. withWork.Select(row => row.RepositoryName)])))
+		{
+			AppendConsole("Fix with AI cancelled: nothing was queued.");
+			return;
+		}
+
+		foreach (var row in withWork)
+		{
+			QueueAiFixFor(row, announceNothingToDo: false);
+		}
+
+		var without = targets.Except(withWork).Select(row => row.RepositoryName).ToList();
+		if (without.Count > 0)
+		{
+			AppendConsole($"Nothing for the model in: {string.Join(", ", without)}.");
+		}
+	}
+
+	/// <summary>
+	/// Queues one repository's local-model fixes and issue analyses.
+	/// </summary>
+	/// <param name="row">The repository.</param>
+	/// <param name="announceNothingToDo">Whether to say so when there is nothing to queue.</param>
+	private void QueueAiFixFor(RepositoryDashboardRow row, bool announceNothingToDo)
+	{
+		var candidates = AiFixCandidates.For(row, Remediations);
+		var issues = AiFixTargets.UnanalysedHumanIssues(row);
 
 		if (candidates.Count == 0 && issues.Count == 0)
 		{
-			AppendConsole("Nothing here needs the model: every failing rule has an automatic "
-				+ "remediation, and every human-raised issue already has a verdict.");
-			return Task.CompletedTask;
+			if (announceNothingToDo)
+			{
+				AppendConsole("Nothing here needs the model: every failing rule has an automatic "
+					+ "remediation, and every human-raised issue already has a verdict.");
+			}
+
+			return;
 		}
 
 		if (candidates.Count > 0)
 		{
 			var queued = FanOut.EnqueueAiFix(
-				_selectedRow.Organization,
-				_selectedRow.RepositoryFullName,
+				row.Organization,
+				row.RepositoryFullName,
 				candidates,
 				_selectedNodeKey);
 
-			AppendConsole($"⏳ Queued {queued} local-model fix(es) for {_selectedRow.RepositoryName}: "
+			AppendConsole($"⏳ Queued {queued} local-model fix(es) for {row.RepositoryName}: "
 				+ $"{string.Join(", ", candidates)}.");
 		}
 
 		if (issues.Count > 0)
 		{
 			var queued = FanOut.EnqueueIssueAnalysis(
-				_selectedRow.Organization,
-				_selectedRow.RepositoryFullName,
+				row.Organization,
+				row.RepositoryFullName,
 				[.. issues.Select(issue => issue.Number)],
 				_selectedNodeKey);
 
 			// Said plainly because analysis is not fixing. Most of these end as a verdict somebody
 			// reads; only a confident, unflagged one from a known contributor turns into a change,
 			// and none of them closes anything.
-			AppendConsole($"⏳ Queued {queued} issue analysis(es) for {_selectedRow.RepositoryName}: "
+			AppendConsole($"⏳ Queued {queued} issue analysis(es) for {row.RepositoryName}: "
 				+ $"{string.Join(", ", issues.Select(issue => $"#{issue.Number}"))}. Each produces a "
 				+ "verdict; rejections always wait for you.");
 		}
-
-		return Task.CompletedTask;
 	}
 
 	private async Task ReassessAllReposAsync() => await ReassessOrganizationAsync(null);
@@ -6998,23 +7057,33 @@ else
 		return $"Copy AI prompt for {remainingCount} remaining issue{(remainingCount == 1 ? "" : "s")}";
 	}
 
-	private Task CommitAndPushAsync()
+	private async Task CommitAndPushAsync()
 	{
 		if (IsEstateWide)
 		{
+			var targets = EstateTargets(WorkflowStep.CommitAndPush);
+
+			if (ToolbarScope.RequiresConfirmation(WorkflowStep.CommitAndPush, targets.Count)
+				&& !await ConfirmAsync(ToolbarScope.ConfirmationMessage(
+					"Commit & push",
+					[.. targets.Select(row => row.RepositoryName)])))
+			{
+				AppendConsole("Commit & push cancelled: nothing was queued.");
+				return;
+			}
+
 			QueueAcrossEstate(WorkKind.CommitAndPush, WorkflowStep.CommitAndPush, "Commit & push");
-			return Task.CompletedTask;
+			return;
 		}
 
 		if (_selectedRow is null)
 		{
-			return Task.CompletedTask;
+			return;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
 		QueueForSelectedRepository(WorkKind.CommitAndPush, $"Commit & push {_selectedRow.RepositoryFullName}", WorkflowStep.CommitAndPush);
-		return Task.CompletedTask;
 	}
 
 	public void Dispose()
