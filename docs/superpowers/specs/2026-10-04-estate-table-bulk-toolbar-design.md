@@ -124,8 +124,7 @@ coverage test does not catch the second.
 A shared component, `EstateTable`, replacing `EstateView`. Its logic lives in a pure `EstateTableModel`
 so it can be unit tested without rendering.
 
-**Columns, in order:** checkbox | Repository | one column per issue class | Branch | Uncommitted |
-Unpushed | Sync | Build | Test.
+**Columns, in order:** checkbox | Repository | Issues (the total, carried over from EstateView) | one column per issue class | Branch | Uncommitted | Unpushed | Sync | Build | Test.
 
 - **Issue-class columns** are the `AssessmentCategory` values with at least one failing rule among the
   rows in view, in enum order (so the layout is stable and empty classes do not take space). A cell shows
