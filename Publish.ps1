@@ -48,20 +48,31 @@ if (-not $SkipPublishVerification) {
 # Get version from Nerdbank.GitVersioning via the project's MSBuild targets (the
 # referenced NuGet package), so this does not depend on the global 'nbgv' CLI tool
 # being installed or on PATH.
-$packableProject = Get-ChildItem -Recurse -Filter *.csproj |
-	Where-Object { $_.FullName -notmatch '[\\/]obj[\\/]' -and (Get-Content $_.FullName -Raw) -match 'Nerdbank\.GitVersioning' } |
+#
+# Only projects git tracks in this checkout are considered. A recursive file search also walks
+# git-ignored folders such as .claude/worktrees/, where each agent worktree holds a full checkout
+# on its own branch: versioning one of those yields a version that is not a public release.
+$packableProject = git ls-files '*.csproj' |
+	Where-Object { (Test-Path $_) -and (Get-Content $_ -Raw) -match 'Nerdbank\.GitVersioning' } |
 	Select-Object -First 1
 if (-not $packableProject) {
-	Write-Error "Could not find a packable project referencing Nerdbank.GitVersioning."
+	Write-Error "Could not find a tracked project referencing Nerdbank.GitVersioning."
 	exit 1
 }
-$buildOutput = dotnet build $packableProject.FullName -t:GetBuildVersion --getProperty:NuGetPackageVersion -nologo -v:quiet -p:TreatWarningsAsErrors=false
+$buildOutput = dotnet build $packableProject -t:GetBuildVersion --getProperty:NuGetPackageVersion -nologo -v:quiet -p:TreatWarningsAsErrors=false
 if ($LASTEXITCODE -ne 0) {
 	Write-Error "Failed to determine version from Nerdbank.GitVersioning.`n$buildOutput"
 	exit 1
 }
 $version = ($buildOutput | Select-Object -Last 1).ToString().Trim()
 Write-Information "Version: $version"
+
+# On main the version must be a public release (1.2.3). Anything else, such as 1.2.3-gabcdef,
+# would be tagged with a name that misses publicReleaseRefSpec and publish a prerelease.
+if ($version -notmatch '^\d+\.\d+\.\d+$') {
+	Write-Error "Version '$version' is not a public-release version (expected major.minor.patch). Not tagging."
+	exit 1
+}
 
 # Check if tag already exists
 $existingTag = git tag -l $version
@@ -90,7 +101,8 @@ Write-Information "Waiting for the release run for $version..."
 $runId = $null
 for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
 	Start-Sleep -Seconds 5
-	$runListJson = gh run list --repo $repoFullName --branch $version --limit 1 --json databaseId 2>$null
+	# A tag push can start several workflows; only the release workflow's run is the one to watch.
+	$runListJson = gh run list --repo $repoFullName --workflow ci.yml --branch $version --limit 1 --json databaseId 2>$null
 	if ($LASTEXITCODE -eq 0 -and $runListJson) {
 		$runList = $runListJson | ConvertFrom-Json
 		if ($runList.Count -gt 0) { $runId = $runList[0].databaseId }
