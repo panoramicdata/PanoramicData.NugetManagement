@@ -271,7 +271,7 @@ else
 							}
 							@* The estate has no repository crumb of its own to inherit — it stands for all of
 							   them — so it names itself here or the trail stops at the organisation. *@
-							@if (IsEstateWide)
+							@if (_currentView == NavView.Repositories)
 							{
 								<span class="breadcrumb-sep">›</span>
 								<span class="breadcrumb-current">Repositories</span>
@@ -885,6 +885,11 @@ else
 	private bool _orgSelected;
 
 	/// <summary>
+	/// The repositories ticked in the table, which every estate-wide toolbar step acts on.
+	/// </summary>
+	private readonly RepositorySelection _selection = new();
+
+	/// <summary>
 	/// Whether a clone run is under way — the discovery step or any repository it fanned out to
 	/// actually cloning — so the org node can show a spinner and its stop button in place of the
 	/// clone-picker button.
@@ -1479,7 +1484,7 @@ else
 	/// The repositories an estate-wide press of a step would act on.
 	/// </summary>
 	private List<RepositoryDashboardRow> EstateTargets(WorkflowStep step)
-		=> ToolbarScope.Targets(EstateCandidates, step, RuntimeSettings.IsRepositoryExcluded);
+		=> ToolbarScope.Targets(EstateCandidates, step, RuntimeSettings.IsRepositoryExcluded, _selection);
 
 	/// <summary>
 	/// Whether a step that works on a local clone can run: for one repository, or for however many the
@@ -1505,10 +1510,9 @@ else
 	/// <param name="stepName">The step's label, as the button shows it.</param>
 	private void QueueAcrossEstate(WorkKind kind, WorkflowStep step, string stepName)
 	{
-		var candidates = EstateCandidates;
-		var targets = ToolbarScope.Targets(candidates, step, RuntimeSettings.IsRepositoryExcluded);
+		var targets = EstateTargets(step);
 
-		AppendConsole(ToolbarScope.Describe(stepName, targets.Count, candidates.Count));
+		AppendConsole(ToolbarScope.DescribeSelection(stepName, targets.Count, _selection.Count));
 
 		foreach (var row in targets)
 		{

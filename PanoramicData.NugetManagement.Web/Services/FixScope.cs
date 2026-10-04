@@ -40,10 +40,11 @@ public static class FixScope
 		// A repository, and the package inside it, contain both the failing rules and the inbox.
 		NavView.RepositoryDetail or NavView.PackageDetail => new(true, true),
 
-		// The whole estate is every repository at once, and so contains everything each of them does.
-		// Fix acting on everything beneath the selected node is the rule; a container that declined to
-		// would be the exception that makes the rule not worth stating.
-		NavView.Repositories => new(true, true),
+		// The estate, whichever node stands for it, is every repository at once, and so contains
+		// everything each of them does. Fix acting on everything beneath the selected node is the rule;
+		// a container that declined to would be the exception that makes the rule not worth stating.
+		// With a selection, "everything beneath" means the ticked rows.
+		NavView.Repositories or NavView.Organisation or NavView.Issues => new(true, true),
 
 		// The inbox and one item in it contain pull requests and nothing else. No failing rule sits
 		// beneath a pull request, so rewriting files here would be doing more than was asked.
