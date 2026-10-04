@@ -435,12 +435,12 @@ else
 					<!-- Toolbar — workflow order: Git Sync → Re-assess → Fix → Build → Test → Commit & Push → Publish -->
 						<PDToolbar CssClass="main-toolbar">
 							<PDToolbarButton Key="refresh"
-											 Text="@(_orgSelected ? "Rediscover Org" : "Rediscover Orgs")"
+											 Text="@(_orgSelected || IsEstateWide ? "Rediscover Org" : "Rediscover Orgs")"
 											 IconCssClass="fas fa-magnifying-glass"
 											 CssClass="btn-primary"
-											 IsVisible="@ShowBulkRunButtons"
+											 IsVisible="@(ShowBulkRunButtons || IsEstateWide)"
 											 IsEnabled="true"
-											 ToolTip="@(_orgSelected
+											 ToolTip="@(_orgSelected || IsEstateWide
 												? $"Re-read {CurrentOrganization}'s package list from NuGet, then assess it. Use Re-assess Org to skip the NuGet lookup."
 												: "Re-read every organisation's package list from NuGet, then assess everything. Use Re-assess Orgs to skip the NuGet lookup.")"
 											 Click="OnToolbarClick" />
@@ -463,7 +463,7 @@ else
 											 Text="@GetReassessButtonText()"
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
-											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.Repositories or NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
+											 IsVisible="@(ShowBulkRunButtons || IsEstateWide || _currentView is NavView.Repositories or NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
 											 IsEnabled="@(!IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Reassess))"
 											 ToolTip="@GatedTooltip(WorkflowStep.Reassess, IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
 											 Click="OnToolbarClick" />
@@ -1713,8 +1713,26 @@ else
 	/// </summary>
 	private string GetReassessButtonText()
 		=> _selectedRow is not null ? "Re-assess"
-			: _orgSelected ? "Re-assess Org"
+			: TickedCount > 0 ? $"Re-assess {TickedCount}"
+			: _orgSelected || IsEstateWide ? "Re-assess Org"
 			: "Re-assess Orgs";
+
+	/// <summary>
+	/// How many repositories are ticked, at a node where that means anything.
+	/// </summary>
+	private int TickedCount
+	{
+		get
+		{
+			if (!IsEstateWide)
+			{
+				return 0;
+			}
+
+			EnsureSelectionIsCurrent();
+			return _selection.Count;
+		}
+	}
 
 	/// <summary>
 	/// Where this organisation's clones are kept. Repositories owned by another account are filed under
@@ -1752,9 +1770,11 @@ else
 	{
 		var scope = _selectedRow is not null
 			? "Re-assess this package"
-			: _orgSelected
-				? $"Assess every {CurrentOrganization} repository again, without re-reading the package list from NuGet"
-				: "Assess every known repository again, without re-reading the package list from NuGet";
+			: TickedCount > 0
+				? $"Assess the {TickedCount} ticked {(TickedCount == 1 ? "repository" : "repositories")} again"
+				: _orgSelected || IsEstateWide
+					? $"Assess every {CurrentOrganization} repository again, without re-reading the package list from NuGet"
+					: "Assess every known repository again, without re-reading the package list from NuGet";
 
 		var lastAssessed = LastAssessedInScope();
 		return lastAssessed is null ? scope : $"{scope}. Last assessed {DescribeAssessmentAge(lastAssessed.Value)}";
@@ -2801,7 +2821,7 @@ else
 		{
 			case "refresh":
 				// Scope follows the breadcrumb: the selected organisation, or all of them.
-				if (_orgSelected)
+				if (_orgSelected || IsEstateWide)
 				{
 					await RediscoverOrganizationAsync(CurrentOrganization);
 				}
@@ -2827,21 +2847,25 @@ else
 				await CopyPromptToClipboardAsync();
 				break;
 			case "reassess":
-						// Same scoping as the label: package, then organisation, then everything.
-						if (_selectedRow is not null)
-						{
-							await ReassessAllAsync();
-						}
-						else if (_orgSelected)
-						{
-							await ReassessOrganizationAsync(CurrentOrganization);
-						}
-						else
-						{
-							await ReassessAllReposAsync();
-						}
+				// Ticked rows win; otherwise package, then organisation, then everything.
+				if (TickedCount > 0)
+				{
+					QueueAcrossEstate(WorkKind.Reassess, WorkflowStep.Reassess, "Re-assess");
+				}
+				else if (_selectedRow is not null)
+				{
+					await ReassessAllAsync();
+				}
+				else if (_orgSelected || IsEstateWide)
+				{
+					await ReassessOrganizationAsync(CurrentOrganization);
+				}
+				else
+				{
+					await ReassessAllReposAsync();
+				}
 
-						break;
+				break;
 				case "build":
 				await BuildAsync();
 				break;
@@ -4306,6 +4330,17 @@ else
 	/// </summary>
 	private string GatedTooltip(WorkflowStep step, string defaultToolTip)
 	{
+		// At the estate nodes a button acts on the ticked rows, so the useful answer to "why is this
+		// greyed" is what it would do, or that nothing is ticked. Re-assess with nothing ticked keeps its
+		// own tooltip: it falls back to the whole organisation.
+		if (IsEstateWide && !(ToolbarScope.FallsBackToWholeOrganisation(step) && TickedCount == 0))
+		{
+			return ToolbarScope.DescribeSelection(
+				GetWorkflowStepDisplayName(step),
+				EstateTargets(step).Count,
+				TickedCount);
+		}
+
 		if (FirstQueuedStep is not { } blocking || !WorkflowGate.IsBlocked(step, blocking))
 		{
 			return defaultToolTip;
@@ -6465,12 +6500,8 @@ else
 					: $"{item.Text} — informational";
 
 			case NavView.Repositories:
-				// The only container node whose toolbar acts on everything beneath it, which is new
-				// enough behaviour to be worth saying rather than leaving to be discovered by pressing
-				// Build and watching forty lanes start.
-				var buildable = EstateTargets(WorkflowStep.Build).Count;
-				return $"Repositories — every toolbar step runs on all {buildable} cloned, governed "
-					+ $"{(buildable == 1 ? "repository" : "repositories")} at once, except Publish"
+				return "Repositories — tick rows in the table, then use the toolbar to act on them. "
+					+ "Publish stays one repository at a time"
 					+ GetRolledUpHealthSuffix(item);
 
 			default:

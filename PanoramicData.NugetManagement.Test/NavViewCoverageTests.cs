@@ -103,6 +103,31 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 				"a second hand-maintained list of views is how the button goes missing again");
 
 	/// <summary>
+	/// Rediscover Org is organisation-wide whatever is ticked, so it is offered at every node the table
+	/// is on. Its visibility used to name the dashboard and the organisation's Home view only.
+	/// </summary>
+	[Fact]
+	public void RediscoverOrgShouldBeOfferedAtEveryEstateWideNode()
+		=> ReadToolbarButton("refresh")
+			.Should().Contain("IsEstateWide",
+				"the table is on three nodes, and the organisation-wide buttons belong on all of them");
+
+	/// <summary>
+	/// There is one Re-assess button, so it has to be visible wherever the table is, or one of the three
+	/// nodes has no way to re-assess.
+	/// </summary>
+	[Fact]
+	public void ReassessShouldBeOfferedAtEveryEstateWideNode()
+		=> ReadToolbarButton("reassess")
+			.Should().Contain("IsEstateWide");
+
+	[Fact]
+	public void PublishShouldNeverBeOfferedForTheEstate()
+		=> ReadToolbarButton("publish")
+			.Should().NotContain("IsEstateWide",
+				"a package pushed to nuget.org cannot be taken back, so it stays one repository at a time");
+
+	/// <summary>
 	/// The markup of one PDToolbarButton, from its Key to the end of the element.
 	/// </summary>
 	private static string ReadToolbarButton(string key)
