@@ -60,8 +60,8 @@ public class EstateTableRenderTests(ITestOutputHelper output) : TestWithOutput(o
 				["IsExcluded"] = (Func<string, bool>)(_ => false)
 			});
 
-			var output = await renderer.RenderComponentAsync<EstateTable>(parameters).ConfigureAwait(false);
-			return output.ToHtmlString();
+			var result = await renderer.RenderComponentAsync<EstateTable>(parameters).ConfigureAwait(false);
+			return result.ToHtmlString();
 		}).ConfigureAwait(false);
 	}
 
@@ -92,7 +92,11 @@ public class EstateTableRenderTests(ITestOutputHelper output) : TestWithOutput(o
 		var html = await RenderAsync([Row("Alpha.Api"), Row("Beta.Api")], selection);
 
 		html.Should().Contain("1 of 2 selected");
-		html.Should().Contain("checked");
+		var inputs = html.Split("<input", StringSplitOptions.RemoveEmptyEntries);
+		var alpha = inputs.Single(i => i.Contains("aria-label=\"Select Alpha.Api\"", StringComparison.Ordinal));
+		var beta = inputs.Single(i => i.Contains("aria-label=\"Select Beta.Api\"", StringComparison.Ordinal));
+		alpha.Split('>')[0].Should().Contain("checked");
+		beta.Split('>')[0].Should().NotContain("checked");
 	}
 
 	[Fact]

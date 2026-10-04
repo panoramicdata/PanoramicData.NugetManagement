@@ -37,7 +37,7 @@ else
 			<thead>
 				<tr>
 					<th>
-						<button type="button" class="btn btn-link p-0" title="Tick or untick every visible repository" @onclick="() => ToggleAllVisible(visibleNames, headerState)">
+						<button type="button" class="btn btn-link p-0" title="Tick or untick every visible repository" aria-label="Tick or untick every visible repository" aria-pressed="@AriaPressed(headerState)" @onclick="() => ToggleAllVisible(visibleNames, headerState)">
 							<i class="@HeaderIcon(headerState)"></i>
 						</button>
 					</th>
@@ -61,7 +61,7 @@ else
 				{
 					<tr class="@(row.CanSelect ? null : "text-muted")">
 						<td>
-							<input type="checkbox" checked="@Selection.Contains(row.FullName)" disabled="@(!row.CanSelect)" @onchange="() => ToggleRow(row.FullName)" />
+							<input type="checkbox" checked="@Selection.Contains(row.FullName)" disabled="@(!row.CanSelect)" aria-label="@($"Select {row.Name}")" @onchange="() => ToggleRow(row.FullName)" />
 						</td>
 						<td><i class="@NavTreeDataProvider.BuildRepositoryIconCss(row.Source)"></i></td>
 						<td>
@@ -196,6 +196,13 @@ else
 		SelectionState.All => "fas fa-square-check",
 		SelectionState.Some => "fas fa-square-minus",
 		_ => "far fa-square"
+	};
+
+	private static string AriaPressed(SelectionState state) => state switch
+	{
+		SelectionState.All => "true",
+		SelectionState.Some => "mixed",
+		_ => "false"
 	};
 
 	private static string CategoryLabel(AssessmentCategory category)

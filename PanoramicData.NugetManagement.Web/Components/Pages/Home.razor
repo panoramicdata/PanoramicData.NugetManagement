@@ -906,7 +906,13 @@ else
 			_selectionDropped = 0;
 		}
 
-		_selectionDropped += _selection.Prune(EstateCandidates.Select(row => row.RepositoryFullName));
+		// An empty candidate list is a moment between loads far more often than an organisation with no
+		// repositories left, so it never prunes: it would otherwise wipe every tick.
+		var candidates = EstateCandidates;
+		if (candidates.Count > 0)
+		{
+			_selectionDropped += _selection.Prune(candidates.Select(row => row.RepositoryFullName));
+		}
 	}
 
 	/// <summary>
