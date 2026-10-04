@@ -464,7 +464,7 @@ else
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
 											 IsVisible="@(ShowBulkRunButtons || IsEstateWide || _currentView is NavView.Repositories or NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
-											 IsEnabled="@(!IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Reassess))"
+											 IsEnabled="@(!IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Reassess) && (TickedCount == 0 || EstateTargets(WorkflowStep.Reassess).Count > 0))"
 											 ToolTip="@GatedTooltip(WorkflowStep.Reassess, IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
 											 Click="OnToolbarClick" />
 
@@ -1770,11 +1770,9 @@ else
 	{
 		var scope = _selectedRow is not null
 			? "Re-assess this package"
-			: TickedCount > 0
-				? $"Assess the {TickedCount} ticked {(TickedCount == 1 ? "repository" : "repositories")} again"
-				: _orgSelected || IsEstateWide
-					? $"Assess every {CurrentOrganization} repository again, without re-reading the package list from NuGet"
-					: "Assess every known repository again, without re-reading the package list from NuGet";
+			: _orgSelected || IsEstateWide
+				? $"Assess every {CurrentOrganization} repository again, without re-reading the package list from NuGet"
+				: "Assess every known repository again, without re-reading the package list from NuGet";
 
 		var lastAssessed = LastAssessedInScope();
 		return lastAssessed is null ? scope : $"{scope}. Last assessed {DescribeAssessmentAge(lastAssessed.Value)}";
@@ -4332,8 +4330,10 @@ else
 	{
 		// At the estate nodes a button acts on the ticked rows, so the useful answer to "why is this
 		// greyed" is what it would do, or that nothing is ticked. Re-assess with nothing ticked keeps its
-		// own tooltip: it falls back to the whole organisation.
-		if (IsEstateWide && !(ToolbarScope.FallsBackToWholeOrganisation(step) && TickedCount == 0))
+		// own tooltip: it falls back to the whole organisation. A queued step that blocks this one still
+		// wins, because that is the real reason the button is greyed.
+		var queuedBlock = FirstQueuedStep is { } queued && WorkflowGate.IsBlocked(step, queued);
+		if (IsEstateWide && !queuedBlock && !(ToolbarScope.FallsBackToWholeOrganisation(step) && TickedCount == 0))
 		{
 			return ToolbarScope.DescribeSelection(
 				GetWorkflowStepDisplayName(step),
