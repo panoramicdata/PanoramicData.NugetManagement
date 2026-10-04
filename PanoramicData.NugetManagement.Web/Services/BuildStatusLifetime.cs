@@ -11,6 +11,11 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// exactly the moment it misleads, straight after a bulk remediation. So the result is thrown away
 /// rather than aged: back to not-known, until someone builds again.
 /// <para>
+/// A remembered <em>test</em> result is held to the same rule and discarded by the same kinds, because
+/// it makes the same claim about the same tree. <see cref="RepositoryDashboardRow.ForgetVerificationResults"/>
+/// clears both together, so there is one list of kinds to keep right, not two.
+/// </para>
+/// <para>
 /// A separate type rather than a switch inside the executor, for the reason <see cref="FixScope"/>
 /// gives: the mapping is the part worth being sure of, and this can be unit tested.
 /// </para>
