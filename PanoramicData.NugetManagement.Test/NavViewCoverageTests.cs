@@ -80,6 +80,18 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 				"selecting a repository's Issues branch must show its inbox, not nothing at all");
 
 	/// <summary>
+	/// The organisation node shared <c>NavView.Home</c> with the landing page, so nothing that takes only
+	/// a view could tell "an organisation" from "nothing selected", which a bulk toolbar needs to.
+	/// </summary>
+	[Fact]
+	public void TheOrganisationNodeShouldHaveAViewOfItsOwn()
+		=> BuildTree()
+			.Single(item => item.Key == NavTreeDataProvider.OrgKey("panoramicdata"))
+			.View
+			.Should().Be(NavView.Organisation,
+				"the organisation node must be distinguishable from the landing page by view alone");
+
+	/// <summary>
 	/// Fix is the only button that fixes things. Its visibility is driven by
 	/// <see cref="FixScope"/> rather than a hand-maintained list of views, so that a view where Fix
 	/// has work can never be one where the button is absent — the bug this whole area keeps producing.

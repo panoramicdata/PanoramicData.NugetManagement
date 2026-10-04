@@ -323,7 +323,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 			Text = organization,
 			ParentKey = OrganisationsKey,
 			IconCss = NavHealthRollup.Icon("fas fa-people-group", orgStatus),
-			View = NavView.Home,
+			View = NavView.Organisation,
 			Organization = organization,
 			IsLeaf = false,
 			SortOrder = orgIndex,

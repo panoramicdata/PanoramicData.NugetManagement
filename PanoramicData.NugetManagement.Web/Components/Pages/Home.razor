@@ -1454,7 +1454,7 @@ else
 	/// beside a page of instructions.
 	/// </summary>
 	private bool ShowBulkRunButtons
-		=> _currentView == NavView.Dashboard || (_currentView == NavView.Home && _orgSelected);
+		=> _currentView is NavView.Dashboard or NavView.Organisation;
 
 	/// <summary>
 	/// Whether the selection stands for every repository beneath it rather than for a single one.
@@ -2536,7 +2536,7 @@ else
 		}
 		else
 		{
-			_currentView = NavView.Home;
+			_currentView = NavView.Organisation;
 			_selectedRow = null;
 			_selectedNodeKey = orgKey;
 			_selectedOrganization = organization;
@@ -3104,6 +3104,7 @@ else
 		{
 			case NavView.Home:
 			case NavView.None:
+			case NavView.Organisation:
 				@RenderGettingStarted()
 				break;
 			case NavView.Dashboard:
@@ -6329,6 +6330,7 @@ else
 		switch (item.View)
 		{
 			case NavView.Home:
+			case NavView.Organisation:
 				// Only what is governed is counted: the rest are accounted for in their own branch, and
 				// counting them here would say the estate holds packages that nothing assesses.
 				var governedRows = _rows.Where(r => r.IsGoverned).ToList();
