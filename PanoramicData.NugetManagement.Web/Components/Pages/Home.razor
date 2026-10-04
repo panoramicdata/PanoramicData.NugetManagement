@@ -889,6 +889,26 @@ else
 	/// </summary>
 	private readonly RepositorySelection _selection = new();
 
+	private string _selectionOrganization = string.Empty;
+	private int _selectionDropped;
+
+	/// <summary>
+	/// Keeps the selection to the current organisation, and drops ticks for repositories that have since
+	/// gone. Called from the places that read the selection, never from anything that must not have side
+	/// effects, and it only ever shrinks the selection.
+	/// </summary>
+	private void EnsureSelectionIsCurrent()
+	{
+		if (!string.Equals(_selectionOrganization, CurrentOrganization, StringComparison.OrdinalIgnoreCase))
+		{
+			_selection.Clear();
+			_selectionOrganization = CurrentOrganization;
+			_selectionDropped = 0;
+		}
+
+		_selectionDropped += _selection.Prune(EstateCandidates.Select(row => row.RepositoryFullName));
+	}
+
 	/// <summary>
 	/// Whether a clone run is under way — the discovery step or any repository it fanned out to
 	/// actually cloning — so the org node can show a spinner and its stop button in place of the
@@ -1484,7 +1504,10 @@ else
 	/// The repositories an estate-wide press of a step would act on.
 	/// </summary>
 	private List<RepositoryDashboardRow> EstateTargets(WorkflowStep step)
-		=> ToolbarScope.Targets(EstateCandidates, step, RuntimeSettings.IsRepositoryExcluded, _selection);
+	{
+		EnsureSelectionIsCurrent();
+		return ToolbarScope.Targets(EstateCandidates, step, RuntimeSettings.IsRepositoryExcluded, _selection);
+	}
 
 	/// <summary>
 	/// Whether a step that works on a local clone can run: for one repository, or for however many the
@@ -1511,6 +1534,14 @@ else
 	private void QueueAcrossEstate(WorkKind kind, WorkflowStep step, string stepName)
 	{
 		var targets = EstateTargets(step);
+
+		if (_selectionDropped > 0)
+		{
+			AppendConsole($"{_selectionDropped} ticked "
+				+ $"{(_selectionDropped == 1 ? "repository no longer exists and was" : "repositories no longer exist and were")} "
+				+ "dropped from the selection.");
+			_selectionDropped = 0;
+		}
 
 		AppendConsole(ToolbarScope.DescribeSelection(stepName, targets.Count, _selection.Count));
 
@@ -3102,13 +3133,43 @@ else
 		</div>
 	};
 
+	private RenderFragment RenderEstateTable(string heading) => __builder =>
+	{
+		EnsureSelectionIsCurrent();
+
+		<EstateTable Rows="@EstateCandidates"
+					 Organization="@CurrentOrganization"
+					 Heading="@heading"
+					 Selection="@_selection"
+					 IsExcluded="@(name => RuntimeSettings.IsRepositoryExcluded(name))"
+					 OnSelectionChanged="@OnTableSelectionChanged"
+					 OnNavigate="@NavigateFromTableAsync" />
+	};
+
+	private void OnTableSelectionChanged() => StateHasChanged();
+
+	private async Task NavigateFromTableAsync((string RepositoryFullName, AssessmentCategory? Category) target)
+	{
+		if (target.Category is { } category)
+		{
+			await SelectNavNodeAsync(
+				NavTreeDataProvider.CategoryKey(target.RepositoryFullName, category),
+				NavView.CategoryDetail);
+		}
+		else
+		{
+			await SelectNavNodeAsync(
+				NavTreeDataProvider.RepoKey(target.RepositoryFullName),
+				NavView.RepositoryDetail);
+		}
+	}
+
 	private RenderFragment RenderCurrentView() => __builder =>
 	{
 		switch (_currentView)
 		{
 			case NavView.Home:
 			case NavView.None:
-			case NavView.Organisation:
 				@RenderGettingStarted()
 				break;
 			case NavView.Dashboard:
@@ -3138,15 +3199,13 @@ else
 				@RenderAppSettingsView()
 				break;
 			case NavView.Repositories:
-				@* The whole estate, and the answer to "which of these no longer builds" after a bulk
-				   change. Its own component rather than another render method here: this file is
-				   already enormous, and RepositoryIssuesView sets the precedent. *@
-				<EstateView Rows="@EstateCandidates" Organization="@CurrentOrganization" />
+				@RenderEstateTable("Repositories")
+				break;
+			case NavView.Organisation:
+				@RenderEstateTable("Repositories")
 				break;
 			case NavView.Issues:
-				@* Embedded so it drops its own page header. Organization is required: without it the
-				   component shows nothing rather than every organisation's repositories. *@
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueBulkRule" />
+				@RenderEstateTable("Issues")
 				break;
 			case NavView.IssueCategoryDetail:
 				@* The hierarchy itself now lives in the sidebar; this panel shows the selected
