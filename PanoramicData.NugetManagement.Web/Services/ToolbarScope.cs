@@ -134,8 +134,10 @@ public static class ToolbarScope
 	/// <param name="step">The step being run.</param>
 	/// <param name="targetCount">How many repositories it would act on.</param>
 	/// <remarks>
-	/// Only Commit &amp; Push: it changes remote state. Sync, Build and Test change nothing a revert
-	/// cannot undo, Fix edits local clones, and Re-assess is read-only.
+	/// Only Commit &amp; Push: it publishes new commits to the remote. Sync is deliberately not asked
+	/// about, as a requirement of the design rather than because it is harmless: it pulls, and it also
+	/// pushes any commits already made locally, so it can change remote state. Build and Test only touch
+	/// the clone's working tree, Fix edits local clones, and Re-assess is read-only.
 	/// </remarks>
 	public static bool RequiresConfirmation(WorkflowStep step, int targetCount)
 		=> step is WorkflowStep.CommitAndPush && targetCount > ConfirmAboveRepositoryCount;

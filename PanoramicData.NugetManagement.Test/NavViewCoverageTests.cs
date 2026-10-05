@@ -92,6 +92,25 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 				"the organisation node must be distinguishable from the landing page by view alone");
 
 	/// <summary>
+	/// The Repositories node was given a view but rejected by the selectability rule, so the table never
+	/// showed there. Every node whose view shows the estate table must be selectable.
+	/// </summary>
+	[Fact]
+	public void EveryNodeThatShowsTheEstateTableShouldBeSelectable()
+	{
+		var estateNodes = BuildTree()
+			.Where(item => ToolbarScope.IsEstateWide(item.View))
+			.ToList();
+
+		estateNodes.Select(item => item.View).Distinct()
+			.Should().BeEquivalentTo([NavView.Organisation, NavView.Issues, NavView.Repositories]);
+		estateNodes.Should().OnlyContain(item => NavTreeDataProvider.IsSelectable(item));
+		NavTreeDataProvider.IsSelectable(
+			new NavItem { Key = "repos-loading:panoramicdata", Text = "Loading", View = NavView.None })
+			.Should().BeFalse();
+	}
+
+	/// <summary>
 	/// Fix is the only button that fixes things. Its visibility is driven by
 	/// <see cref="FixScope"/> rather than a hand-maintained list of views, so that a view where Fix
 	/// has work can never be one where the button is absent — the bug this whole area keeps producing.

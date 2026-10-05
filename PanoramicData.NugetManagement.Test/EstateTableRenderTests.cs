@@ -100,6 +100,25 @@ public class EstateTableRenderTests(ITestOutputHelper output) : TestWithOutput(o
 	}
 
 	[Fact]
+	public async Task ATickedRowThatHasBecomeInert_CanStillBeUnticked_ButAnUntickedOneCannotBeTicked()
+	{
+		var tickedRow = Row("Ticked.Api");
+		tickedRow.IsClonedLocally = false;
+		var untickedRow = Row("Unticked.Api");
+		untickedRow.IsClonedLocally = false;
+		var selection = new RepositorySelection();
+		selection.Select("panoramicdata/Ticked.Api");
+
+		var html = await RenderAsync([tickedRow, untickedRow], selection);
+
+		var inputs = html.Split("<input", StringSplitOptions.RemoveEmptyEntries);
+		var ticked = inputs.Single(i => i.Contains("aria-label=\"Select Ticked.Api\"", StringComparison.Ordinal)).Split('>')[0];
+		var unticked = inputs.Single(i => i.Contains("aria-label=\"Select Unticked.Api\"", StringComparison.Ordinal)).Split('>')[0];
+		ticked.Should().NotContain("disabled", "a tick that can no longer act must still be clearable");
+		unticked.Should().Contain("disabled");
+	}
+
+	[Fact]
 	public async Task AnUnassessedRepository_DoesNotLookClean()
 	{
 		var html = await RenderAsync([Row("Alpha.Api", errors: 1), Row("Never.Assessed", assessed: false)]);

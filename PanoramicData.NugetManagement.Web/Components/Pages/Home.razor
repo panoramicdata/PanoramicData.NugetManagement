@@ -1436,7 +1436,7 @@ else
 
 	private void OnNavNodeActivated(TreeNode<NavItem> node)
 	{
-		// Organisations / Repositories are structural grouping nodes — not selectable.
+		// Only the loading placeholder is not selectable.
 		if (!IsSelectableNavNode(node.Data))
 		{
 			return;
@@ -1457,13 +1457,10 @@ else
 		OnNavSelectionChanged(node);
 	}
 
-	// Repositories is a pure grouping node and is not selectable. Organisations *is*: selecting it
-	// shows the estate overview, which is the one view whose scope is every organisation. The
-	// Repositories keys are namespaced per organisation, so these are prefix tests, not exact matches.
+	// Only the "Loading repositories..." placeholder is not selectable. Organisation, Repositories and
+	// Issues each show the estate table, so all three must be selectable.
 	private static bool IsSelectableNavNode(NavItem? item)
-		=> item is not null
-			&& !item.Key.StartsWith("repos:", StringComparison.Ordinal)
-			&& !item.Key.StartsWith("repos-loading:", StringComparison.Ordinal);
+		=> NavTreeDataProvider.IsSelectable(item);
 
 	// True for an organisation's own node — the one that carries the clone and settings actions.
 	private static bool IsOrgRootNode(NavItem? item)
@@ -1530,6 +1527,21 @@ else
 			: _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(step);
 
 	/// <summary>
+	/// Says, once, that ticks were dropped because their repositories have gone. Called at the top of
+	/// every estate press, so an old drop is announced on the press that follows it and never later.
+	/// </summary>
+	private void ReportDroppedTicks()
+	{
+		if (_selectionDropped > 0)
+		{
+			AppendConsole($"{_selectionDropped} ticked "
+				+ $"{(_selectionDropped == 1 ? "repository no longer exists and was" : "repositories no longer exist and were")} "
+				+ "dropped from the selection.");
+			_selectionDropped = 0;
+		}
+	}
+
+	/// <summary>
 	/// Queues one item per repository the estate-wide selection covers, and says what it is doing —
 	/// including how many it left out. Acting on twelve of forty-seven without saying so is how a bulk
 	/// action lies about what it did.
@@ -1538,16 +1550,19 @@ else
 	/// <param name="step">The workflow step it belongs to.</param>
 	/// <param name="stepName">The step's label, as the button shows it.</param>
 	private void QueueAcrossEstate(WorkKind kind, WorkflowStep step, string stepName)
-	{
-		var targets = EstateTargets(step);
+		=> QueueAcrossEstate(kind, step, stepName, EstateTargets(step));
 
-		if (_selectionDropped > 0)
-		{
-			AppendConsole($"{_selectionDropped} ticked "
-				+ $"{(_selectionDropped == 1 ? "repository no longer exists and was" : "repositories no longer exist and were")} "
-				+ "dropped from the selection.");
-			_selectionDropped = 0;
-		}
+	/// <summary>
+	/// Queues one item per repository in <paramref name="targets"/>, which the caller has already
+	/// settled, so a list the user confirmed is the list that runs.
+	/// </summary>
+	private void QueueAcrossEstate(
+		WorkKind kind,
+		WorkflowStep step,
+		string stepName,
+		IReadOnlyList<RepositoryDashboardRow> targets)
+	{
+		ReportDroppedTicks();
 
 		AppendConsole(ToolbarScope.DescribeSelection(stepName, targets.Count, _selection.Count));
 
@@ -1793,7 +1808,7 @@ else
 			return _selectedRow.Assessment?.AssessedAtUtc;
 		}
 
-		var inScope = _orgSelected
+		var inScope = _orgSelected || IsEstateWide
 			? _rows.Where(r => string.Equals(r.Organization, CurrentOrganization, StringComparison.OrdinalIgnoreCase))
 			: _rows;
 
@@ -2848,7 +2863,16 @@ else
 				// Ticked rows win; otherwise package, then organisation, then everything.
 				if (TickedCount > 0)
 				{
-					QueueAcrossEstate(WorkKind.Reassess, WorkflowStep.Reassess, "Re-assess");
+					var reassessTargets = EstateTargets(WorkflowStep.Reassess);
+					ReportDroppedTicks();
+					if (!await ConfirmApiBudgetAsync(
+						$"Re-assessing {reassessTargets.Count} repositories",
+						EstimateRemoteAssessmentCost(reassessTargets)))
+					{
+						return;
+					}
+
+					QueueAcrossEstate(WorkKind.Reassess, WorkflowStep.Reassess, "Re-assess", reassessTargets);
 				}
 				else if (_selectedRow is not null)
 				{
@@ -3179,6 +3203,32 @@ else
 
 	private async Task NavigateFromTableAsync((string RepositoryFullName, AssessmentCategory? Category) target)
 	{
+		// The destination is a descendant of the organisation's Repositories node (and, for a category,
+		// of the repository node), all of which may be collapsed and so not realised. Opening the chain
+		// first means the node can be found and selected properly, which populates the page; the bare
+		// view fallback in SelectNavNodeAsync would leave it on an empty placeholder.
+		if (_navTree is not null)
+		{
+			var chain = new List<string>
+			{
+				NavTreeDataProvider.OrgKey(CurrentOrganization),
+				NavTreeDataProvider.ReposKey(CurrentOrganization)
+			};
+			if (target.Category is not null)
+			{
+				chain.Add(NavTreeDataProvider.RepoKey(target.RepositoryFullName));
+			}
+
+			foreach (var key in chain)
+			{
+				var chainNode = _navTree.RootNode.Find(key);
+				if (chainNode is not null && !chainNode.IsExpanded)
+				{
+					await _navTree.ToggleNodeIsExpandedAsync(chainNode).ConfigureAwait(true);
+				}
+			}
+		}
+
 		if (target.Category is { } category)
 		{
 			await SelectNavNodeAsync(
@@ -4765,10 +4815,11 @@ else
 		var targets = EstateTargets(WorkflowStep.Fix);
 		var withWork = targets.Where(row => AiFixTargets.WorkCount(row, Remediations) > 0).ToList();
 
-		AppendConsole(ToolbarScope.DescribeSelection("Fix with AI", targets.Count, _selection.Count));
+		ReportDroppedTicks();
 
 		if (withWork.Count == 0)
 		{
+			AppendConsole(ToolbarScope.DescribeSelection("Fix with AI", 0, _selection.Count));
 			return;
 		}
 
@@ -4780,6 +4831,10 @@ else
 			AppendConsole("Fix with AI cancelled: nothing was queued.");
 			return;
 		}
+
+		// Said after the confirmation, and counting the repositories that have model work, so the line
+		// matches what is about to be queued rather than every target the step could have reached.
+		AppendConsole(ToolbarScope.DescribeSelection("Fix with AI", withWork.Count, _selection.Count));
 
 		foreach (var row in withWork)
 		{
@@ -7063,6 +7118,7 @@ else
 		if (IsEstateWide)
 		{
 			var targets = EstateTargets(WorkflowStep.CommitAndPush);
+			ReportDroppedTicks();
 
 			if (ToolbarScope.RequiresConfirmation(WorkflowStep.CommitAndPush, targets.Count)
 				&& !await ConfirmAsync(ToolbarScope.ConfirmationMessage(
@@ -7073,7 +7129,7 @@ else
 				return;
 			}
 
-			QueueAcrossEstate(WorkKind.CommitAndPush, WorkflowStep.CommitAndPush, "Commit & push");
+			QueueAcrossEstate(WorkKind.CommitAndPush, WorkflowStep.CommitAndPush, "Commit & push", targets);
 			return;
 		}
 

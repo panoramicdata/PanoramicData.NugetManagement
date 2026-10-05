@@ -50,6 +50,14 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// <summary>Builds the key for an organisation's "Repositories" container.</summary>
 	public static string ReposKey(string organization) => $"repos:{organization}";
 
+	/// <summary>
+	/// Whether a node can be selected. Every node can except the "Loading repositories..." placeholder.
+	/// Organisation, Repositories and Issues are all selectable: each shows the estate table.
+	/// </summary>
+	public static bool IsSelectable(NavItem? item)
+		=> item is not null
+			&& !item.Key.StartsWith("repos-loading:", StringComparison.Ordinal);
+
 	/// <summary>Builds the key for an organisation's "Issues" branch.</summary>
 	public static string IssuesKey(string organization) => $"issues:{organization}";
 
