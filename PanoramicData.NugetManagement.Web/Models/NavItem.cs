@@ -255,6 +255,16 @@ public enum NavView
 	Repositories,
 
 	/// <summary>
+	/// One organisation: its repositories in a table, with a toolbar that acts on the ones ticked.
+	/// </summary>
+	/// <remarks>
+	/// A view of its own rather than <see cref="Home"/>, for the reason <see cref="Repositories"/> has
+	/// one: <see cref="Home"/> is also the landing page, and a toolbar scope that takes only a view cannot
+	/// tell "an organisation" from "nothing selected".
+	/// </remarks>
+	Organisation,
+
+	/// <summary>
 	/// One lane's queue: what is running, what is waiting, and how far each has got.
 	/// </summary>
 	/// <remarks>

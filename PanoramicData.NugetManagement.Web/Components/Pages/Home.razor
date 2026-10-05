@@ -271,7 +271,7 @@ else
 							}
 							@* The estate has no repository crumb of its own to inherit — it stands for all of
 							   them — so it names itself here or the trail stops at the organisation. *@
-							@if (IsEstateWide)
+							@if (_currentView == NavView.Repositories)
 							{
 								<span class="breadcrumb-sep">›</span>
 								<span class="breadcrumb-current">Repositories</span>
@@ -435,12 +435,12 @@ else
 					<!-- Toolbar — workflow order: Git Sync → Re-assess → Fix → Build → Test → Commit & Push → Publish -->
 						<PDToolbar CssClass="main-toolbar">
 							<PDToolbarButton Key="refresh"
-											 Text="@(_orgSelected ? "Rediscover Org" : "Rediscover Orgs")"
+											 Text="@(_orgSelected || IsEstateWide ? "Rediscover Org" : "Rediscover Orgs")"
 											 IconCssClass="fas fa-magnifying-glass"
 											 CssClass="btn-primary"
-											 IsVisible="@ShowBulkRunButtons"
+											 IsVisible="@(ShowBulkRunButtons || IsEstateWide)"
 											 IsEnabled="true"
-											 ToolTip="@(_orgSelected
+											 ToolTip="@(_orgSelected || IsEstateWide
 												? $"Re-read {CurrentOrganization}'s package list from NuGet, then assess it. Use Re-assess Org to skip the NuGet lookup."
 												: "Re-read every organisation's package list from NuGet, then assess everything. Use Re-assess Orgs to skip the NuGet lookup.")"
 											 Click="OnToolbarClick" />
@@ -463,8 +463,8 @@ else
 											 Text="@GetReassessButtonText()"
 											 IconCssClass="fas fa-sync-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Reassess)"
-											 IsVisible="@(ShowBulkRunButtons || _currentView is NavView.Repositories or NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
-											 IsEnabled="@(!IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Reassess))"
+											 IsVisible="@(ShowBulkRunButtons || IsEstateWide || _currentView is NavView.Repositories or NavView.RepositoryDetail or NavView.PackageDetail or NavView.CategoryDetail or NavView.RuleDetail)"
+											 IsEnabled="@(!IsBlockedByOutOfSync && !IsStepQueueBlocked(WorkflowStep.Reassess) && (TickedCount == 0 || EstateTargets(WorkflowStep.Reassess).Count > 0))"
 											 ToolTip="@GatedTooltip(WorkflowStep.Reassess, IsBlockedByOutOfSync ? OutOfSyncBlockedTooltip : GetReassessButtonTooltip())"
 											 Click="OnToolbarClick" />
 
@@ -494,7 +494,7 @@ else
 							<PDToolbarButton Key="fix-with-ai"
 											 Text="Fix with AI"
 											 IconCssClass="fas fa-robot"
-											 IsVisible="@(_selectedRow is not null && AiFixCandidateCount() > 0)"
+											 IsVisible="@((_selectedRow is not null || IsEstateWide) && AiFixCandidateCount() > 0)"
 											 IsEnabled="@IsFixWithAiEnabled()"
 											 ToolTip="@GetFixWithAiTooltip()"
 											 Click="OnToolbarClick" />
@@ -883,6 +883,37 @@ else
 	// True when the org (root) node is the current focus (org overview / org settings),
 	// as opposed to the bare Dashboard state (nothing selected) or a repo being selected.
 	private bool _orgSelected;
+
+	/// <summary>
+	/// The repositories ticked in the table, which every estate-wide toolbar step acts on.
+	/// </summary>
+	private readonly RepositorySelection _selection = new();
+
+	private string _selectionOrganization = string.Empty;
+	private int _selectionDropped;
+
+	/// <summary>
+	/// Keeps the selection to the current organisation, and drops ticks for repositories that have since
+	/// gone. Called from the places that read the selection, never from anything that must not have side
+	/// effects, and it only ever shrinks the selection.
+	/// </summary>
+	private void EnsureSelectionIsCurrent()
+	{
+		if (!string.Equals(_selectionOrganization, CurrentOrganization, StringComparison.OrdinalIgnoreCase))
+		{
+			_selection.Clear();
+			_selectionOrganization = CurrentOrganization;
+			_selectionDropped = 0;
+		}
+
+		// An empty candidate list is a moment between loads far more often than an organisation with no
+		// repositories left, so it never prunes: it would otherwise wipe every tick.
+		var candidates = EstateCandidates;
+		if (candidates.Count > 0)
+		{
+			_selectionDropped += _selection.Prune(candidates.Select(row => row.RepositoryFullName));
+		}
+	}
 
 	/// <summary>
 	/// Whether a clone run is under way — the discovery step or any repository it fanned out to
@@ -1405,7 +1436,7 @@ else
 
 	private void OnNavNodeActivated(TreeNode<NavItem> node)
 	{
-		// Organisations / Repositories are structural grouping nodes — not selectable.
+		// Only the loading placeholder is not selectable.
 		if (!IsSelectableNavNode(node.Data))
 		{
 			return;
@@ -1426,13 +1457,10 @@ else
 		OnNavSelectionChanged(node);
 	}
 
-	// Repositories is a pure grouping node and is not selectable. Organisations *is*: selecting it
-	// shows the estate overview, which is the one view whose scope is every organisation. The
-	// Repositories keys are namespaced per organisation, so these are prefix tests, not exact matches.
+	// Only the "Loading repositories..." placeholder is not selectable. Organisation, Repositories and
+	// Issues each show the estate table, so all three must be selectable.
 	private static bool IsSelectableNavNode(NavItem? item)
-		=> item is not null
-			&& !item.Key.StartsWith("repos:", StringComparison.Ordinal)
-			&& !item.Key.StartsWith("repos-loading:", StringComparison.Ordinal);
+		=> NavTreeDataProvider.IsSelectable(item);
 
 	// True for an organisation's own node — the one that carries the clone and settings actions.
 	private static bool IsOrgRootNode(NavItem? item)
@@ -1454,7 +1482,7 @@ else
 	/// beside a page of instructions.
 	/// </summary>
 	private bool ShowBulkRunButtons
-		=> _currentView == NavView.Dashboard || (_currentView == NavView.Home && _orgSelected);
+		=> _currentView is NavView.Dashboard or NavView.Organisation;
 
 	/// <summary>
 	/// Whether the selection stands for every repository beneath it rather than for a single one.
@@ -1479,7 +1507,10 @@ else
 	/// The repositories an estate-wide press of a step would act on.
 	/// </summary>
 	private List<RepositoryDashboardRow> EstateTargets(WorkflowStep step)
-		=> ToolbarScope.Targets(EstateCandidates, step, RuntimeSettings.IsRepositoryExcluded);
+	{
+		EnsureSelectionIsCurrent();
+		return ToolbarScope.Targets(EstateCandidates, step, RuntimeSettings.IsRepositoryExcluded, _selection);
+	}
 
 	/// <summary>
 	/// Whether a step that works on a local clone can run: for one repository, or for however many the
@@ -1496,6 +1527,21 @@ else
 			: _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(step);
 
 	/// <summary>
+	/// Says, once, that ticks were dropped because their repositories have gone. Called at the top of
+	/// every estate press, so an old drop is announced on the press that follows it and never later.
+	/// </summary>
+	private void ReportDroppedTicks()
+	{
+		if (_selectionDropped > 0)
+		{
+			AppendConsole($"{_selectionDropped} ticked "
+				+ $"{(_selectionDropped == 1 ? "repository no longer exists and was" : "repositories no longer exist and were")} "
+				+ "dropped from the selection.");
+			_selectionDropped = 0;
+		}
+	}
+
+	/// <summary>
 	/// Queues one item per repository the estate-wide selection covers, and says what it is doing —
 	/// including how many it left out. Acting on twelve of forty-seven without saying so is how a bulk
 	/// action lies about what it did.
@@ -1504,11 +1550,21 @@ else
 	/// <param name="step">The workflow step it belongs to.</param>
 	/// <param name="stepName">The step's label, as the button shows it.</param>
 	private void QueueAcrossEstate(WorkKind kind, WorkflowStep step, string stepName)
-	{
-		var candidates = EstateCandidates;
-		var targets = ToolbarScope.Targets(candidates, step, RuntimeSettings.IsRepositoryExcluded);
+		=> QueueAcrossEstate(kind, step, stepName, EstateTargets(step));
 
-		AppendConsole(ToolbarScope.Describe(stepName, targets.Count, candidates.Count));
+	/// <summary>
+	/// Queues one item per repository in <paramref name="targets"/>, which the caller has already
+	/// settled, so a list the user confirmed is the list that runs.
+	/// </summary>
+	private void QueueAcrossEstate(
+		WorkKind kind,
+		WorkflowStep step,
+		string stepName,
+		IReadOnlyList<RepositoryDashboardRow> targets)
+	{
+		ReportDroppedTicks();
+
+		AppendConsole(ToolbarScope.DescribeSelection(stepName, targets.Count, _selection.Count));
 
 		foreach (var row in targets)
 		{
@@ -1672,8 +1728,26 @@ else
 	/// </summary>
 	private string GetReassessButtonText()
 		=> _selectedRow is not null ? "Re-assess"
-			: _orgSelected ? "Re-assess Org"
+			: TickedCount > 0 ? $"Re-assess {TickedCount}"
+			: _orgSelected || IsEstateWide ? "Re-assess Org"
 			: "Re-assess Orgs";
+
+	/// <summary>
+	/// How many repositories are ticked, at a node where that means anything.
+	/// </summary>
+	private int TickedCount
+	{
+		get
+		{
+			if (!IsEstateWide)
+			{
+				return 0;
+			}
+
+			EnsureSelectionIsCurrent();
+			return _selection.Count;
+		}
+	}
 
 	/// <summary>
 	/// Where this organisation's clones are kept. Repositories owned by another account are filed under
@@ -1711,7 +1785,7 @@ else
 	{
 		var scope = _selectedRow is not null
 			? "Re-assess this package"
-			: _orgSelected
+			: _orgSelected || IsEstateWide
 				? $"Assess every {CurrentOrganization} repository again, without re-reading the package list from NuGet"
 				: "Assess every known repository again, without re-reading the package list from NuGet";
 
@@ -1734,7 +1808,7 @@ else
 			return _selectedRow.Assessment?.AssessedAtUtc;
 		}
 
-		var inScope = _orgSelected
+		var inScope = _orgSelected || IsEstateWide
 			? _rows.Where(r => string.Equals(r.Organization, CurrentOrganization, StringComparison.OrdinalIgnoreCase))
 			: _rows;
 
@@ -2536,7 +2610,7 @@ else
 		}
 		else
 		{
-			_currentView = NavView.Home;
+			_currentView = NavView.Organisation;
 			_selectedRow = null;
 			_selectedNodeKey = orgKey;
 			_selectedOrganization = organization;
@@ -2760,7 +2834,7 @@ else
 		{
 			case "refresh":
 				// Scope follows the breadcrumb: the selected organisation, or all of them.
-				if (_orgSelected)
+				if (_orgSelected || IsEstateWide)
 				{
 					await RediscoverOrganizationAsync(CurrentOrganization);
 				}
@@ -2786,21 +2860,34 @@ else
 				await CopyPromptToClipboardAsync();
 				break;
 			case "reassess":
-						// Same scoping as the label: package, then organisation, then everything.
-						if (_selectedRow is not null)
-						{
-							await ReassessAllAsync();
-						}
-						else if (_orgSelected)
-						{
-							await ReassessOrganizationAsync(CurrentOrganization);
-						}
-						else
-						{
-							await ReassessAllReposAsync();
-						}
+				// Ticked rows win; otherwise package, then organisation, then everything.
+				if (TickedCount > 0)
+				{
+					var reassessTargets = EstateTargets(WorkflowStep.Reassess);
+					ReportDroppedTicks();
+					if (!await ConfirmApiBudgetAsync(
+						$"Re-assessing {reassessTargets.Count} repositories",
+						EstimateRemoteAssessmentCost(reassessTargets)))
+					{
+						return;
+					}
 
-						break;
+					QueueAcrossEstate(WorkKind.Reassess, WorkflowStep.Reassess, "Re-assess", reassessTargets);
+				}
+				else if (_selectedRow is not null)
+				{
+					await ReassessAllAsync();
+				}
+				else if (_orgSelected || IsEstateWide)
+				{
+					await ReassessOrganizationAsync(CurrentOrganization);
+				}
+				else
+				{
+					await ReassessAllReposAsync();
+				}
+
+				break;
 				case "build":
 				await BuildAsync();
 				break;
@@ -3084,9 +3171,10 @@ else
 					Test, Commit &amp; Push, Publish.
 				</li>
 				<li>
-					<strong>Or fix one problem everywhere at once.</strong> <em>Issues</em> groups the
-					same failures by rule instead of by repository, so a single action can apply a fix
-					across every repository it affects.
+					<strong>Or act on several at once.</strong> <em>Issues</em>, <em>Repositories</em> and an
+					organisation each show every repository against each class of issue, with its git, build and
+					test state. Tick the ones you want and use the toolbar; open a category or rule under
+					<em>Issues</em> to apply one fix across every repository it affects.
 				</li>
 			</ol>
 
@@ -3097,6 +3185,63 @@ else
 			</p>
 		</div>
 	};
+
+	private RenderFragment RenderEstateTable(string heading) => __builder =>
+	{
+		EnsureSelectionIsCurrent();
+
+		<EstateTable Rows="@EstateCandidates"
+					 Organization="@CurrentOrganization"
+					 Heading="@heading"
+					 Selection="@_selection"
+					 IsExcluded="@(name => RuntimeSettings.IsRepositoryExcluded(name))"
+					 OnSelectionChanged="@OnTableSelectionChanged"
+					 OnNavigate="@NavigateFromTableAsync" />
+	};
+
+	private void OnTableSelectionChanged() => StateHasChanged();
+
+	private async Task NavigateFromTableAsync((string RepositoryFullName, AssessmentCategory? Category) target)
+	{
+		// The destination is a descendant of the organisation's Repositories node (and, for a category,
+		// of the repository node), all of which may be collapsed and so not realised. Opening the chain
+		// first means the node can be found and selected properly, which populates the page; the bare
+		// view fallback in SelectNavNodeAsync would leave it on an empty placeholder.
+		if (_navTree is not null)
+		{
+			var chain = new List<string>
+			{
+				NavTreeDataProvider.OrgKey(CurrentOrganization),
+				NavTreeDataProvider.ReposKey(CurrentOrganization)
+			};
+			if (target.Category is not null)
+			{
+				chain.Add(NavTreeDataProvider.RepoKey(target.RepositoryFullName));
+			}
+
+			foreach (var key in chain)
+			{
+				var chainNode = _navTree.RootNode.Find(key);
+				if (chainNode is not null && !chainNode.IsExpanded)
+				{
+					await _navTree.ToggleNodeIsExpandedAsync(chainNode).ConfigureAwait(true);
+				}
+			}
+		}
+
+		if (target.Category is { } category)
+		{
+			await SelectNavNodeAsync(
+				NavTreeDataProvider.CategoryKey(target.RepositoryFullName, category),
+				NavView.CategoryDetail);
+		}
+		else
+		{
+			await SelectNavNodeAsync(
+				NavTreeDataProvider.RepoKey(target.RepositoryFullName),
+				NavView.RepositoryDetail);
+		}
+	}
 
 	private RenderFragment RenderCurrentView() => __builder =>
 	{
@@ -3133,15 +3278,13 @@ else
 				@RenderAppSettingsView()
 				break;
 			case NavView.Repositories:
-				@* The whole estate, and the answer to "which of these no longer builds" after a bulk
-				   change. Its own component rather than another render method here: this file is
-				   already enormous, and RepositoryIssuesView sets the precedent. *@
-				<EstateView Rows="@EstateCandidates" Organization="@CurrentOrganization" />
+				@RenderEstateTable("Repositories")
+				break;
+			case NavView.Organisation:
+				@RenderEstateTable("Repositories")
 				break;
 			case NavView.Issues:
-				@* Embedded so it drops its own page header. Organization is required: without it the
-				   component shows nothing rather than every organisation's repositories. *@
-				<IssuesView Embedded="true" Organization="@CurrentOrganization" OnOutput="AppendIssuesOutput" OnEnqueue="EnqueueBulkRule" />
+				@RenderEstateTable("Issues")
 				break;
 			case NavView.IssueCategoryDetail:
 				@* The hierarchy itself now lives in the sidebar; this panel shows the selected
@@ -4236,6 +4379,19 @@ else
 	/// </summary>
 	private string GatedTooltip(WorkflowStep step, string defaultToolTip)
 	{
+		// At the estate nodes a button acts on the ticked rows, so the useful answer to "why is this
+		// greyed" is what it would do, or that nothing is ticked. Re-assess with nothing ticked keeps its
+		// own tooltip: it falls back to the whole organisation. A queued step that blocks this one still
+		// wins, because that is the real reason the button is greyed.
+		var queuedBlock = FirstQueuedStep is { } queued && WorkflowGate.IsBlocked(step, queued);
+		if (IsEstateWide && !queuedBlock && !(ToolbarScope.FallsBackToWholeOrganisation(step) && TickedCount == 0))
+		{
+			return ToolbarScope.DescribeSelection(
+				GetWorkflowStepDisplayName(step),
+				EstateTargets(step).Count,
+				TickedCount);
+		}
+
 		if (FirstQueuedStep is not { } blocking || !WorkflowGate.IsBlocked(step, blocking))
 		{
 			return defaultToolTip;
@@ -4537,9 +4693,17 @@ else
 	}
 
 	private int AiFixCandidateCount()
-		=> _selectedRow is null
-			? 0
-			: AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
+		=> IsEstateWide
+			? EstateAiFixRows().Count
+			: _selectedRow is null
+				? 0
+				: AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
+
+	/// <summary>
+	/// The ticked repositories that have something only a local model can do.
+	/// </summary>
+	private List<RepositoryDashboardRow> EstateAiFixRows()
+		=> [.. EstateTargets(WorkflowStep.Fix).Where(row => AiFixTargets.WorkCount(row, Remediations) > 0)];
 
 	/// <summary>
 	/// The human-raised issues in the selected repository that no analysis has judged yet.
@@ -4554,26 +4718,12 @@ else
 	/// </para>
 	/// </remarks>
 	private IReadOnlyList<RepositoryIssue> UnanalysedHumanIssues()
-	{
-		if (_selectedRow is null)
-		{
-			return [];
-		}
-
-		return
-		[
-			.. _selectedRow.OpenIssues
-				.Where(HumanIssueFilter.IsHumanRaised)
-				.Where(issue => issue.Analysis is null || IsVerdictStale(issue))
-		];
-	}
+		=> _selectedRow is null ? [] : AiFixTargets.UnanalysedHumanIssues(_selectedRow);
 
 	/// <summary>Whether the conversation has moved on since the verdict was reached.</summary>
 	/// <param name="issue">The issue.</param>
 	private static bool IsVerdictStale(RepositoryIssue issue)
-		=> issue.AnalysedAtIssueUpdatedUtc is { } analysed
-			&& issue.LastMaintainerReplyUtc is { } replied
-			&& replied > analysed;
+		=> AiFixTargets.IsVerdictStale(issue);
 
 	/// <summary>
 	/// Whether fixing locally is possible right now.
@@ -4592,6 +4742,17 @@ else
 	/// </summary>
 	private string GetFixWithAiTooltip()
 	{
+		if (IsEstateWide)
+		{
+			var withWork = EstateAiFixRows().Count;
+			return !RuntimeSettings.Ollama.IsConfigured
+				? "No local model is configured — set one under Settings, Ollama Config."
+				: withWork == 0
+					? "Nothing ticked needs the model."
+					: $"Start local-model work in {withWork} ticked "
+						+ $"{(withWork == 1 ? "repository" : "repositories")}.";
+		}
+
 		var count = AiFixCandidateCount();
 		var ollama = RuntimeSettings.Ollama;
 
@@ -4628,54 +4789,113 @@ else
 	/// This one runs on the configured Ollama server instead, which costs nothing and needs no IDE — and
 	/// is far weaker, which is why every fix is checked against the rule that asked for it.
 	/// </remarks>
-	private Task FixWithAiAsync()
+	private async Task FixWithAiAsync()
 	{
+		if (IsEstateWide)
+		{
+			await FixWithAiAcrossEstateAsync();
+			return;
+		}
+
 		if (_selectedRow is null)
 		{
-			return Task.CompletedTask;
+			return;
 		}
 
 		EnsureSelectedRowIsCurrent();
+		QueueAiFixFor(_selectedRow, announceNothingToDo: true);
+	}
 
-		var candidates = AiFixCandidates.For(_selectedRow, Remediations);
-		var issues = UnanalysedHumanIssues();
+	/// <summary>
+	/// Starts local-model work in every ticked repository that has any, asking first when that is more
+	/// than one, and saying which it left out.
+	/// </summary>
+	private async Task FixWithAiAcrossEstateAsync()
+	{
+		var targets = EstateTargets(WorkflowStep.Fix);
+		var withWork = targets.Where(row => AiFixTargets.WorkCount(row, Remediations) > 0).ToList();
+
+		ReportDroppedTicks();
+
+		if (withWork.Count == 0)
+		{
+			AppendConsole(ToolbarScope.DescribeSelection("Fix with AI", 0, _selection.Count));
+			return;
+		}
+
+		if (ToolbarScope.RequiresAiFixConfirmation(withWork.Count)
+			&& !await ConfirmAsync(ToolbarScope.ConfirmationMessage(
+				"Start local-model fixes in",
+				[.. withWork.Select(row => row.RepositoryName)])))
+		{
+			AppendConsole("Fix with AI cancelled: nothing was queued.");
+			return;
+		}
+
+		// Said after the confirmation, and counting the repositories that have model work, so the line
+		// matches what is about to be queued rather than every target the step could have reached.
+		AppendConsole(ToolbarScope.DescribeSelection("Fix with AI", withWork.Count, _selection.Count));
+
+		foreach (var row in withWork)
+		{
+			QueueAiFixFor(row, announceNothingToDo: false);
+		}
+
+		var without = targets.Except(withWork).Select(row => row.RepositoryName).ToList();
+		if (without.Count > 0)
+		{
+			AppendConsole($"Nothing for the model in: {string.Join(", ", without)}.");
+		}
+	}
+
+	/// <summary>
+	/// Queues one repository's local-model fixes and issue analyses.
+	/// </summary>
+	/// <param name="row">The repository.</param>
+	/// <param name="announceNothingToDo">Whether to say so when there is nothing to queue.</param>
+	private void QueueAiFixFor(RepositoryDashboardRow row, bool announceNothingToDo)
+	{
+		var candidates = AiFixCandidates.For(row, Remediations);
+		var issues = AiFixTargets.UnanalysedHumanIssues(row);
 
 		if (candidates.Count == 0 && issues.Count == 0)
 		{
-			AppendConsole("Nothing here needs the model: every failing rule has an automatic "
-				+ "remediation, and every human-raised issue already has a verdict.");
-			return Task.CompletedTask;
+			if (announceNothingToDo)
+			{
+				AppendConsole("Nothing here needs the model: every failing rule has an automatic "
+					+ "remediation, and every human-raised issue already has a verdict.");
+			}
+
+			return;
 		}
 
 		if (candidates.Count > 0)
 		{
 			var queued = FanOut.EnqueueAiFix(
-				_selectedRow.Organization,
-				_selectedRow.RepositoryFullName,
+				row.Organization,
+				row.RepositoryFullName,
 				candidates,
 				_selectedNodeKey);
 
-			AppendConsole($"⏳ Queued {queued} local-model fix(es) for {_selectedRow.RepositoryName}: "
+			AppendConsole($"⏳ Queued {queued} local-model fix(es) for {row.RepositoryName}: "
 				+ $"{string.Join(", ", candidates)}.");
 		}
 
 		if (issues.Count > 0)
 		{
 			var queued = FanOut.EnqueueIssueAnalysis(
-				_selectedRow.Organization,
-				_selectedRow.RepositoryFullName,
+				row.Organization,
+				row.RepositoryFullName,
 				[.. issues.Select(issue => issue.Number)],
 				_selectedNodeKey);
 
 			// Said plainly because analysis is not fixing. Most of these end as a verdict somebody
 			// reads; only a confident, unflagged one from a known contributor turns into a change,
 			// and none of them closes anything.
-			AppendConsole($"⏳ Queued {queued} issue analysis(es) for {_selectedRow.RepositoryName}: "
+			AppendConsole($"⏳ Queued {queued} issue analysis(es) for {row.RepositoryName}: "
 				+ $"{string.Join(", ", issues.Select(issue => $"#{issue.Number}"))}. Each produces a "
 				+ "verdict; rejections always wait for you.");
 		}
-
-		return Task.CompletedTask;
 	}
 
 	private async Task ReassessAllReposAsync() => await ReassessOrganizationAsync(null);
@@ -6329,6 +6549,7 @@ else
 		switch (item.View)
 		{
 			case NavView.Home:
+			case NavView.Organisation:
 				// Only what is governed is counted: the rest are accounted for in their own branch, and
 				// counting them here would say the estate holds packages that nothing assesses.
 				var governedRows = _rows.Where(r => r.IsGoverned).ToList();
@@ -6394,12 +6615,8 @@ else
 					: $"{item.Text} — informational";
 
 			case NavView.Repositories:
-				// The only container node whose toolbar acts on everything beneath it, which is new
-				// enough behaviour to be worth saying rather than leaving to be discovered by pressing
-				// Build and watching forty lanes start.
-				var buildable = EstateTargets(WorkflowStep.Build).Count;
-				return $"Repositories — every toolbar step runs on all {buildable} cloned, governed "
-					+ $"{(buildable == 1 ? "repository" : "repositories")} at once, except Publish"
+				return "Repositories — tick rows in the table, then use the toolbar to act on them. "
+					+ "Publish stays one repository at a time"
 					+ GetRolledUpHealthSuffix(item);
 
 			default:
@@ -6896,23 +7113,34 @@ else
 		return $"Copy AI prompt for {remainingCount} remaining issue{(remainingCount == 1 ? "" : "s")}";
 	}
 
-	private Task CommitAndPushAsync()
+	private async Task CommitAndPushAsync()
 	{
 		if (IsEstateWide)
 		{
-			QueueAcrossEstate(WorkKind.CommitAndPush, WorkflowStep.CommitAndPush, "Commit & push");
-			return Task.CompletedTask;
+			var targets = EstateTargets(WorkflowStep.CommitAndPush);
+			ReportDroppedTicks();
+
+			if (ToolbarScope.RequiresConfirmation(WorkflowStep.CommitAndPush, targets.Count)
+				&& !await ConfirmAsync(ToolbarScope.ConfirmationMessage(
+					"Commit & push",
+					[.. targets.Select(row => row.RepositoryName)])))
+			{
+				AppendConsole("Commit & push cancelled: nothing was queued.");
+				return;
+			}
+
+			QueueAcrossEstate(WorkKind.CommitAndPush, WorkflowStep.CommitAndPush, "Commit & push", targets);
+			return;
 		}
 
 		if (_selectedRow is null)
 		{
-			return Task.CompletedTask;
+			return;
 		}
 
 		EnsureSelectedRowIsCurrent();
 
 		QueueForSelectedRepository(WorkKind.CommitAndPush, $"Commit & push {_selectedRow.RepositoryFullName}", WorkflowStep.CommitAndPush);
-		return Task.CompletedTask;
 	}
 
 	public void Dispose()

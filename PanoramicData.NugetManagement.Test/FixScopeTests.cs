@@ -47,9 +47,22 @@ public class FixScopeTests(ITestOutputHelper output) : TestWithOutput(output)
 	[Theory]
 	[InlineData(NavView.None)]
 	[InlineData(NavView.Settings)]
-	[InlineData(NavView.Issues)]
+	[InlineData(NavView.Home)]
 	public void WhereThereIsNothingToFix_FixDoesNothing(NavView view)
 		=> FixScope.For(view).HasAnything.Should().BeFalse();
+
+	[Theory]
+	[InlineData(NavView.Repositories)]
+	[InlineData(NavView.Organisation)]
+	[InlineData(NavView.Issues)]
+	public void OnTheEstate_FixDoesEverythingBeneathIt(NavView view)
+	{
+		var scope = FixScope.For(view);
+
+		scope.ApplyRemediations.Should().BeTrue(
+			"the whole estate contains every failing rule, and with a selection that means the ticked rows");
+		scope.TriageDependabot.Should().BeTrue("and every Dependabot inbox");
+	}
 
 	[Fact]
 	public void HasAnything_IsTrueWhenEitherHalfApplies()

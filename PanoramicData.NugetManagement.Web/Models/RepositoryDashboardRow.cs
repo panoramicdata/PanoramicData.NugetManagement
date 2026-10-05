@@ -203,6 +203,49 @@ public class RepositoryDashboardRow
 	public DateTimeOffset? LastBuiltAtUtc { get; set; }
 
 	/// <summary>
+	/// What the last test run in this working tree did, or null when it never has been or is no longer
+	/// believed.
+	/// </summary>
+	public RepositoryTestState? LastTestState { get; set; }
+
+	/// <summary>
+	/// When <see cref="LastTestState"/> was established, or null when it never has been.
+	/// </summary>
+	public DateTimeOffset? LastTestedAtUtc { get; set; }
+
+	/// <summary>
+	/// Whether the row holds a remembered build or test result that could go stale.
+	/// </summary>
+	public bool HasVerificationResults => LastBuildState is not null || LastTestState is not null;
+
+	/// <summary>
+	/// Records what a test run did.
+	/// </summary>
+	/// <param name="state">What the run did.</param>
+	/// <param name="at">When it finished.</param>
+	public void RememberTestResult(RepositoryTestState state, DateTimeOffset at)
+	{
+		LastTestState = state;
+		LastTestedAtUtc = at;
+	}
+
+	/// <summary>
+	/// Throws away the remembered build and test results, because something rewrote the working tree
+	/// and neither describes what is on disk any more.
+	/// </summary>
+	/// <remarks>
+	/// Both together, by the same rule: a test result claims that this exact tree passed, exactly as a
+	/// build result claims that it built, and a stale green of either is worse than none.
+	/// </remarks>
+	public void ForgetVerificationResults()
+	{
+		LastBuildState = null;
+		LastBuiltAtUtc = null;
+		LastTestState = null;
+		LastTestedAtUtc = null;
+	}
+
+	/// <summary>
 	/// The assessment result from the governance rules. Null if not yet assessed.
 	/// </summary>
 	public RepoAssessment? Assessment { get; set; }
