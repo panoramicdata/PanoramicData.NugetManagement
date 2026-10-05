@@ -44,6 +44,7 @@
   "MicrosoftDynamics.Api",
   "Ollama.Api",
   "OpenProject.Api",
+  "PanoramicData.Aruba.Api",
   "PanoramicData.AuthMagic.Blazor",
   "PanoramicData.Blazor",
   "PanoramicData.Blazor.Demo",

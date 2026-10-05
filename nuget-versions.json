@@ -155,9 +155,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Codacy.Api": {
-    "latestVersion": "4.0.1",
-    "published": "2026-09-13T20:14:06.433+01:00",
-    "refreshedAtUtc": "2026-09-13T22:06:29.3321773+00:00"
+    "latestVersion": "4.0.13",
+    "published": "2026-10-04T22:19:50.77+01:00",
+    "refreshedAtUtc": "2026-10-05T01:47:56.362028+00:00"
   },
   "Codeuctivity.ImageSharpCompare": {
     "latestVersion": "4.1.390",
@@ -1150,9 +1150,9 @@
     "refreshedAtUtc": "2026-09-13T22:06:29.3321773+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.311",
-    "published": "2026-10-04T01:45:31.373+01:00",
-    "refreshedAtUtc": "2026-10-04T12:01:23.2859555+00:00"
+    "latestVersion": "10.0.315",
+    "published": "2026-10-04T22:22:21.097+01:00",
+    "refreshedAtUtc": "2026-10-05T01:47:56.362028+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.3",
@@ -1330,14 +1330,14 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Roslynator.Analyzers": {
-    "latestVersion": "5.0.0",
-    "published": "2026-08-21T21:03:03.227+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "5.0.1",
+    "published": "2026-10-04T14:36:00.48+01:00",
+    "refreshedAtUtc": "2026-10-04T13:47:56.3625037+00:00"
   },
   "Roslynator.CodeFixes": {
-    "latestVersion": "5.0.0",
-    "published": "2026-08-21T21:03:03.863+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "5.0.1",
+    "published": "2026-10-04T14:36:01.123+01:00",
+    "refreshedAtUtc": "2026-10-04T13:47:56.3625037+00:00"
   },
   "Rundeck.Api": {
     "latestVersion": "34.0.60",
