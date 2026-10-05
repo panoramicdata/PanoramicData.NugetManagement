@@ -52,8 +52,10 @@ public class FailArmyTests : TestWithOutput
 	// PKG-10 joins these because it is the precondition for the packaging rules rather than one of
 	// them: the fixture has to declare that it publishes something before those rules apply at all,
 	// and declaring it is exactly what PKG-10 asks for.
+	// PKG-14 asks nuget.org live, and an unreachable nuget.org reads as "unknown", which passes — so
+	// whether it fails here would depend on the network. Covered instead by PackageIsPublishedRuleTests.
 	private static readonly string[] _unfailableRuleIds =
-		["PKG-05", "PKG-06", "PKG-07", "CI-10", "CI-12", "PKG-10", "PKG-11"];
+		["PKG-05", "PKG-06", "PKG-07", "CI-10", "CI-12", "PKG-10", "PKG-11", "PKG-14"];
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="FailArmyTests"/> class.

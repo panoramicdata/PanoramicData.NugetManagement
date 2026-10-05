@@ -136,6 +136,26 @@ public abstract class RuleBase : IRule
 	}
 
 	/// <summary>
+	/// The package identifiers a repository publishes: the declared PackageId where there is one,
+	/// otherwise the project file name, which is what NuGet defaults the package identifier to.
+	/// </summary>
+	/// <param name="context">The repository context.</param>
+	/// <param name="packableProjects">The projects that publish a package, from <see cref="PackagingCheckApplies"/>.</param>
+	/// <returns>The distinct package identifiers.</returns>
+	protected static IEnumerable<string> ResolvePackageIds(RepositoryContext context, List<string> packableProjects)
+		=> packableProjects
+			.Select(projectPath =>
+			{
+				var declared = MsBuildProperties
+					.TryGetValues(context.GetFileContent(projectPath), "PackageId")?
+					.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+				return declared ?? Path.GetFileNameWithoutExtension(projectPath);
+			})
+			.Where(packageId => !string.IsNullOrWhiteSpace(packageId))
+			.Distinct(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
 	/// Reads a version from a tag or a computed version string, tolerating the leading "v" that is a
 	/// tag convention rather than part of the version.
 	/// </summary>

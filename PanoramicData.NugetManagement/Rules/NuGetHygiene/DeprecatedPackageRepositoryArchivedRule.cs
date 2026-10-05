@@ -116,21 +116,4 @@ public class DeprecatedPackageRepositoryArchivedRule : RuleBase
 		=> status.AlternatePackageId is null
 			? string.Empty
 			: $", superseded by `{status.AlternatePackageId}`";
-
-	/// <summary>
-	/// The package identifiers this repository publishes: the declared PackageId where there is one,
-	/// otherwise the project file name, which is what NuGet defaults the package identifier to.
-	/// </summary>
-	private static IEnumerable<string> ResolvePackageIds(RepositoryContext context, List<string> packableProjects)
-		=> packableProjects
-			.Select(projectPath =>
-			{
-				var declared = MsBuildProperties
-					.TryGetValues(context.GetFileContent(projectPath), "PackageId")?
-					.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-
-				return declared ?? Path.GetFileNameWithoutExtension(projectPath);
-			})
-			.Where(packageId => !string.IsNullOrWhiteSpace(packageId))
-			.Distinct(StringComparer.OrdinalIgnoreCase);
 }
