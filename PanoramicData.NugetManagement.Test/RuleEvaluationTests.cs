@@ -279,7 +279,7 @@ public class RuleEvaluationTests : TestWithOutput
 			["LICENSE"] = "MIT",
 			["README.md"] = "# Readme",
 			["SECURITY.md"] = "# Security",
-			["CONTRIBUTING.md"] = "# Contributing",
+			["CONTRIBUTING.md"] = Standards.ContributingMdContent,
 			["version.json"] = "{}"
 		});
 
@@ -984,11 +984,24 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["CONTRIBUTING.md"] = "# Contributing"
+			["CONTRIBUTING.md"] = Standards.ContributingMdContent
 		});
 
 		var result = await GetRule("COM-02").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task COM02_ShouldOfferReplacement_WhenContributingMdDiffersFromTheStandard()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["CONTRIBUTING.md"] = "# Contributing\nDo it our way.\n"
+		});
+
+		var result = await GetRule("COM-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
 	}
 
 	[Fact]
@@ -1048,6 +1061,71 @@ public class RuleEvaluationTests : TestWithOutput
 		var result = await GetRule("COM-04").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
 	}
+
+	private const string ShallowCodeQl = "name: CodeQL\non:\n  push:\njobs:\n  analyze:\n    steps:\n    - uses: actions/checkout@v7\n    - uses: github/codeql-action/init@v4\n";
+	private const string FullHistoryCodeQl = "name: CodeQL\non:\n  push:\njobs:\n  analyze:\n    steps:\n    - uses: actions/checkout@v7\n      with:\n        fetch-depth: 0\n    - uses: github/codeql-action/init@v4\n";
+
+	[Fact]
+	public async Task COM04_ShouldFail_WhenNbgvRepositoryChecksOutShallowClone()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/codeql.yml"] = ShallowCodeQl,
+			["version.json"] = "{}"
+		});
+
+		var result = await GetRule("COM-04").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse("Nerdbank.GitVersioning cannot build from a shallow clone, so CodeQL never runs");
+		result.Advisory!.Data["remediation_type"].Should().Be("ensure_checkout_fetch_depth");
+		result.Advisory.Data["file"].Should().Be(".github/workflows/codeql.yml");
+	}
+
+	[Fact]
+	public async Task COM04_ShouldPass_WhenNbgvRepositoryChecksOutFullHistory()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/codeql.yml"] = FullHistoryCodeQl,
+			["version.json"] = "{}"
+		});
+
+		var result = await GetRule("COM-04").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task COM04_ShouldPass_WhenShallowCloneButRepositoryDoesNotUseNbgv()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/codeql.yml"] = ShallowCodeQl
+		});
+
+		var result = await GetRule("COM-04").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeTrue("a repository without version.json has nothing that needs the history");
+	}
+
+	[Fact]
+	public async Task COM04_ShouldFailWithoutMechanicalFix_WhenThereIsNoCheckoutStepToEdit()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/codeql.yml"] = "name: CodeQL\njobs:\n  analyze:\n    steps:\n    - uses: github/codeql-action/init@v4\n",
+			["version.json"] = "{}"
+		});
+
+		var result = await GetRule("COM-04").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data.Should().NotContainKey("remediation_type");
+	}
+
+	[Fact]
+	public void COM04_Template_ShouldCheckOutFullHistory()
+		=> Standards.CodeQlWorkflowContent.Should().Contain("fetch-depth: 0");
 
 	// ── DOC-01 ──────────────────────────────────────────────────────────
 

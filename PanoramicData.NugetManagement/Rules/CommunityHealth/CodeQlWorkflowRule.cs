@@ -31,7 +31,7 @@ public class CodeQlWorkflowRule : RuleBase
 			var content = context.GetFileContent(wf);
 			if (Contains(content, "codeql") || Contains(content, "CodeQL"))
 			{
-				return Task.FromResult(Pass("CodeQL workflow found."));
+				return Task.FromResult(EvaluateWorkflow(context, wf, content!));
 			}
 		}
 
@@ -47,5 +47,38 @@ public class CodeQlWorkflowRule : RuleBase
 					["template_content"] = Standards.CodeQlWorkflowContent
 				}
 			}));
+	}
+
+	/// <summary>
+	/// A CodeQL workflow that builds a Nerdbank.GitVersioning repository from a shallow clone fails on
+	/// every run: the build cannot calculate the version height, so CodeQL reports "unable to
+	/// automatically build your code" and the repository silently has no static analysis. Presence of the
+	/// workflow is therefore not enough; it must also check out the full history.
+	/// </summary>
+	private RuleResult EvaluateWorkflow(RepositoryContext context, string workflowPath, string content)
+	{
+		if (!context.FileExists("version.json") || Contains(content, "fetch-depth: 0"))
+		{
+			return Pass("CodeQL workflow found.");
+		}
+
+		var data = new Dictionary<string, object> { ["workflow_file"] = workflowPath };
+
+		// Setting the key on a checkout step that is already there is mechanical. Adding the step
+		// itself is not, so that case is left without a mechanical fix.
+		if (Contains(content, "actions/checkout@"))
+		{
+			data["remediation_type"] = "ensure_checkout_fetch_depth";
+			data["file"] = workflowPath;
+		}
+
+		return Fail(
+			"CodeQL workflow checks out a shallow clone, which breaks the build of a Nerdbank.GitVersioning repository.",
+			new RuleAdvisory
+			{
+				Summary = "Set `fetch-depth: 0` on actions/checkout in the CodeQL workflow",
+				Detail = "Add `with: fetch-depth: 0` to the `actions/checkout` step in the CodeQL workflow. Without it Nerdbank.GitVersioning cannot calculate the version, the autobuild step fails and CodeQL never analyses the code.",
+				Data = data
+			});
 	}
 }

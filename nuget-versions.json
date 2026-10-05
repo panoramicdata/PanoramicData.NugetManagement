@@ -289,6 +289,11 @@
     "published": "2021-10-16T14:52:22.54+01:00",
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
+  "FluentAssertions": {
+    "latestVersion": "8.11.0",
+    "published": "2026-09-14T15:25:42.03+01:00",
+    "refreshedAtUtc": "2026-10-04T12:01:23.2859555+00:00"
+  },
   "FluentAssertions.Analyzers": {
     "latestVersion": "0.34.1",
     "published": "2024-10-07T20:53:12.713+01:00",
@@ -433,6 +438,11 @@
     "latestVersion": "0.32.0",
     "published": "2026-07-24T08:36:55.707+01:00",
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+  },
+  "LibUsbDotNet": {
+    "latestVersion": "3.0.224",
+    "published": "2026-05-18T01:03:38.827+01:00",
+    "refreshedAtUtc": "2026-10-04T12:56:21.2219622+00:00"
   },
   "LogicMonitor.Api": {
     "latestVersion": "3.240.97",
@@ -1140,9 +1150,9 @@
     "refreshedAtUtc": "2026-09-13T22:06:29.3321773+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.283",
-    "published": "2026-09-29T23:30:12.16+01:00",
-    "refreshedAtUtc": "2026-09-30T02:32:53.5289117+00:00"
+    "latestVersion": "10.0.311",
+    "published": "2026-10-04T01:45:31.373+01:00",
+    "refreshedAtUtc": "2026-10-04T12:01:23.2859555+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.3",
@@ -1713,6 +1723,21 @@
     "latestVersion": "2.1.0",
     "published": "2026-09-12T20:07:26.237+01:00",
     "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
+  },
+  "Xunit.DependencyInjection": {
+    "latestVersion": "12.0.1",
+    "published": "2026-08-25T07:40:30.507+01:00",
+    "refreshedAtUtc": "2026-10-04T12:01:23.2859555+00:00"
+  },
+  "Xunit.DependencyInjection.Logging": {
+    "latestVersion": "12.0.0",
+    "published": "2026-08-22T02:54:23.757+01:00",
+    "refreshedAtUtc": "2026-10-04T12:01:23.2859555+00:00"
+  },
+  "xunit.extensibility.core": {
+    "latestVersion": "2.9.3",
+    "published": "2025-01-08T17:32:20.1+00:00",
+    "refreshedAtUtc": "2026-10-04T12:01:23.2859555+00:00"
   },
   "Xunit.Microsoft.DependencyInjection": {
     "latestVersion": "10.1.0",

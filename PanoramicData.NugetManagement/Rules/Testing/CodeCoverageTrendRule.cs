@@ -48,9 +48,9 @@ public class CodeCoverageTrendRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.FindTestProjectFiles().Any())
+		if (NoCoverageToMeasure(context, "nothing to measure") is { } notApplicable)
 		{
-			return Task.FromResult(NotApplicable("No test projects found; there is nothing to measure."));
+			return Task.FromResult(notApplicable);
 		}
 
 		if (context.LineCoveragePercent is not { } line || context.BranchCoveragePercent is not { } branch)

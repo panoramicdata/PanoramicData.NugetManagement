@@ -6,9 +6,8 @@ namespace PanoramicData.NugetManagement.Test;
 /// Loads the Ollama settings the AI-fix integration tests need.
 /// </summary>
 /// <remarks>
-/// The same shape as <see cref="GitHubIntegrationSettings"/>, for the same reason: these tests talk to
-/// a real server, and a developer without one configured should see them skipped rather than see a red
-/// build.
+/// The same shape as <see cref="GitHubIntegrationSettings"/>: these tests talk to a real server and fail
+/// with a message naming the missing setting when it is not configured.
 /// <para>
 /// Set them in user secrets for the test project, or as environment variables so a build agent can
 /// supply the same values:
@@ -24,10 +23,8 @@ internal static class OllamaIntegrationSettings
 	/// <c>[Trait("Category", OllamaIntegrationSettings.Category)]</c>.
 	/// </summary>
 	/// <remarks>
-	/// CI selects on it: the coverage job runs <c>Category!=Ollama</c> and the ai-integration job runs
-	/// <c>Category=Ollama</c> against pdl-rune-01. Filtering by class name instead let
-	/// <see cref="IssueAnalysisInjectionTests"/> land in the coverage job with no model configured,
-	/// where failSkips turned its skips into failures and stopped every Codacy upload.
+	/// The manual Ollama integration workflow runs <c>Category=Ollama</c> against pdl-rune-01. These classes
+	/// also carry Category=Integration, which CI excludes.
 	/// </remarks>
 	public const string Category = "Ollama";
 
@@ -38,11 +35,11 @@ internal static class OllamaIntegrationSettings
 
 	/// <summary>The server's base address.</summary>
 	public static string BaseUrl => _configuration.Value["Ollama:BaseUrl"]
-		?? throw new InvalidOperationException("Ollama:BaseUrl was not found in user secrets or the environment.");
+		?? throw new InvalidOperationException("Ollama:BaseUrl is not configured. Set it with: dotnet user-secrets set Ollama:BaseUrl <url> --project PanoramicData.NugetManagement.Test, or set the Ollama__BaseUrl environment variable.");
 
 	/// <summary>The model to exercise.</summary>
 	public static string Model => _configuration.Value["Ollama:Model"]
-		?? throw new InvalidOperationException("Ollama:Model was not found in user secrets or the environment.");
+		?? throw new InvalidOperationException("Ollama:Model is not configured. Set it with: dotnet user-secrets set Ollama:Model <model> --project PanoramicData.NugetManagement.Test, or set the Ollama__Model environment variable.");
 
 	/// <summary>The optional API key; null for a local server that needs none.</summary>
 	public static string? ApiKey => _configuration.Value["Ollama:ApiKey"];
@@ -52,11 +49,4 @@ internal static class OllamaIntegrationSettings
 	/// </summary>
 	public static int ContextWindow
 		=> int.TryParse(_configuration.Value["Ollama:ContextWindow"], out var value) ? value : 131_072;
-
-	/// <summary>
-	/// Whether both a server and a model have been configured.
-	/// </summary>
-	public static bool IsConfigured
-		=> !string.IsNullOrWhiteSpace(_configuration.Value["Ollama:BaseUrl"])
-			&& !string.IsNullOrWhiteSpace(_configuration.Value["Ollama:Model"]);
 }

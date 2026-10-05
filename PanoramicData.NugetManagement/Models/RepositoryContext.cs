@@ -175,6 +175,22 @@ public class RepositoryContext
 			.Where(ShouldIncludeProjectInTesting);
 
 	/// <summary>
+	/// Gets the test projects whose tests can run unattended, so their coverage can be measured and
+	/// uploaded: every test project except those declared <c>DefaultTestingLevel: None</c>.
+	/// </summary>
+	/// <remarks>
+	/// A repository whose tests call a live service CI does not have declares them
+	/// <see cref="ProjectTestingLevel.None"/>. That is deliberately not
+	/// <c>TestingTreatment: Exclude</c>, which would drop the project from
+	/// <see cref="FindTestProjectFiles"/> and make TST-01 report that the repository has no tests —
+	/// a different and false finding. The project is still a test project; it just cannot be run
+	/// here, and the declaration is the one the app already honours when it runs tests locally.
+	/// </remarks>
+	public IEnumerable<string> FindCoverageTestProjectFiles()
+		=> FindTestProjectFiles()
+			.Where(path => GetProjectConfig(path)?.DefaultTestingLevel != ProjectTestingLevel.None);
+
+	/// <summary>
 	/// Gets non-test projects after applying project overrides.
 	/// </summary>
 	public IEnumerable<string> FindNonTestProjectFiles()

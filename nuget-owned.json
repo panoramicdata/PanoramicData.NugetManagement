@@ -1,4 +1,5 @@
 [
+  "AlienFx.Api",
   "Athonet.Api",
   "AutoTask.Api",
   "AutoTask.Psa.Api",
@@ -14,6 +15,7 @@
   "Divoom.Api",
   "DocMagic.Api",
   "DocumentFormat.OpenXml.DotNet.Core",
+  "Entuity.Api",
   "ExampleApp",
   "HaloPsa.Api",
   "Harvest",
@@ -101,6 +103,7 @@
   "Solidtime.Api",
   "SymphonyAi.Summit.Api",
   "TeamViewer.Api",
+  "TheHive.Api",
   "Toggl.Api",
   "Uk.CompaniesHouse.Api",
   "Uk.Legislation",
@@ -108,5 +111,6 @@
   "Uk.Nhs.CyberAlerts.Api",
   "Uk.Parliament",
   "Vizor.ECharts.Net80",
-  "XWiki.Api"
+  "XWiki.Api",
+  "YardStickOne.Api"
 ]
