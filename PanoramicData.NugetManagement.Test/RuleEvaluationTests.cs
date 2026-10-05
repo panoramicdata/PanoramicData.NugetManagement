@@ -2652,7 +2652,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["AGENTS.md"] = Standards.LegacyAgentsMdContent.Replace("\n", "\r\n")
+			["AGENTS.md"] = Standards.LegacyAgentsMdContent.Replace("\r\n", "\n").Replace("\n", "\r\n")
 		});
 
 		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
