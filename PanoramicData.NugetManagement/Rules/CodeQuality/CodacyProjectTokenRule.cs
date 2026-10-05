@@ -36,9 +36,9 @@ public class CodacyProjectTokenRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		if (!context.FindTestProjectFiles().Any())
+		if (NoCoverageToMeasure(context, "no coverage to upload") is { } notApplicable)
 		{
-			return Task.FromResult(NotApplicable("No test projects found; there is no coverage to upload."));
+			return Task.FromResult(notApplicable);
 		}
 
 		// Not established is not the same as absent. Reading an unanswered question as "no token"

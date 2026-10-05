@@ -106,7 +106,7 @@ public sealed class WorkExecutors(
 	}
 
 	/// <summary>
-	/// Throws away the repository's remembered build result when the work that just ran could have
+	/// Throws away the repository's remembered build and test results when the work that just ran could have
 	/// changed what is on disk.
 	/// </summary>
 	/// <param name="item">The item that ran.</param>
@@ -118,13 +118,12 @@ public sealed class WorkExecutors(
 		}
 
 		var row = RowFor(item);
-		if (row is null || row.LastBuildState is null)
+		if (row is null || !row.HasVerificationResults)
 		{
 			return;
 		}
 
-		row.LastBuildState = null;
-		row.LastBuiltAtUtc = null;
+		row.ForgetVerificationResults();
 		cache.UpsertRow(row);
 	}
 
@@ -261,6 +260,18 @@ public sealed class WorkExecutors(
 	{
 		row.LastBuildState = state;
 		row.LastBuiltAtUtc = DateTimeOffset.UtcNow;
+		cache.UpsertRow(row);
+	}
+
+	/// <summary>
+	/// Records what a test run did, so the estate can be read at a glance rather than one repository at
+	/// a time.
+	/// </summary>
+	/// <param name="row">The repository that was tested.</param>
+	/// <param name="state">What the run did.</param>
+	private void RememberTestResult(RepositoryDashboardRow row, RepositoryTestState state)
+	{
+		row.RememberTestResult(state, DateTimeOffset.UtcNow);
 		cache.UpsertRow(row);
 	}
 
@@ -1816,7 +1827,9 @@ public sealed class WorkExecutors(
 				},
 				cancellationToken).ConfigureAwait(false);
 
-			if (row.Status == PackageStatus.TestsPassed)
+			var passed = row.Status == PackageStatus.TestsPassed;
+
+			if (passed)
 			{
 				Say("✅ Tests passed");
 				item.Succeeded = true;
@@ -1827,6 +1840,8 @@ public sealed class WorkExecutors(
 				item.GeneratedPrompt = DashboardService.GenerateConciseWorkflowFailurePrompt(row, "test", output);
 				item.Succeeded = false;
 			}
+
+			RememberTestResult(row, passed ? RepositoryTestState.Passed : RepositoryTestState.Failed);
 		}
 		catch (OperationCanceledException)
 		{
@@ -1839,6 +1854,10 @@ public sealed class WorkExecutors(
 		{
 			Say($"❌ Error: {ex.Message}");
 			item.Succeeded = false;
+
+			// Tests that could not be run are a repository whose tests do not pass here, which is what
+			// the badge is asked. Leaving it as not-known would hide it among the never-tested.
+			RememberTestResult(row, RepositoryTestState.Failed);
 		}
 	}
 

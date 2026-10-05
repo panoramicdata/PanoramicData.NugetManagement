@@ -80,6 +80,37 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 				"selecting a repository's Issues branch must show its inbox, not nothing at all");
 
 	/// <summary>
+	/// The organisation node shared <c>NavView.Home</c> with the landing page, so nothing that takes only
+	/// a view could tell "an organisation" from "nothing selected", which a bulk toolbar needs to.
+	/// </summary>
+	[Fact]
+	public void TheOrganisationNodeShouldHaveAViewOfItsOwn()
+		=> BuildTree()
+			.Single(item => item.Key == NavTreeDataProvider.OrgKey("panoramicdata"))
+			.View
+			.Should().Be(NavView.Organisation,
+				"the organisation node must be distinguishable from the landing page by view alone");
+
+	/// <summary>
+	/// The Repositories node was given a view but rejected by the selectability rule, so the table never
+	/// showed there. Every node whose view shows the estate table must be selectable.
+	/// </summary>
+	[Fact]
+	public void EveryNodeThatShowsTheEstateTableShouldBeSelectable()
+	{
+		var estateNodes = BuildTree()
+			.Where(item => ToolbarScope.IsEstateWide(item.View))
+			.ToList();
+
+		estateNodes.Select(item => item.View).Distinct()
+			.Should().BeEquivalentTo([NavView.Organisation, NavView.Issues, NavView.Repositories]);
+		estateNodes.Should().OnlyContain(item => NavTreeDataProvider.IsSelectable(item));
+		NavTreeDataProvider.IsSelectable(
+			new NavItem { Key = "repos-loading:panoramicdata", Text = "Loading", View = NavView.None })
+			.Should().BeFalse();
+	}
+
+	/// <summary>
 	/// Fix is the only button that fixes things. Its visibility is driven by
 	/// <see cref="FixScope"/> rather than a hand-maintained list of views, so that a view where Fix
 	/// has work can never be one where the button is absent — the bug this whole area keeps producing.
@@ -89,6 +120,40 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 		=> ReadToolbarButton("fix")
 			.Should().Contain("FixScope.For(_currentView).HasAnything",
 				"a second hand-maintained list of views is how the button goes missing again");
+
+	/// <summary>
+	/// Rediscover Org is organisation-wide whatever is ticked, so it is offered at every node the table
+	/// is on. Its visibility used to name the dashboard and the organisation's Home view only.
+	/// </summary>
+	[Fact]
+	public void RediscoverOrgShouldBeOfferedAtEveryEstateWideNode()
+		=> ReadToolbarButton("refresh")
+			.Should().Contain("IsEstateWide",
+				"the table is on three nodes, and the organisation-wide buttons belong on all of them");
+
+	/// <summary>
+	/// There is one Re-assess button, so it has to be visible wherever the table is, or one of the three
+	/// nodes has no way to re-assess.
+	/// </summary>
+	[Fact]
+	public void ReassessShouldBeOfferedAtEveryEstateWideNode()
+		=> ReadToolbarButton("reassess")
+			.Should().Contain("IsEstateWide");
+
+	/// <summary>
+	/// Fix with AI used to read only the single selected repository, so on the estate it was never
+	/// offered at all.
+	/// </summary>
+	[Fact]
+	public void FixWithAiShouldBeOfferedForTheTickedRepositories()
+		=> ReadToolbarButton("fix-with-ai")
+			.Should().Contain("IsEstateWide");
+
+	[Fact]
+	public void PublishShouldNeverBeOfferedForTheEstate()
+		=> ReadToolbarButton("publish")
+			.Should().NotContain("IsEstateWide",
+				"a package pushed to nuget.org cannot be taken back, so it stays one repository at a time");
 
 	/// <summary>
 	/// The markup of one PDToolbarButton, from its Key to the end of the element.
