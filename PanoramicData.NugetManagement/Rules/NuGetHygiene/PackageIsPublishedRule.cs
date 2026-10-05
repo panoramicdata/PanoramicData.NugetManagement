@@ -90,8 +90,9 @@ public class PackageIsPublishedRule : RuleBase
 
 					- No release was ever tagged. Run `Publish.ps1` from a clean, up-to-date `main` so the
 					  tag matches the version Nerdbank.GitVersioning computes.
-					- The publish run was green but pushed nothing. A push using `--skip-duplicate` reports
-					  a nuget.org `Conflict` as success, so read the "Pushing ..." line in the publish log.
+					- The publish run was green but pushed nothing. A push using `--skip-duplicate` (older
+					  workflows; CI-08 now flags it) reports a nuget.org `Conflict` as success, so read the
+					  "Pushing ..." line in the publish log.
 					- A `Conflict` that repeats for every version means nuget.org refuses the identifier —
 					  it is owned by someone else or reserved. Rename the package, as
 					  `PanoramicData.LanSweeper.Api` did.

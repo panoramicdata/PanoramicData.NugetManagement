@@ -518,7 +518,7 @@ public static class Standards
 				$"        user: {nuGetUser}",
 				string.Empty,
 				"    - name: Push to NuGet",
-			 "      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate"
+			 "      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json"
 		]);
 
 	/// <summary>
