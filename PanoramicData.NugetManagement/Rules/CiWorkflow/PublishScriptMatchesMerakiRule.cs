@@ -64,6 +64,26 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 				}));
 		}
 
+		// 'gh auth status' validates the token with an API call, so when GitHub is rate-limiting the
+		// account it reports "The token in keyring is invalid" and the script blocks a healthy login
+		// with a misleading instruction. 'gh auth token' only reads the stored credential.
+		if (Contains(content, "gh auth status"))
+		{
+			return Task.FromResult(Fail(
+				"Publish.ps1 uses 'gh auth status', which reports a GitHub rate limit as an invalid token; use 'gh auth token' instead.",
+				new RuleAdvisory
+				{
+					Summary = "Replace 'gh auth status' in Publish.ps1 with 'gh auth token'",
+					Detail = "`gh auth status` makes an API call, so a GitHub rate limit makes it fail with \"The token in keyring is invalid\" and the script then wrongly tells the user to log in again. `gh auth token` reads only the stored credential and fails only when there is no login.",
+					Data = new()
+					{
+						["remediation_type"] = "replace_file_content",
+						["file"] = "Publish.ps1",
+						["new_content"] = Standards.PublishPs1Content
+					}
+				}));
+		}
+
 		var requiredSnippets = new[]
 		{
 			"git status --porcelain",
@@ -80,7 +100,7 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 			// is how nine repositories in the estate drifted up to 24 versions behind their newest tag,
 			// several of them for months. See CI-11, which catches the ones that already have.
 			"SkipPublishVerification",
-			"gh auth status",
+			"gh auth token",
 			"gh run watch",
 			"--exit-status"
 		};
@@ -96,7 +116,7 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 				new RuleAdvisory
 				{
 					Summary = "Update Publish.ps1 to match the standard Meraki.Api tagging-and-trigger pattern",
-					Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: clean tree check, branch check, MSBuild version resolution (`-t:GetBuildVersion --getProperty:NuGetPackageVersion`), tag creation, tag push — and then verification that the release actually published: a `gh auth status` pre-flight before anything is pushed, `gh run watch --exit-status` on the run the tag triggered, and a `-SkipPublishVerification` switch for anyone who opts out deliberately.",
+					Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: clean tree check, branch check, MSBuild version resolution (`-t:GetBuildVersion --getProperty:NuGetPackageVersion`), tag creation, tag push — and then verification that the release actually published: a `gh auth token` pre-flight before anything is pushed (not `gh auth status`, which makes an API call and reports a GitHub rate limit as an invalid token), `gh run watch --exit-status` on the run the tag triggered, and a `-SkipPublishVerification` switch for anyone who opts out deliberately.",
 					Data = new()
 					{
 						["remediation_type"] = "replace_file_content",
