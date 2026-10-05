@@ -341,44 +341,45 @@ public static class Standards
 
 		on:
 		  push:
-			branches: [ "main" ]
+		    branches: [ "main" ]
 		  pull_request:
-			branches: [ "main" ]
+		    branches: [ "main" ]
 		  schedule:
-			- cron: '0 6 * * 1'
+		    - cron: '0 6 * * 1'
 
 		jobs:
 		  analyze:
-			name: Analyze
-			runs-on: ubuntu-latest
-			permissions:
-			  actions: read
-			  contents: read
-			  security-events: write
+		    name: Analyze
+		    runs-on: ubuntu-latest
+		    permissions:
+		      actions: read
+		      contents: read
+		      security-events: write
 
-			strategy:
-			  fail-fast: false
-			  matrix:
-				language: [ 'csharp' ]
+		    strategy:
+		      fail-fast: false
+		      matrix:
+		        language: [ 'csharp' ]
 
-			steps:
-			- name: Checkout repository
-			  uses: actions/checkout@v7
-			  with:
-				fetch-depth: 0 # Nerdbank.GitVersioning needs full history, or the build fails
+		    steps:
+		    - name: Checkout repository
+		      uses: actions/checkout@v7
+		      with:
+		        # nbgv derives the version from commit height and cannot on a shallow clone.
+		        fetch-depth: 0
 
-			- name: Initialize CodeQL
-			  uses: github/codeql-action/init@v4
-			  with:
-				languages: ${{ matrix.language }}
+		    - name: Initialize CodeQL
+		      uses: github/codeql-action/init@v4
+		      with:
+		        languages: ${{ matrix.language }}
 
-			- name: Autobuild
-			  uses: github/codeql-action/autobuild@v4
+		    - name: Autobuild
+		      uses: github/codeql-action/autobuild@v4
 
-			- name: Perform CodeQL Analysis
-			  uses: github/codeql-action/analyze@v4
-			  with:
-				category: "/language:${{ matrix.language }}"
+		    - name: Perform CodeQL Analysis
+		      uses: github/codeql-action/analyze@v4
+		      with:
+		        category: "/language:${{ matrix.language }}"
 		""";
 
 	/// <summary>
@@ -411,40 +412,40 @@ public static class Standards
 
 		on:
 		  push:
-			branches: [main]
+		    branches: [main]
 		  pull_request:
-			branches: [main]
+		    branches: [main]
 		  release:
-			types: [published]
+		    types: [published]
 
 		jobs:
 		  build:
-			runs-on: ubuntu-latest
-			steps:
-			- name: Checkout
-			  uses: actions/checkout@v7
-			  with:
-				fetch-depth: 0
+		    runs-on: ubuntu-latest
+		    steps:
+		    - name: Checkout
+		      uses: actions/checkout@v7
+		      with:
+		        fetch-depth: 0
 
-			- name: Setup .NET
-			  uses: actions/setup-dotnet@v6
-			  with:
-				dotnet-version: 10.0.x
+		    - name: Setup .NET
+		      uses: actions/setup-dotnet@v6
+		      with:
+		        dotnet-version: 10.0.x
 
-			- name: Restore
-			  run: dotnet restore
+		    - name: Restore
+		      run: dotnet restore
 
-			- name: Build
-			  run: dotnet build --configuration Release --no-restore
+		    - name: Build
+		      run: dotnet build --configuration Release --no-restore
 
-			- name: Pack
-			  run: dotnet pack --configuration Release --no-build --output ./artifacts
+		    - name: Pack
+		      run: dotnet pack --configuration Release --no-build --output ./artifacts
 
-			- name: Upload artifacts
-			  uses: actions/upload-artifact@v7
-			  with:
-				name: packages
-				path: ./artifacts/*.nupkg
+		    - name: Upload artifacts
+		      uses: actions/upload-artifact@v7
+		      with:
+		        name: packages
+		        path: ./artifacts/*.nupkg
 		""";
 
 	/// <summary>
