@@ -755,6 +755,87 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	private static string CiWithPushLine(string pushLine) => string.Join("\n",
+	[
+		"on:",
+		"  push:",
+		"    tags: ['[0-9]*.[0-9]*.[0-9]*']",
+		"jobs:",
+		"  build:",
+		"    steps:",
+		"    - uses: actions/upload-artifact@v7",
+		"  publish:",
+		"    if: startsWith(github.ref, 'refs/tags/')",
+		"    permissions:",
+		"      id-token: write",
+		"    steps:",
+		"    - uses: NuGet/login@v1",
+		"      with:",
+		"        user: david_n_m_bond",
+		"    - name: Extra step",
+		"      run: echo kept",
+		$"    - run: {pushLine}"
+	]);
+
+	[Fact]
+	public async Task CI08_ShouldFailWithTargetedRemoval_WhenPushStepUsesSkipDuplicate()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/ci.yml"] = CiWithPushLine("dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate")
+		});
+
+		var result = await GetRule("CI-08").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("--skip-duplicate");
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_regex_in_file");
+		result.Advisory.Detail.Should().Contain("by design");
+
+		var pattern = ((string[])result.Advisory.Data["patterns"]).Single();
+		var replacement = ((string[])result.Advisory.Data["replacements"]).Single();
+		var fixedContent = System.Text.RegularExpressions.Regex.Replace(
+			context.GetFileContent(".github/workflows/ci.yml")!, pattern, replacement);
+		fixedContent.Should().NotContain("--skip-duplicate");
+		fixedContent.Should().Contain("--source https://api.nuget.org/v3/index.json");
+		fixedContent.Should().Contain("echo kept");
+	}
+
+	[Fact]
+	public async Task CI08_ShouldPass_WhenPushStepHasNoSkipDuplicate()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/ci.yml"] = CiWithPushLine("dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json")
+		});
+
+		var result = await GetRule("CI-08").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task CI08_ShouldFailWithFullReplacement_WhenSkipDuplicateAndOtherSnippetsMissing()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/ci.yml"] = "jobs:\n  publish:\n    steps:\n    - run: dotnet nuget push x.nupkg --skip-duplicate\n"
+		});
+
+		var result = await GetRule("CI-08").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+		result.Advisory.Data["missing_snippets"].Should().BeOfType<string[]>()
+			.Which.Should().Contain(snippet => snippet.Contains("--skip-duplicate"));
+		((string)result.Advisory.Data["new_content"]).Should().NotContain("--skip-duplicate");
+	}
+
+	[Fact]
+	public void StandardCiWorkflow_ShouldNotSkipDuplicates()
+	{
+		Standards.GetTrustedPublishingCiWorkflowContent("someone").Should().NotContain("--skip-duplicate");
+	}
+
 	// ── CI-09 ───────────────────────────────────────────────────────────
 
 	[Fact]

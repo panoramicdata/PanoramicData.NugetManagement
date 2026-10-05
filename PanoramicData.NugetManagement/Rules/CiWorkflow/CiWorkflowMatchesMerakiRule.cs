@@ -18,6 +18,13 @@ public class CiWorkflowMatchesMerakiRule : RuleBase, IGovernsDependency
 		new(DependencyEcosystem.GitHubActions, "actions/download-artifact")
 	];
 
+	private const string SkipDuplicateRemovalPattern = @"(nuget\s+push[^\r\n]*?)[ \t]+--skip-duplicate(?=\s|$)";
+
+	private static readonly System.Text.RegularExpressions.Regex SkipDuplicatePushPattern = new(
+		SkipDuplicateRemovalPattern,
+		System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+		TimeSpan.FromSeconds(2));
+
 	/// <inheritdoc />
 	public override string RuleId => "CI-08";
 
@@ -83,6 +90,42 @@ public class CiWorkflowMatchesMerakiRule : RuleBase, IGovernsDependency
 		if (uploadUsed is not null)
 		{
 			Services.ActionVersionCatalog.Default.Observe("actions/upload-artifact", uploadUsed.Value, Standards.LatestActionsUploadArtifactVersion, context.FullName);
+		}
+
+		var skipsDuplicates = SkipDuplicatePushPattern.IsMatch(content);
+		if (missing.Count == 0 && skipsDuplicates)
+		{
+			// Everything else matches, so only the flag needs to go: a targeted rewrite keeps any
+			// repository-specific steps the whole-file template would discard.
+			return Task.FromResult(Fail(
+				"The nuget push step uses --skip-duplicate, which turns a nuget.org Conflict into a green run that published nothing.",
+				new RuleAdvisory
+				{
+					Summary = "Remove --skip-duplicate from the nuget push step",
+					Detail = $"""
+						Remove `--skip-duplicate` from the `dotnet nuget push` step in `{ciWorkflowPath}`.
+
+						With the flag, a nuget.org 409 Conflict (an already-published version, or an identifier
+						nuget.org refuses) is reported as success, so the run is green and nothing was published.
+						Without it, a Conflict fails the job, which is the point.
+
+						Consequence, by design: re-running the publish job for a tag whose package is already on
+						nuget.org now fails with a Conflict. Do not re-add `--skip-duplicate` to make it green;
+						publish a new version instead.
+						""",
+					Data = new()
+					{
+						["remediation_type"] = "replace_regex_in_file",
+						["file"] = ciWorkflowPath,
+						["patterns"] = new[] { SkipDuplicateRemovalPattern },
+						["replacements"] = new[] { "${1}" }
+					}
+				}));
+		}
+
+		if (skipsDuplicates)
+		{
+			missing.Add("no --skip-duplicate on the nuget push step (a Conflict must fail the job)");
 		}
 
 		return Task.FromResult(missing.Count == 0
