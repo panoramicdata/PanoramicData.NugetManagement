@@ -106,15 +106,26 @@ public class DashboardService
 		// repository behind it. Every organisation under management is consulted, not merely the one
 		// being discovered: refreshing one must not decide that another's repositories belong to
 		// somebody else.
+		// Packages are only one way a repository comes to be ours: one that publishes nothing never
+		// appears in nuget.org's results. GitHub's own list is what completes the tree.
+		var gitHubRepositories = await ListGitHubRepositoriesAsync(
+			organizations,
+			github is null ? null : (owner, ct) => ListOrganizationRepositoriesAsync(github, owner, ct),
+			_logger,
+			cancellationToken).ConfigureAwait(false);
+
 		var (rows, ungoverned) = BuildRows(
 			packages,
 			_cache.GetCachedRows() ?? [],
-			_runtimeSettings.Organizations);
+			_runtimeSettings.Organizations,
+			gitHubRepositories);
 
 		_cache.SetUngovernedPackages(ungoverned);
 
 		foreach (var row in rows)
 		{
+			_runtimeSettings.SetAutoExcluded(row.RepositoryFullName, row.AutoExclusionReason);
+
 			// Local paths are keyed on the full owner/name identity, not the bare repository name.
 			var isCloned = _localRepo.IsClonedLocally(row.RepositoryFullName);
 
@@ -167,10 +178,17 @@ public class DashboardService
 	/// <param name="packages">The packages discovered from NuGet.</param>
 	/// <param name="previousRows">The rows from the last successful discovery, for carry-forward.</param>
 	/// <param name="organizations">The organisations under management.</param>
+	/// <param name="gitHubRepositories">
+	/// What GitHub lists for each organisation that was asked, keyed by organisation. An organisation
+	/// present with a null list was asked and could not be read: the unpackaged rows it had before are
+	/// carried forward rather than lost. Null, or an organisation absent, means GitHub was not consulted
+	/// and today's package-only behaviour applies.
+	/// </param>
 	internal static (List<RepositoryDashboardRow> Rows, List<UngovernedPackage> Ungoverned) BuildRows(
 		IReadOnlyList<NuGetPackageInfo> packages,
 		IReadOnlyList<RepositoryDashboardRow> previousRows,
-		IReadOnlyList<string> organizations)
+		IReadOnlyList<string> organizations,
+		IReadOnlyDictionary<string, IReadOnlyList<GitHubRepositoryInfo>?>? gitHubRepositories = null)
 	{
 		// A package whose nuspec we could not read keeps the repository we knew it by. Without this a
 		// request going astray removes a repository from governance, which is how eight of them came to
@@ -232,9 +250,144 @@ public class DashboardService
 				string.Compare(left.PackageId, right.PackageId, StringComparison.OrdinalIgnoreCase));
 		}
 
+		AddGitHubRepositories(rows, previousRows, organizations, gitHubRepositories);
+
 		return (
 			[.. rows.Values.OrderBy(row => row.RepositoryFullName, StringComparer.OrdinalIgnoreCase)],
 			ungoverned);
+	}
+
+	/// <summary>
+	/// Completes the rows with every repository GitHub lists, merged by full name so a repository that
+	/// publishes packages keeps them and appears once.
+	/// </summary>
+	private static void AddGitHubRepositories(
+		Dictionary<string, RepositoryDashboardRow> rows,
+		IReadOnlyList<RepositoryDashboardRow> previousRows,
+		IReadOnlyList<string> organizations,
+		IReadOnlyDictionary<string, IReadOnlyList<GitHubRepositoryInfo>?>? gitHubRepositories)
+	{
+		if (gitHubRepositories is null)
+		{
+			return;
+		}
+
+		foreach (var (organization, listed) in gitHubRepositories)
+		{
+			if (listed is null)
+			{
+				// Asked and unanswered: keep what we already showed for this organisation, so a flaky
+				// GitHub call cannot make unpackaged repositories vanish from the tree.
+				foreach (var previous in previousRows.Where(row =>
+					row.IsUnpackaged
+					&& string.Equals(OwnerOf(row.RepositoryFullName), organization, StringComparison.OrdinalIgnoreCase)
+					&& !rows.ContainsKey(row.RepositoryFullName)
+					&& GovernanceScope.ReasonNotGoverned(row.RepositoryFullName, organizations) is null))
+				{
+					rows[previous.RepositoryFullName] = new RepositoryDashboardRow
+					{
+						RepositoryFullName = previous.RepositoryFullName,
+						Organization = previous.Organization,
+						RepositoryUrl = previous.RepositoryUrl,
+						IsArchived = previous.IsArchived,
+						IsFork = previous.IsFork
+					};
+				}
+
+				continue;
+			}
+
+			foreach (var repository in listed)
+			{
+				if (GovernanceScope.ReasonNotGoverned(repository.FullName, organizations) is not null)
+				{
+					continue;
+				}
+
+				if (!rows.TryGetValue(repository.FullName, out var row))
+				{
+					row = new RepositoryDashboardRow
+					{
+						RepositoryFullName = repository.FullName,
+						Organization = organization,
+						RepositoryUrl = repository.Url ?? $"https://github.com/{repository.FullName}"
+					};
+
+					rows[repository.FullName] = row;
+				}
+
+				row.IsArchived = repository.IsArchived;
+				row.IsFork = repository.IsFork;
+			}
+		}
+	}
+
+	private static string? OwnerOf(string repositoryFullName)
+	{
+		var segments = repositoryFullName.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		return segments.Length < 2 ? null : segments[^2];
+	}
+
+	/// <summary>
+	/// Lists each organisation's repositories, one entry per organisation asked.
+	/// </summary>
+	/// <param name="organizations">The organisations being discovered.</param>
+	/// <param name="list">Lists one organisation's repositories, or null when GitHub is unavailable.</param>
+	/// <param name="logger">Where a failure is reported.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// A failure never propagates: the organisation maps to null so <see cref="BuildRows"/> falls back to
+	/// the package-only behaviour and keeps what it already had. Cancellation does propagate.
+	/// </remarks>
+	internal static async Task<Dictionary<string, IReadOnlyList<GitHubRepositoryInfo>?>> ListGitHubRepositoriesAsync(
+		IEnumerable<string> organizations,
+		Func<string, CancellationToken, Task<IReadOnlyList<GitHubRepositoryInfo>>>? list,
+		ILogger logger,
+		CancellationToken cancellationToken)
+	{
+		var result = new Dictionary<string, IReadOnlyList<GitHubRepositoryInfo>?>(StringComparer.OrdinalIgnoreCase);
+
+		foreach (var organization in organizations)
+		{
+			if (list is null)
+			{
+				result[organization] = null;
+				continue;
+			}
+
+			try
+			{
+				result[organization] = await list(organization, cancellationToken).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+				throw;
+			}
+			catch (Exception ex)
+			{
+				logger.LogWarning(ex, "Could not list GitHub repositories for {Organization}; showing package-derived repositories only.", organization);
+				result[organization] = null;
+			}
+		}
+
+		return result;
+	}
+
+	private static async Task<IReadOnlyList<GitHubRepositoryInfo>> ListOrganizationRepositoriesAsync(
+		IGitHubClient github,
+		string organization,
+		CancellationToken cancellationToken)
+	{
+		var repositories = await github.Repository
+			.GetAllForOrg(organization, new ApiOptions { PageSize = 100 })
+			.WaitAsync(cancellationToken)
+			.ConfigureAwait(false);
+
+		return [.. repositories.Select(repository => new GitHubRepositoryInfo(
+			repository.FullName,
+			repository.HtmlUrl,
+			repository.Archived,
+			repository.Fork))];
 	}
 
 	/// <summary>
@@ -289,6 +442,10 @@ public class DashboardService
 			// repository that stopped being ours cannot keep its clone facts — and so its buttons —
 			// merely by having been governed when the cache was written.
 			GovernanceScope.Apply(row, governed);
+
+			// Cached rows carry what GitHub said about them, so archived and fork repositories are
+			// excluded from the first render rather than only after the next discovery.
+			_runtimeSettings.SetAutoExcluded(row.RepositoryFullName, row.AutoExclusionReason);
 
 			var repoIdentity = RepoIdentity(row);
 			if (repoIdentity is null || !row.IsGoverned)

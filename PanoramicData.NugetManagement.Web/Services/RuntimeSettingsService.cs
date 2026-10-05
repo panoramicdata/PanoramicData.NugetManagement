@@ -300,7 +300,53 @@ public class RuntimeSettingsService
 		lock (_lock)
 		{
 			return _runtimeSettings.ExcludedRepositories
-				.Contains(repositoryFullName, StringComparer.OrdinalIgnoreCase);
+				.Contains(repositoryFullName, StringComparer.OrdinalIgnoreCase)
+				|| _autoExcluded.ContainsKey(repositoryFullName);
+		}
+	}
+
+	/// <summary>
+	/// Repositories excluded because of what GitHub says they are — "archived" or "fork" — rather than
+	/// because anyone chose to. Held in memory only and re-derived from the rows on every discovery and
+	/// reconciliation, so it is deliberately absent from the persisted snapshot: a repository that is
+	/// unarchived must come back without anyone editing a file.
+	/// </summary>
+	private readonly Dictionary<string, string> _autoExcluded = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Records, or clears, the reason a repository is excluded by what it is.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="reason">"archived" or "fork"; null when it is neither.</param>
+	public void SetAutoExcluded(string repositoryFullName, string? reason)
+	{
+		lock (_lock)
+		{
+			if (reason is null)
+			{
+				_autoExcluded.Remove(repositoryFullName);
+			}
+			else
+			{
+				_autoExcluded[repositoryFullName] = reason;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Why a repository is excluded without having been excluded by the user, or null when it is not.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public string? AutoExclusionReason(string? repositoryFullName)
+	{
+		if (string.IsNullOrWhiteSpace(repositoryFullName))
+		{
+			return null;
+		}
+
+		lock (_lock)
+		{
+			return _autoExcluded.GetValueOrDefault(repositoryFullName);
 		}
 	}
 

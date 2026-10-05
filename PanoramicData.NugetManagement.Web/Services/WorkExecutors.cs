@@ -92,6 +92,17 @@ public sealed class WorkExecutors(
 		// item, so two lanes running together never share one.
 		_running = item;
 
+		// The last line of defence for a repository that publishes no package: every button already
+		// refuses it, but a restored queue or a path that forgot to ask must not edit, push or publish
+		// it by accident. Only repositories the cache knows are judged; estate-level items have none.
+		if (item.RepositoryFullName is { Length: > 0 }
+			&& RowFor(item) is { } target
+			&& !RepositoryActionGate.Allows(target, item.Descriptor.Kind))
+		{
+			throw new InvalidOperationException(
+				$"{item.Descriptor.Kind} refused for {target.RepositoryFullName}. {RepositoryActionGate.AssessOnlyReason}");
+		}
+
 		try
 		{
 			await DispatchAsync(item, progress, cancellationToken).ConfigureAwait(false);

@@ -84,6 +84,33 @@ public class RepositoryDashboardRow
 	public string? NotGovernedReason { get; set; }
 
 	/// <summary>
+	/// Whether GitHub reports the repository as archived. An archived repository is shown but
+	/// excluded: it is read-only, so there is nothing to fix and nothing to assess.
+	/// </summary>
+	public bool IsArchived { get; set; }
+
+	/// <summary>
+	/// Whether GitHub reports the repository as a fork. A fork is shown but excluded: it is somebody
+	/// else's code carried in our organisation, not ours to hold to our rules.
+	/// </summary>
+	public bool IsFork { get; set; }
+
+	/// <summary>
+	/// Whether the repository publishes nothing to NuGet. Such a row came from GitHub's list rather
+	/// than from a package, and is assess-only: nothing outward is done to it automatically.
+	/// </summary>
+	[JsonIgnore]
+	public bool IsUnpackaged => Packages.Count == 0;
+
+	/// <summary>
+	/// Why this repository is excluded without anyone having asked — "archived" or "fork" — or null
+	/// when it is not.
+	/// </summary>
+	[JsonIgnore]
+	public string? AutoExclusionReason
+		=> IsArchived ? "archived" : IsFork ? "fork" : null;
+
+	/// <summary>
 	/// The GitHub repository URL.
 	/// </summary>
 	public string? RepositoryUrl { get; set; }
