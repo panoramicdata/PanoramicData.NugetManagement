@@ -957,15 +957,41 @@ public class RuleEvaluationTests : TestWithOutput
 	// ── COM-01 ──────────────────────────────────────────────────────────
 
 	[Fact]
-	public async Task COM01_ShouldPass_WhenSecurityMdExists()
+	public async Task COM01_ShouldPass_WhenSecurityMdIsTheStandardPolicy()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["SECURITY.md"] = "# Security Policy"
+			["SECURITY.md"] = Standards.GetSecurityMdContent("test-org/test-repo")
 		});
 
 		var result = await GetRule("COM-01").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task COM01_ShouldPass_WhenTheStandardPolicyDiffersOnlyInLineEndingsAndTrailingWhitespace()
+	{
+		var crlf = Standards.GetSecurityMdContent("test-org/test-repo").Replace("\r\n", "\n").Replace("\n", "\r\n") + "\r\n\r\n";
+		var context = CreateContext(new Dictionary<string, string> { ["SECURITY.md"] = crlf });
+
+		var result = await GetRule("COM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue("a Windows checkout must not read as a different policy");
+	}
+
+	[Fact]
+	public async Task COM01_ShouldOfferReplacement_WhenSecurityMdIsHandWritten()
+	{
+		// The AlienFx.Api policy: a different text that Codacy grades F while the old exact-match check passed it.
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["SECURITY.md"] = "# Security Policy\n\nTo report an issue, complete this form: https://panoramicdata.com/support\n"
+		});
+
+		var result = await GetRule("COM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+		result.Advisory.Data["file"].Should().Be("SECURITY.md");
+		result.Advisory.Data["new_content"].Should().Be(Standards.GetSecurityMdContent("test-org/test-repo"));
 	}
 
 	[Fact]
