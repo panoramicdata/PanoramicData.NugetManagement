@@ -33,6 +33,16 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 		ungoverned.Should().BeEmpty("a GitHub-derived row is not an unreadable package");
 	}
 
+	[Theory]
+	[InlineData(0, 0, false)]
+	[InlineData(1, 0, true)]
+	[InlineData(2, 1, false)]
+	[InlineData(2, 2, false)]
+	public void OnlyARepositoryThatRetiredEveryPackageShouldLeaveOnReassessment(int published, int listed, bool leaves)
+		=> WorkExecutors.HasRetiredEveryPackage(published, listed).Should().Be(
+			leaves,
+			"a repository publishing nothing has retired nothing, so re-assessment must not remove it");
+
 	[Fact]
 	public void APackageDerivedRowShouldKeepItsPackagesAndAppearOnce()
 	{

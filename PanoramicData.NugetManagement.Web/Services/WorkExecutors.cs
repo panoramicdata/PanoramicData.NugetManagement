@@ -594,8 +594,21 @@ public sealed class WorkExecutors(
 	}
 
 	/// <summary>
-	/// Re-checks one repository's packages against the NuGet listing and, if any are still listed,
-	/// re-assesses it against every rule.
+	/// Whether a repository has retired every package it published, and so leaves the estate.
+	/// </summary>
+	/// <remarks>
+	/// A repository that never published anything has retired nothing: GitHub-derived rows have no
+	/// packages by design, and treating "none listed" as "all retired" deleted every live unpackaged
+	/// repository on its first re-assessment.
+	/// </remarks>
+	/// <param name="publishedCount">How many packages the row publishes.</param>
+	/// <param name="listedCount">How many of those are still listed on NuGet.</param>
+	internal static bool HasRetiredEveryPackage(int publishedCount, int listedCount)
+		=> publishedCount > 0 && listedCount == 0;
+
+	/// <summary>
+	/// Re-checks one repository's packages against the NuGet listing and, if any are still listed or
+	/// it publishes none, re-assesses it against every rule.
 	/// </summary>
 	/// <remarks>
 	/// A repository leaves the estate only when every package it publishes has been retired. Dropping
@@ -628,7 +641,7 @@ public sealed class WorkExecutors(
 				}
 			}
 
-			if (listed.Count == 0)
+			if (HasRetiredEveryPackage(row.Packages.Count, listed.Count))
 			{
 				Say($"⚠️ {row.RepositoryFullName} publishes nothing still listed on NuGet — removing from cache.");
 				cache.RemoveRow(row.RepositoryFullName);
