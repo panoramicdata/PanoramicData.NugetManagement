@@ -39,6 +39,19 @@ Stated by the user: every repository should have the standard A-grade SECURITY.m
 5. **CQ-05 / CQ-06 on generated files.** Before queueing AI targets, regenerate files this tool owns
    (CLAUDE.md, Publish.ps1) from their templates. SECURITY.md is already covered by step 1.
 
+## Implementation outcome (2026-10-06)
+
+Steps 1-3 are implemented with tests. Steps 4 and 5 were deliberately not built:
+
+- **Step 4 (CI-15):** a repository's test step is inline in its `build` job, on varying runners, and the
+  coverage flags and output path differ between VSTest and Microsoft.Testing.Platform. Whether the Codacy
+  action accepts a glob for those paths could not be checked here. A wrong job would make CI-15 pass
+  while uploading nothing, which is worse than the current honest failure. Needs a verified job
+  template per test-runner mode, checked against one live repository first.
+- **Step 5 (regenerating CLAUDE.md):** CLAUDE.md carries repository-specific instructions, so it is not a
+  file this tool wholly owns, and regenerating it would destroy them. Dropped. Publish.ps1 is already
+  covered by its own rule and remediation.
+
 ## Out of scope
 
 - TST-10: cleared by step 4 plus a Codacy project token, which cannot be created by editing files.
