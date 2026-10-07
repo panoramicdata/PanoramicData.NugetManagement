@@ -891,6 +891,50 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
+	public async Task CI09_ShouldPass_ForTheStandardScript()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = Standards.PublishPs1Content
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue(result.Message);
+		Standards.PublishPs1Content.Should().NotContain("Write-Host");
+		Standards.PublishPs1Content.Should().MatchRegex("^[\\x00-\\x7F]*$", "Codacy's PSScriptAnalyzer reports a non-ASCII file without a byte order mark");
+	}
+
+	[Theory]
+	[InlineData("Write-Host \"Tag $version pushed.\" -ForegroundColor Green", "Write-Host")]
+	[InlineData("write-host \"done\"", "Write-Host")]
+	[InlineData("# reached nuget.org — use it only if checking", "non-ASCII")]
+	public async Task CI09_ShouldFail_WhenACompleteScriptWouldBeFlaggedByCodacy(string extraLine, string expectedReason)
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = Standards.PublishPs1Content + "\n" + extraLine + "\n"
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain(expectedReason);
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+		result.Advisory.Data["new_content"].Should().Be(Standards.PublishPs1Content);
+	}
+
+	[Fact]
+	public async Task CI09_ShouldPass_ForANonAsciiScriptWithAByteOrderMark()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = "﻿" + Standards.PublishPs1Content + "\n# café\n"
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue(result.Message);
+	}
+
+	[Fact]
 	public async Task CI09_ShouldFail_WhenPublishPs1DoesNotMatchStandard()
 	{
 		var context = CreateContext(new Dictionary<string, string>
