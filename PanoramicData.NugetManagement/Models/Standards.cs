@@ -518,7 +518,7 @@ public static class Standards
 				$"        user: {nuGetUser}",
 				string.Empty,
 				"    - name: Push to NuGet",
-			 "      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate"
+			 "      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json"
 		]);
 
 	/// <summary>
@@ -628,7 +628,7 @@ public static class Standards
 		publishes. Its build, CI, versioning, licensing and community files are governed by the open
 		source PanoramicData.NugetManagement tool (https://github.com/panoramicdata/PanoramicData.NugetManagement),
 		which assesses repositories against a shared set of rules and can apply fixes automatically.
-		Files such as CLAUDE.md, AGENTS.md, SECURITY.md and CONTRIBUTING.md may be created or updated
+		Files such as CLAUDE.md, AGENTS.md and SECURITY.md may be created or updated
 		by that tool.
 		""";
 
@@ -672,7 +672,7 @@ public static class Standards
 		## Tools
 
 		- Build and test with `dotnet build` / `dotnet test`.
-		- Use `git` for version control, following `CONTRIBUTING.md` where present.
+		- Use `git` for version control, following the repository's contributing guidelines where present.
 
 		## Shared instructions
 
@@ -764,7 +764,7 @@ public static class Standards
 	public const string PublishPs1Content = """
 		param(
 			# Skips waiting for the release run. The tag is still pushed, but nothing confirms a package
-			# reached nuget.org — use it only if you are checking the run yourself.
+			# reached nuget.org; use it only if you are checking the run yourself.
 			[switch]$SkipPublishVerification
 		)
 
@@ -876,7 +876,7 @@ public static class Standards
 		}
 
 		if (-not $runId) {
-			Write-Error "Tag $version was pushed but no run appeared for it. Check https://github.com/$repoFullName/actions — the workflow may not trigger on tags, or GitHub may be rate-limiting the lookups."
+			Write-Error "Tag $version was pushed but no run appeared for it. Check https://github.com/$repoFullName/actions: the workflow may not trigger on tags, or GitHub may be rate-limiting the lookups."
 			exit 1
 		}
 
@@ -888,7 +888,7 @@ public static class Standards
 			Write-Information ""
 			Write-Warning "The release run did not succeed: https://github.com/$repoFullName/actions/runs/$runId"
 
-			# A refused job — an exhausted Actions budget, for instance — fails before any step runs, so it
+			# A refused job (an exhausted Actions budget, for instance) fails before any step runs, so it
 			# has no failed step to report. The check-run annotation is the only place the reason appears.
 			$jobId = gh api "repos/$repoFullName/actions/runs/$runId/jobs" --jq '.jobs[0].id' 2>$null
 			if ($LASTEXITCODE -eq 0 -and $jobId) {

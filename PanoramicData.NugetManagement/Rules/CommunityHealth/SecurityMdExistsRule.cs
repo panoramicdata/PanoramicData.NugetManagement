@@ -3,8 +3,7 @@ using PanoramicData.NugetManagement.Models;
 namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
-/// Checks that SECURITY.md exists, and is not the earlier generated version that published a
-/// mailbox address.
+/// Checks that SECURITY.md exists and is the standard policy.
 /// </summary>
 public class SecurityMdExistsRule : RuleBase
 {
@@ -39,24 +38,29 @@ public class SecurityMdExistsRule : RuleBase
 				}));
 		}
 
+		// Null means the file was listed but never fetched, which says nothing about its contents.
 		var content = context.GetFileContent("SECURITY.md");
-		if (content is not null && Standards.IsGeneratedContent(content, Standards.LegacySecurityMdContent))
+		var standard = Standards.GetSecurityMdContent(context.FullName);
+		if (content is not null && !Standards.IsGeneratedContent(content, standard))
 		{
 			return Task.FromResult(Fail(
-				"SECURITY.md is the earlier generated policy, which publishes a mailbox address that Codacy flags as PII.",
+				"SECURITY.md is not the standard security policy.",
 				new RuleAdvisory
 				{
-					Summary = "Replace the generated SECURITY.md with the private vulnerability reporting policy",
-					Detail = "The file is exactly what this tool previously generated, so it is replaced; a hand-written policy is never touched.",
+					Summary = "Replace SECURITY.md with the standard private vulnerability reporting policy",
+					Detail = "Every repository carries the same policy, which points reporters at GitHub private vulnerability "
+						+ "reporting and publishes no mailbox address or bare URL for Codacy to flag. Hand-written variants "
+						+ "grade poorly and drift apart, so the file is replaced. A repository that genuinely needs a "
+						+ "different policy should waive this rule.",
 					Data = new()
 					{
 						["remediation_type"] = "replace_file_content",
 						["file"] = "SECURITY.md",
-						["new_content"] = Standards.GetSecurityMdContent(context.FullName)
+						["new_content"] = standard
 					}
 				}));
 		}
 
-		return Task.FromResult(Pass("SECURITY.md found."));
+		return Task.FromResult(Pass("SECURITY.md is the standard policy."));
 	}
 }

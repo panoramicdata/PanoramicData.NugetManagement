@@ -1524,7 +1524,7 @@ else
 	private bool IsLocalStepEnabled(WorkflowStep step)
 		=> IsEstateWide
 			? EstateTargets(step).Count > 0 && !IsStepQueueBlocked(step)
-			: _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(step);
+			: _selectedRow?.IsClonedLocally == true && RepositoryActionGate.Allows(_selectedRow, step) && !IsBlockedByOutOfSync && !IsStepQueueBlocked(step);
 
 	/// <summary>
 	/// Says, once, that ticks were dropped because their repositories have gone. Called at the top of
@@ -4697,7 +4697,7 @@ else
 			? EstateAiFixRows().Count
 			: _selectedRow is null
 				? 0
-				: AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
+				: !RepositoryActionGate.Allows(_selectedRow, WorkflowStep.FixWithAi) ? 0 : AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
 
 	/// <summary>
 	/// The ticked repositories that have something only a local model can do.
@@ -5362,7 +5362,7 @@ else
 			return EstateTargets(WorkflowStep.Fix).Count > 0;
 		}
 
-		if (_selectedRow is null)
+		if (_selectedRow is null || !RepositoryActionGate.Allows(_selectedRow, WorkflowStep.Fix))
 		{
 			return false;
 		}
@@ -6253,6 +6253,14 @@ else
 	/// </summary>
 	private async Task ToggleRepositoryExcludedAsync(string repositoryFullName, bool currentlyExcluded)
 	{
+		// Archived and fork repositories are excluded by what they are, not by choice, so there is no
+		// setting to flip; saying so beats a click that appears to do nothing.
+		if (RuntimeSettings.AutoExclusionReason(repositoryFullName) is { } autoReason)
+		{
+			AppendConsole($"{repositoryFullName} is {autoReason}, so it stays excluded.");
+			return;
+		}
+
 		RuntimeSettings.SetRepositoryExcluded(repositoryFullName, !currentlyExcluded);
 		AppendConsole(currentlyExcluded
 			? $"👁️ {repositoryFullName} is governed again."
@@ -6545,6 +6553,29 @@ else
 	};
 
 	private string GetNavItemTooltip(NavItem item)
+	{
+		var tooltip = GetNavItemTooltipCore(item);
+
+		if (item.View != NavView.RepositoryDetail || RowForNavItem(item) is not { } hinted)
+		{
+			return tooltip;
+		}
+
+		var hints = new List<string>();
+		if (RuntimeSettings.AutoExclusionReason(hinted.RepositoryFullName) is { } autoReason)
+		{
+			hints.Add($"Excluded: this repository is {autoReason}, so it is shown but not assessed.");
+		}
+
+		if (hinted.IsUnpackaged)
+		{
+			hints.Add(RepositoryActionGate.AssessOnlyReason);
+		}
+
+		return hints.Count == 0 ? tooltip : $"{tooltip}\n{string.Join("\n", hints)}";
+	}
+
+	private string GetNavItemTooltipCore(NavItem item)
 	{
 		switch (item.View)
 		{

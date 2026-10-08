@@ -16,6 +16,8 @@ public class ToolbarScopeTests(ITestOutputHelper output) : TestWithOutput(output
 		{
 			RepositoryFullName = $"panoramicdata/{name}",
 			Organization = "panoramicdata",
+			// An ordinary repository publishes a package; one that publishes nothing is assess-only.
+			Packages = [new() { PackageId = name }],
 			IsClonedLocally = cloned,
 			IsGoverned = governed
 		};

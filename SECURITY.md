@@ -2,29 +2,32 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest  | :white_check_mark: |
+Only the latest released version is supported with security updates.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in this project, please report it responsibly.
+If you discover a security vulnerability, please report it responsibly.
 
-**Do not open a public GitHub issue for security vulnerabilities.**
+**Do not open a public GitHub issue.**
 
-Instead, please email security@intodayshighlight.com with:
+Instead, use GitHub's private vulnerability reporting: open this repository's **Security** tab
+and choose **Report a vulnerability**, or go straight to
+https://github.com/panoramicdata/PanoramicData.NugetManagement/security/advisories/new
+
+Please include:
 
 - A description of the vulnerability
 - Steps to reproduce the issue
 - Any relevant logs or screenshots
 
-We will acknowledge your email within 48 hours and provide an estimated timeline for a fix.
+We will acknowledge receipt within 48 hours and aim to provide a fix or mitigation within 7 business days.
 
-## Security Best Practices
+## Disclosure Policy
 
-This library interacts with the GitHub API using authentication tokens. When using this library:
+We follow a coordinated disclosure process. We ask that you:
 
-- **Never commit API tokens** to source control
-- Store tokens in environment variables or secure vaults
-- Use the minimum required permissions for GitHub tokens
-- Rotate tokens regularly
+1. Allow us reasonable time to investigate and address the issue
+2. Avoid exploiting the vulnerability beyond what is necessary to demonstrate it
+3. Do not disclose the issue publicly until we have released a fix
+
+Thank you for helping keep our software and users safe.

@@ -75,9 +75,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Azure.Storage.Blobs": {
-    "latestVersion": "12.30.0",
-    "published": "2026-09-30T21:29:17.11+01:00",
-    "refreshedAtUtc": "2026-10-01T02:32:53.5284527+00:00"
+    "latestVersion": "12.30.1",
+    "published": "2026-10-06T20:42:37.8+01:00",
+    "refreshedAtUtc": "2026-10-06T21:25:35.8426803+00:00"
   },
   "BenchmarkDotNet": {
     "latestVersion": "0.15.8",
@@ -860,9 +860,9 @@
     "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
   },
   "Microsoft.Graph": {
-    "latestVersion": "6.7.0",
-    "published": "2026-09-18T19:47:24.87+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "6.8.0",
+    "published": "2026-10-06T23:38:38.137+01:00",
+    "refreshedAtUtc": "2026-10-06T23:21:27.3768713+00:00"
   },
   "Microsoft.Identity.Web": {
     "latestVersion": "4.16.0",
@@ -935,9 +935,9 @@
     "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
   },
   "Microsoft.Testing.Extensions.CodeCoverage": {
-    "latestVersion": "18.11.2",
-    "published": "2026-09-11T12:49:51.833+01:00",
-    "refreshedAtUtc": "2026-09-11T16:16:25.5965036+00:00"
+    "latestVersion": "18.12.0",
+    "published": "2026-10-06T15:36:48.687+01:00",
+    "refreshedAtUtc": "2026-10-06T15:25:35.834247+00:00"
   },
   "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": {
     "latestVersion": "1.23.0",
@@ -1150,9 +1150,9 @@
     "refreshedAtUtc": "2026-09-13T22:06:29.3321773+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.315",
-    "published": "2026-10-04T22:22:21.097+01:00",
-    "refreshedAtUtc": "2026-10-05T01:47:56.362028+00:00"
+    "latestVersion": "10.0.333",
+    "published": "2026-10-06T01:40:57.793+01:00",
+    "refreshedAtUtc": "2026-10-06T05:58:09.8275776+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.3",
@@ -1445,9 +1445,9 @@
     "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "ServiceStack": {
-    "latestVersion": "10.3.0",
-    "published": "2026-09-29T14:59:19.28+01:00",
-    "refreshedAtUtc": "2026-09-29T14:32:53.5506774+00:00"
+    "latestVersion": "10.4.0",
+    "published": "2026-10-06T15:26:44.95+01:00",
+    "refreshedAtUtc": "2026-10-06T15:25:35.834247+00:00"
   },
   "SharpZipLib": {
     "latestVersion": "1.4.2",

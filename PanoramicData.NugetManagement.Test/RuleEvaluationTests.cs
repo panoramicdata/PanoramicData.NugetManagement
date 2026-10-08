@@ -755,6 +755,87 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Passed.Should().BeFalse();
 	}
 
+	private static string CiWithPushLine(string pushLine) => string.Join("\n",
+	[
+		"on:",
+		"  push:",
+		"    tags: ['[0-9]*.[0-9]*.[0-9]*']",
+		"jobs:",
+		"  build:",
+		"    steps:",
+		"    - uses: actions/upload-artifact@v7",
+		"  publish:",
+		"    if: startsWith(github.ref, 'refs/tags/')",
+		"    permissions:",
+		"      id-token: write",
+		"    steps:",
+		"    - uses: NuGet/login@v1",
+		"      with:",
+		"        user: david_n_m_bond",
+		"    - name: Extra step",
+		"      run: echo kept",
+		$"    - run: {pushLine}"
+	]);
+
+	[Fact]
+	public async Task CI08_ShouldFailWithTargetedRemoval_WhenPushStepUsesSkipDuplicate()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/ci.yml"] = CiWithPushLine("dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate")
+		});
+
+		var result = await GetRule("CI-08").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain("--skip-duplicate");
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_regex_in_file");
+		result.Advisory.Detail.Should().Contain("by design");
+
+		var pattern = ((string[])result.Advisory.Data["patterns"]).Single();
+		var replacement = ((string[])result.Advisory.Data["replacements"]).Single();
+		var fixedContent = System.Text.RegularExpressions.Regex.Replace(
+			context.GetFileContent(".github/workflows/ci.yml")!, pattern, replacement);
+		fixedContent.Should().NotContain("--skip-duplicate");
+		fixedContent.Should().Contain("--source https://api.nuget.org/v3/index.json");
+		fixedContent.Should().Contain("echo kept");
+	}
+
+	[Fact]
+	public async Task CI08_ShouldPass_WhenPushStepHasNoSkipDuplicate()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/ci.yml"] = CiWithPushLine("dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json")
+		});
+
+		var result = await GetRule("CI-08").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task CI08_ShouldFailWithFullReplacement_WhenSkipDuplicateAndOtherSnippetsMissing()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			[".github/workflows/ci.yml"] = "jobs:\n  publish:\n    steps:\n    - run: dotnet nuget push x.nupkg --skip-duplicate\n"
+		});
+
+		var result = await GetRule("CI-08").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+		result.Advisory.Data["missing_snippets"].Should().BeOfType<string[]>()
+			.Which.Should().Contain(snippet => snippet.Contains("--skip-duplicate"));
+		((string)result.Advisory.Data["new_content"]).Should().NotContain("--skip-duplicate");
+	}
+
+	[Fact]
+	public void StandardCiWorkflow_ShouldNotSkipDuplicates()
+	{
+		Standards.GetTrustedPublishingCiWorkflowContent("someone").Should().NotContain("--skip-duplicate");
+	}
+
 	// ── CI-09 ───────────────────────────────────────────────────────────
 
 	[Fact]
@@ -853,6 +934,50 @@ public class RuleEvaluationTests : TestWithOutput
 
 		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task CI09_ShouldPass_ForTheStandardScript()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = Standards.PublishPs1Content
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue(result.Message);
+		Standards.PublishPs1Content.Should().NotContain("Write-Host");
+		Standards.PublishPs1Content.Should().MatchRegex("^[\\x00-\\x7F]*$", "Codacy's PSScriptAnalyzer reports a non-ASCII file without a byte order mark");
+	}
+
+	[Theory]
+	[InlineData("Write-Host \"Tag $version pushed.\" -ForegroundColor Green", "Write-Host")]
+	[InlineData("write-host \"done\"", "Write-Host")]
+	[InlineData("# reached nuget.org — use it only if checking", "non-ASCII")]
+	public async Task CI09_ShouldFail_WhenACompleteScriptWouldBeFlaggedByCodacy(string extraLine, string expectedReason)
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = Standards.PublishPs1Content + "\n" + extraLine + "\n"
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Message.Should().Contain(expectedReason);
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+		result.Advisory.Data["new_content"].Should().Be(Standards.PublishPs1Content);
+	}
+
+	[Fact]
+	public async Task CI09_ShouldPass_ForANonAsciiScriptWithAByteOrderMark()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = "﻿" + Standards.PublishPs1Content + "\n# café\n"
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue(result.Message);
 	}
 
 	[Fact]
@@ -1003,15 +1128,41 @@ public class RuleEvaluationTests : TestWithOutput
 	// ── COM-01 ──────────────────────────────────────────────────────────
 
 	[Fact]
-	public async Task COM01_ShouldPass_WhenSecurityMdExists()
+	public async Task COM01_ShouldPass_WhenSecurityMdIsTheStandardPolicy()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["SECURITY.md"] = "# Security Policy"
+			["SECURITY.md"] = Standards.GetSecurityMdContent("test-org/test-repo")
 		});
 
 		var result = await GetRule("COM-01").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task COM01_ShouldPass_WhenTheStandardPolicyDiffersOnlyInLineEndingsAndTrailingWhitespace()
+	{
+		var crlf = Standards.GetSecurityMdContent("test-org/test-repo").Replace("\r\n", "\n").Replace("\n", "\r\n") + "\r\n\r\n";
+		var context = CreateContext(new Dictionary<string, string> { ["SECURITY.md"] = crlf });
+
+		var result = await GetRule("COM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue("a Windows checkout must not read as a different policy");
+	}
+
+	[Fact]
+	public async Task COM01_ShouldOfferReplacement_WhenSecurityMdIsHandWritten()
+	{
+		// The AlienFx.Api policy: a different text that Codacy grades F while the old exact-match check passed it.
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["SECURITY.md"] = "# Security Policy\n\nTo report an issue, complete this form: https://panoramicdata.com/support\n"
+		});
+
+		var result = await GetRule("COM-01").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+		result.Advisory.Data["file"].Should().Be("SECURITY.md");
+		result.Advisory.Data["new_content"].Should().Be(Standards.GetSecurityMdContent("test-org/test-repo"));
 	}
 
 	[Fact]
@@ -2698,7 +2849,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["AGENTS.md"] = Standards.LegacyAgentsMdContent.Replace("\n", "\r\n")
+			["AGENTS.md"] = Standards.LegacyAgentsMdContent.Replace("\r\n", "\n").Replace("\n", "\r\n")
 		});
 
 		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);

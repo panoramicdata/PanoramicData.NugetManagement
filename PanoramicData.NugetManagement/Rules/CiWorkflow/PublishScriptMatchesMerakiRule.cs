@@ -109,6 +109,26 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 			.Where(snippet => !Contains(content, snippet))
 			.ToList();
 
+		if (missing.Count == 0)
+		{
+			var forbidden = FindForbiddenContent(content);
+			return Task.FromResult(forbidden is null
+				? Pass("Publish.ps1 matches the Meraki.Api tagging-and-trigger standard.")
+				: Fail(
+					forbidden,
+					new RuleAdvisory
+					{
+						Summary = "Replace Publish.ps1 with the standard script, which Codacy's PSScriptAnalyzer passes",
+						Detail = "Codacy grades Publish.ps1 with PSScriptAnalyzer. `Write-Host` raises PSAvoidUsingWriteHost (the standard script uses `Write-Information` with `$InformationPreference = 'Continue'`), and any non-ASCII character in a file without a byte order mark raises PSUseBOMForUnicodeEncodedFile (the standard script is ASCII only).",
+						Data = new()
+						{
+							["remediation_type"] = "replace_file_content",
+							["file"] = "Publish.ps1",
+							["new_content"] = Standards.PublishPs1Content
+						}
+					}));
+		}
+
 		return Task.FromResult(missing.Count == 0
 			? Pass("Publish.ps1 matches the Meraki.Api tagging-and-trigger standard.")
 			: Fail(
@@ -125,5 +145,22 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 						["missing_snippets"] = missing.ToArray()
 					}
 				}));
+	}
+
+	/// <summary>
+	/// Returns why the script would be flagged by Codacy's PSScriptAnalyzer, or <see langword="null"/>.
+	/// </summary>
+	private static string? FindForbiddenContent(string content)
+	{
+		if (Contains(content, "Write-Host"))
+		{
+			return "Publish.ps1 uses Write-Host, which Codacy reports (PSAvoidUsingWriteHost).";
+		}
+
+		// A file that keeps its byte order mark is analysed correctly; only a BOM-less non-ASCII file is reported.
+		var hasByteOrderMark = content.StartsWith('﻿');
+		return !hasByteOrderMark && content.Any(c => c > '\u007F')
+			? "Publish.ps1 contains non-ASCII characters without a byte order mark, which Codacy reports (PSUseBOMForUnicodeEncodedFile)."
+			: null;
 	}
 }

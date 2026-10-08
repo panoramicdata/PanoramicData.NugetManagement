@@ -28,6 +28,7 @@ public static class PublishGate
 	/// </param>
 	public static bool IsEnabled(RepositoryDashboardRow? row, bool allowWithoutTests)
 		=> row is not null
+			&& RepositoryActionGate.Allows(row, WorkflowStep.Publish)
 			&& row.IsClonedLocally
 			// Uncommitted changes mean the package would be built from code that exists on this machine
 			// and nowhere else: the tag it is published against would not contain what was built, and
