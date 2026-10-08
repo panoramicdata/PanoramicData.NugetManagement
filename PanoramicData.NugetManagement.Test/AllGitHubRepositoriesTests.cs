@@ -6,9 +6,9 @@ using PanoramicData.NugetManagement.Web.Services;
 namespace PanoramicData.NugetManagement.Test;
 
 /// <summary>
-/// Tests that every GitHub repository of a governed organisation is shown — including those that
-/// publish no package — with archived ones and forks visible but excluded, and unpackaged ones
-/// assess-only.
+/// Tests that a GitHub repository of a governed organisation is shown when its project files declare a
+/// package id — even before it publishes anything — and not otherwise, with archived ones and forks
+/// marked excluded, and unpublished ones assess-only.
 /// </summary>
 public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutput(output), IDisposable
 {
@@ -20,18 +20,79 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 		Guid.NewGuid().ToString("n"));
 
 	[Fact]
-	public void ARepositoryPublishingNothingShouldGetARow()
+	public void ARepositoryDeclaringAPackageIdButPublishingNothingShouldGetARow()
 	{
-		var (rows, ungoverned) = Build([], Listed(Repo("panoramicdata/Scripts")));
+		var (rows, ungoverned) = Build([], Listed(Repo("panoramicdata/Salt.Api", declared: ["Salt.Api"])));
 
 		var row = rows.Should().ContainSingle().Which;
-		row.RepositoryFullName.Should().Be("panoramicdata/Scripts");
+		row.RepositoryFullName.Should().Be("panoramicdata/Salt.Api");
 		row.Packages.Should().BeEmpty();
+		row.DeclaredPackageIds.Should().Equal("Salt.Api");
 		row.IsUnpackaged.Should().BeTrue();
 		row.Organization.Should().Be("panoramicdata");
 		row.IsGoverned.Should().BeTrue();
 		ungoverned.Should().BeEmpty("a GitHub-derived row is not an unreadable package");
 	}
+
+	[Fact]
+	public void ARepositoryDeclaringNoPackageIdShouldGetNoRow()
+	{
+		var (rows, _) = Build([], Listed(Repo("panoramicdata/Scripts", declared: [])));
+
+		rows.Should().BeEmpty("a repository that declares no package is not a NuGet package repository");
+	}
+
+	[Fact]
+	public void ARepositoryWhoseProjectFilesCouldNotBeReadShouldKeepItsPreviousRow()
+	{
+		var previous = new List<RepositoryDashboardRow>
+		{
+			new() { RepositoryFullName = "panoramicdata/Salt.Api", Organization = "panoramicdata", DeclaredPackageIds = ["Salt.Api"] }
+		};
+
+		var (rows, _) = DashboardService.BuildRows([], previous, _organizations, Listed(Repo("panoramicdata/Salt.Api", declared: null)));
+
+		rows.Should().ContainSingle().Which.DeclaredPackageIds.Should().Equal("Salt.Api");
+	}
+
+	[Fact]
+	public void ARowLeftByTheAllRepositoriesTreeShouldBeDropped()
+	{
+		var previous = new List<RepositoryDashboardRow>
+		{
+			new() { RepositoryFullName = "panoramicdata/Scripts", Organization = "panoramicdata" }
+		};
+
+		DashboardService.BuildRows([], previous, _organizations, Listed(Repo("panoramicdata/Scripts", declared: null)))
+			.Rows.Should().BeEmpty("it never declared a package id");
+
+		var failed = new Dictionary<string, IReadOnlyList<GitHubRepositoryInfo>?> { ["panoramicdata"] = null };
+		DashboardService.BuildRows([], previous, _organizations, failed)
+			.Rows.Should().BeEmpty("a failed listing carries forward only what declared a package id");
+	}
+
+	[Theory]
+	[InlineData("<Project><PropertyGroup><PackageId>Salt.Api</PackageId></PropertyGroup></Project>", "Salt.Api")]
+	[InlineData("<PackageId Condition=\"'$(Configuration)' == 'Release'\"> Meraki.Api </PackageId>", "Meraki.Api")]
+	[InlineData("<packageid>$(AssemblyName)</packageid>", "$(AssemblyName)")]
+	public void APackageIdElementShouldBeRead(string xml, string expected)
+		=> DeclaredPackageIds.In(xml).Should().Equal(expected);
+
+	[Theory]
+	[InlineData("<Project><PropertyGroup><IsPackable>true</IsPackable></PropertyGroup></Project>")]
+	[InlineData("<PackageId></PackageId>")]
+	[InlineData("<PackageIdPrefix>Foo</PackageIdPrefix>")]
+	public void NoPackageIdShouldBeReadWhereNoneIsDeclared(string xml)
+		=> DeclaredPackageIds.In(xml).Should().BeEmpty();
+
+	[Theory]
+	[InlineData("Salt.Api/Salt.Api.csproj", true)]
+	[InlineData("Directory.Build.props", true)]
+	[InlineData("src/directory.build.props", true)]
+	[InlineData("Salt.Api.slnx", false)]
+	[InlineData("Directory.Packages.props", false)]
+	public void OnlyProjectFilesAndDirectoryBuildPropsShouldBeRead(string path, bool candidate)
+		=> DeclaredPackageIds.IsCandidate(path).Should().Be(candidate);
 
 	[Theory]
 	[InlineData(0, 0, false)]
@@ -49,7 +110,7 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 		var packages = new List<NuGetPackageInfo> { Package("Meraki.Api", "https://github.com/panoramicdata/Meraki.Api") };
 
 		// Same repository, different case, as GitHub's canonical spelling can differ from a nuspec's.
-		var (rows, _) = Build(packages, Listed(Repo("PanoramicData/meraki.api"), Repo("panoramicdata/Scripts")));
+		var (rows, _) = Build(packages, Listed(Repo("PanoramicData/meraki.api"), Repo("panoramicdata/Salt.Api", declared: ["Salt.Api"])));
 
 		rows.Should().HaveCount(2);
 		rows.Single(r => r.RepositoryFullName.Equals("panoramicdata/Meraki.Api", StringComparison.OrdinalIgnoreCase))
@@ -57,9 +118,9 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 	}
 
 	[Fact]
-	public void AnArchivedRepositoryShouldBeShownAndMarked()
+	public void AnArchivedRepositoryDeclaringAPackageIdShouldBeShownAndMarked()
 	{
-		var (rows, _) = Build([], Listed(Repo("panoramicdata/Old.Api", isArchived: true)));
+		var (rows, _) = Build([], Listed(Repo("panoramicdata/Old.Api", isArchived: true, declared: ["Old.Api"])));
 
 		var row = rows.Should().ContainSingle().Which;
 		row.IsArchived.Should().BeTrue();
@@ -67,9 +128,21 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 	}
 
 	[Fact]
-	public void AForkShouldBeShownAndMarked()
+	public void AnUnpublishedArchivedRepositoryOrForkWhoseFilesWereNotReadShouldGetNoRow()
 	{
-		var (rows, _) = Build([], Listed(Repo("panoramicdata/Upstream", isFork: true)));
+		var (rows, _) = Build([], Listed(
+			Repo("panoramicdata/Old.Thing", isArchived: true),
+			Repo("panoramicdata/Upstream", isFork: true)));
+
+		rows.Should().BeEmpty();
+	}
+
+	[Fact]
+	public void APackagedForkShouldBeShownAndMarked()
+	{
+		var packages = new List<NuGetPackageInfo> { Package("Upstream", "https://github.com/panoramicdata/Upstream") };
+
+		var (rows, _) = Build(packages, Listed(Repo("panoramicdata/Upstream", isFork: true)));
 
 		rows.Should().ContainSingle().Which.AutoExclusionReason.Should().Be("fork");
 	}
@@ -89,25 +162,26 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void ARepositoryOfAnotherOrganisationShouldNotBecomeARow()
 	{
-		var (rows, _) = Build([], Listed(Repo("somebody-else/Thing")));
+		var (rows, _) = Build([], Listed(Repo("somebody-else/Thing", declared: ["Thing"])));
 
 		rows.Should().BeEmpty();
 	}
 
 	[Fact]
-	public void AFailedListingShouldKeepTheUnpackagedRowsAlreadyShown()
+	public void AFailedListingShouldKeepTheUnpublishedPackageRowsAlreadyShown()
 	{
 		var previous = new List<RepositoryDashboardRow>
 		{
-			new() { RepositoryFullName = "panoramicdata/Scripts", Organization = "panoramicdata", IsFork = true }
+			new() { RepositoryFullName = "panoramicdata/Salt.Api", Organization = "panoramicdata", IsFork = true, DeclaredPackageIds = ["Salt.Api"] }
 		};
 
 		var failed = new Dictionary<string, IReadOnlyList<GitHubRepositoryInfo>?> { ["panoramicdata"] = null };
 		var (rows, _) = DashboardService.BuildRows([], previous, _organizations, failed);
 
 		var row = rows.Should().ContainSingle().Which;
-		row.RepositoryFullName.Should().Be("panoramicdata/Scripts");
+		row.RepositoryFullName.Should().Be("panoramicdata/Salt.Api");
 		row.IsFork.Should().BeTrue();
+		row.DeclaredPackageIds.Should().Equal("Salt.Api");
 	}
 
 	[Fact]
@@ -280,8 +354,8 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 	private static Dictionary<string, IReadOnlyList<GitHubRepositoryInfo>?> Listed(params GitHubRepositoryInfo[] repositories)
 		=> new() { ["panoramicdata"] = repositories };
 
-	private static GitHubRepositoryInfo Repo(string fullName, bool isArchived = false, bool isFork = false)
-		=> new(fullName, $"https://github.com/{fullName}", isArchived, isFork);
+	private static GitHubRepositoryInfo Repo(string fullName, bool isArchived = false, bool isFork = false, string[]? declared = null)
+		=> new(fullName, $"https://github.com/{fullName}", isArchived, isFork, declared);
 
 	private static NuGetPackageInfo Package(string packageId, string repositoryUrl)
 		=> new()

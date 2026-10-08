@@ -106,11 +106,18 @@ public class DashboardService
 		// repository behind it. Every organisation under management is consulted, not merely the one
 		// being discovered: refreshing one must not decide that another's repositories belong to
 		// somebody else.
-		// Packages are only one way a repository comes to be ours: one that publishes nothing never
-		// appears in nuget.org's results. GitHub's own list is what completes the tree.
+		// A package repository that has not published yet never appears in nuget.org's results.
+		// GitHub's list completes the tree with those, and only those: a repository is added when its
+		// project files declare a PackageId, so applications, scripts and demos stay out.
+		var published = new HashSet<string>(
+			packages
+				.Where(package => package.RepositoryOwner is not null && package.RepositoryName is not null)
+				.Select(package => $"{package.RepositoryOwner}/{package.RepositoryName}"),
+			StringComparer.OrdinalIgnoreCase);
+
 		var gitHubRepositories = await ListGitHubRepositoriesAsync(
 			organizations,
-			github is null ? null : (owner, ct) => ListOrganizationRepositoriesAsync(github, owner, ct),
+			github is null ? null : (owner, ct) => ListOrganizationRepositoriesAsync(github, owner, published, _logger, ct),
 			_logger,
 			cancellationToken).ConfigureAwait(false);
 
@@ -258,8 +265,9 @@ public class DashboardService
 	}
 
 	/// <summary>
-	/// Completes the rows with every repository GitHub lists, merged by full name so a repository that
-	/// publishes packages keeps them and appears once.
+	/// Completes the rows with the repositories GitHub lists whose project files declare a package id,
+	/// merged by full name so a repository that publishes packages keeps them and appears once. A
+	/// repository that declares no package id is not ours to govern and gets no row.
 	/// </summary>
 	private static void AddGitHubRepositories(
 		Dictionary<string, RepositoryDashboardRow> rows,
@@ -272,26 +280,24 @@ public class DashboardService
 			return;
 		}
 
+		// Only rows that came from a declared package id are carried forward: a row left in the cache
+		// by the time every GitHub repository was shown declares none, and is dropped here.
+		var previousDeclared = previousRows
+			.Where(row => row.IsUnpackaged && row.DeclaredPackageIds.Count > 0)
+			.ToDictionary(row => row.RepositoryFullName, StringComparer.OrdinalIgnoreCase);
+
 		foreach (var (organization, listed) in gitHubRepositories)
 		{
 			if (listed is null)
 			{
 				// Asked and unanswered: keep what we already showed for this organisation, so a flaky
-				// GitHub call cannot make unpackaged repositories vanish from the tree.
-				foreach (var previous in previousRows.Where(row =>
-					row.IsUnpackaged
-					&& string.Equals(OwnerOf(row.RepositoryFullName), organization, StringComparison.OrdinalIgnoreCase)
+				// GitHub call cannot make unpublished package repositories vanish from the tree.
+				foreach (var previous in previousDeclared.Values.Where(row =>
+					string.Equals(OwnerOf(row.RepositoryFullName), organization, StringComparison.OrdinalIgnoreCase)
 					&& !rows.ContainsKey(row.RepositoryFullName)
 					&& GovernanceScope.ReasonNotGoverned(row.RepositoryFullName, organizations) is null))
 				{
-					rows[previous.RepositoryFullName] = new RepositoryDashboardRow
-					{
-						RepositoryFullName = previous.RepositoryFullName,
-						Organization = previous.Organization,
-						RepositoryUrl = previous.RepositoryUrl,
-						IsArchived = previous.IsArchived,
-						IsFork = previous.IsFork
-					};
+					rows[previous.RepositoryFullName] = CarryForward(previous);
 				}
 
 				continue;
@@ -304,23 +310,47 @@ public class DashboardService
 					continue;
 				}
 
-				if (!rows.TryGetValue(repository.FullName, out var row))
+				if (rows.TryGetValue(repository.FullName, out var published))
 				{
-					row = new RepositoryDashboardRow
+					published.IsArchived = repository.IsArchived;
+					published.IsFork = repository.IsFork;
+					continue;
+				}
+
+				if (repository.DeclaredPackageIds is { Count: > 0 } declared)
+				{
+					rows[repository.FullName] = new RepositoryDashboardRow
 					{
 						RepositoryFullName = repository.FullName,
 						Organization = organization,
-						RepositoryUrl = repository.Url ?? $"https://github.com/{repository.FullName}"
+						RepositoryUrl = repository.Url ?? $"https://github.com/{repository.FullName}",
+						DeclaredPackageIds = [.. declared],
+						IsArchived = repository.IsArchived,
+						IsFork = repository.IsFork
 					};
-
+				}
+				else if (repository.DeclaredPackageIds is null
+					&& previousDeclared.TryGetValue(repository.FullName, out var previous))
+				{
+					// Its project files could not be read this time: keep what they said last time.
+					var row = CarryForward(previous);
+					row.IsArchived = repository.IsArchived;
+					row.IsFork = repository.IsFork;
 					rows[repository.FullName] = row;
 				}
-
-				row.IsArchived = repository.IsArchived;
-				row.IsFork = repository.IsFork;
 			}
 		}
 	}
+
+	private static RepositoryDashboardRow CarryForward(RepositoryDashboardRow previous) => new()
+	{
+		RepositoryFullName = previous.RepositoryFullName,
+		Organization = previous.Organization,
+		RepositoryUrl = previous.RepositoryUrl,
+		DeclaredPackageIds = [.. previous.DeclaredPackageIds],
+		IsArchived = previous.IsArchived,
+		IsFork = previous.IsFork
+	};
 
 	private static string? OwnerOf(string repositoryFullName)
 	{
@@ -373,9 +403,28 @@ public class DashboardService
 		return result;
 	}
 
+	/// <summary>
+	/// Lists one organisation's repositories, reading the declared package ids of each one that might
+	/// be an unpublished package repository.
+	/// </summary>
+	/// <param name="github">The GitHub client.</param>
+	/// <param name="organization">The organisation to list.</param>
+	/// <param name="published">
+	/// Repositories that already publish packages: they are in the tree regardless, so their project
+	/// files are not read.
+	/// </param>
+	/// <param name="logger">Where a repository whose project files could not be read is reported.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// Archived repositories and forks are not read either: they publish nothing, and nothing would be
+	/// done to them if they did. A repository whose files cannot be read is listed with its ids unknown,
+	/// so <see cref="BuildRows"/> keeps what it knew rather than dropping it.
+	/// </remarks>
 	private static async Task<IReadOnlyList<GitHubRepositoryInfo>> ListOrganizationRepositoriesAsync(
 		IGitHubClient github,
 		string organization,
+		IReadOnlySet<string> published,
+		ILogger logger,
 		CancellationToken cancellationToken)
 	{
 		var repositories = await github.Repository
@@ -383,11 +432,45 @@ public class DashboardService
 			.WaitAsync(cancellationToken)
 			.ConfigureAwait(false);
 
-		return [.. repositories.Select(repository => new GitHubRepositoryInfo(
-			repository.FullName,
-			repository.HtmlUrl,
-			repository.Archived,
-			repository.Fork))];
+		var result = new GitHubRepositoryInfo[repositories.Count];
+
+		await Parallel.ForEachAsync(
+			Enumerable.Range(0, repositories.Count),
+			new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = cancellationToken },
+			async (index, ct) =>
+			{
+				var repository = repositories[index];
+				IReadOnlyList<string>? declared = null;
+
+				if (!repository.Archived
+					&& !repository.Fork
+					&& !published.Contains(repository.FullName))
+				{
+					try
+					{
+						declared = await DeclaredPackageIds
+							.ReadAsync(github, repository.Owner.Login, repository.Name, repository.DefaultBranch ?? "HEAD", ct)
+							.ConfigureAwait(false);
+					}
+					catch (OperationCanceledException)
+					{
+						throw;
+					}
+					catch (Exception ex)
+					{
+						logger.LogWarning(ex, "Could not read the declared package ids of {Repository}.", repository.FullName);
+					}
+				}
+
+				result[index] = new GitHubRepositoryInfo(
+					repository.FullName,
+					repository.HtmlUrl,
+					repository.Archived,
+					repository.Fork,
+					declared);
+			}).ConfigureAwait(false);
+
+		return result;
 	}
 
 	/// <summary>

@@ -96,8 +96,15 @@ public class RepositoryDashboardRow
 	public bool IsFork { get; set; }
 
 	/// <summary>
-	/// Whether the repository publishes nothing to NuGet. Such a row came from GitHub's list rather
-	/// than from a package, and is assess-only: nothing outward is done to it automatically.
+	/// The package ids the repository's project files declare, read from GitHub when it publishes
+	/// nothing yet. A repository with no published package is in the tree only because of these.
+	/// </summary>
+	public List<string> DeclaredPackageIds { get; set; } = [];
+
+	/// <summary>
+	/// Whether the repository publishes nothing to NuGet. Such a row came from a package id its
+	/// project files declare rather than from nuget.org, and is assess-only: nothing outward is done
+	/// to it automatically.
 	/// </summary>
 	[JsonIgnore]
 	public bool IsUnpackaged => Packages.Count == 0;
