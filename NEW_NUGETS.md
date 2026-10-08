@@ -2,13 +2,17 @@
 
 ## Purpose
 
-Use this document to bootstrap a new NuGet package repository that will pass the governance expectations enforced by this repo (`PanoramicData.NugetManagement`) and match the quality bar demonstrated by the Uk.Parliament ecosystem.
+Use this document to bootstrap a new NuGet package repository that will pass the governance expectations enforced by this repo (`PanoramicData.NugetManagement`).
 
-Paragon repository:
-- https://github.com/panoramicdata/Uk.Parliament
+**With Claude Code, use the `new-nuget-package` project skill instead of following this by hand.** In a session in this repository, say for example "Create a Rapid7.Api nuget package. Api documentation is here: <url>". The skill runs the whole process to a published, fully green package: research, endpoint inventory, a parallel build by subagents, live tests, the Codacy clean-up, the governance assessment and release. It is in `.claude/skills/new-nuget-package/`, and it refuses to run from any other repository.
+
+Paragon repository (the newest and most complete; copy its files):
+- https://github.com/panoramicdata/Splunk.Api (all 656 documented operations, an enforced endpoint inventory, 100% line and branch coverage, live integration tests against Docker, 91/91 governance)
 
 Paragon package example:
-- https://www.nuget.org/packages/Uk.Parliament
+- https://www.nuget.org/packages/Splunk.Api
+
+Older but still compliant: Uk.Parliament, Salt.Api, TheHive.Api.
 
 ## What "Ideal" Means Here
 
@@ -209,7 +213,7 @@ Must include:
 6. Links: NuGet package, GitHub repo, issue tracker.
 7. License statement.
 
-Use Uk.Parliament as model quality for:
+Use Splunk.Api as the model for:
 - clarity of quick start
 - breadth of examples
 - explicit capability status
@@ -331,7 +335,7 @@ This causes xUnit v3 to treat any skipped test as a failure, making skips immedi
 - release checklist in repo docs.
 - explicit migration notes for breaking changes.
 
-These are done well in the Uk.Parliament repository documentation set.
+These are done well in the Splunk.Api repository (`docs/IMPLEMENTING.md`, `docs/TESTING.md`, `docs/endpoints/`).
 
 ## Bootstrap Sequence (Practical Order)
 
@@ -362,8 +366,14 @@ A new package repo is done when all are true:
 1. First package version publishes from CI using tag-triggered flow.
 2. NuGet page shows README, icon, license, symbols.
 3. Build, test, and pack succeed with zero warnings.
-4. Governance scanner rules in this repo report compliant status for the new package repo.
-5. Documentation is sufficient for a new maintainer to release without tribal knowledge.
+4. Every governance rule in this repo passes for the new package repo (91/91 at the time of writing), with Codacy
+   readable by the assessment. That includes CQ-05 (no Codacy issues), CQ-06 (every file graded A), SEC-02 and
+   TST-10 (coverage reported to Codacy).
+5. Every non-deprecated operation in the vendor's API reference is implemented. `docs/endpoints/` lists each one with
+   its client method and test, and an `InventoryTests` class enforces that list.
+6. Unit tests give 100% line and branch coverage, and integration tests have run against a live instance (Docker
+   where the vendor provides an image).
+7. Documentation is sufficient for a new maintainer to release without tribal knowledge.
 
 ## Quick Compliance Checklist
 
@@ -382,4 +392,4 @@ A new package repo is done when all are true:
 
 ---
 
-If you apply this file as-is when starting a new package, you will align closely with the repository governance rules and the quality posture exemplified by Uk.Parliament.
+If you apply this file as-is when starting a new package, you will align closely with the repository governance rules and the quality posture exemplified by Splunk.Api.
