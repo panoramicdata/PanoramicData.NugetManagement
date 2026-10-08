@@ -873,6 +873,32 @@ public class RuleEvaluationTests : TestWithOutput
 			$status = git status --porcelain
 			$branch = git rev-parse --abbrev-ref HEAD
 			git fetch origin main --quiet
+			gh auth token
+			$buildOutput = dotnet build proj.csproj -t:GetBuildVersion --getProperty:NuGetPackageVersion
+			$exists = git tag -l $version
+			git tag $version
+			git push origin $version
+			gh run watch $runId --repo $repoFullName --exit-status --interval 20
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = ps1
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task CI09_ShouldFail_WhenPublishPs1ChecksLoginWithGhAuthStatus()
+	{
+		// 'gh auth status' calls the API, so a GitHub rate limit makes it claim the token is invalid.
+		var ps1 = """
+			param([switch]$SkipPublishVerification)
+			$status = git status --porcelain
+			$branch = git rev-parse --abbrev-ref HEAD
+			git fetch origin main --quiet
 			gh auth status
 			$buildOutput = dotnet build proj.csproj -t:GetBuildVersion --getProperty:NuGetPackageVersion
 			$exists = git tag -l $version
@@ -884,6 +910,26 @@ public class RuleEvaluationTests : TestWithOutput
 		var context = CreateContext(new Dictionary<string, string>
 		{
 			["Publish.ps1"] = ps1
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("gh auth status reports a rate limit as an invalid token");
+		result.Advisory!.Data["new_content"].Should().Be(Standards.PublishPs1Content);
+	}
+
+	[Fact]
+	public void PublishPs1Template_ChecksLoginWithoutCallingTheApi()
+	{
+		Standards.PublishPs1Content.Should().Contain("gh auth token");
+		Standards.PublishPs1Content.Should().NotContain("gh auth status");
+	}
+
+	[Fact]
+	public async Task CI09_ShouldPass_ForTheGeneratedTemplate()
+	{
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = Standards.PublishPs1Content
 		});
 
 		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);

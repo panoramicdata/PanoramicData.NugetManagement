@@ -38,9 +38,11 @@ if (-not $SkipPublishVerification) {
 		exit 1
 	}
 
-	gh auth status 2>&1 | Out-Null
+	# This only reads the stored login. The "status" subcommand makes an API call instead, so a GitHub
+	# rate limit makes it report "The token in keyring is invalid" for a perfectly good login.
+	gh auth token 2>&1 | Out-Null
 	if ($LASTEXITCODE -ne 0) {
-		Write-Error "The GitHub CLI is not authenticated. Run 'gh auth login', or re-run with -SkipPublishVerification to publish without verification."
+		Write-Error "The GitHub CLI has no stored login. Run 'gh auth login', or re-run with -SkipPublishVerification to publish without verification."
 		exit 1
 	}
 }
@@ -110,7 +112,7 @@ for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
 }
 
 if (-not $runId) {
-	Write-Error "Tag $version was pushed but no run appeared for it. Check https://github.com/$repoFullName/actions: the workflow may not trigger on tags."
+	Write-Error "Tag $version was pushed but no run appeared for it. Check https://github.com/$repoFullName/actions: the workflow may not trigger on tags, or GitHub may be rate-limiting the lookups."
 	exit 1
 }
 
