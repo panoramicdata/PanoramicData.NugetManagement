@@ -98,8 +98,8 @@ public class ClaudeMdUnresolvedReferenceTests(ITestOutputHelper output) : TestWi
 		var result = await EvaluateAsync(_generatedV12).ConfigureAwait(true);
 
 		result.Passed.Should().BeFalse();
-		result.Advisory!.Data["remediation_type"].Should().Be("replace_regex_in_file");
-		result.Advisory.Data["file"].Should().Be("CLAUDE.md");
+		result.Advisory!.Data["remediation_type"].Should().Be("replace_regex_in_files");
+		result.Advisory.Data["globs"].Should().BeEquivalentTo(new[] { "CLAUDE.md" });
 		new RemediationRegistry().CanRemediate(result).Should().BeTrue();
 	}
 
@@ -145,28 +145,75 @@ public class ClaudeMdUnresolvedReferenceTests(ITestOutputHelper output) : TestWi
 		result.Passed.Should().BeTrue();
 	}
 
-	private async Task<string> ApplyFixAsync(string content)
+	[Fact]
+	public async Task ShouldFlagAGeneratedAgentsMd_AndFixItToTheCurrentTemplate()
 	{
-		var failing = await EvaluateAsync(content).ConfigureAwait(true);
+		// AGENTS.md shares the About paragraph, so it named CONTRIBUTING.md once.
+		var v12Agents = Standards.AgentsMdContent.Replace("AGENTS.md and SECURITY.md", "AGENTS.md, SECURITY.md and CONTRIBUTING.md");
+
+		var result = await EvaluateAsync(Standards.ClaudeMdContent, v12Agents).ConfigureAwait(true);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["globs"].Should().BeEquivalentTo(new[] { "AGENTS.md" });
+
+		var fixedContent = await ApplyFixAsync(v12Agents, "AGENTS.md").ConfigureAwait(true);
+		Normalise(fixedContent).Should().Be(Normalise(Standards.AgentsMdContent));
+	}
+
+	[Fact]
+	public async Task ShouldFixBothFilesInOnePass()
+	{
+		var v12Agents = Standards.AgentsMdContent.Replace("AGENTS.md and SECURITY.md", "AGENTS.md, SECURITY.md and CONTRIBUTING.md");
+		var failing = await EvaluateAsync(_generatedV12, v12Agents).ConfigureAwait(true);
+		File.WriteAllText(Path.Combine(_root, "CLAUDE.md"), _generatedV12);
+		File.WriteAllText(Path.Combine(_root, "AGENTS.md"), v12Agents);
+
+		new RemediationRegistry().Get("AI-04")!.Apply(_root, failing, [], null);
+
+		Normalise(File.ReadAllText(Path.Combine(_root, "CLAUDE.md"))).Should().Be(Normalise(Standards.ClaudeMdContent));
+		Normalise(File.ReadAllText(Path.Combine(_root, "AGENTS.md"))).Should().Be(Normalise(Standards.AgentsMdContent));
+	}
+
+	[Fact]
+	public async Task ShouldBeApplicable_WhenOnlyAgentsMdExists()
+	{
+		var v12Agents = Standards.AgentsMdContent.Replace("AGENTS.md and SECURITY.md", "AGENTS.md, SECURITY.md and CONTRIBUTING.md");
+
+		var result = await EvaluateAsync(content: null, v12Agents).ConfigureAwait(true);
+
+		result.Passed.Should().BeFalse();
+	}
+
+	private async Task<string> ApplyFixAsync(string content, string fileName = "CLAUDE.md")
+	{
+		var failing = fileName == "CLAUDE.md"
+			? await EvaluateAsync(content).ConfigureAwait(true)
+			: await EvaluateAsync(Standards.ClaudeMdContent, content).ConfigureAwait(true);
 		failing.Passed.Should().BeFalse();
 
-		var path = Path.Combine(_root, "CLAUDE.md");
+		var path = Path.Combine(_root, fileName);
 		File.WriteAllText(path, content);
 
 		var applied = new List<string>();
 		new RemediationRegistry().Get("AI-04")!.Apply(_root, failing, applied, null);
 
-		applied.Should().ContainSingle().Which.Should().Be("CLAUDE.md");
+		applied.Should().ContainSingle().Which.Should().EndWith(fileName);
 		return File.ReadAllText(path);
 	}
 
 	private static string Normalise(string text) => text.Replace("\r\n", "\n").Trim();
 
-	private static async Task<RuleResult> EvaluateAsync(string? content)
+	private static async Task<RuleResult> EvaluateAsync(string? content, string? agents = null)
 	{
-		var files = content is null
-			? new Dictionary<string, string>()
-			: new Dictionary<string, string> { ["CLAUDE.md"] = content };
+		var files = new Dictionary<string, string>();
+		if (content is not null)
+		{
+			files["CLAUDE.md"] = content;
+		}
+
+		if (agents is not null)
+		{
+			files["AGENTS.md"] = agents;
+		}
 
 		var context = new RepositoryContext
 		{
