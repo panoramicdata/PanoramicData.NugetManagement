@@ -1,4 +1,5 @@
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Services;
 
 namespace PanoramicData.NugetManagement.Rules;
 
@@ -55,6 +56,16 @@ public class CodacyCoverageUploadRule : RuleBase
 			context.GetFileContent(path) is { } content
 			&& _uploadMarkers.Any(marker => content.Contains(marker, StringComparison.OrdinalIgnoreCase)));
 
+		var data = new Dictionary<string, object>
+		{
+			["workflow_count"] = workflows.Count
+		};
+
+		if (uploading is null)
+		{
+			AddAutomatedFix(context, workflows, data);
+		}
+
 		return Task.FromResult(uploading is not null
 			? Pass($"{uploading} uploads coverage to Codacy.")
 			: Fail(
@@ -90,12 +101,55 @@ public class CodacyCoverageUploadRule : RuleBase
 						The token is a separate problem: CQ-07 reports whether this repository has one,
 						and it cannot be created by editing files.
 						""",
-					Data = new()
-					{
-						["workflow_count"] = workflows.Count
-					}
+					Data = data
 				}));
 	}
+
+	/// <summary>
+	/// Names the workflow and test runner when — and only when — the edit is one that can be made safely.
+	/// </summary>
+	/// <remarks>
+	/// Each guard exists because the alternative reads as a pass while uploading nothing: the runner's
+	/// collector must already be referenced (the MTP flags do nothing without the extension, and coverlet
+	/// is inert under MTP), and the workflow editor declines anything it cannot edit with certainty. A
+	/// repository that fails any of them keeps the failing result and the prose advisory for AI.
+	/// </remarks>
+	private static void AddAutomatedFix(RepositoryContext context, List<string> workflows, Dictionary<string, object> data)
+	{
+		var mtp = context.GetFileContent("global.json") is { } globalJson
+			&& globalJson.Contains(Standards.MtpTestRunnerName, StringComparison.OrdinalIgnoreCase);
+
+		var collector = mtp ? Standards.CodeCoveragePackage : Standards.VsTestCodeCoveragePackage;
+		if (!ProjectsReference(context, collector))
+		{
+			return;
+		}
+
+		var runner = mtp ? CoverageRunner.MicrosoftTestingPlatform : CoverageRunner.VsTest;
+		foreach (var path in workflows)
+		{
+			if (context.GetFileContent(path) is { } content
+				&& CodacyCoverageWorkflowEditor.AddUpload(content, runner) is not null)
+			{
+				data["workflow_file"] = path;
+				data["coverage_runner"] = mtp ? "mtp" : "vstest";
+				return;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Whether any project or build-props file references the package. Directory.Packages.props only
+	/// declares a version, so it proves nothing about what a project uses.
+	/// </summary>
+	private static bool ProjectsReference(RepositoryContext context, string packageId)
+		=> context.FilePaths
+			.Where(path => (path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+					|| path.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
+					|| path.EndsWith(".targets", StringComparison.OrdinalIgnoreCase))
+				&& !Path.GetFileName(path).Equals("Directory.Packages.props", StringComparison.OrdinalIgnoreCase))
+			.Any(path => context.GetFileContent(path) is { } content
+				&& content.Contains($"Include=\"{packageId}\"", StringComparison.OrdinalIgnoreCase));
 
 	private static bool IsWorkflowFile(string path)
 		=> path.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase)
