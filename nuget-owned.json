@@ -94,6 +94,7 @@
   "ReportMagic.Cli",
   "Rundeck.Api",
   "Rundeck.Cli",
+  "Salt.Api",
   "SchemaMagic",
   "ScienceLogic.Em7.Api",
   "Serilog.Sinks.LogicMonitor",
