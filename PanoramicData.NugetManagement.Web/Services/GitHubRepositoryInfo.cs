@@ -7,4 +7,13 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// <param name="Url">The repository's web address, or null when GitHub gave none.</param>
 /// <param name="IsArchived">Whether the repository is archived (read-only).</param>
 /// <param name="IsFork">Whether the repository is a fork.</param>
-public sealed record GitHubRepositoryInfo(string FullName, string? Url, bool IsArchived, bool IsFork);
+/// <param name="DeclaredPackageIds">
+/// The package ids its project files declare: empty when it declares none, null when they were not
+/// read — because it already publishes packages, is archived or a fork, or the read failed.
+/// </param>
+public sealed record GitHubRepositoryInfo(
+	string FullName,
+	string? Url,
+	bool IsArchived,
+	bool IsFork,
+	IReadOnlyList<string>? DeclaredPackageIds = null);

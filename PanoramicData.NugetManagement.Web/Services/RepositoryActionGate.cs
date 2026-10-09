@@ -6,8 +6,8 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// Decides which actions a repository that publishes no package may be put through.
 /// </summary>
 /// <remarks>
-/// Every GitHub repository in a governed organisation is shown, including those that publish nothing
-/// to NuGet. Those rows came from GitHub's list rather than from a package we publish, so they are
+/// A repository whose project files declare a package id is shown even before it publishes anything
+/// to NuGet. Those rows came from GitHub rather than from a package we publish, so they are
 /// assess-only: they can be synced, assessed and tested, but nothing that edits files, builds, pushes,
 /// closes pull requests or publishes is done to them. There is deliberately no opt-in yet — it would
 /// need a persisted per-repository setting and UI of its own, and refusing is the safe default.
