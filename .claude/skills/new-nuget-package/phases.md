@@ -73,6 +73,9 @@ Do the generation with a PowerShell script, and check the total row count agains
 ## 7. Merge and integrate (per agent, as each reports)
 
 1. `git merge --no-ff feat/<name>`. Resolve conflicts by **combining** both sides' intent: two agents each adding an error shape, for example, means keep both.
+   - **Merge owners before borrowers.** Agents whose endpoints return another category's resources (a site returning its scan engine, for example) write stand-in copies of those types. Hold their branches until the owning branch is merged, then take the owner's version and adapt the borrower's tests. Telling the owning agent, while it is still running, which type names the borrower used saves most of the adaptation.
+   - **Expect duplicate types under different namespaces** (the same enum defined by two categories). They compile, but Codacy counts them: keep the owner's and repoint.
+   - **When two branches disagree on behaviour,** keep the deliberate change and update the other branch's test. Example: one made enums parse by C# name, and the other's test expected the old behaviour.
 2. Expect test-kit clashes. Two kits defining the same extension method made every call ambiguous. Consolidate them into the shared `Support/RecordedCallAssertions`, and tell the remaining agents.
 3. Build both test projects, run the unit tests, then measure coverage and keep it at **100% line and branch**. Remove workarounds a core fix made redundant (they show up as uncovered branches).
 4. Run the **full live suite**, unless live verification is pending. If it fails, rerun the failing tests in isolation before concluding anything. Investigate repeated transport failures for a real cause: splunkd's keep-alive timeout was one. Revert any speculative fix whose test does not fail without it.

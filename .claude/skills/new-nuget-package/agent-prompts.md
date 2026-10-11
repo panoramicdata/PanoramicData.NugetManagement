@@ -41,6 +41,8 @@ a report to you; it is not shown to the user. Relay what matters.
 > - Your live tests are green.
 > - 100% line and branch coverage of what you added.
 > - Do not define an extension method named `ShouldBe` on RecordedCall; give helpers group-specific names.
+> - Keep your scratch files in `<scratchpad>\<name>-agent\`, since other agents share the scratchpad root.
+> - If your endpoints return a resource another category owns, write a stand-in at the path and name the owner will use, and list it in your report.
 >
 > **Report:** rows implemented and any left out (with reasons), interfaces and client properties added, shared or core files changed and why (core bugs go in separate commits), where the docs disagree with the live instance, test counts and results, coverage, and the commit list.
 

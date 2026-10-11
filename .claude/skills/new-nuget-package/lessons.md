@@ -5,6 +5,7 @@ Each item cost real debugging time in an earlier package (mostly Splunk.Api, 202
 ## Refit
 
 - **`Buffered = true`** in RefitSettings. Otherwise `[Body]` content is a read-once push stream, so POSTs can never be retried on 429/503 or re-sent after re-login.
+- **Even buffered, a JSON `[Body]` arrives as `System.Net.Http.Json.JsonContent`,** not `ByteArrayContent`. A retry handler's "is this replayable?" check must accept `JsonContent` (it re-serialises on each send), or every JSON POST and PUT is sent exactly once (Rapid7.Api, 2026-10-09).
 - **`TransportExceptionFactory = static (_, e, _) => e`.** Otherwise Refit 16 wraps `TimeoutException`, `HttpRequestException` and `ObjectDisposedException` in `ApiRequestException`, and the exceptions you document never reach callers. (TheHive.Api#22.)
 - Interface paths are relative, with no leading `/`, plus `UrlResolutionMode.Rfc3986`, so a path-prefixed base URL works.
 - Path parameters are escaped as one segment (`a/b` becomes `a%2Fb`). Never rebuild URLs with `UriBuilder` setters, which double-escape `%`; concatenate strings instead.
@@ -29,6 +30,9 @@ Each item cost real debugging time in an earlier package (mostly Splunk.Api, 202
 - Bash heredocs eat backslashes. Write C# with the Write or Edit tools.
 - `dotnet format whitespace` before building: tool-written files are LF, but CRLF is enforced.
 - A file-based harness (`dotnet run X.cs`) disables reflection JSON by default. Add `#:property PublishAot=false` and `#:property JsonSerializerIsReflectionEnabledByDefault=true`, or every Codacy-backed rule silently passes.
+- The estate `coverage.config` excludes `CompilerGeneratedAttribute`, which also hides async state-machine bodies from the figure. Check once with that exclusion removed; the reference runs stayed at 100% of lines, with only compiler-generated iterator branches missing.
+- Parallel agents share the session scratchpad: brief each to use its own subfolder, or their scripts overwrite each other.
 - **Prove a regression test is red without its fix** (revert the fix, run `dotnet format`, build, run) before trusting it. A test that passes both ways proves nothing; drop the speculative fix.
+- **`Publish.ps1` prints "Tag x pushed" even when `git push` failed** (it does not check the exit code); the DNS flake here (`getaddrinfo() thread failed to start`) made that happen on Rapid7.Api 3.0.34. After it runs, confirm with `git ls-remote --tags origin <version>`, re-push the tag with retries if missing, then watch the tag's CI run and the nuget flatcontainer.
 - `gh` REST calls give spurious rate limits on this machine. Use `gh api graphql` for check-run status, and `gh auth token` (not `gh auth status`) for login checks.
 - Read-only guards must allow the vendor's read-only POSTs: login, creating searches, and post-process reads.
