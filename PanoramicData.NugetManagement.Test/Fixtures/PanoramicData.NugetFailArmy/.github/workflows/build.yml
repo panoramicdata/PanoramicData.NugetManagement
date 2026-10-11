@@ -8,3 +8,5 @@ jobs:
 	runs-on: ubuntu-latest
 	steps:
 	  - uses: actions/checkout@v3
+	  - name: Coverage
+	    run: ./Fail.Test --coverage --coverage-settings coverage.config
