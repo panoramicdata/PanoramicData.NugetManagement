@@ -690,7 +690,7 @@ public static class Standards
 	/// private <c>PanoramicData.Skills</c> repository is not blocked or told to stop.
 	/// </summary>
 	public static string AgentsMdContent => $"""
-		# Agent Instructions
+		# Agent instructions
 
 		Version: {AiInstructionsTemplateVersion}
 
@@ -705,7 +705,7 @@ public static class Standards
 
 		    {SharedSkillsCopilotInstructionsPath}
 
-		If that path exists, read it before starting work — it documents organization-wide
+		If that path exists, read it before starting work, as it documents organization-wide
 		conventions and skills.
 
 		**If that path does not exist** (for example, you are an external contributor without access
