@@ -102,9 +102,9 @@ public class RepositoryDashboardRow
 	public List<string> DeclaredPackageIds { get; set; } = [];
 
 	/// <summary>
-	/// Whether the repository publishes nothing to NuGet. Such a row came from a package id its
-	/// project files declare rather than from nuget.org, and is assess-only: nothing outward is done
-	/// to it automatically.
+	/// Whether the repository publishes nothing to NuGet yet. Such a row came from a package id its
+	/// project files declare rather than from nuget.org; it is governed like any other, so it can be
+	/// brought up to standard before its first release.
 	/// </summary>
 	[JsonIgnore]
 	public bool IsUnpackaged => Packages.Count == 0;

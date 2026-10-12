@@ -91,7 +91,6 @@ public static class ToolbarScope
 		var eligible = rows.Where(row =>
 			row.IsGoverned
 			&& !isExcluded(row.RepositoryFullName)
-			&& RepositoryActionGate.Allows(row, step)
 			&& (!RequiresClone(step) || row.IsClonedLocally));
 
 		if (selection.Count == 0)
