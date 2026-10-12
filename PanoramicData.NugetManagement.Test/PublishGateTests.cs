@@ -18,7 +18,6 @@ public class PublishGateTests(ITestOutputHelper output) : TestWithOutput(output)
 		bool? isWorkingTreeClean = true) => new()
 		{
 			RepositoryFullName = "panoramicdata/Athonet.Api",
-			// Publishing is only offered for a repository that has a package to publish.
 			Packages = [new() { PackageId = "Athonet.Api" }],
 			Status = status,
 			IsClonedLocally = isClonedLocally,

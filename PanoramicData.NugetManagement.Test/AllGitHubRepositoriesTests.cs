@@ -8,7 +8,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// <summary>
 /// Tests that a GitHub repository of a governed organisation is shown when its project files declare a
 /// package id — even before it publishes anything — and not otherwise, with archived ones and forks
-/// marked excluded, and unpublished ones assess-only.
+/// marked excluded.
 /// </summary>
 public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutput(output), IDisposable
 {
@@ -216,97 +216,6 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 			_organizations, null, NullLogger.Instance, CancellationToken.None);
 
 		result.Should().ContainKey("panoramicdata").WhoseValue.Should().BeNull();
-	}
-
-	[Fact]
-	public void UnpackagedRepositoriesShouldBeAssessOnly()
-	{
-		var row = new RepositoryDashboardRow { RepositoryFullName = "panoramicdata/Scripts" };
-
-		foreach (var step in new[] { WorkflowStep.Fix, WorkflowStep.FixWithAi, WorkflowStep.Build, WorkflowStep.CommitAndPush, WorkflowStep.Publish })
-		{
-			RepositoryActionGate.Allows(row, step).Should().BeFalse($"{step} must not reach an unpackaged repository");
-		}
-
-		foreach (var step in new[] { WorkflowStep.GitSync, WorkflowStep.Reassess, WorkflowStep.Test })
-		{
-			RepositoryActionGate.Allows(row, step).Should().BeTrue($"{step} is read-only enough to allow");
-		}
-	}
-
-	[Fact]
-	public void PackagedRepositoriesShouldBeUnrestricted()
-	{
-		var row = new RepositoryDashboardRow
-		{
-			RepositoryFullName = "panoramicdata/Meraki.Api",
-			Packages = [new() { PackageId = "Meraki.Api" }]
-		};
-
-		foreach (var step in Enum.GetValues<WorkflowStep>())
-		{
-			RepositoryActionGate.Allows(row, step).Should().BeTrue();
-		}
-
-		foreach (var kind in Enum.GetValues<WorkKind>())
-		{
-			RepositoryActionGate.Allows(row, kind).Should().BeTrue();
-		}
-	}
-
-	[Theory]
-	[InlineData(WorkKind.FixAll)]
-	[InlineData(WorkKind.FixRule)]
-	[InlineData(WorkKind.FixWithAiRule)]
-	[InlineData(WorkKind.TriageDependabot)]
-	[InlineData(WorkKind.Build)]
-	[InlineData(WorkKind.CommitAndPush)]
-	[InlineData(WorkKind.Publish)]
-	public void OutwardWorkShouldBeRefusedForAnUnpackagedRepository(WorkKind kind)
-		=> RepositoryActionGate.Allows(new RepositoryDashboardRow { RepositoryFullName = "panoramicdata/Scripts" }, kind)
-			.Should().BeFalse();
-
-	[Theory]
-	[InlineData(WorkKind.Clone)]
-	[InlineData(WorkKind.Reassess)]
-	[InlineData(WorkKind.GitSync)]
-	[InlineData(WorkKind.Test)]
-	public void AssessmentWorkShouldBeAllowedForAnUnpackagedRepository(WorkKind kind)
-		=> RepositoryActionGate.Allows(new RepositoryDashboardRow { RepositoryFullName = "panoramicdata/Scripts" }, kind)
-			.Should().BeTrue();
-
-	[Fact]
-	public void TheToolbarShouldNotTargetAnUnpackagedRepositoryForAnOutwardStep()
-	{
-		var unpackaged = new RepositoryDashboardRow
-		{
-			RepositoryFullName = "panoramicdata/Scripts",
-			Organization = "panoramicdata",
-			IsClonedLocally = true
-		};
-
-		var selection = new RepositorySelection();
-		selection.Select(unpackaged.RepositoryFullName);
-
-		ToolbarScope.Targets([unpackaged], WorkflowStep.CommitAndPush, _ => false, selection).Should().BeEmpty();
-		ToolbarScope.Targets([unpackaged], WorkflowStep.Fix, _ => false, selection).Should().BeEmpty();
-		ToolbarScope.Targets([unpackaged], WorkflowStep.Test, _ => false, selection).Should().ContainSingle();
-	}
-
-	[Fact]
-	public void PublishShouldBeOffAnUnpackagedRepositoryEvenWhenEverythingElseIsReady()
-	{
-		var unpackaged = new RepositoryDashboardRow
-		{
-			RepositoryFullName = "panoramicdata/Scripts",
-			IsClonedLocally = true,
-			IsWorkingTreeClean = true,
-			IsSyncedWithOrigin = true,
-			LastBuildState = RepositoryBuildState.Succeeded,
-			LastTestState = RepositoryTestState.Passed
-		};
-
-		PublishGate.IsEnabled(unpackaged, allowWithoutTests: true).Should().BeFalse();
 	}
 
 	[Fact]

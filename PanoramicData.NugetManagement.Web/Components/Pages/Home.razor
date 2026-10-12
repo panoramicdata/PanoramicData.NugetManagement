@@ -1524,7 +1524,7 @@ else
 	private bool IsLocalStepEnabled(WorkflowStep step)
 		=> IsEstateWide
 			? EstateTargets(step).Count > 0 && !IsStepQueueBlocked(step)
-			: _selectedRow?.IsClonedLocally == true && RepositoryActionGate.Allows(_selectedRow, step) && !IsBlockedByOutOfSync && !IsStepQueueBlocked(step);
+			: _selectedRow?.IsClonedLocally == true && !IsBlockedByOutOfSync && !IsStepQueueBlocked(step);
 
 	/// <summary>
 	/// Says, once, that ticks were dropped because their repositories have gone. Called at the top of
@@ -4697,7 +4697,7 @@ else
 			? EstateAiFixRows().Count
 			: _selectedRow is null
 				? 0
-				: !RepositoryActionGate.Allows(_selectedRow, WorkflowStep.FixWithAi) ? 0 : AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
+				: AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
 
 	/// <summary>
 	/// The ticked repositories that have something only a local model can do.
@@ -5362,7 +5362,7 @@ else
 			return EstateTargets(WorkflowStep.Fix).Count > 0;
 		}
 
-		if (_selectedRow is null || !RepositoryActionGate.Allows(_selectedRow, WorkflowStep.Fix))
+		if (_selectedRow is null)
 		{
 			return false;
 		}
@@ -6567,9 +6567,9 @@ else
 			hints.Add($"Excluded: this repository is {autoReason}, so it is shown but not assessed.");
 		}
 
-		if (hinted.IsUnpackaged)
+		if (hinted.IsUnpackaged && hinted.DeclaredPackageIds.Count > 0)
 		{
-			hints.Add(RepositoryActionGate.AssessOnlyReason);
+			hints.Add($"Not yet published to NuGet; declares {string.Join(", ", hinted.DeclaredPackageIds)}.");
 		}
 
 		return hints.Count == 0 ? tooltip : $"{tooltip}\n{string.Join("\n", hints)}";
