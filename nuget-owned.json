@@ -90,6 +90,7 @@
   "PanoramicData.WhoIs",
   "Passbolt.Api",
   "Passbolt.Cli",
+  "Rapid7.Api",
   "ReportMagic.Api",
   "ReportMagic.Cli",
   "Rundeck.Api",

@@ -131,13 +131,19 @@ public static class DetachedProcessLauncher
 
 	private static DetachedProcess? StartViaShell(string executablePath, string? argument, string? workingDirectory)
 	{
-		var started = Process.Start(new ProcessStartInfo
+		var startInfo = new ProcessStartInfo
 		{
 			FileName = executablePath,
-			Arguments = argument is null ? string.Empty : $"\"{argument}\"",
 			WorkingDirectory = workingDirectory ?? string.Empty,
 			UseShellExecute = true
-		});
+		};
+
+		if (argument is not null)
+		{
+			startInfo.ArgumentList.Add(argument);
+		}
+
+		var started = Process.Start(startInfo);
 
 		return started is null ? null : DetachedProcess.FromManaged(started);
 	}

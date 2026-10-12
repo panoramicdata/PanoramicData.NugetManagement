@@ -175,7 +175,7 @@ public partial class LocalRepoService
 				continue;
 			}
 
-			var (exitCode, output) = await RunCommandAsync(path, "git", "remote get-url origin", cancellationToken)
+			var (exitCode, output) = await RunCommandAsync(path, "git", ["remote", "get-url", "origin"], cancellationToken)
 				.ConfigureAwait(false);
 			if (exitCode != 0 || string.IsNullOrWhiteSpace(output))
 			{
@@ -321,7 +321,7 @@ public partial class LocalRepoService
 			return null;
 		}
 
-		var (exitCode, output) = await RunCommandAsync(path, "git", "remote get-url origin", cancellationToken)
+		var (exitCode, output) = await RunCommandAsync(path, "git", ["remote", "get-url", "origin"], cancellationToken)
 			.ConfigureAwait(false);
 
 		return exitCode == 0 && !string.IsNullOrWhiteSpace(output) ? output.Trim() : null;
@@ -474,13 +474,13 @@ public partial class LocalRepoService
 			return null;
 		}
 
-		var (fetchExit, _) = await RunCommandAsync(path, "git", "fetch --prune", cancellationToken).ConfigureAwait(false);
+		var (fetchExit, _) = await RunCommandAsync(path, "git", ["fetch", "--prune"], cancellationToken).ConfigureAwait(false);
 		if (fetchExit != 0)
 		{
 			return null;
 		}
 
-		var (branchExit, branchOutput) = await RunCommandAsync(path, "git", "rev-parse --abbrev-ref HEAD", cancellationToken).ConfigureAwait(false);
+		var (branchExit, branchOutput) = await RunCommandAsync(path, "git", ["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken).ConfigureAwait(false);
 		if (branchExit != 0)
 		{
 			return null;
@@ -488,7 +488,7 @@ public partial class LocalRepoService
 
 		var branch = branchOutput.Trim();
 		var (behindExit, behindOutput) = await RunCommandAsync(
-			path, "git", $"rev-list --count HEAD..origin/{branch}", cancellationToken).ConfigureAwait(false);
+			path, "git", ["rev-list", "--count", $"HEAD..origin/{branch}"], cancellationToken).ConfigureAwait(false);
 
 		// A missing remote-tracking branch fails here, and is indistinguishable from a real error.
 		return behindExit == 0 && int.TryParse(behindOutput.Trim(), out var behind) ? behind : null;
@@ -518,8 +518,8 @@ public partial class LocalRepoService
 		var discarded = await GetWorkingTreeStatusPreviewAsync(repoIdentity, int.MaxValue, cancellationToken)
 			.ConfigureAwait(false);
 
-		var (resetExit, _) = await RunCommandAsync(path, "git", "reset --hard HEAD", cancellationToken).ConfigureAwait(false);
-		var (cleanExit, _) = await RunCommandAsync(path, "git", "clean -fd", cancellationToken).ConfigureAwait(false);
+		var (resetExit, _) = await RunCommandAsync(path, "git", ["reset", "--hard", "HEAD"], cancellationToken).ConfigureAwait(false);
+		var (cleanExit, _) = await RunCommandAsync(path, "git", ["clean", "-fd"], cancellationToken).ConfigureAwait(false);
 
 		_logger.LogInformation("Discarded {Count} local change(s) in {Path}", discarded.Count, path);
 		return (resetExit == 0 && cleanExit == 0, discarded);
@@ -600,7 +600,7 @@ public partial class LocalRepoService
 			return null;
 		}
 
-		var (exitCode, output) = await RunCommandAsync(path, "git", "rev-parse --abbrev-ref HEAD", cancellationToken).ConfigureAwait(false);
+		var (exitCode, output) = await RunCommandAsync(path, "git", ["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken).ConfigureAwait(false);
 		return exitCode == 0 ? output.Trim() : null;
 	}
 
@@ -620,7 +620,7 @@ public partial class LocalRepoService
 			return null;
 		}
 
-		var (exitCode, output) = await RunCommandAsync(path, "git", "rev-parse HEAD", cancellationToken).ConfigureAwait(false);
+		var (exitCode, output) = await RunCommandAsync(path, "git", ["rev-parse", "HEAD"], cancellationToken).ConfigureAwait(false);
 
 		return exitCode == 0 && !string.IsNullOrWhiteSpace(output) ? output.Trim() : null;
 	}
@@ -636,10 +636,10 @@ public partial class LocalRepoService
 			return null;
 		}
 
-		_ = await RunCommandAsync(path, "git", "fetch --prune origin", cancellationToken).ConfigureAwait(false);
-		_ = await RunCommandAsync(path, "git", "remote set-head origin -a", cancellationToken).ConfigureAwait(false);
+		_ = await RunCommandAsync(path, "git", ["fetch", "--prune", "origin"], cancellationToken).ConfigureAwait(false);
+		_ = await RunCommandAsync(path, "git", ["remote", "set-head", "origin", "-a"], cancellationToken).ConfigureAwait(false);
 
-		var (showExitCode, showOutput) = await RunCommandAsync(path, "git", "remote show origin", cancellationToken).ConfigureAwait(false);
+		var (showExitCode, showOutput) = await RunCommandAsync(path, "git", ["remote", "show", "origin"], cancellationToken).ConfigureAwait(false);
 		if (showExitCode == 0)
 		{
 			var headBranchLine = showOutput
@@ -661,7 +661,7 @@ public partial class LocalRepoService
 			}
 		}
 
-		var (headExitCode, headOutput) = await RunCommandAsync(path, "git", "symbolic-ref --quiet --short refs/remotes/origin/HEAD", cancellationToken).ConfigureAwait(false);
+		var (headExitCode, headOutput) = await RunCommandAsync(path, "git", ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cancellationToken).ConfigureAwait(false);
 		if (headExitCode == 0)
 		{
 			var full = headOutput.Trim();
@@ -687,7 +687,7 @@ public partial class LocalRepoService
 			return null;
 		}
 
-		var (exitCode, output) = await RunCommandAsync(path, "git", "status --porcelain", cancellationToken).ConfigureAwait(false);
+		var (exitCode, output) = await RunCommandAsync(path, "git", ["status", "--porcelain"], cancellationToken).ConfigureAwait(false);
 		if (exitCode != 0)
 		{
 			_logger.LogWarning("Failed to determine working tree cleanliness for {RepoName}. git status exit code: {ExitCode}", repoIdentity, exitCode);
@@ -711,7 +711,7 @@ public partial class LocalRepoService
 			return [];
 		}
 
-		var (exitCode, output) = await RunCommandAsync(path, "git", "status --porcelain", cancellationToken).ConfigureAwait(false);
+		var (exitCode, output) = await RunCommandAsync(path, "git", ["status", "--porcelain"], cancellationToken).ConfigureAwait(false);
 		if (exitCode != 0 || string.IsNullOrWhiteSpace(output))
 		{
 			return [];
@@ -735,7 +735,7 @@ public partial class LocalRepoService
 			return null;
 		}
 
-		var (exitCode, output) = await RunCommandAsync(path, "git", "describe --tags --abbrev=0", cancellationToken).ConfigureAwait(false);
+		var (exitCode, output) = await RunCommandAsync(path, "git", ["describe", "--tags", "--abbrev=0"], cancellationToken).ConfigureAwait(false);
 		if (exitCode != 0 || string.IsNullOrWhiteSpace(output))
 		{
 			return null;
@@ -772,7 +772,7 @@ public partial class LocalRepoService
 		try
 		{
 			var (exitCode, output) = await RunCommandAsync(
-				path, executable, "get-version -f json", cancellationToken).ConfigureAwait(false);
+				path, executable, ["get-version", "-f", "json"], cancellationToken).ConfigureAwait(false);
 
 			return exitCode == 0 ? NbgvVersionReader.ReadVersion(output) : null;
 		}
@@ -812,7 +812,7 @@ public partial class LocalRepoService
 		// origin/<same name>. A detached HEAD or a branch never pushed has none, and git exits
 		// non-zero, which is the null answer rather than a false one.
 		var (exitCode, output) = await RunCommandAsync(
-			path, "git", "rev-list --count @{u}..HEAD", cancellationToken).ConfigureAwait(false);
+			path, "git", ["rev-list", "--count", "@{u}..HEAD"], cancellationToken).ConfigureAwait(false);
 		if (exitCode != 0 || !int.TryParse(output.Trim(), out var ahead))
 		{
 			return null;
@@ -835,14 +835,14 @@ public partial class LocalRepoService
 		}
 
 		// Fetch latest from origin
-		var (fetchExit, _) = await RunCommandAsync(path, "git", "fetch --prune", cancellationToken).ConfigureAwait(false);
+		var (fetchExit, _) = await RunCommandAsync(path, "git", ["fetch", "--prune"], cancellationToken).ConfigureAwait(false);
 		if (fetchExit != 0)
 		{
 			return null;
 		}
 
 		// Get current branch
-		var (branchExit, branchOutput) = await RunCommandAsync(path, "git", "rev-parse --abbrev-ref HEAD", cancellationToken).ConfigureAwait(false);
+		var (branchExit, branchOutput) = await RunCommandAsync(path, "git", ["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken).ConfigureAwait(false);
 		if (branchExit != 0)
 		{
 			return null;
@@ -851,7 +851,7 @@ public partial class LocalRepoService
 		var branch = branchOutput.Trim();
 
 		// Check if behind origin
-		var (behindExit, behindOutput) = await RunCommandAsync(path, "git", $"rev-list --count HEAD..origin/{branch}", cancellationToken).ConfigureAwait(false);
+		var (behindExit, behindOutput) = await RunCommandAsync(path, "git", ["rev-list", "--count", $"HEAD..origin/{branch}"], cancellationToken).ConfigureAwait(false);
 		if (behindExit != 0)
 		{
 			// Remote tracking branch may not exist
@@ -859,7 +859,7 @@ public partial class LocalRepoService
 		}
 
 		// Check if ahead of origin
-		var (aheadExit, aheadOutput) = await RunCommandAsync(path, "git", $"rev-list --count origin/{branch}..HEAD", cancellationToken).ConfigureAwait(false);
+		var (aheadExit, aheadOutput) = await RunCommandAsync(path, "git", ["rev-list", "--count", $"origin/{branch}..HEAD"], cancellationToken).ConfigureAwait(false);
 		if (aheadExit != 0)
 		{
 			return null;
@@ -889,7 +889,7 @@ public partial class LocalRepoService
 		var workingDirectory = Directory.GetCurrentDirectory();
 
 		var (exitCode, output) = await RunCommandAsync(
-			workingDirectory, "git", $"ls-remote --quiet {probeUrl} HEAD", cancellationToken).ConfigureAwait(false);
+			workingDirectory, "git", ["ls-remote", "--quiet", probeUrl, "HEAD"], cancellationToken).ConfigureAwait(false);
 		if (exitCode == 0)
 		{
 			return new GitRemoteAccessResult(GitRemoteAccess.Ok, output, SchannelWouldFix: false);
@@ -904,7 +904,7 @@ public partial class LocalRepoService
 		var (schannelExitCode, _) = await RunCommandAsync(
 			workingDirectory,
 			"git",
-			$"-c http.sslBackend=schannel ls-remote --quiet {probeUrl} HEAD",
+			["-c", "http.sslBackend=schannel", "ls-remote", "--quiet", probeUrl, "HEAD"],
 			cancellationToken).ConfigureAwait(false);
 
 		_logger.LogWarning(
@@ -942,7 +942,7 @@ public partial class LocalRepoService
 		Directory.CreateDirectory(parent);
 
 		_logger.LogInformation("Cloning {Url} to {Path}", cloneUrl, targetPath);
-		return await RunCommandWithStreamingAsync(parent, "git", $"clone {cloneUrl} {Path.GetFileName(targetPath)}", onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(parent, "git", ["clone", cloneUrl, Path.GetFileName(targetPath)], onOutput, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -958,28 +958,28 @@ public partial class LocalRepoService
 		var path = GetLocalPath(repoIdentity);
 
 		// Create and checkout branch
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", $"checkout -b {branchName}", onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", "-b", branchName], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Stage all changes
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "add -A", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["add", "-A"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Commit
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", $"commit -m \"{commitMessage}\"", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", commitMessage], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Push
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", $"push -u origin {branchName}", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push", "-u", "origin", branchName], onOutput, cancellationToken).ConfigureAwait(false);
 		return (ok, output);
 	}
 
@@ -994,27 +994,27 @@ public partial class LocalRepoService
 	{
 		var path = GetLocalPath(repoIdentity);
 
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", "checkout main", onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", "main"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", $"merge {branchName}", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["merge", branchName], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "push origin main", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push", "origin", "main"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Clean up branch
-		await RunCommandWithStreamingAsync(path, "git", $"branch -d {branchName}", onOutput, cancellationToken).ConfigureAwait(false);
-		await RunCommandWithStreamingAsync(path, "git", $"push origin --delete {branchName}", onOutput, cancellationToken).ConfigureAwait(false);
+		await RunCommandWithStreamingAsync(path, "git", ["branch", "-d", branchName], onOutput, cancellationToken).ConfigureAwait(false);
+		await RunCommandWithStreamingAsync(path, "git", ["push", "origin", "--delete", branchName], onOutput, cancellationToken).ConfigureAwait(false);
 
 		return (true, output);
 	}
@@ -1031,7 +1031,7 @@ public partial class LocalRepoService
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Building in {Path}", path);
-		var result = await RunCommandWithStreamingAsync(path, "dotnet", "build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+		var result = await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--no-restore", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (result.Success || cancellationToken.IsCancellationRequested || !IsMissingRestoreFailure(result.Output))
 		{
 			return result;
@@ -1039,7 +1039,7 @@ public partial class LocalRepoService
 
 		_logger.LogInformation("Build in {Path} had no restore; restoring and rebuilding", path);
 		onOutput?.Invoke("Nothing has been restored here yet; rebuilding with a restore.");
-		return await RunCommandWithStreamingAsync(path, "dotnet", "build --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1059,7 +1059,7 @@ public partial class LocalRepoService
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Building (with restore) in {Path}", path);
-		return await RunCommandWithStreamingAsync(path, "dotnet", "build --verbosity quiet", onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "quiet"], onOutput, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1072,7 +1072,7 @@ public partial class LocalRepoService
 	{
 		var path = GetLocalPath(repoIdentity);
 		var (ok, output) = await RunCommandWithStreamingAsync(
-			path, "git", $"log -n {count} --pretty=format:%H%x1f%s", null, cancellationToken).ConfigureAwait(false);
+			path, "git", ["log", "-n", count.ToString(System.Globalization.CultureInfo.InvariantCulture), "--pretty=format:%H%x1f%s"], null, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return [];
@@ -1104,7 +1104,7 @@ public partial class LocalRepoService
 		var path = GetLocalPath(repoIdentity);
 		var branch = await GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", $"checkout {commitHash}", onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", commitHash], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
@@ -1113,13 +1113,13 @@ public partial class LocalRepoService
 		try
 		{
 			// Use a full build (with restore) since dependencies may differ at the parent commit.
-			return await RunCommandWithStreamingAsync(path, "dotnet", "build --verbosity quiet", onOutput, cancellationToken).ConfigureAwait(false);
+			return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "quiet"], onOutput, cancellationToken).ConfigureAwait(false);
 		}
 		finally
 		{
 			if (!string.IsNullOrWhiteSpace(branch))
 			{
-				await RunCommandWithStreamingAsync(path, "git", $"checkout {branch}", onOutput, cancellationToken).ConfigureAwait(false);
+				await RunCommandWithStreamingAsync(path, "git", ["checkout", branch], onOutput, cancellationToken).ConfigureAwait(false);
 			}
 		}
 	}
@@ -1139,20 +1139,20 @@ public partial class LocalRepoService
 		var path = GetLocalPath(repoIdentity);
 
 		var (ok, output) = await RunCommandWithStreamingAsync(
-			path, "git", $"revert --no-edit --no-commit {lastGoodCommitHash}..HEAD", onOutput, cancellationToken).ConfigureAwait(false);
+			path, "git", ["revert", "--no-edit", "--no-commit", $"{lastGoodCommitHash}..HEAD"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
-			await RunCommandWithStreamingAsync(path, "git", "revert --abort", onOutput, cancellationToken).ConfigureAwait(false);
+			await RunCommandWithStreamingAsync(path, "git", ["revert", "--abort"], onOutput, cancellationToken).ConfigureAwait(false);
 			return (false, output);
 		}
 
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", $"commit -m \"{message}\"", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", message], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
-		return await RunCommandWithStreamingAsync(path, "git", "push", onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1167,21 +1167,21 @@ public partial class LocalRepoService
 		_logger.LogInformation("Git syncing {Path}", path);
 
 		// Fetch
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", "fetch --prune", onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["fetch", "--prune"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Pull with rebase
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "pull --rebase", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["pull", "--rebase"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Push
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "push", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken).ConfigureAwait(false);
 		return (ok, output);
 	}
 
@@ -1198,14 +1198,14 @@ public partial class LocalRepoService
 		_logger.LogInformation("Commit and push in {Path}", path);
 
 		// Stage all changes
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", "add -A", onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["add", "-A"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Commit (allow empty commit to succeed gracefully)
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", $"commit -m \"{commitMessage}\"", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", commitMessage], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			// Check if "nothing to commit" — that's fine, continue with fetch/rebase/push
@@ -1216,21 +1216,21 @@ public partial class LocalRepoService
 		}
 
 		// Fetch
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "fetch --prune", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["fetch", "--prune"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Rebase on top of remote
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "pull --rebase", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["pull", "--rebase"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Push
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", "push", onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken).ConfigureAwait(false);
 		return (ok, output);
 	}
 
@@ -1251,7 +1251,7 @@ public partial class LocalRepoService
 		var testProjects = GetConfiguredTestProjects(path);
 		if (testProjects.Count == 0)
 		{
-			return await RunCommandWithStreamingAsync(path, "dotnet", "test --no-build --no-restore --verbosity normal", onOutput, cancellationToken).ConfigureAwait(false);
+			return await RunCommandWithStreamingAsync(path, "dotnet", ["test", "--no-build", "--no-restore", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
 		}
 
 		var combinedOutput = new List<string>();
@@ -1266,13 +1266,14 @@ public partial class LocalRepoService
 			}
 
 			var filter = BuildTestFilter(projectConfig);
-			var args = $"test \"{projectPath}\" --no-build --no-restore --verbosity normal";
+			var args = new List<string> { "test", projectPath, "--no-build", "--no-restore", "--verbosity", "normal" };
 			if (!string.IsNullOrWhiteSpace(filter))
 			{
-				args += $" --filter \"{filter}\"";
+				args.Add("--filter");
+				args.Add(filter);
 			}
 
-			onOutput?.Invoke($"▶ dotnet {args}");
+			onOutput?.Invoke($"▶ dotnet {string.Join(' ', args)}");
 			var (success, output) = await RunCommandWithStreamingAsync(path, "dotnet", args, onOutput, cancellationToken).ConfigureAwait(false);
 			combinedOutput.Add(output);
 			allPassed &= success;
@@ -1431,7 +1432,42 @@ public partial class LocalRepoService
 		}
 
 		_logger.LogInformation("Running Publish.ps1 in {Path}", path);
-		return await RunCommandWithStreamingAsync(path, "pwsh", "-ExecutionPolicy Bypass -File Publish.ps1", onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "pwsh", ["-ExecutionPolicy", "Bypass", "-File", "Publish.ps1"], onOutput, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Builds the <see cref="ProcessStartInfo"/> shared by <see cref="RunCommandAsync"/> and
+	/// <see cref="RunCommandWithStreamingAsync"/>.
+	/// </summary>
+	/// <remarks>
+	/// Arguments travel as discrete <see cref="ProcessStartInfo.ArgumentList"/> entries rather than a
+	/// pre-formatted <see cref="ProcessStartInfo.Arguments"/> string. A value built by string
+	/// concatenation (a branch name, commit message, or URL) can contain a space, a quote, or a leading
+	/// "-" that would otherwise be re-split into extra arguments or mistaken for a flag by the child
+	/// process; ArgumentList passes each token through untouched (Codacy SEC-01: CommandInjection).
+	/// </remarks>
+	internal static ProcessStartInfo BuildProcessStartInfo(
+		string workingDirectory,
+		string fileName,
+		IReadOnlyList<string> arguments)
+	{
+		var startInfo = new ProcessStartInfo
+		{
+			FileName = fileName,
+			WorkingDirectory = workingDirectory,
+			RedirectStandardOutput = true,
+			RedirectStandardError = true,
+			UseShellExecute = false,
+			CreateNoWindow = true,
+			Environment = { ["NO_COLOR"] = "1" }
+		};
+
+		foreach (var argument in arguments)
+		{
+			startInfo.ArgumentList.Add(argument);
+		}
+
+		return startInfo;
 	}
 
 	/// <summary>
@@ -1440,22 +1476,12 @@ public partial class LocalRepoService
 	public static async Task<(int ExitCode, string Output)> RunCommandAsync(
 		string workingDirectory,
 		string fileName,
-		string arguments,
+		IReadOnlyList<string> arguments,
 		CancellationToken cancellationToken = default)
 	{
 		using var process = new Process
 		{
-			StartInfo = new ProcessStartInfo
-			{
-				FileName = fileName,
-				Arguments = arguments,
-				WorkingDirectory = workingDirectory,
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true,
-				Environment = { ["NO_COLOR"] = "1" }
-			}
+			StartInfo = BuildProcessStartInfo(workingDirectory, fileName, arguments)
 		};
 
 		process.Start();
@@ -1484,23 +1510,13 @@ public partial class LocalRepoService
 	public static async Task<(bool Success, string Output)> RunCommandWithStreamingAsync(
 		string workingDirectory,
 		string fileName,
-		string arguments,
+		IReadOnlyList<string> arguments,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default)
 	{
 		using var process = new Process
 		{
-			StartInfo = new ProcessStartInfo
-			{
-				FileName = fileName,
-				Arguments = arguments,
-				WorkingDirectory = workingDirectory,
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true,
-				Environment = { ["NO_COLOR"] = "1" }
-			}
+			StartInfo = BuildProcessStartInfo(workingDirectory, fileName, arguments)
 		};
 
 		var outputLines = new List<string>();

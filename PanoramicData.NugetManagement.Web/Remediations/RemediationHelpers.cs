@@ -718,7 +718,7 @@ internal static partial class RemediationHelpers
 				StartInfo = new ProcessStartInfo
 				{
 					FileName = "dotnet",
-					Arguments = $"sln \"{slnFileName}\" migrate",
+					ArgumentList = { "sln", slnFileName, "migrate" },
 					WorkingDirectory = localPath,
 					UseShellExecute = false,
 					RedirectStandardOutput = true,

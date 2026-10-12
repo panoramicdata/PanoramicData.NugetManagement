@@ -27,13 +27,13 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 
 		onOutput?.Invoke("ℹ️ [REPO-06] Starting default branch remediation (master -> main).");
 
-		if (!Run(localPath, "gh", "--version", out _))
+		if (!Run(localPath, "gh", ["--version"], out _))
 		{
 			onOutput?.Invoke("❌ [REPO-06] GitHub CLI (gh) is not available on PATH.");
 			return;
 		}
 
-		if (!Run(localPath, "git", "branch --show-current", out var branchOutput))
+		if (!Run(localPath, "git", ["branch", "--show-current"], out var branchOutput))
 		{
 			onOutput?.Invoke("❌ [REPO-06] Failed to determine current branch.");
 			return;
@@ -54,8 +54,8 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 		}
 
 		var ghRepoViewArgs = string.IsNullOrWhiteSpace(repoFullName)
-			? "repo view --json nameWithOwner -q .nameWithOwner"
-			: $"repo view {repoFullName} --json nameWithOwner -q .nameWithOwner";
+			? new List<string> { "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner" }
+			: new List<string> { "repo", "view", repoFullName, "--json", "nameWithOwner", "-q", ".nameWithOwner" };
 
 		if (!Run(localPath, "gh", ghRepoViewArgs, out var ghRepoName))
 		{
@@ -70,45 +70,45 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 		onOutput?.Invoke($"ℹ️ [REPO-06] gh repo target: {repoFullName}");
 		onOutput?.Invoke($"✅ [REPO-06] Pre-flight gh access confirmed for {repoFullName}.");
 
-		_ = Run(localPath, "git", "status --porcelain", out var porcelainOutput);
+		_ = Run(localPath, "git", ["status", "--porcelain"], out var porcelainOutput);
 		if (!string.IsNullOrWhiteSpace(porcelainOutput))
 		{
 			onOutput?.Invoke("⚠️ [REPO-06] Working tree is not clean (git status --porcelain is not empty). Continuing as requested.");
 		}
 
-		if (!Run(localPath, "git", "branch -m master main", out var renameOutput))
+		if (!Run(localPath, "git", ["branch", "-m", "master", "main"], out var renameOutput))
 		{
 			onOutput?.Invoke($"❌ [REPO-06] Failed to rename branch master -> main. {TrimOutput(renameOutput)}");
 			return;
 		}
 
-		if (!Run(localPath, "git", "push -u origin main", out var pushOutput))
+		if (!Run(localPath, "git", ["push", "-u", "origin", "main"], out var pushOutput))
 		{
 			onOutput?.Invoke($"❌ [REPO-06] Failed to push main to origin. {TrimOutput(pushOutput)}");
 			return;
 		}
 
-		if (!Run(localPath, "git", "checkout main", out var checkoutOutput))
+		if (!Run(localPath, "git", ["checkout", "main"], out var checkoutOutput))
 		{
 			onOutput?.Invoke($"❌ [REPO-06] Failed to switch to main. {TrimOutput(checkoutOutput)}");
 			return;
 		}
 
 		onOutput?.Invoke($"ℹ️ [REPO-06] Updating GitHub default branch for {repoFullName}.");
-		if (!Run(localPath, "gh", $"repo edit {repoFullName} --default-branch main", out var ghEditOutput))
+		if (!Run(localPath, "gh", ["repo", "edit", repoFullName ?? string.Empty, "--default-branch", "main"], out var ghEditOutput))
 		{
 			onOutput?.Invoke($"❌ [REPO-06] Failed to set GitHub default branch to main. {TrimOutput(ghEditOutput)}");
 			return;
 		}
 
-		if (!Run(localPath, "git", "branch --show-current", out var postBranch) ||
+		if (!Run(localPath, "git", ["branch", "--show-current"], out var postBranch) ||
 			!string.Equals(postBranch.Trim(), "main", StringComparison.OrdinalIgnoreCase))
 		{
 			onOutput?.Invoke($"❌ [REPO-06] Post-flight failed: local current branch is '{postBranch.Trim()}', expected 'main'.");
 			return;
 		}
 
-		if (!Run(localPath, "gh", $"repo view {repoFullName} --json defaultBranchRef -q .defaultBranchRef.name", out var defaultBranchOutput) ||
+		if (!Run(localPath, "gh", ["repo", "view", repoFullName ?? string.Empty, "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"], out var defaultBranchOutput) ||
 			!string.Equals(defaultBranchOutput.Trim(), "main", StringComparison.OrdinalIgnoreCase))
 		{
 			onOutput?.Invoke($"❌ [REPO-06] Post-flight failed: GitHub default branch is '{defaultBranchOutput.Trim()}', expected 'main'.");
@@ -129,7 +129,7 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 		return null;
 	}
 
-	private static bool Run(string localPath, string fileName, string arguments, out string output)
+	private static bool Run(string localPath, string fileName, IReadOnlyList<string> arguments, out string output)
 	{
 		var (exitCode, commandOutput) = LocalRepoService
 			.RunCommandAsync(localPath, fileName, arguments)
