@@ -1,4 +1,4 @@
-﻿using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 
@@ -878,6 +878,7 @@ public class RuleEvaluationTests : TestWithOutput
 			$exists = git tag -l $version
 			git tag $version
 			git push origin $version
+			if ($LASTEXITCODE -ne 0) { exit 1 }
 			gh run watch $runId --repo $repoFullName --exit-status --interval 20
 			""";
 
@@ -889,6 +890,45 @@ public class RuleEvaluationTests : TestWithOutput
 		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
 	}
+
+	[Fact]
+	public async Task CI09_ShouldFail_WhenPublishPs1DoesNotCheckTheTagPush()
+	{
+		// A failed push (Rapid7.Api 3.0.34: a DNS error) was reported as "Tag pushed", and the local tag it
+		// left behind then blocked the re-run.
+		var ps1 = """
+			param([switch]$SkipPublishVerification)
+			$status = git status --porcelain
+			$branch = git rev-parse --abbrev-ref HEAD
+			git fetch origin main --quiet
+			gh auth token
+			$buildOutput = dotnet build proj.csproj -t:GetBuildVersion --getProperty:NuGetPackageVersion
+			$exists = git tag -l $version
+			git tag $version
+			git push origin $version
+			Write-Information "Tag $version pushed."
+			gh run watch $runId --repo $repoFullName --exit-status --interval 20
+			""";
+
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = ps1
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("a failed tag push must not be reported as pushed");
+		result.Message.Should().Contain("does not check that the tag push succeeded");
+		result.Advisory!.Data["new_content"].Should().Be(Standards.PublishPs1Content);
+	}
+
+	[Theory]
+	[InlineData("git push origin $version\nif ($LASTEXITCODE -ne 0) { exit 1 }", true)]
+	[InlineData("git push origin $version\r\n\t\tif ($LASTEXITCODE -eq 0) {", true)]
+	[InlineData("git push origin $version; if (-not $?) { exit 1 }", true)]
+	[InlineData("git push origin $version\nWrite-Information \"pushed\"", false)]
+	[InlineData("git push origin $version\nif ($LASTEXITCODE -ne 0) { exit 1 }\ngit push origin $version\n", false)]
+	public void CI09_PushResultChecked_RequiresEveryPushToBeTested(string content, bool expected)
+		=> PanoramicData.NugetManagement.Rules.PublishScriptMatchesMerakiRule.PushResultChecked(content).Should().Be(expected);
 
 	[Fact]
 	public async Task CI09_ShouldFail_WhenPublishPs1ChecksLoginWithGhAuthStatus()
@@ -915,6 +955,13 @@ public class RuleEvaluationTests : TestWithOutput
 		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse("gh auth status reports a rate limit as an invalid token");
 		result.Advisory!.Data["new_content"].Should().Be(Standards.PublishPs1Content);
+	}
+
+	[Fact]
+	public void PublishPs1Template_ChecksTheTagPushAndRemovesTheTagOnFailure()
+	{
+		PanoramicData.NugetManagement.Rules.PublishScriptMatchesMerakiRule.PushResultChecked(Standards.PublishPs1Content).Should().BeTrue();
+		Standards.PublishPs1Content.Should().Contain("git tag -d $version");
 	}
 
 	[Fact]
@@ -2967,15 +3014,15 @@ public class RuleEvaluationTests : TestWithOutput
 		string? currentBranch = "main",
 		NugetManagementRepositoryConfig? config = null,
 		bool? privateVulnerabilityReporting = null) => new()
-	{
-		FullName = "test-org/test-repo",
-		Name = "test-repo",
-		DefaultBranch = defaultBranch,
-		CurrentBranch = currentBranch,
-		Options = options ?? new RepoOptions(),
-		FilePaths = [.. files.Keys],
-		FileContents = files,
-		RepositoryConfig = config,
-		PrivateVulnerabilityReportingEnabled = privateVulnerabilityReporting
-	};
+		{
+			FullName = "test-org/test-repo",
+			Name = "test-repo",
+			DefaultBranch = defaultBranch,
+			CurrentBranch = currentBranch,
+			Options = options ?? new RepoOptions(),
+			FilePaths = [.. files.Keys],
+			FileContents = files,
+			RepositoryConfig = config,
+			PrivateVulnerabilityReportingEnabled = privateVulnerabilityReporting
+		};
 }
