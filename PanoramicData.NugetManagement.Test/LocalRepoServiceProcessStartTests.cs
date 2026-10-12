@@ -1,3 +1,7 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using PanoramicData.NugetManagement.Services;
+using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Services;
 
 namespace PanoramicData.NugetManagement.Test;
@@ -57,5 +61,39 @@ public class LocalRepoServiceProcessStartTests
 		startInfo.FileName.Should().Be("git");
 		startInfo.WorkingDirectory.Should().Be(@"C:\repos\example");
 		startInfo.UseShellExecute.Should().BeFalse();
+	}
+}
+
+/// <summary>
+/// Covers <see cref="LocalRepoService.OpenFolder"/>, which shells out to the file manager with a
+/// caller-supplied path (Codacy SEC-01: CommandInjection on the ProcessStartInfo FileName).
+/// </summary>
+public class LocalRepoServiceOpenFolderTests
+{
+	private static LocalRepoService CreateService(string reposRoot)
+	{
+		var appSettings = Options.Create(new AppSettings { LocalReposRoot = reposRoot });
+		var runtimeSettings = new RuntimeSettingsService(appSettings, NullLogger<RuntimeSettingsService>.Instance);
+		return new LocalRepoService(runtimeSettings, NullLogger<LocalRepoService>.Instance);
+	}
+
+	[Fact]
+	public void OpenFolder_RefusesARelativePath()
+	{
+		var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+		Directory.CreateDirectory(root);
+		try
+		{
+			var service = CreateService(root);
+
+			var (success, message) = service.OpenFolder("relative\\path");
+
+			success.Should().BeFalse();
+			message.Should().Contain("rooted");
+		}
+		finally
+		{
+			Directory.Delete(root, recursive: true);
+		}
 	}
 }

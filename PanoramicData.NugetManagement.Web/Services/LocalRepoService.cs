@@ -535,6 +535,11 @@ public partial class LocalRepoService
 	/// </remarks>
 	public (bool Success, string Message) OpenFolder(string path)
 	{
+		if (!Path.IsPathRooted(path))
+		{
+			return (false, $"{path} is not a rooted path.");
+		}
+
 		if (!Directory.Exists(path))
 		{
 			return (false, $"{path} does not exist yet.");
