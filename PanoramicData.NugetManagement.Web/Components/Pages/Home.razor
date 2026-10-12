@@ -1025,6 +1025,19 @@ else
 	private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
 	private System.Threading.Timer? _autoRefreshTimer;
 
+	// === Tree render metering ===
+	//
+	// Diagnostic-only instrumentation added to measure how expensive the nav tree's render passes are.
+	// GetNodeIconCss runs exactly once per <NodeTemplate> invocation, so counting its calls counts how
+	// many tree nodes Blazor re-rendered in this pass. Logged from OnAfterRenderAsync, which fires once
+	// per render regardless of what triggered it (tree-related or not), making it possible to see how
+	// many node templates an unrelated StateHasChanged() dragged along with it.
+
+	private long _nodeTemplateRenderCount;
+	private long _nodeTemplateRenderCountAtLastLog;
+	private readonly System.Diagnostics.Stopwatch _renderMeterStopwatch = System.Diagnostics.Stopwatch.StartNew();
+	private long _lastRenderLogElapsedMs;
+
 	// === Working tree watcher ===
 
 	/// <summary>
@@ -1233,6 +1246,32 @@ else
 			{
 				// Element may not exist yet
 			}
+		}
+
+		LogTreeRenderMeter();
+	}
+
+	/// <summary>
+	/// Diagnostic-only: logs how many nav tree node templates were (re-)rendered since the previous
+	/// render, and how long it has been since that previous render. Run passes with the tree heavily
+	/// expanded during an active assessment to see whether unrelated page renders are dragging the
+	/// whole visible tree along with them.
+	/// </summary>
+	private void LogTreeRenderMeter()
+	{
+		var elapsedMs = _renderMeterStopwatch.ElapsedMilliseconds;
+		var sinceLastRenderMs = elapsedMs - _lastRenderLogElapsedMs;
+		var delta = _nodeTemplateRenderCount - _nodeTemplateRenderCountAtLastLog;
+		_lastRenderLogElapsedMs = elapsedMs;
+		_nodeTemplateRenderCountAtLastLog = _nodeTemplateRenderCount;
+
+		if (delta > 0)
+		{
+			Logger.LogInformation(
+				"[TreeRenderMeter] {NodeTemplateRenders} nav tree node template(s) rendered, {ElapsedSinceLastRenderMs} ms since previous render (total renders so far: {TotalNodeTemplateRenders})",
+				delta,
+				sinceLastRenderMs,
+				_nodeTemplateRenderCount);
 		}
 	}
 
@@ -1689,6 +1728,9 @@ else
 	/// </remarks>
 	private string GetNodeIconCss(NavItem? item)
 	{
+		// Runs exactly once per <NodeTemplate> invocation, so this is the tree render meter's counter.
+		_nodeTemplateRenderCount++;
+
 		if (item is null)
 		{
 			return string.Empty;
@@ -4347,6 +4389,10 @@ else
 		if (rowIndex >= 0)
 		{
 			_rows[rowIndex] = row;
+
+			// RowForNavItem's lookup cache keys off the _rows reference, which this in-place replacement
+			// doesn't change — invalidate it explicitly so it doesn't keep returning the old row object.
+			_rowsByRepositoryFullNameSource = null;
 		}
 
 		Cache.UpsertRow(row);
@@ -5634,11 +5680,37 @@ else
 	/// Every node from the repository downwards carries its repository, so one lookup serves the
 	/// repository, its packages, its categories and its rules alike.
 	/// </remarks>
+	// Looked up once per visible tree node, every render pass (see GetNodeIconCss) — an O(n) scan here
+	// turns an already render-heavy tree into an O(nodes * rows) pass. The dictionary is rebuilt only
+	// when _rows is reassigned to a new list, detected by reference, not by content.
+	private List<RepositoryDashboardRow>? _rowsByRepositoryFullNameSource;
+	private Dictionary<string, RepositoryDashboardRow> _rowsByRepositoryFullName = [];
+
 	private RepositoryDashboardRow? RowForNavItem(NavItem item)
-		=> item.RepositoryFullName is not { Length: > 0 } repositoryFullName
-			? null
-			: _rows.FirstOrDefault(r =>
-				string.Equals(r.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase));
+	{
+		if (item.RepositoryFullName is not { Length: > 0 } repositoryFullName)
+		{
+			return null;
+		}
+
+		if (!ReferenceEquals(_rowsByRepositoryFullNameSource, _rows))
+		{
+			var byRepositoryFullName = new Dictionary<string, RepositoryDashboardRow>(StringComparer.OrdinalIgnoreCase);
+			foreach (var row in _rows)
+			{
+				if (row.RepositoryFullName is { Length: > 0 } key)
+				{
+					// First-wins, matching the FirstOrDefault semantics this replaces.
+					byRepositoryFullName.TryAdd(key, row);
+				}
+			}
+
+			_rowsByRepositoryFullName = byRepositoryFullName;
+			_rowsByRepositoryFullNameSource = _rows;
+		}
+
+		return _rowsByRepositoryFullName.GetValueOrDefault(repositoryFullName);
+	}
 
 	/// <summary>
 	/// The selected open issue, taken from the selected row. Null if the cache has been refreshed
