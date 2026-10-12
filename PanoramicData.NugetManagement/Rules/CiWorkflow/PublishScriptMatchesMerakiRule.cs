@@ -5,7 +5,7 @@ namespace PanoramicData.NugetManagement.Rules;
 /// <summary>
 /// Checks that Publish.ps1 matches the Meraki.Api tagging-and-trigger standard.
 /// </summary>
-public class PublishScriptMatchesMerakiRule : RuleBase
+public partial class PublishScriptMatchesMerakiRule : RuleBase
 {
 	/// <inheritdoc />
 	public override string RuleId => "CI-09";
@@ -111,6 +111,26 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 
 		if (missing.Count == 0)
 		{
+			// A tag push that fails (a dropped connection, a DNS error) used to be followed straight away by
+			// "Tag x pushed", so the script went on to wait for a release run that could never appear, and the
+			// local tag left behind blocked the re-run with "Tag already exists". Seen on Rapid7.Api 3.0.34.
+			if (!PushResultChecked(content))
+			{
+				return Task.FromResult(Fail(
+					"Publish.ps1 does not check that the tag push succeeded, so a failed push is reported as 'Tag pushed'.",
+					new RuleAdvisory
+					{
+						Summary = "Check the tag push's exit code in Publish.ps1, retrying and removing the local tag on failure",
+						Detail = "After `git push origin $version`, the standard script tests `$LASTEXITCODE`, retries a failed push twice, and if it still fails removes the local tag (so a re-run is not blocked by \"Tag already exists\") and stops with an error instead of waiting for a release run that cannot appear.",
+						Data = new()
+						{
+							["remediation_type"] = "replace_file_content",
+							["file"] = "Publish.ps1",
+							["new_content"] = Standards.PublishPs1Content
+						}
+					}));
+			}
+
 			var forbidden = FindForbiddenContent(content);
 			return Task.FromResult(forbidden is null
 				? Pass("Publish.ps1 matches the Meraki.Api tagging-and-trigger standard.")
@@ -146,6 +166,19 @@ public class PublishScriptMatchesMerakiRule : RuleBase
 					}
 				}));
 	}
+
+	/// <summary>
+	/// Whether the statement after every <c>git push origin $version</c> tests its outcome (<c>$LASTEXITCODE</c> or
+	/// <c>$?</c>), on the same line after a semicolon or on the next line.
+	/// </summary>
+	internal static bool PushResultChecked(string content)
+		=> PushFollowedByCheck().Matches(content).Count == PushOfVersion().Matches(content).Count;
+
+	[System.Text.RegularExpressions.GeneratedRegex(@"git push origin \$version\b")]
+	private static partial System.Text.RegularExpressions.Regex PushOfVersion();
+
+	[System.Text.RegularExpressions.GeneratedRegex(@"git push origin \$version\b[^\S\r\n]*(;|\r?\n)\s*(if|elseif)\s*\(\s*(-not\s+)?(\$LASTEXITCODE|\$\?)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+	private static partial System.Text.RegularExpressions.Regex PushFollowedByCheck();
 
 	/// <summary>
 	/// Returns why the script would be flagged by Codacy's PSScriptAnalyzer, or <see langword="null"/>.
