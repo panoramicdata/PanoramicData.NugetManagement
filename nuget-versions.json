@@ -90,9 +90,9 @@
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
   "AWSSDK.S3": {
-    "latestVersion": "4.0.104.2",
-    "published": "2026-10-08T20:02:35.06+01:00",
-    "refreshedAtUtc": "2026-10-08T23:49:35.226943+00:00"
+    "latestVersion": "4.0.104.3",
+    "published": "2026-10-12T19:54:08.293+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "Azure.AI.OpenAI": {
     "latestVersion": "2.1.0",
@@ -260,9 +260,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "ConnectWise.Manage.Api": {
-    "latestVersion": "3.1.0",
-    "published": "2026-08-13T05:53:54.107+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "3.1.38",
+    "published": "2026-10-12T22:15:25.497+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "coverlet.collector": {
     "latestVersion": "10.1.0",
@@ -340,9 +340,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Dropbox.Sign": {
-    "latestVersion": "2.4.0",
-    "published": "2026-09-10T13:03:47.487+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "2.5.0",
+    "published": "2026-10-12T13:07:53.943+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "EasyNetQ.Management.Client": {
     "latestVersion": "3.0.1",
@@ -540,9 +540,9 @@
     "refreshedAtUtc": "2026-09-14T10:06:29.3396649+00:00"
   },
   "HaloPsa.Api": {
-    "latestVersion": "2.196.104",
-    "published": "2026-10-08T23:33:50.887+01:00",
-    "refreshedAtUtc": "2026-10-08T23:49:35.226943+00:00"
+    "latestVersion": "2.196.110",
+    "published": "2026-10-12T14:09:17.83+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "HidSharp": {
     "latestVersion": "2.6.4",
@@ -555,9 +555,9 @@
     "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "HtmlAgilityPack": {
-    "latestVersion": "1.13.0",
-    "published": "2026-08-24T16:11:27.73+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "1.13.1",
+    "published": "2026-10-12T23:32:00.9+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "Humanizer.Core": {
     "latestVersion": "3.0.10",
@@ -710,14 +710,14 @@
     "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
   },
   "Meraki.Api": {
-    "latestVersion": "1.74.38",
-    "published": "2026-10-11T21:16:31.327+01:00",
-    "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
+    "latestVersion": "1.74.40",
+    "published": "2026-10-12T12:23:46.71+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "MessagePack": {
-    "latestVersion": "3.1.11",
-    "published": "2026-10-03T23:25:59.957+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "3.1.12",
+    "published": "2026-10-12T20:55:37.76+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "Microsoft.ApplicationInsights.AspNetCore": {
     "latestVersion": "3.2.0",
@@ -1625,9 +1625,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.339",
-    "published": "2026-10-11T17:41:36.527+01:00",
-    "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
+    "latestVersion": "10.0.344",
+    "published": "2026-10-13T10:16:28.817+01:00",
+    "refreshedAtUtc": "2026-10-13T10:50:35.0497836+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.3",
@@ -1753,6 +1753,11 @@
     "latestVersion": "2.0.10",
     "published": "2022-04-25T20:28:51.82+01:00",
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+  },
+  "Parquet.Net": {
+    "latestVersion": "6.1.0",
+    "published": "2026-08-11T13:42:44.507+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "PasswordGenerator": {
     "latestVersion": "3.0.0",
@@ -1895,9 +1900,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Scalar.AspNetCore": {
-    "latestVersion": "2.17.14",
-    "published": "2026-10-06T14:35:00.603+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "2.18.0",
+    "published": "2026-10-12T18:00:02.457+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "ScienceLogic.Em7.Api": {
     "latestVersion": "1.0.6",
@@ -2140,9 +2145,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "StackExchange.Redis": {
-    "latestVersion": "3.4.0",
-    "published": "2026-10-09T15:44:37.403+01:00",
-    "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
+    "latestVersion": "3.3.1",
+    "published": "2026-09-22T15:32:59.483+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "StreamJsonRpc": {
     "latestVersion": "2.25.29",
@@ -2360,9 +2365,9 @@
     "refreshedAtUtc": "2026-09-13T22:06:29.3321773+00:00"
   },
   "Twilio": {
-    "latestVersion": "8.0.2",
-    "published": "2026-09-28T09:57:44.667+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "8.1.0",
+    "published": "2026-10-12T17:16:44.02+01:00",
+    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "Uk.Parliament": {
     "latestVersion": "10.1.30",
