@@ -412,7 +412,7 @@
   "Serilog.Sinks.PeriodicBatching": "5.0.0",
   "SerilogAnalyzer": "0.15.0",
   "ServiceNow.Api": "1.3.38",
-  "ServiceStack": "10.3.0",
+  "ServiceStack": "10.4.0",
   "SharpToken": "2.0.4",
   "SharpZipLib": "1.4.2",
   "Shouldly": "4.3.0",
