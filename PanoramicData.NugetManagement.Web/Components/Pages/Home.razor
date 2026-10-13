@@ -1252,27 +1252,53 @@ else
 	}
 
 	/// <summary>
-	/// Diagnostic-only: logs how many nav tree node templates were (re-)rendered since the previous
-	/// render, and how long it has been since that previous render. Run passes with the tree heavily
-	/// expanded during an active assessment to see whether unrelated page renders are dragging the
-	/// whole visible tree along with them.
+	/// How often <see cref="LogTreeRenderMeter"/> is allowed to emit a log line. Confirmed render passes
+	/// as frequent as every ~160 ms on a busy circuit — logging every one of those flooded the log
+	/// output faster than anything could read it, which is worse than the problem it was added to
+	/// diagnose. This aggregates renders between log lines instead of reporting each one.
+	/// </summary>
+	private static readonly TimeSpan TreeRenderMeterLogInterval = TimeSpan.FromSeconds(10);
+
+	private int _renderPassesSinceLastLog;
+
+	/// <summary>
+	/// Diagnostic-only: logs how many render passes touched the nav tree, and how many node templates
+	/// they invoked in total, since the last log line — at most once every
+	/// <see cref="TreeRenderMeterLogInterval"/>. Run passes with the tree heavily expanded during an
+	/// active assessment to see whether unrelated page renders are dragging the whole visible tree
+	/// along with them.
 	/// </summary>
 	private void LogTreeRenderMeter()
 	{
 		var elapsedMs = _renderMeterStopwatch.ElapsedMilliseconds;
-		var sinceLastRenderMs = elapsedMs - _lastRenderLogElapsedMs;
 		var delta = _nodeTemplateRenderCount - _nodeTemplateRenderCountAtLastLog;
-		_lastRenderLogElapsedMs = elapsedMs;
-		_nodeTemplateRenderCountAtLastLog = _nodeTemplateRenderCount;
 
 		if (delta > 0)
 		{
+			_renderPassesSinceLastLog++;
+		}
+
+		var sinceLastLogMs = elapsedMs - _lastRenderLogElapsedMs;
+		if (sinceLastLogMs < TreeRenderMeterLogInterval.TotalMilliseconds)
+		{
+			return;
+		}
+
+		var totalDelta = _nodeTemplateRenderCount - _nodeTemplateRenderCountAtLastLog;
+		if (totalDelta > 0)
+		{
 			Logger.LogInformation(
-				"[TreeRenderMeter] {NodeTemplateRenders} nav tree node template(s) rendered, {ElapsedSinceLastRenderMs} ms since previous render (total renders so far: {TotalNodeTemplateRenders})",
-				delta,
-				sinceLastRenderMs,
+				"[TreeRenderMeter] {RenderPasses} render pass(es) touched the nav tree over the last {ElapsedMs} ms, invoking {NodeTemplateRenders} node template(s) in total (avg {AveragePerPass:F0}/pass; running total: {TotalNodeTemplateRenders})",
+				_renderPassesSinceLastLog,
+				sinceLastLogMs,
+				totalDelta,
+				(double)totalDelta / _renderPassesSinceLastLog,
 				_nodeTemplateRenderCount);
 		}
+
+		_lastRenderLogElapsedMs = elapsedMs;
+		_nodeTemplateRenderCountAtLastLog = _nodeTemplateRenderCount;
+		_renderPassesSinceLastLog = 0;
 	}
 
 	// === Navigation ===
