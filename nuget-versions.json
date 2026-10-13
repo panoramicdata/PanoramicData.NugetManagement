@@ -710,9 +710,9 @@
     "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
   },
   "Meraki.Api": {
-    "latestVersion": "1.74.40",
-    "published": "2026-10-12T12:23:46.71+01:00",
-    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
+    "latestVersion": "1.74.45",
+    "published": "2026-10-13T15:13:55.63+01:00",
+    "refreshedAtUtc": "2026-10-13T15:39:23.0066097+00:00"
   },
   "MessagePack": {
     "latestVersion": "3.1.12",
@@ -1270,9 +1270,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.NET.Test.Sdk": {
-    "latestVersion": "18.10.1",
-    "published": "2026-09-15T13:36:29.327+01:00",
-    "refreshedAtUtc": "2026-09-15T13:24:46.4847836+00:00"
+    "latestVersion": "18.11.0",
+    "published": "2026-10-13T14:47:48.83+01:00",
+    "refreshedAtUtc": "2026-10-13T15:39:23.0066097+00:00"
   },
   "Microsoft.OData.Core": {
     "latestVersion": "9.0.0",
@@ -1625,9 +1625,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.344",
-    "published": "2026-10-13T10:16:28.817+01:00",
-    "refreshedAtUtc": "2026-10-13T10:50:35.0497836+00:00"
+    "latestVersion": "10.0.345",
+    "published": "2026-10-13T13:00:56.12+01:00",
+    "refreshedAtUtc": "2026-10-13T15:39:23.0066097+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.3",
@@ -1705,9 +1705,9 @@
     "refreshedAtUtc": "2026-10-02T10:57:11.9972092+00:00"
   },
   "PanoramicData.Render": {
-    "latestVersion": "1.0.289",
-    "published": "2026-09-13T14:42:51.887+01:00",
-    "refreshedAtUtc": "2026-09-13T18:52:00.3935398+00:00"
+    "latestVersion": "1.0.316",
+    "published": "2026-10-13T15:06:54.827+01:00",
+    "refreshedAtUtc": "2026-10-13T15:39:23.0066097+00:00"
   },
   "PanoramicData.SheetMagic": {
     "latestVersion": "3.1.148",
@@ -2145,9 +2145,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "StackExchange.Redis": {
-    "latestVersion": "3.3.1",
-    "published": "2026-09-22T15:32:59.483+01:00",
-    "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
+    "latestVersion": "3.4.5",
+    "published": "2026-10-13T15:15:17.177+01:00",
+    "refreshedAtUtc": "2026-10-13T15:39:23.0066097+00:00"
   },
   "StreamJsonRpc": {
     "latestVersion": "2.25.29",
