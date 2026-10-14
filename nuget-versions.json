@@ -1625,9 +1625,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.345",
-    "published": "2026-10-13T13:00:56.12+01:00",
-    "refreshedAtUtc": "2026-10-13T15:39:23.0066097+00:00"
+    "latestVersion": "10.0.350",
+    "published": "2026-10-14T13:30:49.19+01:00",
+    "refreshedAtUtc": "2026-10-14T15:14:25.9233747+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.3",
@@ -1925,9 +1925,9 @@
     "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
   },
   "Selenium.WebDriver.ChromeDriver": {
-    "latestVersion": "155.0.8059.3900",
-    "published": "2026-10-07T14:52:26.813+01:00",
-    "refreshedAtUtc": "2026-10-07T17:49:35.1922248+00:00"
+    "latestVersion": "155.0.8059.7900",
+    "published": "2026-10-14T13:07:19.82+01:00",
+    "refreshedAtUtc": "2026-10-14T15:14:25.9233747+00:00"
   },
   "Serilog": {
     "latestVersion": "4.4.0",

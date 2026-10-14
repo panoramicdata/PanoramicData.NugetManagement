@@ -81,6 +81,55 @@ public sealed class AiFixToolbox(
 	private readonly HashSet<string> _filesWritten = new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
+	/// Each written file's bytes as they were before this session first touched it, or null where it did
+	/// not exist.
+	/// </summary>
+	private readonly Dictionary<string, byte[]?> _originals = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Puts back every file this session wrote, exactly as it was before the session touched it.
+	/// </summary>
+	/// <returns>How many files were restored or removed.</returns>
+	/// <remarks>
+	/// The alternative, discarding all local changes in the clone, also destroys whatever was already
+	/// there: an earlier fix awaiting review, or a person's own edit. A failed session owes the tree
+	/// only the removal of what it did itself. Bytes rather than text, so a byte-order mark or line
+	/// ending survives the round trip.
+	/// </remarks>
+	public int Undo()
+	{
+		var restored = 0;
+
+		foreach (var (relativePath, original) in _originals)
+		{
+			var fullPath = Path.GetFullPath(Path.Combine(_root, relativePath));
+
+			if (original is null)
+			{
+				if (File.Exists(fullPath))
+				{
+					File.Delete(fullPath);
+					restored++;
+				}
+			}
+			else
+			{
+				File.WriteAllBytes(fullPath, original);
+				restored++;
+			}
+		}
+
+		_originals.Clear();
+		_filesWritten.Clear();
+
+		return restored;
+	}
+
+	/// <summary>Records a file's current bytes the first time the session is about to change it.</summary>
+	private void Remember(string relativePath, string fullPath)
+		=> _originals.TryAdd(relativePath, File.Exists(fullPath) ? File.ReadAllBytes(fullPath) : null);
+
+	/// <summary>
 	/// The files this session has written, relative to the clone root.
 	/// </summary>
 	/// <remarks>
@@ -219,6 +268,8 @@ public sealed class AiFixToolbox(
 				+ "matches exactly one place.");
 		}
 
+		Remember(relativePath, fullPath);
+
 		await File.WriteAllTextAsync(
 			fullPath,
 			string.Concat(content.AsSpan(0, first), replacement, content.AsSpan(first + search.Length)),
@@ -254,6 +305,8 @@ public sealed class AiFixToolbox(
 		{
 			Directory.CreateDirectory(directory);
 		}
+
+		Remember(relativePath, fullPath);
 
 		await File.WriteAllTextAsync(fullPath, content, cancellationToken).ConfigureAwait(false);
 

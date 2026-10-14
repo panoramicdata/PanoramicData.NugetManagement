@@ -119,6 +119,46 @@ public class AiFixObservabilityTests(ITestOutputHelper output) : TestWithOutput(
 		(await File.ReadAllTextAsync(Path.Combine(_root, "a.txt"), TestContext.Current.CancellationToken)).Should().Be("one\n");
 	}
 
+	/// <summary>
+	/// A failed session must remove only its own work. The file it did not touch, and the edit that was
+	/// already in a file before it started, both have to survive.
+	/// </summary>
+	[Fact]
+	public async Task Undo_RestoresWhatTheSessionWrote_AndLeavesEverythingElse()
+	{
+		var edited = Write("edited.txt", "before\n");
+		var untouched = Write("untouched.txt", "someone else's change\n");
+		var toolbox = new AiFixToolbox(_root);
+
+		await toolbox.ExecuteAsync(
+			Call("replace_in_file", ("path", "edited.txt"), ("old_text", "before"), ("new_text", "after")),
+			TestContext.Current.CancellationToken);
+		await toolbox.ExecuteAsync(
+			Call("write_file", ("path", "created.txt"), ("content", "new")),
+			TestContext.Current.CancellationToken);
+
+		toolbox.Undo().Should().Be(2);
+
+		(await File.ReadAllTextAsync(edited, TestContext.Current.CancellationToken)).Should().Be("before\n");
+		File.Exists(Path.Combine(_root, "created.txt")).Should().BeFalse();
+		(await File.ReadAllTextAsync(untouched, TestContext.Current.CancellationToken)).Should().Be("someone else's change\n");
+		toolbox.FilesWritten.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task Undo_RestoresTheOriginalOfAFileWrittenTwice_NotTheIntermediate()
+	{
+		var path = Write("a.txt", "v0");
+		var toolbox = new AiFixToolbox(_root);
+
+		await toolbox.ExecuteAsync(Call("write_file", ("path", "a.txt"), ("content", "v1")), TestContext.Current.CancellationToken);
+		await toolbox.ExecuteAsync(Call("write_file", ("path", "a.txt"), ("content", "v2")), TestContext.Current.CancellationToken);
+
+		toolbox.Undo();
+
+		(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Should().Be("v0");
+	}
+
 	[Fact]
 	public void ToolSpecs_DescribeReplaceInFile()
 		=> AiFixSession.ToolSpecs.Select(spec => spec.Name).Should().Contain("replace_in_file");

@@ -101,6 +101,7 @@ builder.Services.AddSingleton<WorkLaneService>(sp =>
 	};
 });
 builder.Services.AddSingleton<WorkFanOut>();
+builder.Services.AddSingleton<AgentWorkObserver>();
 builder.Services.AddSingleton(sp => new WorkQueueStore(
 	WorkQueueStore.DefaultPath(),
 	sp.GetRequiredService<ILogger<WorkQueueStore>>()));
@@ -243,6 +244,10 @@ app.MapGet("/api/user", (HttpContext context) =>
 		avatar = context.User.FindFirstValue("urn:github:avatar")
 	});
 });
+
+// Only exists when a token is configured, for a coding agent on this machine. See AgentApi.
+app.Services.GetRequiredService<AgentWorkObserver>();
+app.MapAgentApi(settings.AgentApiToken);
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

@@ -932,6 +932,7 @@ public sealed class WorkExecutors(
 		}
 
 		var succeeded = false;
+		Func<int>? undoWrites = null;
 
 		try
 		{
@@ -961,6 +962,8 @@ public sealed class WorkExecutors(
 					await dashboard.RunTestsAsync(row, captured.Add, token).ConfigureAwait(false);
 					return SummariseRun("Tests", row.Status == PackageStatus.TestsPassed, captured);
 				});
+
+			undoWrites = toolbox.Undo;
 
 			var playbook = playbooks.For(ruleId);
 
@@ -1055,7 +1058,16 @@ public sealed class WorkExecutors(
 		{
 			if (!succeeded)
 			{
-				await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
+				// Only what this session wrote, not everything the clone has changed. Discarding the lot
+				// also destroys an earlier fix still waiting to be reviewed, which is how a failed run on
+				// one rule came to threaten the successful run on another.
+				var undone = undoWrites?.Invoke() ?? 0;
+
+				Say(undone == 0
+					? "↩️ Nothing this session wrote needed putting back."
+					: $"↩️ Put back {undone} file(s) this session had written; other changes in the clone were left alone.");
+
+				await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
 			}
 		}
 	}

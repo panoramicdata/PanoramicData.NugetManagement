@@ -65,6 +65,16 @@ public class AppSettings
 	public bool DevAuthBypass { get; set; }
 
 	/// <summary>
+	/// A bearer token that switches on the loopback-only <c>/agent</c> API, which lets a coding agent read
+	/// the tree's state and queue a few kinds of work. Empty, the default, means the API does not exist.
+	/// </summary>
+	/// <remarks>
+	/// Meant to be set per launch, from the environment (<c>AppSettings__AgentApiToken</c>), and never
+	/// committed: anyone holding it on this machine can queue work against the local clones.
+	/// </remarks>
+	public string? AgentApiToken { get; set; }
+
+	/// <summary>
 	/// The user name presented by the development auth bypass.
 	/// </summary>
 	public string DevAuthUser { get; set; } = "dev";

@@ -462,7 +462,7 @@
   "System.Net.Primitives": "4.3.1",
   "System.Reflection.Metadata": "10.0.1",
   "System.Resources.Extensions": "9.0.0",
-  "System.Security.Cryptography.Pkcs": "9.0.0",
+  "System.Security.Cryptography.Pkcs": "10.0.13",
   "System.Security.Cryptography.ProtectedData": "10.0.13",
   "System.Security.Cryptography.Xml": "10.0.13",
   "System.ServiceModel.Duplex": "6.0.0",
