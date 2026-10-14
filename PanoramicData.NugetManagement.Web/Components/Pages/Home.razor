@@ -105,6 +105,7 @@ else
 												SelectionChange="OnNavSelectionChanged"
 												NodeExpanded="OnNavNodeExpanded"
 												NodeCollapsed="OnNavNodeCollapsed"
+												OptimizeRendering="true"
 												Ready="OnNavTreeReady">
 												<NodeTemplate Context="node">
 													<span class="nav-node-label @(node.Data is not null && NavTreeDataProvider.IsContainerNode(node.Data) ? "nav-node-container" : null) @(IsNodeDimmedByRediscovery(node.Data) ? "rediscovering" : null) @(node.Data?.IsExcluded == true ? "nav-node-excluded" : null)" @onclick="() => OnNavNodeActivated(node)" title="@(node.Data is null ? null : GetNavItemTooltip(node.Data))">
@@ -5053,6 +5054,7 @@ else
 
 		_isAssessing = true;
 		_progressMessage = $"Assessing {category}...";
+		InvalidateNavTree();
 		StateHasChanged();
 
 		try
@@ -5083,6 +5085,7 @@ else
 		{
 			_isAssessing = false;
 			_progressMessage = string.Empty;
+			InvalidateNavTree();
 			StateHasChanged();
 		}
 	}
@@ -6265,6 +6268,33 @@ else
 		// and the organisation node's own busy flag were permanently off. Set from the same snapshot as
 		// the flags above rather than from a run that now happens somewhere else entirely.
 		NavDataProvider.IsLoading = _isLoading;
+
+		// These five flags feed GetNodeIconCss/IsNodeDimmedByRediscovery/ShouldSpinOrgNode for every
+		// node in the tree, none of which live on the TreeNode itself, so OptimizeRendering has no other
+		// way to know this is a reason to re-render.
+		InvalidateNavTree();
+	}
+
+	/// <summary>
+	/// Marks every node in the nav tree as needing to re-render. Needed alongside
+	/// <see cref="PDTree{TItem}.OptimizeRendering"/>: most of what a node's template shows — lane/busy
+	/// state, guard markers, affected-repository counts — lives off the <c>NavItem</c> and the services
+	/// behind it, not on the <c>TreeNode</c> wrapper, so nothing about the node itself changes when that
+	/// state does. Call this wherever such state changes; a blanket pass over every node is still far
+	/// cheaper than the template re-evaluation it used to take to notice nothing had changed.
+	/// </summary>
+	private void InvalidateNavTree()
+	{
+		if (_navTree is null)
+		{
+			return;
+		}
+
+		_navTree.RootNode.Walk(node =>
+		{
+			_navTree.RefreshNode(node);
+			return true;
+		});
 	}
 
 	/// <summary>
