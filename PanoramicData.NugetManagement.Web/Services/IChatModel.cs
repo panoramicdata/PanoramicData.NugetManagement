@@ -5,7 +5,12 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// </summary>
 /// <param name="Role">Whose turn it was: <c>user</c>, <c>assistant</c> or <c>tool</c>.</param>
 /// <param name="Content">What was said.</param>
-public sealed record AiMessage(string Role, string Content);
+/// <param name="ToolCalls">
+/// The calls an assistant message made, with their arguments. Kept so the model is shown its own
+/// earlier calls as calls: a history that says only "Calling write_file." leaves it unable to see what
+/// it wrote, and a model that cannot see its own write re-reads and re-writes the same file.
+/// </param>
+public sealed record AiMessage(string Role, string Content, IReadOnlyList<AiToolCall>? ToolCalls = null);
 
 /// <summary>
 /// A tool as described to the model.
@@ -30,7 +35,50 @@ public sealed record AiToolSpec(
 /// </summary>
 /// <param name="Text">Anything it said, which is usually ignorable.</param>
 /// <param name="ToolCalls">What it wants to do; empty when it only talked.</param>
-public sealed record AiModelTurn(string? Text, IReadOnlyList<AiToolCall> ToolCalls);
+/// <param name="Thinking">Its reasoning, when the model separates that from its answer.</param>
+/// <param name="Metrics">What the server reported about the turn's cost, when it reports any.</param>
+public sealed record AiModelTurn(
+	string? Text,
+	IReadOnlyList<AiToolCall> ToolCalls,
+	string? Thinking = null,
+	AiTurnMetrics? Metrics = null);
+
+/// <summary>
+/// What one turn cost, as the server measured it.
+/// </summary>
+/// <param name="PromptTokens">Tokens the server evaluated from the conversation.</param>
+/// <param name="PromptTime">Time spent evaluating them.</param>
+/// <param name="GeneratedTokens">Tokens the model produced.</param>
+/// <param name="GeneratedTime">Time spent producing them.</param>
+/// <param name="LoadTime">Time spent loading the model, nonzero only on a cold start.</param>
+/// <param name="TotalTime">The server's own total for the request, queueing included.</param>
+/// <remarks>
+/// <see cref="Waited"/> is the figure that was missing: time queued behind another caller on the same
+/// model, which once accounted for 308 of a turn's 311 seconds and appeared nowhere.
+/// </remarks>
+public sealed record AiTurnMetrics(
+	int PromptTokens,
+	TimeSpan PromptTime,
+	int GeneratedTokens,
+	TimeSpan GeneratedTime,
+	TimeSpan LoadTime,
+	TimeSpan TotalTime)
+{
+	/// <summary>Time the request spent waiting rather than being worked on.</summary>
+	public TimeSpan Waited
+	{
+		get
+		{
+			var waited = TotalTime - LoadTime - PromptTime - GeneratedTime;
+
+			return waited < TimeSpan.Zero ? TimeSpan.Zero : waited;
+		}
+	}
+
+	/// <summary>Generation speed, or zero when nothing was generated.</summary>
+	public double TokensPerSecond
+		=> GeneratedTime > TimeSpan.Zero ? GeneratedTokens / GeneratedTime.TotalSeconds : 0;
+}
 
 /// <summary>
 /// The model, reduced to the one question this application asks of it.

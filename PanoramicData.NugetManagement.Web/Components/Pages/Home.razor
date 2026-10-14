@@ -3996,6 +3996,14 @@ else
 						This is the retry budget for that.
 					</span>
 				</div>
+				<div class="form-group">
+					<label>Keep session logs (days)</label>
+					<input type="number" @bind="_ollamaDraft.LogRetentionDays" />
+					<span class="settings-hint">
+						Every AI fix session is written in full to a file under the app's logs folder. Older
+						files are deleted. Zero keeps them all.
+					</span>
+				</div>
 				@* settings-path-row rather than a new class: it already lays controls out in a row, and
 				   inventing settings-actions would have rendered unstyled. *@
 				<div class="settings-path-row">
@@ -4573,7 +4581,8 @@ else
 			RequestTimeoutMs = stored.RequestTimeoutMs,
 			MaxConcurrency = stored.MaxConcurrency,
 			MaxTurnsPerAttempt = stored.MaxTurnsPerAttempt,
-			MaxAttemptsPerRule = stored.MaxAttemptsPerRule
+			MaxAttemptsPerRule = stored.MaxAttemptsPerRule,
+			LogRetentionDays = stored.LogRetentionDays
 		};
 
 		_ollamaStatus = null;

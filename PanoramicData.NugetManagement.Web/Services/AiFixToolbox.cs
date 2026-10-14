@@ -73,7 +73,7 @@ public sealed class AiFixToolbox(
 	/// <summary>Every tool this toolbox executes, which is also every tool described to the model.</summary>
 	public static IReadOnlySet<string> ToolNames { get; } = new HashSet<string>(StringComparer.Ordinal)
 	{
-		"list_files", "read_file", "write_file", "run_build", "run_tests", "finish"
+		"list_files", "read_file", "replace_in_file", "write_file", "run_build", "run_tests", "finish"
 	};
 
 	private readonly string _root = Path.GetFullPath(cloneRoot);
@@ -104,6 +104,7 @@ public sealed class AiFixToolbox(
 		{
 			"list_files" => ListFiles(call),
 			"read_file" => await ReadFileAsync(call, cancellationToken).ConfigureAwait(false),
+			"replace_in_file" => await ReplaceInFileAsync(call, cancellationToken).ConfigureAwait(false),
 			"write_file" => await WriteFileAsync(call, cancellationToken).ConfigureAwait(false),
 			"run_build" => await RunAsync(build, "run_build", cancellationToken).ConfigureAwait(false),
 			"run_tests" => await RunAsync(test, "run_tests", cancellationToken).ConfigureAwait(false),
@@ -153,6 +154,79 @@ public sealed class AiFixToolbox(
 				+ $"\n\n[truncated: {relativePath} is "
 				+ $"{content.Length.ToString(CultureInfo.InvariantCulture)} characters and only the first "
 				+ $"{MaxReadBytes.ToString(CultureInfo.InvariantCulture)} are shown]");
+	}
+
+	/// <summary>
+	/// Replaces one exact piece of a file, which costs the model a few tokens instead of the whole file.
+	/// </summary>
+	/// <remarks>
+	/// <c>write_file</c> makes the model re-emit every line it keeps, and at local-model speeds a large
+	/// file is minutes of generation for a one-line change. The match must be exact and unique: a miss or
+	/// an ambiguity is an error that says so, because guessing which of several matches was meant would
+	/// edit the wrong place and look like success.
+	/// </remarks>
+	private async Task<AiToolResult> ReplaceInFileAsync(AiToolCall call, CancellationToken cancellationToken)
+	{
+		if (!TryResolve(call, out var relativePath, out var fullPath, out var refusal))
+		{
+			return refusal;
+		}
+
+		if (_writable is not null && !_writable.Contains(relativePath))
+		{
+			return Error(
+				$"You may not write '{relativePath}'. This session may only write: "
+				+ $"{string.Join(", ", _writable.Order(StringComparer.Ordinal))}.");
+		}
+
+		if (!call.Arguments.TryGetValue("old_text", out var oldText) || oldText.Length == 0)
+		{
+			return Error("replace_in_file needs an 'old_text' argument: the exact existing text to replace.");
+		}
+
+		if (!call.Arguments.TryGetValue("new_text", out var newText))
+		{
+			return Error("replace_in_file needs a 'new_text' argument: what to put in its place.");
+		}
+
+		if (!File.Exists(fullPath))
+		{
+			return Error($"There is no file at '{relativePath}'. Use write_file to create a new file.");
+		}
+
+		var content = await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
+
+		// A file with CRLF line endings holds "\r\n" where the model, which only ever sees and emits "\n",
+		// wrote "\n". Matching on the file's own convention is what keeps a correct multi-line match from
+		// failing for a reason the model cannot see.
+		var crlf = content.Contains("\r\n", StringComparison.Ordinal);
+		var search = crlf ? oldText.Replace("\r\n", "\n").Replace("\n", "\r\n") : oldText;
+		var replacement = crlf ? newText.Replace("\r\n", "\n").Replace("\n", "\r\n") : newText;
+
+		var first = content.IndexOf(search, StringComparison.Ordinal);
+
+		if (first < 0)
+		{
+			return Error(
+				$"old_text was not found in '{relativePath}'. It must match the file exactly, including "
+				+ "whitespace. Use read_file to copy the text exactly, or use write_file to replace the whole file.");
+		}
+
+		if (content.IndexOf(search, first + search.Length, StringComparison.Ordinal) >= 0)
+		{
+			return Error(
+				$"old_text appears more than once in '{relativePath}'. Include more surrounding lines so it "
+				+ "matches exactly one place.");
+		}
+
+		await File.WriteAllTextAsync(
+			fullPath,
+			string.Concat(content.AsSpan(0, first), replacement, content.AsSpan(first + search.Length)),
+			cancellationToken).ConfigureAwait(false);
+
+		_filesWritten.Add(relativePath);
+
+		return new AiToolResult($"Replaced the text in {relativePath}.");
 	}
 
 	private async Task<AiToolResult> WriteFileAsync(AiToolCall call, CancellationToken cancellationToken)

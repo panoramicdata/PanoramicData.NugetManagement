@@ -53,6 +53,10 @@ builder.Services.AddSingleton<AiPlaybookRegistry>();
 builder.Services.AddSingleton(sp => new OllamaGate(
 	() => sp.GetRequiredService<RuntimeSettingsService>().Ollama.MaxConcurrency));
 builder.Services.AddSingleton<RuntimeSettingsService>();
+// Retention is read on every purge, so changing it in Settings takes effect without a restart.
+builder.Services.AddSingleton(sp => new AiSessionLogStore(
+	AiSessionLogStore.DefaultDirectory,
+	() => sp.GetRequiredService<RuntimeSettingsService>().Ollama.LogRetentionDays));
 builder.Services.AddSingleton<IdeDetectionService>();
 builder.Services.AddSingleton<LocalFileSystemDataProvider>();
 builder.Services.AddSingleton<PackageDashboardDataProvider>();

@@ -126,6 +126,12 @@ public class CodacyCoverageUploadRule : RuleBase
 		}
 
 		var runner = mtp ? CoverageRunner.MicrosoftTestingPlatform : CoverageRunner.VsTest;
+		if (!workflows.Any(path => context.GetFileContent(path) is { } text && CodacyCoverageWorkflowEditor.AddUpload(text, runner) is not null)
+			&& TryAddCoverageJob(context, workflows, runner, data))
+		{
+			return;
+		}
+
 		foreach (var path in workflows)
 		{
 			if (context.GetFileContent(path) is { } content
@@ -136,6 +142,35 @@ public class CodacyCoverageUploadRule : RuleBase
 				return;
 			}
 		}
+	}
+
+	/// <summary>
+	/// For a repository whose CI never runs its tests: names the workflow and test project a new
+	/// coverage job can be added to.
+	/// </summary>
+	private static bool TryAddCoverageJob(RepositoryContext context, List<string> workflows, CoverageRunner runner, Dictionary<string, object> data)
+	{
+		var testProject = context.FindCoverageTestProjectFiles()
+			.OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+			.FirstOrDefault();
+		if (testProject is null)
+		{
+			return false;
+		}
+
+		foreach (var path in workflows)
+		{
+			if (context.GetFileContent(path) is { } content
+				&& CodacyCoverageWorkflowEditor.AddCoverageJob(content, runner, testProject) is not null)
+			{
+				data["workflow_file"] = path;
+				data["coverage_runner"] = runner == CoverageRunner.MicrosoftTestingPlatform ? "mtp" : "vstest";
+				data["test_project"] = testProject;
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/// <summary>

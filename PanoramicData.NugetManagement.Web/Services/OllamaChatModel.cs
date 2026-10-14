@@ -31,11 +31,7 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 			new() { Role = "system", Content = systemPrompt }
 		};
 
-		messages.AddRange(conversation.Select(m => new ChatMessage
-		{
-			Role = m.Role,
-			Content = m.Content
-		}));
+		messages.AddRange(conversation.Select(Translate));
 
 		var request = new ChatRequest
 		{
@@ -64,7 +60,11 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 
 		Throw(response.Error);
 
-		return new AiModelTurn(response.Message?.Content, Calls(response.Message));
+		return new AiModelTurn(
+			response.Message?.Content,
+			Calls(response.Message),
+			response.Message?.Thinking is { Length: > 0 } thinking ? thinking : null,
+			Measure(response));
 	}
 
 	/// <summary>
@@ -86,11 +86,16 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 		CancellationToken cancellationToken)
 	{
 		var content = new System.Text.StringBuilder();
+		var thinkingText = new System.Text.StringBuilder();
 		var calls = new List<AiToolCall>();
+		AiTurnMetrics? metrics = null;
 
 		await foreach (var chunk in client.Chat.ChatStreamAsync(request, cancellationToken).ConfigureAwait(false))
 		{
 			Throw(chunk.Error);
+
+			// Only the closing chunk carries the server's measurements; earlier ones leave them null.
+			metrics = Measure(chunk) ?? metrics;
 
 			if (chunk.Message is not { } message)
 			{
@@ -99,6 +104,7 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 
 			if (message.Thinking is { Length: > 0 } thinking)
 			{
+				thinkingText.Append(thinking);
 				onDelta(new AiStreamDelta(AiDeltaKind.Thinking, thinking));
 			}
 
@@ -111,8 +117,56 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 			calls.AddRange(Calls(message));
 		}
 
-		return new AiModelTurn(content.Length == 0 ? null : content.ToString(), calls);
+		return new AiModelTurn(
+			content.Length == 0 ? null : content.ToString(),
+			calls,
+			thinkingText.Length == 0 ? null : thinkingText.ToString(),
+			metrics);
 	}
+
+	/// <summary>
+	/// The server's own account of a turn, or null when it gave none.
+	/// </summary>
+	/// <remarks>
+	/// Ollama reports durations in nanoseconds. A response with no total is one that was not the closing
+	/// chunk, or came from a server that does not measure — either way there is nothing to report.
+	/// </remarks>
+	private static AiTurnMetrics? Measure(ChatResponse response)
+	{
+		if (response.TotalDuration is not { } total)
+		{
+			return null;
+		}
+
+		static TimeSpan Nanoseconds(long? value) => TimeSpan.FromTicks((value ?? 0) / 100);
+
+		return new AiTurnMetrics(
+			response.PromptEvalCount ?? 0,
+			Nanoseconds(response.PromptEvalDuration),
+			response.EvalCount ?? 0,
+			Nanoseconds(response.EvalDuration),
+			Nanoseconds(response.LoadDuration),
+			Nanoseconds(total));
+	}
+
+	/// <summary>
+	/// One conversation message in Ollama's form, with an assistant's tool calls carried across.
+	/// </summary>
+	private static ChatMessage Translate(AiMessage message) => new()
+	{
+		Role = message.Role,
+		Content = message.Content,
+		ToolCalls = message.ToolCalls is { Count: > 0 } calls
+			? [.. calls.Select(call => new ChatToolCall
+			{
+				Function = new ChatToolFunctionCall
+				{
+					Name = call.Name,
+					Arguments = call.Arguments.ToDictionary(a => a.Key, a => (object?)a.Value, StringComparer.Ordinal)
+				}
+			})]
+			: null
+	};
 
 	/// <summary>Fails the turn on an error the server reported, which is not an HTTP failure.</summary>
 	private static void Throw(string? error)

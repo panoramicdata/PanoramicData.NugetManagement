@@ -34,15 +34,26 @@ public static class AiFixPrompt
 
 		Rules:
 		1. Make the smallest change that achieves the goal. Change nothing else.
-		2. Read a file before you rewrite it. Never write a file you have not read, unless it does not exist yet.
-		3. write_file replaces the whole file. Include every line you want to keep.
-		4. Touch only the files you were told about.
+		2. Read a file before you change it.
+		3. To change an existing file, use replace_in_file with a short exact piece of the file. Use write_file only to create a new file.
+		4. Touch only the files you were told about. If the build or tests fail because of a file you were not told about, leave it alone.
 		5. Do not reformat, re-indent, reorder or tidy anything.
 		6. Do not explain your reasoning. Call a tool instead.
-		7. When the goal is achieved, call finish. Do not call finish before you have changed something.
+		7. Everything you need is in the task. You cannot see any other repository, so do not look for one.
+		8. When the goal is achieved, call finish. Do not call finish before you have changed something.
 
 		If a tool returns an error, read it and correct your next call.
 		""";
+
+	/// <summary>
+	/// Identifies this prompt and its task format in the session logs.
+	/// </summary>
+	/// <remarks>
+	/// Bumped whenever <see cref="SystemPrompt"/>, <see cref="BuildTask"/>, a playbook or the tool set
+	/// changes meaning, so a change in how sessions go can be traced to the change that caused it rather
+	/// than guessed at. A log that cannot say which prompt produced it cannot be compared with another.
+	/// </remarks>
+	public const string Version = "2";
 
 	/// <summary>
 	/// The task message for one rule in one repository.

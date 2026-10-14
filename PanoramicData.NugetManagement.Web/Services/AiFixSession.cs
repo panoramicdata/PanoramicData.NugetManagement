@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 
 namespace PanoramicData.NugetManagement.Web.Services;
@@ -62,8 +63,11 @@ public sealed class AiFixSession(
 	AiFixToolbox toolbox,
 	AiFixOptions options,
 	Action<string> onOutput,
-	Action<AiStreamDelta>? onDelta = null)
+	Action<AiStreamDelta>? onDelta = null,
+	AiSessionLog? sessionLog = null)
 {
+	private readonly AiSessionLog _log = sessionLog ?? AiSessionLog.None;
+
 	/// <summary>
 	/// The tools described to the model, in the order they are most likely to be needed.
 	/// </summary>
@@ -91,8 +95,20 @@ public sealed class AiFixSession(
 			},
 			["path"]),
 		new(
+			"replace_in_file",
+			"Change part of an existing file. Prefer this to write_file: you send only the piece that changes. "
+			+ "old_text must match the file exactly once, including whitespace.",
+			new Dictionary<string, string>
+			{
+				["path"] = "Path relative to the repository root.",
+				["old_text"] = "The exact existing text to replace. Include enough lines to be unique.",
+				["new_text"] = "The text to put in its place."
+			},
+			["path", "old_text", "new_text"]),
+		new(
 			"write_file",
-			"Replace one file's entire contents. Include the whole file, not just the part you changed.",
+			"Replace one file's entire contents, or create a new file. Include the whole file, not just the "
+			+ "part you changed. Use replace_in_file instead for a change to an existing file.",
 			new Dictionary<string, string>
 			{
 				["path"] = "Path relative to the repository root. Missing folders are created.",
@@ -140,54 +156,124 @@ public sealed class AiFixSession(
 				+ $"{attempt.ToString(CultureInfo.InvariantCulture)} of "
 				+ $"{options.MaxAttempts.ToString(CultureInfo.InvariantCulture)}.");
 
-			await RunAttemptAsync(conversation, request, cancellationToken).ConfigureAwait(false);
+			_log.Write("attempt_start", new Dictionary<string, object?> { ["attempt"] = attempt });
 
+			var finishedByModel = await RunAttemptAsync(conversation, request, attempt, cancellationToken)
+				.ConfigureAwait(false);
+
+			var checkTimer = Stopwatch.StartNew();
 			var check = await checkRuleAsync(cancellationToken).ConfigureAwait(false);
+			checkTimer.Stop();
+
+			_log.Write("rule_check", new Dictionary<string, object?>
+			{
+				["attempt"] = attempt,
+				["passed"] = check.Passed,
+				["message"] = check.Message,
+				["seconds"] = Math.Round(checkTimer.Elapsed.TotalSeconds, 1),
+				["finished_by_model"] = finishedByModel,
+				["files_written"] = toolbox.FilesWritten.Order(StringComparer.OrdinalIgnoreCase).ToList()
+			});
 
 			if (check.Passed)
 			{
-				onOutput($"✅ {request.RuleId} now passes: {check.Message}");
+				onOutput($"✅ {request.RuleId} now passes: {check.Message} (re-check {Seconds(checkTimer.Elapsed)})");
 
-				return new AiFixOutcome(
-					true,
-					attempt,
-					$"{request.RuleName} fixed on attempt {attempt.ToString(CultureInfo.InvariantCulture)}.");
+				return Ended(
+					new AiFixOutcome(
+						true,
+						attempt,
+						$"{request.RuleName} fixed on attempt {attempt.ToString(CultureInfo.InvariantCulture)}."));
 			}
 
-			onOutput($"↻ {request.RuleId} still fails: {check.Message}");
+			onOutput($"↻ {request.RuleId} still fails: {check.Message} (re-check {Seconds(checkTimer.Elapsed)})");
 
 			// The rule's own message, verbatim. It is the most precise correction available and it is
-			// already written for whoever has to act on it.
+			// already written for whoever has to act on it. Said alongside what has already been changed,
+			// because a model whose attempt ended mid-way has no other way to know what state the files
+			// are in.
+			var changed = toolbox.FilesWritten.Count == 0
+				? "You have not changed any file yet."
+				: $"Files you have changed so far: {string.Join(", ", toolbox.FilesWritten.Order(StringComparer.OrdinalIgnoreCase))}.";
+
 			conversation.Add(new AiMessage(
 				"user",
-				$"That did not fix it. The rule still reports: {check.Message}\n\n"
-				+ "Look again, and make the change that would satisfy it."));
+				$"That did not fix it. The rule still reports: {check.Message}\n\n{changed}\n\n"
+				+ "Read the files again if you need to, then make the change that would satisfy the rule."));
 		}
 
 		onOutput($"❌ {request.RuleId} not fixed after "
 			+ $"{options.MaxAttempts.ToString(CultureInfo.InvariantCulture)} attempt(s).");
 
-		return new AiFixOutcome(
+		return Ended(new AiFixOutcome(
 			false,
 			options.MaxAttempts,
-			$"{request.RuleName} was not fixed.");
+			$"{request.RuleName} was not fixed."));
+	}
+
+	/// <summary>Records how the session ended, and hands the outcome back.</summary>
+	private AiFixOutcome Ended(AiFixOutcome outcome)
+	{
+		_log.Write("session_end", new Dictionary<string, object?>
+		{
+			["succeeded"] = outcome.Succeeded,
+			["attempts"] = outcome.Attempts,
+			["summary"] = outcome.Summary,
+			["files_written"] = toolbox.FilesWritten.Order(StringComparer.OrdinalIgnoreCase).ToList()
+		});
+
+		return outcome;
 	}
 
 	/// <summary>
 	/// One attempt: turns of tool calls until the model finishes or the turn limit is reached.
 	/// </summary>
-	private async Task RunAttemptAsync(
+	/// <returns>Whether the model called <c>finish</c>, as opposed to running out of turns.</returns>
+	private async Task<bool> RunAttemptAsync(
 		List<AiMessage> conversation,
 		AiFixRequest request,
+		int attempt,
 		CancellationToken cancellationToken)
 	{
 		for (var turn = 0; turn < options.MaxTurnsPerAttempt; turn++)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 
+			var turnNumber = turn + 1;
+			var turnTimer = Stopwatch.StartNew();
+
 			var next = await model
 				.NextAsync(request.SystemPrompt, conversation, ToolSpecs, onDelta, cancellationToken)
 				.ConfigureAwait(false);
+
+			turnTimer.Stop();
+
+			onOutput(DescribeTurn(turnNumber, next.Metrics, turnTimer.Elapsed));
+
+			_log.Write("turn", new Dictionary<string, object?>
+			{
+				["attempt"] = attempt,
+				["turn"] = turnNumber,
+				["thinking"] = next.Thinking,
+				["text"] = next.Text,
+				["tool_calls"] = next.ToolCalls
+					.Select(call => new Dictionary<string, object?> { ["name"] = call.Name, ["arguments"] = call.Arguments })
+					.ToList(),
+				["wall_seconds"] = Math.Round(turnTimer.Elapsed.TotalSeconds, 1),
+				["metrics"] = next.Metrics is { } m
+					? new Dictionary<string, object?>
+					{
+						["prompt_tokens"] = m.PromptTokens,
+						["prompt_seconds"] = Math.Round(m.PromptTime.TotalSeconds, 2),
+						["generated_tokens"] = m.GeneratedTokens,
+						["generated_seconds"] = Math.Round(m.GeneratedTime.TotalSeconds, 2),
+						["load_seconds"] = Math.Round(m.LoadTime.TotalSeconds, 2),
+						["total_seconds"] = Math.Round(m.TotalTime.TotalSeconds, 2),
+						["waited_seconds"] = Math.Round(m.Waited.TotalSeconds, 2),
+						["tokens_per_second"] = Math.Round(m.TokensPerSecond, 1)
+					}
+					: null
+			});
 
 			if (next.ToolCalls.Count == 0)
 			{
@@ -196,20 +282,37 @@ public sealed class AiFixSession(
 				conversation.Add(new AiMessage("assistant", next.Text ?? string.Empty));
 				conversation.Add(new AiMessage(
 					"user",
-					"Do not explain. Call a tool. Use write_file to make the change, then call finish."));
+					"Do not explain. Call a tool. Use replace_in_file or write_file to make the change, then call finish."));
 
 				continue;
 			}
+
+			// The calls themselves, with their arguments, and not a sentence about them. Whatever the model
+			// said alongside them is dropped from the history: it was narration, and repeating it back
+			// teaches the next turn to narrate.
+			conversation.Add(new AiMessage("assistant", string.Empty, next.ToolCalls));
 
 			var finished = false;
 
 			foreach (var call in next.ToolCalls)
 			{
+				var toolTimer = Stopwatch.StartNew();
 				var result = await toolbox.ExecuteAsync(call, cancellationToken).ConfigureAwait(false);
+				toolTimer.Stop();
 
-				onOutput($"   {(result.IsError ? "⚠️" : "→")} {call.Name}{DescribeArguments(call)}: {Summarise(result.Content)}");
+				onOutput($"   {(result.IsError ? "⚠️" : "→")} {call.Name}{DescribeArguments(call)}: "
+					+ $"{Summarise(result.Content)} ({Seconds(toolTimer.Elapsed)})");
 
-				conversation.Add(new AiMessage("assistant", $"Calling {call.Name}."));
+				_log.Write("tool_result", new Dictionary<string, object?>
+				{
+					["attempt"] = attempt,
+					["turn"] = turnNumber,
+					["name"] = call.Name,
+					["is_error"] = result.IsError,
+					["seconds"] = Math.Round(toolTimer.Elapsed.TotalSeconds, 2),
+					["content"] = result.Content
+				});
+
 				conversation.Add(new AiMessage("tool", result.Content));
 
 				if (result.IsFinish)
@@ -220,12 +323,29 @@ public sealed class AiFixSession(
 
 			if (finished)
 			{
-				return;
+				return true;
 			}
 		}
 
 		onOutput($"   ⚠️ Turn limit reached without finishing; checking the rule anyway.");
+
+		return false;
 	}
+
+	/// <summary>
+	/// One line saying what a turn cost: how long it queued, and how fast the model worked once it was
+	/// being served.
+	/// </summary>
+	private static string DescribeTurn(int turn, AiTurnMetrics? metrics, TimeSpan wall)
+		=> metrics is null
+			? $"⏱ turn {turn.ToString(CultureInfo.InvariantCulture)}: {Seconds(wall)}"
+			: $"⏱ turn {turn.ToString(CultureInfo.InvariantCulture)}: waited {Seconds(metrics.Waited)} · "
+				+ $"prompt {metrics.PromptTokens.ToString("N0", CultureInfo.InvariantCulture)} tok in {Seconds(metrics.PromptTime)} · "
+				+ $"generated {metrics.GeneratedTokens.ToString("N0", CultureInfo.InvariantCulture)} tok in "
+				+ $"{Seconds(metrics.GeneratedTime)} ({metrics.TokensPerSecond.ToString("N0", CultureInfo.InvariantCulture)} tok/s)";
+
+	private static string Seconds(TimeSpan span)
+		=> $"{span.TotalSeconds.ToString("N1", CultureInfo.InvariantCulture)}s";
 
 	/// <summary>The arguments worth showing in the log: the path, where there is one.</summary>
 	private static string DescribeArguments(AiToolCall call)

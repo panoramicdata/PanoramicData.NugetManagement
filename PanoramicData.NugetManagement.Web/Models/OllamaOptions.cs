@@ -61,6 +61,15 @@ public sealed class OllamaOptions
 	public int MaxAttemptsPerRule { get; set; } = 3;
 
 	/// <summary>
+	/// How many days an AI fix session's log is kept, or zero to keep them all.
+	/// </summary>
+	/// <remarks>
+	/// A month by default: long enough to compare a prompt change against the sessions before it, short
+	/// enough that full transcripts, which include file contents, do not accumulate indefinitely.
+	/// </remarks>
+	public int LogRetentionDays { get; set; } = 30;
+
+	/// <summary>
 	/// Whether there is enough here to attempt an AI fix at all.
 	/// </summary>
 	/// <remarks>
@@ -89,6 +98,7 @@ public sealed class OllamaOptions
 		RequestTimeoutMs = Math.Max(5_000, RequestTimeoutMs),
 		MaxConcurrency = Math.Max(1, MaxConcurrency),
 		MaxTurnsPerAttempt = Math.Max(1, MaxTurnsPerAttempt),
-		MaxAttemptsPerRule = Math.Max(1, MaxAttemptsPerRule)
+		MaxAttemptsPerRule = Math.Max(1, MaxAttemptsPerRule),
+		LogRetentionDays = Math.Max(0, LogRetentionDays)
 	};
 }

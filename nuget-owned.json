@@ -66,6 +66,7 @@
   "PanoramicData.HealthChecks.BasicAuthentication.HashGenerator",
   "PanoramicData.HealthChecks.Core",
   "PanoramicData.HealthChecks.Versions",
+  "PanoramicData.IssueAssessment",
   "PanoramicData.LanSweeper.Api",
   "PanoramicData.LicenceMagic",
   "PanoramicData.Mapper",

@@ -40,7 +40,10 @@ public sealed class CodacyCoverageUploadRemediation : IRemediation
 			return;
 		}
 
-		var edited = CodacyCoverageWorkflowEditor.AddUpload(File.ReadAllText(fullPath), runner);
+		var text = File.ReadAllText(fullPath);
+		var edited = result.Advisory?.Data?.TryGetValue("test_project", out var project) == true && project is string testProject
+			? CodacyCoverageWorkflowEditor.AddCoverageJob(text, runner, testProject)
+			: CodacyCoverageWorkflowEditor.AddUpload(text, runner);
 		if (edited is null)
 		{
 			onOutput?.Invoke($"⚠️ [CI-15] {workflowFile} can no longer be edited safely and was left unchanged — it needs a person or Fix with AI.");

@@ -625,9 +625,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "KubernetesClient": {
-    "latestVersion": "19.0.2",
-    "published": "2026-02-24T19:29:13.143+00:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "21.0.8",
+    "published": "2026-10-13T22:17:12.63+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Lextm.SharpSnmpLib": {
     "latestVersion": "12.5.7",
@@ -665,9 +665,9 @@
     "refreshedAtUtc": "2026-10-01T08:32:53.5327518+00:00"
   },
   "LogicMonitor.Datamart": {
-    "latestVersion": "3.240.27",
-    "published": "2026-09-29T12:07:16.323+01:00",
-    "refreshedAtUtc": "2026-09-29T14:32:53.5506774+00:00"
+    "latestVersion": "3.240.45",
+    "published": "2026-10-14T07:20:16.537+01:00",
+    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
   },
   "LTAF.Navigator": {
     "latestVersion": "0.1.0",
@@ -740,54 +740,54 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.AspNetCore.Authentication.JwtBearer": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:34.16+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:51.71+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Authentication.OpenIdConnect": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:36.42+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:39.09+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Authorization": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:33.39+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:37.367+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Components": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:32.63+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:36.493+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Components.Authorization": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:32+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:34.393+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Components.Web": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:31.11+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:31.17+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Components.WebAssembly": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:31.19+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:29.993+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Components.WebAssembly.Authentication": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:30.837+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:29.2+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Components.WebAssembly.DevServer": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:32.31+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:10:29.767+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Components.WebAssembly.Server": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:30.377+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:31.957+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Components.WebView.WindowsForms": {
     "latestVersion": "10.0.110",
@@ -795,24 +795,24 @@
     "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
   },
   "Microsoft.AspNetCore.DataProtection": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:30.44+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:10:24.89+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.DataProtection.Abstractions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:29.627+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:23.69+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.DataProtection.EntityFrameworkCore": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:29.39+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:23.823+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:29.21+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:21.8+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Hosting.Abstractions": {
     "latestVersion": "2.3.13",
@@ -835,14 +835,14 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.AspNetCore.Identity.EntityFrameworkCore": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:28.64+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:21.757+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Identity.UI": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:28.633+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:20.77+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Mvc.Core": {
     "latestVersion": "2.3.13",
@@ -850,14 +850,14 @@
     "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
   },
   "Microsoft.AspNetCore.Mvc.NewtonsoftJson": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:27.78+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:01.53+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Mvc.Testing": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:27.183+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:07:57.77+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.OData": {
     "latestVersion": "9.5.0",
@@ -865,9 +865,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Microsoft.AspNetCore.OpenApi": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:27.497+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:05.343+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.Server.Kestrel": {
     "latestVersion": "2.3.13",
@@ -875,19 +875,19 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.AspNetCore.SignalR.Client": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:26.72+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:07:51.077+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.AspNetCore.WebUtilities": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:25.317+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:07:32.86+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Authentication.WebAssembly.Msal": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:25.463+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:07:32.6+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Azure.Core.NewtonsoftJson": {
     "latestVersion": "2.0.0",
@@ -950,14 +950,14 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.Build.Framework": {
-    "latestVersion": "18.10.1",
-    "published": "2026-09-10T16:42:06.447+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "18.11.0",
+    "published": "2026-10-13T16:59:46.227+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Build.Utilities.Core": {
-    "latestVersion": "18.10.1",
-    "published": "2026-09-10T16:42:57.71+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "18.11.0",
+    "published": "2026-10-13T17:00:40.177+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.CodeAnalysis.Analyzers": {
     "latestVersion": "5.9.0",
@@ -975,9 +975,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Microsoft.CodeAnalysis.NetAnalyzers": {
-    "latestVersion": "10.0.401",
-    "published": "2026-09-08T20:05:16.377+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.402",
+    "published": "2026-10-13T18:20:57.48+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Data.SqlClient": {
     "latestVersion": "7.1.1",
@@ -990,9 +990,9 @@
     "refreshedAtUtc": "2026-09-30T02:32:53.5289117+00:00"
   },
   "Microsoft.Data.Sqlite": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:24.783+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:07:14.547+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Deployment.DotNet.Releases": {
     "latestVersion": "1.0.2",
@@ -1000,169 +1000,169 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.EntityFrameworkCore": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:23.413+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:08:26.793+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.EntityFrameworkCore.Abstractions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:22.76+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:06:22.513+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.EntityFrameworkCore.Design": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:21.76+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:06:16.37+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.EntityFrameworkCore.InMemory": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:21.607+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:06:03.39+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.EntityFrameworkCore.Relational": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:21.883+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:06:02.547+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.EntityFrameworkCore.Sqlite": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:20.67+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:06:00.26+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.EntityFrameworkCore.SqlServer": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:20.85+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:58.39+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.EntityFrameworkCore.Tools": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:20.14+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:51.583+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.AI.OpenAI": {
-    "latestVersion": "10.10.1",
-    "published": "2026-09-25T15:59:55.96+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "10.11.0",
+    "published": "2026-10-14T05:55:52.67+01:00",
+    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
   },
   "Microsoft.Extensions.Caching.Abstractions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:19.163+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:41.73+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Caching.Memory": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:19.183+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:40.793+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Configuration": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:18.637+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:43.667+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Configuration.Abstractions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:18.557+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:35.32+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Configuration.Binder": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:18.483+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:35.717+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Configuration.CommandLine": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:17.677+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:29.237+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Configuration.EnvironmentVariables": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T19:59:44.753+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:12.357+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Configuration.FileExtensions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:18.38+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:10.113+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Configuration.Json": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:17.91+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:06:51.877+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Configuration.UserSecrets": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:17.38+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:04:49.953+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.DependencyInjection": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:17.707+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:04:44.62+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.DependencyInjection.Abstractions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:17.073+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:04:43.453+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:16.81+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:56.953+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Diagnostics.Testing": {
-    "latestVersion": "10.10.0",
-    "published": "2026-09-09T17:53:11.613+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "10.11.0",
+    "published": "2026-10-14T06:00:32.35+01:00",
+    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
   },
   "Microsoft.Extensions.FileProviders.Embedded": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:16.183+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:53.23+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Hosting": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:15.073+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:48.097+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Hosting.Abstractions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:14.89+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:44.63+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Hosting.Systemd": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:14.37+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:43.623+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Hosting.WindowsServices": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:14.74+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:42.727+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Http": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:14.37+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:53.3+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Http.Polly": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:14.24+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:41.89+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Http.Resilience": {
-    "latestVersion": "10.10.0",
-    "published": "2026-09-09T17:53:18.807+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.11.0",
+    "published": "2026-10-14T06:01:06.6+01:00",
+    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
   },
   "Microsoft.Extensions.Logging": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:13.603+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:39.687+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Logging.Abstractions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:13.96+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:37.307+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Logging.ApplicationInsights": {
     "latestVersion": "2.23.0",
@@ -1170,54 +1170,54 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Microsoft.Extensions.Logging.Console": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:12.987+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:32.21+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Logging.Debug": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:12.31+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:30.773+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Logging.EventLog": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:11.733+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:34.04+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.ObjectPool": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:11.013+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:10.16+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Options": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:11.197+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:04.757+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Options.ConfigurationExtensions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:10.417+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:05:09.257+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.Primitives": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:09.537+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:01.573+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Extensions.ServiceDiscovery": {
-    "latestVersion": "10.10.0",
-    "published": "2026-09-09T17:53:23.39+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.11.0",
+    "published": "2026-10-14T06:01:59.533+01:00",
+    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
   },
   "Microsoft.Extensions.TimeProvider.Testing": {
-    "latestVersion": "10.10.0",
-    "published": "2026-09-09T17:52:03.403+01:00",
-    "refreshedAtUtc": "2026-09-10T16:16:25.5829562+00:00"
+    "latestVersion": "10.11.0",
+    "published": "2026-10-14T06:03:25.907+01:00",
+    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
   },
   "Microsoft.Extensions.WebEncoders": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:09.347+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:03:02.537+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Graph": {
     "latestVersion": "6.8.0",
@@ -1225,14 +1225,14 @@
     "refreshedAtUtc": "2026-10-06T23:21:27.3768713+00:00"
   },
   "Microsoft.Identity.Web": {
-    "latestVersion": "4.16.0",
-    "published": "2026-10-01T18:27:08.923+01:00",
-    "refreshedAtUtc": "2026-10-02T10:57:11.9972092+00:00"
+    "latestVersion": "4.16.1",
+    "published": "2026-10-13T18:05:11.373+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Identity.Web.UI": {
-    "latestVersion": "4.16.0",
-    "published": "2026-10-01T18:27:30.547+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "4.16.1",
+    "published": "2026-10-13T20:04:42.813+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.IdentityModel.Protocols.OpenIdConnect": {
     "latestVersion": "8.23.0",
@@ -1245,9 +1245,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.JSInterop": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:12.603+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:02:45.913+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Kiota.Abstractions": {
     "latestVersion": "2.1.2",
@@ -1315,14 +1315,14 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.PowerShell.SDK": {
-    "latestVersion": "7.6.6",
-    "published": "2026-09-08T21:32:25.56+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "7.6.7",
+    "published": "2026-10-13T21:19:40.057+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.SourceLink.GitHub": {
-    "latestVersion": "10.0.401",
-    "published": "2026-09-08T20:05:11.983+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.402",
+    "published": "2026-10-13T18:21:37.78+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Microsoft.Testing.Extensions.CodeCoverage": {
     "latestVersion": "18.12.0",
@@ -1370,9 +1370,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.Windows.Compatibility": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:03:01.28+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:00:19.49+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "MicrosoftAzure.Api": {
     "latestVersion": "2.0.46",
@@ -1820,14 +1820,14 @@
     "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
   },
   "Quartz": {
-    "latestVersion": "4.4.0",
-    "published": "2026-10-07T21:30:34.43+01:00",
-    "refreshedAtUtc": "2026-10-07T23:49:35.1868444+00:00"
+    "latestVersion": "4.5.0",
+    "published": "2026-10-13T20:28:15.34+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "Quartz.Extensions.Hosting": {
-    "latestVersion": "4.4.0",
-    "published": "2026-10-07T21:30:40.06+01:00",
-    "refreshedAtUtc": "2026-10-07T23:49:35.1868444+00:00"
+    "latestVersion": "4.5.0",
+    "published": "2026-10-13T20:28:22.827+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "QuestPDF": {
     "latestVersion": "2026.9.1",
@@ -2190,9 +2190,9 @@
     "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
   },
   "System.CommandLine": {
-    "latestVersion": "2.0.12",
-    "published": "2026-09-08T20:02:59.723+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "2.0.13",
+    "published": "2026-10-13T17:58:55.297+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.ComponentModel": {
     "latestVersion": "4.3.0",
@@ -2205,9 +2205,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "System.Configuration.ConfigurationManager": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:59.387+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:58:20.443+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Data.SqlClient": {
     "latestVersion": "4.9.1",
@@ -2225,9 +2225,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "System.Drawing.Common": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:59.123+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:57:20.72+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.IdentityModel.Tokens.Jwt": {
     "latestVersion": "8.23.0",
@@ -2250,14 +2250,14 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "System.Management.Automation": {
-    "latestVersion": "7.6.6",
-    "published": "2026-09-08T21:32:32.93+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "7.6.7",
+    "published": "2026-10-13T21:19:49.52+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Net.Http.Json": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:57.597+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:56:50.073+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Net.Primitives": {
     "latestVersion": "4.3.1",
@@ -2265,29 +2265,29 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "System.Reflection.Metadata": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:57.287+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:56:48.83+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Resources.Extensions": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:56.95+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:56:42.307+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Security.Cryptography.Pkcs": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:56.383+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:56:30.46+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Security.Cryptography.ProtectedData": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:56.037+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:56:40.66+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Security.Cryptography.Xml": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:56.23+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:56:44.8+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.ServiceModel.Duplex": {
     "latestVersion": "6.0.0",
@@ -2310,29 +2310,29 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "System.ServiceModel.Syndication": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:55.55+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:58:25.21+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.ServiceProcess.ServiceController": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:55.263+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:56:29.11+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Speech": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:55.217+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:56:28.173+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Text.Encoding.CodePages": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:55.627+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T18:00:44.543+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Text.Json": {
-    "latestVersion": "10.0.12",
-    "published": "2026-09-08T20:02:55.003+01:00",
-    "refreshedAtUtc": "2026-09-08T22:17:11.6034447+00:00"
+    "latestVersion": "10.0.13",
+    "published": "2026-10-13T17:58:25.56+01:00",
+    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
   },
   "System.Xml.XPath.XmlDocument": {
     "latestVersion": "4.7.0",

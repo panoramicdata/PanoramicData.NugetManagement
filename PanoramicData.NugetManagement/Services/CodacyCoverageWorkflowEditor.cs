@@ -98,6 +98,104 @@ public static partial class CodacyCoverageWorkflowEditor
 	}
 
 	/// <summary>
+	/// Appends a <c>coverage</c> job that runs one test project with coverage and uploads the report,
+	/// for a workflow that has no <c>dotnet test</c> step to edit.
+	/// </summary>
+	/// <param name="workflow">The workflow file's text.</param>
+	/// <param name="runner">How the repository runs its tests.</param>
+	/// <param name="testProjectPath">The test project, relative to the repository root.</param>
+	/// <returns>The edited workflow, or null when the workflow cannot be edited safely.</returns>
+	/// <remarks>
+	/// The job borrows the checkout and setup-dotnet steps the workflow already uses, so it inherits the
+	/// repository's pinned versions rather than introducing new ones, and it is declined when either is
+	/// absent. It is appended only when <c>jobs:</c> is the last top-level key, which is the one place
+	/// text can be added without parsing the file. The job is continue-on-error: the repository's tests
+	/// were never part of its CI, and a test project that needs a live service must not turn the run red.
+	/// </remarks>
+	public static string? AddCoverageJob(string workflow, CoverageRunner runner, string testProjectPath)
+	{
+		if (workflow.Contains(_uploadStepName, StringComparison.Ordinal)
+			|| string.IsNullOrWhiteSpace(testProjectPath)
+			|| testProjectPath.Any(c => char.IsWhiteSpace(c) || c is '"' or '\'' or '$' or '`' or ';' or '&' or '|'))
+		{
+			return null;
+		}
+
+		var newline = workflow.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+		var lines = workflow.Replace("\r\n", "\n").Split('\n').ToList();
+
+		var jobsIndex = lines.FindIndex(line => JobsKeyPattern().IsMatch(line));
+		if (jobsIndex < 0
+			|| lines.Skip(jobsIndex + 1).Any(line => line.Length > 0 && !char.IsWhiteSpace(line[0]) && line[0] != '#'))
+		{
+			return null;
+		}
+
+		var first = lines.Skip(jobsIndex + 1).FirstOrDefault(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith('#'));
+		if (first is null)
+		{
+			return null;
+		}
+
+		var jobIndent = IndentOf(first);
+		if (jobIndent == 0 || lines.Any(line => CoverageJobKeyPattern().IsMatch(line) && IndentOf(line) == jobIndent))
+		{
+			return null;
+		}
+
+		var checkout = lines.Select(line => CheckoutPattern().Match(line)).FirstOrDefault(m => m.Success);
+		var setup = lines.Select(line => SetupDotnetPattern().Match(line)).FirstOrDefault(m => m.Success);
+		var version = lines.Select(line => DotnetVersionPattern().Match(line)).FirstOrDefault(m => m.Success);
+		if (checkout is null || setup is null || version is null)
+		{
+			return null;
+		}
+
+		var job = new string(' ', jobIndent);
+		var key = new string(' ', jobIndent + 2);
+		var step = new string(' ', jobIndent + 4);
+		var command = runner == CoverageRunner.MicrosoftTestingPlatform
+			? $"dotnet test --project {testProjectPath} {_mtpFlags}"
+			: $"dotnet test {testProjectPath} {_vsTestFlags}";
+
+		string[] added =
+		[
+			string.Empty,
+			$"{job}coverage:",
+			$"{key}runs-on: ubuntu-latest",
+			$"{key}continue-on-error: true",
+			$"{key}steps:",
+			$"{key}- name: Checkout",
+			$"{step}uses: {checkout.Groups["action"].Value}",
+			$"{step}with:",
+			$"{step}  fetch-depth: 0",
+			string.Empty,
+			$"{key}- name: Setup .NET",
+			$"{step}uses: {setup.Groups["action"].Value}",
+			$"{step}with:",
+			$"{step}  dotnet-version: {version.Groups["version"].Value}",
+			string.Empty,
+			$"{key}- name: Run tests with coverage",
+			$"{step}run: {command}",
+			string.Empty,
+			$"{key}- name: {_uploadStepName}",
+			$"{step}continue-on-error: true",
+			$"{step}uses: codacy/codacy-coverage-reporter-action@v1",
+			$"{step}with:",
+			$"{step}  project-token: ${{{{ secrets.CODACY_PROJECT_TOKEN }}}}",
+			$"{step}  coverage-reports: '**/coverage.cobertura.xml'"
+		];
+
+		while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
+		{
+			lines.RemoveAt(lines.Count - 1);
+		}
+
+		lines.AddRange(added);
+		return string.Join(newline, lines) + newline;
+	}
+
+	/// <summary>
 	/// The line the step containing <paramref name="run"/> starts on: its list dash.
 	/// </summary>
 	private static int FindStepStart(List<string> lines, int run)
@@ -184,6 +282,21 @@ public static partial class CodacyCoverageWorkflowEditor
 	// A single-line "run: dotnet test ..." with no pipe or fold indicator, optionally the first key of a list item.
 	[GeneratedRegex(@"^\s*(?:-\s+)?run:\s+(?<command>dotnet test\b[^|>#]*)$")]
 	private static partial Regex TestStepPattern();
+
+	[GeneratedRegex(@"^jobs:\s*(#.*)?$")]
+	private static partial Regex JobsKeyPattern();
+
+	[GeneratedRegex(@"^\s*coverage:\s*$")]
+	private static partial Regex CoverageJobKeyPattern();
+
+	[GeneratedRegex(@"uses:\s*(?<action>actions/checkout@\S+)")]
+	private static partial Regex CheckoutPattern();
+
+	[GeneratedRegex(@"uses:\s*(?<action>actions/setup-dotnet@\S+)")]
+	private static partial Regex SetupDotnetPattern();
+
+	[GeneratedRegex(@"dotnet-version:\s*(?<version>[^\s|>]\S*)\s*$")]
+	private static partial Regex DotnetVersionPattern();
 
 	[GeneratedRegex(@"^\s*-\s")]
 	private static partial Regex DashPattern();

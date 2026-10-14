@@ -24,6 +24,6 @@
   "NuGet/login": "v1",
   "peter-evans/create-issue-from-file": "v4",
   "PSModule/install-powershell": "v1",
-  "softprops/action-gh-release": "v1",
+  "softprops/action-gh-release": "v3",
   "TravisSpomer/deploy-to-azure-storage": "v1"
 }

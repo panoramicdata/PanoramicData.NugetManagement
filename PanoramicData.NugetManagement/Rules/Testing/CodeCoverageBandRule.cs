@@ -15,8 +15,13 @@ namespace PanoramicData.NugetManagement.Rules;
 /// Distinct from TST-07, which watches the direction of travel against each repository's own best
 /// figure. This one states where the repository stands on one scale shared by the whole estate.
 /// </para>
+/// <para>
+/// <see cref="IRemotelyGraded"/>: the figure is Codacy's, taken from the last coverage upload to the
+/// published branch, so no edit to the clone can change this rule's answer. A Fix with AI session
+/// judged on re-running it spent every attempt on an unanswerable question and discarded its work.
+/// </para>
 /// </remarks>
-public class CodeCoverageBandRule : RuleBase
+public class CodeCoverageBandRule : RuleBase, IRemotelyGraded
 {
 	/// <summary>Coverage at or above this is GREEN. Matches Codacy's minCoveragePercentage.</summary>
 	private const double GreenThreshold = 60;

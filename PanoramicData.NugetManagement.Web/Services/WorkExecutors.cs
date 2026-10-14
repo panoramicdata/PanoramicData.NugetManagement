@@ -51,6 +51,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// of the server and not of any one item.
 /// </param>
 /// <param name="playbooks">The per-rule instructions an AI fix is prompted with.</param>
+/// <param name="sessionLogs">Where AI fix sessions are logged in full, or null to log nothing.</param>
 public sealed class WorkExecutors(
 	DashboardService dashboard,
 	DashboardCacheService cache,
@@ -63,8 +64,60 @@ public sealed class WorkExecutors(
 	Remediations.RemediationRegistry remediations,
 	DependabotTriageRunner triageRunner,
 	OllamaGate ollamaGate,
-	AiPlaybookRegistry playbooks)
+	AiPlaybookRegistry playbooks,
+	AiSessionLogStore? sessionLogs = null)
 {
+	/// <summary>
+	/// Opens the on-disk log for one AI fix session and says where it is.
+	/// </summary>
+	/// <remarks>
+	/// The transcript the pane shows is bounded and lost on restart; this is the record that survives, and
+	/// is what a prompt or tool change is judged against. A store that is not configured yields a log that
+	/// records nothing rather than a null every caller must check.
+	/// </remarks>
+	private AiSessionLog OpenSessionLog(string repositoryFullName, string workId)
+	{
+		if (sessionLogs is null)
+		{
+			return AiSessionLog.None;
+		}
+
+		var log = sessionLogs.Open(repositoryFullName, workId);
+
+		if (log.Path.Length > 0)
+		{
+			Say($"📝 Session log: {log.Path}");
+		}
+
+		return log;
+	}
+
+	/// <summary>
+	/// Writes what a session was given, which is the first record of its log and the one every later
+	/// record has to be read against.
+	/// </summary>
+	private static void LogSessionStart(
+		AiSessionLog log,
+		AiFixRequest request,
+		OllamaOptions ollama,
+		AiFixOptions options,
+		IReadOnlyList<string>? writablePaths)
+		=> log.Write("session_start", new Dictionary<string, object?>
+		{
+			["repository"] = request.RepositoryFullName,
+			["rule"] = request.RuleId,
+			["rule_name"] = request.RuleName,
+			["model"] = ollama.Model,
+			["context_window"] = ollama.ContextWindow,
+			["prompt_version"] = AiFixPrompt.Version,
+			["tools"] = AiFixSession.ToolSpecs.Select(spec => spec.Name).ToList(),
+			["max_turns_per_attempt"] = options.MaxTurnsPerAttempt,
+			["max_attempts"] = options.MaxAttempts,
+			["writable_paths"] = writablePaths,
+			["system_prompt"] = request.SystemPrompt,
+			["task"] = request.Task
+		});
+
 	/// <summary>Every kind this service knows how to run.</summary>
 	/// <remarks>
 	/// Exposed so a test can assert it covers <see cref="WorkKind"/> in full. A kind that can be
@@ -926,18 +979,23 @@ public sealed class WorkExecutors(
 					+ "change builds. Codacy re-grades after you push.");
 			}
 
+			var fixOptions = new AiFixOptions
+			{
+				MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
+				MaxAttempts = remotelyGraded ? 1 : ollama.MaxAttemptsPerRule
+			};
+
+			using var sessionLog = OpenSessionLog(row.RepositoryFullName, ruleId);
+
 			var session = new AiFixSession(
 				new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow),
 				toolbox,
-				new AiFixOptions
-				{
-					MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
-					MaxAttempts = remotelyGraded ? 1 : ollama.MaxAttemptsPerRule
-				},
+				fixOptions,
 				Say,
 				// Straight into this item's transcript rather than through Say: a token is a fragment,
 				// not a line, and the shared console has no way to render a hundred of them a second.
-				AiTranscriptSink.For(item.Transcript));
+				AiTranscriptSink.For(item.Transcript),
+				sessionLog);
 
 			var request = new AiFixRequest(
 				row.RepositoryFullName,
@@ -945,6 +1003,8 @@ public sealed class WorkExecutors(
 				result.RuleName,
 				AiFixPrompt.BuildTask(result, row.RepositoryFullName, playbook, targetPath),
 				AiFixPrompt.SystemPrompt);
+
+			LogSessionStart(sessionLog, request, ollama, fixOptions, writablePaths: null);
 
 			// Into the transcript before the first turn, so the pane reads in the order the model saw
 			// things. Not through Say: the shared console is not the place for two pages of prompt.
@@ -1036,15 +1096,31 @@ public sealed class WorkExecutors(
 
 		var diagnostics = output
 			.Where(line => line.Contains(": error ", StringComparison.OrdinalIgnoreCase)
-				|| line.Contains("failed:", StringComparison.OrdinalIgnoreCase)
+				|| (line.Contains("failed:", StringComparison.OrdinalIgnoreCase)
+					// A summary line reading "failed: 0" is the opposite of a diagnostic, and listing it
+					// under "Tests failed." told a model the run had failed for no reason it could find.
+					&& !line.Contains("failed: 0", StringComparison.OrdinalIgnoreCase))
 				|| line.Contains("[FAIL]", StringComparison.OrdinalIgnoreCase))
 			.Distinct(StringComparer.Ordinal)
 			.Take(_diagnosticLineLimit)
 			.ToList();
 
-		return diagnostics.Count == 0
-			? $"{verdict} No error lines were found in the output."
-			: $"{verdict}\n{string.Join("\n", diagnostics)}";
+		if (diagnostics.Count > 0)
+		{
+			return $"{verdict}\n{string.Join("\n", diagnostics)}";
+		}
+
+		// Nothing recognisable as an error: no test failed, so the run stopped for another reason — a build
+		// that broke before any test started, a crash, no tests found. The end of the output is where
+		// that reason is, and it is better to show it than to say there is nothing to show.
+		var tail = output
+			.Where(line => !string.IsNullOrWhiteSpace(line))
+			.TakeLast(_diagnosticLineLimit / 2)
+			.ToList();
+
+		return tail.Count == 0
+			? $"{verdict} The run produced no output."
+			: $"{verdict} No individual error was recognised. The end of the output was:\n{string.Join("\n", tail)}";
 	}
 
 	/// <summary>
@@ -1547,16 +1623,21 @@ public sealed class WorkExecutors(
 						row.Status == PackageStatus.TestsPassed, string.Join("\n", captured));
 				});
 
+			var fixOptions = new AiFixOptions
+			{
+				MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
+				MaxAttempts = ollama.MaxAttemptsPerRule
+			};
+
+			using var sessionLog = OpenSessionLog(row.RepositoryFullName, $"issue-{issueNumber}");
+
 			var session = new AiFixSession(
 				new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow),
 				toolbox,
-				new AiFixOptions
-				{
-					MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
-					MaxAttempts = ollama.MaxAttemptsPerRule
-				},
+				fixOptions,
 				Say,
-				AiTranscriptSink.For(item.Transcript));
+				AiTranscriptSink.For(item.Transcript),
+				sessionLog);
 
 			var request = new AiFixRequest(
 				row.RepositoryFullName,
@@ -1564,6 +1645,8 @@ public sealed class WorkExecutors(
 				$"Issue #{issueNumber}",
 				IssueFixPrompt.BuildTask(brief, row.RepositoryFullName, issueNumber),
 				AiFixPrompt.SystemPrompt);
+
+			LogSessionStart(sessionLog, request, ollama, fixOptions, brief.Paths);
 
 			item.Transcript.Append(WorkLineKind.Prompt, $"System prompt:\n{request.SystemPrompt}");
 			item.Transcript.Append(WorkLineKind.Prompt, $"Task:\n{request.Task}");
