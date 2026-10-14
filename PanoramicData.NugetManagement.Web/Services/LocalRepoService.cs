@@ -1221,23 +1221,82 @@ public partial class LocalRepoService
 		}
 
 		// Fetch
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["fetch", "--prune"], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunNetworkGitWithRetryAsync(path, ["fetch", "--prune"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Rebase on top of remote
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["pull", "--rebase"], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunNetworkGitWithRetryAsync(path, ["pull", "--rebase"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Push
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunNetworkGitWithRetryAsync(path, ["push"], onOutput, cancellationToken).ConfigureAwait(false);
 		return (ok, output);
 	}
+
+	/// <summary>
+	/// How many times a git command that talks to the network is attempted before its failure stands.
+	/// </summary>
+	private const int _networkAttempts = 3;
+
+	/// <summary>
+	/// Runs a git command that talks to the network, trying again when it fails the way a flaky
+	/// connection does.
+	/// </summary>
+	/// <remarks>
+	/// The commit that precedes a push is local and stays local when the push fails, so a failure that
+	/// would have cleared on its own leaves the clone ahead of origin with nothing to push it later.
+	/// Only <see cref="IsTransientNetworkFailure"/> is retried: a refusal such as an archived repository
+	/// or a rejected push is the same answer every time, and repeating it would only delay saying so.
+	/// </remarks>
+	private static async Task<(bool Success, string Output)> RunNetworkGitWithRetryAsync(
+		string workingDirectory,
+		IReadOnlyList<string> arguments,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var attempt = 1;
+
+		while (true)
+		{
+			var result = await RunCommandWithStreamingAsync(workingDirectory, "git", arguments, onOutput, cancellationToken).ConfigureAwait(false);
+
+			if (result.Success || attempt >= _networkAttempts || !IsTransientNetworkFailure(result.Output))
+			{
+				return result;
+			}
+
+			onOutput?.Invoke($"↻ git {arguments[0]} failed on the network; retrying ({attempt + 1} of {_networkAttempts})...");
+			await Task.Delay(TimeSpan.FromSeconds(2 * attempt), cancellationToken).ConfigureAwait(false);
+			attempt++;
+		}
+	}
+
+	/// <summary>
+	/// Whether a failed git command's output looks like a connection that may work if asked again.
+	/// </summary>
+	/// <param name="output">Everything the command printed.</param>
+	/// <returns>True for name-resolution, timeout and dropped-connection failures; false for anything else.</returns>
+	public static bool IsTransientNetworkFailure(string output)
+		=> _transientNetworkSignals.Any(signal => output.Contains(signal, StringComparison.OrdinalIgnoreCase));
+
+	private static readonly string[] _transientNetworkSignals =
+	[
+		"getaddrinfo",
+		"Could not resolve host",
+		"Connection timed out",
+		"Connection reset",
+		"Failed to connect to",
+		"Recv failure",
+		"RPC failed",
+		"early EOF",
+		"The remote end hung up unexpectedly"
+	];
 
 	/// <summary>
 	/// Runs dotnet test on the repository.
