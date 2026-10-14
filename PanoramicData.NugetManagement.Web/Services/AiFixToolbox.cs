@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace PanoramicData.NugetManagement.Web.Services;
 
@@ -149,6 +150,20 @@ public sealed class AiFixToolbox(
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 
+		try
+		{
+			return await DispatchAsync(call, cancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+		{
+			// A tool that throws is a tool result the model can read and correct, not a dead session. One
+			// malformed glob once ended a whole run, with the model never told what it had got wrong.
+			return Error($"{call.Name} failed: {ex.Message}");
+		}
+	}
+
+	private async Task<AiToolResult> DispatchAsync(AiToolCall call, CancellationToken cancellationToken)
+	{
 		return call.Name switch
 		{
 			"list_files" => ListFiles(call),
@@ -166,14 +181,17 @@ public sealed class AiFixToolbox(
 
 	private AiToolResult ListFiles(AiToolCall call)
 	{
-		var glob = call.Arguments.TryGetValue("glob", out var g) && !string.IsNullOrWhiteSpace(g)
-			? g
+		var requested = call.Arguments.TryGetValue("glob", out var g) && !string.IsNullOrWhiteSpace(g)
+			? g.Trim().Replace('\\', '/')
 			: "*";
 
+		var matcher = GlobToRegex(requested);
+
 		var matches = Directory
-			.EnumerateFiles(_root, glob, SearchOption.AllDirectories)
+			.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
 			.Where(path => !IsUninteresting(path))
 			.Select(path => Path.GetRelativePath(_root, path).Replace('\\', '/'))
+			.Where(path => matcher.IsMatch(path))
 			.Order(StringComparer.OrdinalIgnoreCase)
 			.Take(500)
 			.ToList();
@@ -181,6 +199,53 @@ public sealed class AiFixToolbox(
 		return new AiToolResult(matches.Count == 0
 			? "No files matched."
 			: string.Join("\n", matches));
+	}
+
+	/// <summary>
+	/// A glob as a model writes it, as a regular expression over repository-relative paths.
+	/// </summary>
+	/// <remarks>
+	/// Models write globs the way they have seen them in other tools — <c>**/*.csproj</c>,
+	/// <c>src/*.cs</c>, <c>*/*.csproj</c> — and the file system's own pattern matching accepts none of
+	/// the ones with a folder in them, throwing instead. So the files are enumerated plainly and matched
+	/// here. A glob with no folder part matches a file name anywhere in the repository, which is what
+	/// <c>*.csproj</c> has always meant to this tool.
+	/// </remarks>
+	private static Regex GlobToRegex(string glob)
+	{
+		var builder = new StringBuilder(glob.Contains('/', StringComparison.Ordinal) ? "^" : "^(.*/)?");
+
+		for (var i = 0; i < glob.Length; i++)
+		{
+			switch (glob[i])
+			{
+				case '*' when i + 1 < glob.Length && glob[i + 1] == '*':
+					// "**/" is any number of folders, including none; a bare "**" is anything.
+					if (i + 2 < glob.Length && glob[i + 2] == '/')
+					{
+						builder.Append("(.*/)?");
+						i += 2;
+					}
+					else
+					{
+						builder.Append(".*");
+						i++;
+					}
+
+					break;
+				case '*':
+					builder.Append("[^/]*");
+					break;
+				case '?':
+					builder.Append("[^/]");
+					break;
+				default:
+					builder.Append(Regex.Escape(glob[i].ToString()));
+					break;
+			}
+		}
+
+		return new Regex(builder.Append('$').ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(2));
 	}
 
 	private async Task<AiToolResult> ReadFileAsync(AiToolCall call, CancellationToken cancellationToken)

@@ -159,6 +159,78 @@ public class AiFixObservabilityTests(ITestOutputHelper output) : TestWithOutput(
 		(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Should().Be("v0");
 	}
 
+	private Task<AiToolResult> ListAsync(string glob)
+		=> new AiFixToolbox(_root).ExecuteAsync(
+			Call("list_files", ("glob", glob)),
+			TestContext.Current.CancellationToken);
+
+	[Theory]
+	[InlineData("**/*.csproj")]
+	[InlineData("*.csproj")]
+	[InlineData("src/*.csproj")]
+	[InlineData("src/**/*.csproj")]
+	[InlineData("src\\*.csproj")]
+	[InlineData("*/*.csproj")]
+	public async Task ListFiles_AcceptsTheGlobsModelsActuallyWrite(string glob)
+	{
+		Write("root.txt", "x");
+		Directory.CreateDirectory(Path.Combine(_root, "src", "deep"));
+		File.WriteAllText(Path.Combine(_root, "src", "A.csproj"), "x");
+		File.WriteAllText(Path.Combine(_root, "src", "deep", "B.csproj"), "x");
+
+		var result = await ListAsync(glob);
+
+		result.IsError.Should().BeFalse();
+		result.Content.Should().Contain("src/A.csproj");
+	}
+
+	[Fact]
+	public async Task ListFiles_WithAFolderPrefix_ReturnsOnlyThatFolder()
+	{
+		Directory.CreateDirectory(Path.Combine(_root, "a"));
+		Directory.CreateDirectory(Path.Combine(_root, "b"));
+		File.WriteAllText(Path.Combine(_root, "a", "X.cs"), "x");
+		File.WriteAllText(Path.Combine(_root, "b", "Y.cs"), "x");
+
+		var result = await ListAsync("a/*.cs");
+
+		result.Content.Should().Be("a/X.cs");
+	}
+
+	/// <summary>
+	/// A malformed argument must come back as a result the model can read. It used to escape as an
+	/// IOException and end the whole session.
+	/// </summary>
+	[Fact]
+	public async Task AToolThatThrows_IsAnErrorResult_NotAnException()
+	{
+		Directory.CreateDirectory(_root);
+
+		var result = await new AiFixToolbox(_root).ExecuteAsync(
+			Call("read_file", ("path", "a\0b")),
+			TestContext.Current.CancellationToken);
+
+		result.IsError.Should().BeTrue();
+		result.Content.Should().Contain("read_file failed");
+	}
+
+	/// <summary>
+	/// "*/*.csproj" is exactly one folder deep, as in any other glob implementation. It is the pattern
+	/// that once killed a session, and matching it must not also sweep in everything below.
+	/// </summary>
+	[Fact]
+	public async Task ListFiles_SingleStarFolder_IsExactlyOneLevelDeep()
+	{
+		Directory.CreateDirectory(Path.Combine(_root, "src", "deep"));
+		File.WriteAllText(Path.Combine(_root, "src", "A.csproj"), "x");
+		File.WriteAllText(Path.Combine(_root, "src", "deep", "B.csproj"), "x");
+		File.WriteAllText(Path.Combine(_root, "Top.csproj"), "x");
+
+		var result = await ListAsync("*/*.csproj");
+
+		result.Content.Should().Be("src/A.csproj");
+	}
+
 	[Fact]
 	public void ToolSpecs_DescribeReplaceInFile()
 		=> AiFixSession.ToolSpecs.Select(spec => spec.Name).Should().Contain("replace_in_file");
