@@ -29,6 +29,11 @@ feed what it learns back into the prompts, tools, access and model choice.
 | How does frontier review run? | **Pull.** In a Claude Code session the reviewer reads the backlog through the agent API and writes verdicts back. The app holds no Claude API key. |
 | What needs a person? | Nothing is excluded. Publishing, secrets, default-branch pushes and CI-workflow edits are each a policy switch, all permitted. |
 | Who is the record for? | Internal engineering review. Local, hash-chained, 12-month retention, exportable. |
+| Starting caps | 30 pushes and 3 publishes per day. |
+| Schedule | Any time, including overnight and weekends. The kill switch and breaker still apply. |
+| Scope | A **per-repository toggle**, enabled by default for every governed, cloned repository. Never active for an excluded repository, whatever the toggle says. The user disables where appropriate. |
+| A review says `revert` | Autopilot reverts automatically on its next cycle and records it. |
+| Hosted model | Not for now. Escalation stays within models on the Ollama server. |
 
 Because everything is permitted, **the safeguards are caps, a dry-run phase, a kill switch and a circuit
 breaker, not prohibitions.** Section 6.
@@ -83,10 +88,10 @@ entry so an action can be traced to the rules in force when it was taken. Changi
 
 ```
 enabled, dryRun
-schedule:    { windowsUtc: ["08:00-20:00"], cycleCooldownMinutes, maxConcurrentRepositories: 1 }
-eligibility: { organisations, includeRepositories, excludeRepositories, requireCleanTree: true, skipArchived: true }
+schedule:    { windowsUtc: null (any time), cycleCooldownMinutes, maxConcurrentRepositories: 1 }
+eligibility: { defaultEnabled: true, repositoryOverrides: { "owner/name": false }, requireCleanTree: true, skipArchived: true }   // excluded repositories are never active
 rules:       { include: [...], exclude: [...] }               // e.g. TST-10 only at first
-caps:        { pushesPerHour, pushesPerDay, publishesPerDay, aiSessionsPerHour, maxFilesPerChange, maxLinesPerChange }
+caps:        { pushesPerHour, pushesPerDay: 30, publishesPerDay: 3, aiSessionsPerHour, maxFilesPerChange, maxLinesPerChange }
 actions:     { push: true, pushDefaultBranch: true, publish: true, writeSecrets: true, editWorkflows: true, editPublishScript: true }
 breaker:     { consecutiveFailures, ciRedAfterPush: "revert+quarantine", negativeReviewRate: { window: 20, threshold: 0.25 } }
 routing:     { default: "qwen3.8:27b", byRule: { "TST-10": { model: ..., budgetMinutes: 25, escalateTo: ... } } }
@@ -235,9 +240,5 @@ Each phase ships and is useful on its own.
 
 ## Open questions
 
-1. Starting limits: how many pushes per day, and how many publishes per day, should the first live phase allow?
-2. Should Autopilot ever act outside working hours, or stay inside a window you set?
-3. Which repositories are in scope to start: every governed, cloned, non-excluded one, or an allowlist you name?
-4. On a negative review that says `revert`: revert immediately on the next cycle (default), or only after you
-   confirm?
-5. Is a hosted model acceptable as an escalation target at all, and if so with what daily spend cap?
+None outstanding. The starting values above are policy and can be changed at any time; each change is a
+ledger entry.
