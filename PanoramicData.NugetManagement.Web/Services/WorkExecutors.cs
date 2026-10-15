@@ -1441,6 +1441,25 @@ public sealed class WorkExecutors(
 	private const int _diagnosticLineLimit = 30;
 
 	/// <summary>
+	/// Notes which files are already changed in the clone, and what they contain, so the Changes tab can
+	/// label them pre-existing. Runs git off the calling thread. A baseline is only a label, so any
+	/// failure leaves it empty rather than failing or delaying the fix.
+	/// </summary>
+	internal static async Task RecordPreExistingChangesAsync(WorkItem item, string clonePath)
+	{
+		try
+		{
+			item.PreExistingChanges = await Task
+				.Run(() => new CloneChangeReader().Baseline(clonePath))
+				.ConfigureAwait(false);
+		}
+		catch (Exception)
+		{
+			item.PreExistingChanges = new Dictionary<string, string>(StringComparer.Ordinal);
+		}
+	}
+
+	/// <summary>
 	/// What a build or test run says, in a form worth sending to a model and worth keeping in a
 	/// transcript.
 	/// </summary>
@@ -1456,15 +1475,6 @@ public sealed class WorkExecutors(
 	/// what it gets.
 	/// </para>
 	/// </remarks>
-	/// <summary>
-	/// Notes which files are already changed in the clone, so the Changes tab can label them pre-existing.
-	/// Runs git off the calling thread; <see cref="CloneChangeReader.ReadChanges"/> never throws.
-	/// </summary>
-	internal static async Task RecordPreExistingChangesAsync(WorkItem item, string clonePath)
-		=> item.PreExistingChanges = await Task
-			.Run(() => CloneChangeReader.PathsOf(new CloneChangeReader().ReadChanges(clonePath)))
-			.ConfigureAwait(false);
-
 	private static string SummariseRun(string what, bool succeeded, List<string> output)
 	{
 		var verdict = succeeded ? $"{what} succeeded." : $"{what} failed.";

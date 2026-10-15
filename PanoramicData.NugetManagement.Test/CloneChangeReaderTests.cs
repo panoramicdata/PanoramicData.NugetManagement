@@ -69,46 +69,82 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 	}
 
 	[Fact]
-	public void PathsOf_ReturnsOrdinalSet()
+	public void Fingerprint_IsStableForSameBytes_AndDiffersAfterEdit()
 	{
-		var set = CloneChangeReader.PathsOf([new ChangedFile("A.cs", ChangeKind.Modified), new ChangedFile("a.cs", ChangeKind.Added)]);
-		set.Should().BeEquivalentTo(["A.cs", "a.cs"]);
-		set.Should().HaveCount(2);
+		File.WriteAllText(Path.Combine(_root, "keep.txt"), "two\n");
+		var change = new ChangedFile("keep.txt", ChangeKind.Modified);
+
+		var first = _reader.Fingerprint(_root, change);
+		_reader.Fingerprint(_root, change).Should().Be(first);
+		first.Should().MatchRegex("^[0-9a-f]{64}$");
+
+		File.WriteAllText(Path.Combine(_root, "keep.txt"), "three\n");
+		_reader.Fingerprint(_root, change).Should().NotBe(first);
 	}
+
+	[Fact]
+	public void Fingerprint_MissingOrDeletedFile_IsDeleted()
+	{
+		_reader.Fingerprint(_root, new ChangedFile("nope.txt", ChangeKind.Modified)).Should().Be("deleted");
+		_reader.Fingerprint(_root, new ChangedFile("keep.txt", ChangeKind.Deleted)).Should().Be("deleted");
+	}
+
+	[Fact]
+	public void Fingerprint_HugeFile_UsesSizeAndTimeStandIn()
+	{
+		var path = Path.Combine(_root, "huge.bin");
+		File.WriteAllBytes(path, new byte[1_048_577]);
+
+		var fingerprint = _reader.Fingerprint(_root, new ChangedFile("huge.bin", ChangeKind.Added));
+
+		fingerprint.Should().Be($"size:1048577:{new FileInfo(path).LastWriteTimeUtc.Ticks}");
+	}
+
+	[Fact]
+	public void Baseline_ContainsDirtyFilesOnly()
+	{
+		File.WriteAllText(Path.Combine(_root, "keep.txt"), "dirty\n");
+
+		var baseline = _reader.Baseline(_root);
+
+		baseline.Keys.Should().BeEquivalentTo(["keep.txt"]);
+		baseline["keep.txt"].Should().Be(_reader.Fingerprint(_root, new ChangedFile("keep.txt", ChangeKind.Modified)));
+	}
+
+	[Fact]
+	public void Baseline_MissingClone_IsEmpty()
+		=> _reader.Baseline(Path.Combine(_root, "nope")).Should().BeEmpty();
 
 	[Fact]
 	public async Task RecordPreExistingChangesAsync_NotesOnlyWhatIsAlreadyDirty()
 	{
 		File.WriteAllText(Path.Combine(_root, "keep.txt"), "dirty before the session\n");
-		var item = new WorkItem
-		{
-			Id = "1",
-			Title = "Fix",
-			Descriptor = WorkDescriptor.ForRepository(WorkKind.FixWithAiRule, "panoramicdata", "Repo"),
-			DedupKey = "fix:Repo"
-		};
+		var item = NewItem();
 
 		await WorkExecutors.RecordPreExistingChangesAsync(item, _root);
 		File.WriteAllText(Path.Combine(_root, "later.txt"), "made by the session\n");
 
-		item.PreExistingChanges.Should().BeEquivalentTo(["keep.txt"]);
+		item.PreExistingChanges.Keys.Should().BeEquivalentTo(["keep.txt"]);
 	}
 
 	[Fact]
-	public async Task RecordPreExistingChangesAsync_MissingClone_IsEmptyAndDoesNotThrow()
+	public async Task RecordPreExistingChangesAsync_MissingClone_OverwritesWithEmptyAndDoesNotThrow()
 	{
-		var item = new WorkItem
-		{
-			Id = "1",
-			Title = "Fix",
-			Descriptor = WorkDescriptor.ForRepository(WorkKind.FixWithAiRule, "panoramicdata", "Repo"),
-			DedupKey = "fix:Repo"
-		};
+		var item = NewItem();
+		item.PreExistingChanges = new Dictionary<string, string> { ["stale.txt"] = "abc" };
 
 		await WorkExecutors.RecordPreExistingChangesAsync(item, Path.Combine(_root, "nope"));
 
 		item.PreExistingChanges.Should().BeEmpty();
 	}
+
+	private static WorkItem NewItem() => new()
+	{
+		Id = "1",
+		Title = "Fix",
+		Descriptor = WorkDescriptor.ForRepository(WorkKind.FixWithAiRule, "panoramicdata", "Repo"),
+		DedupKey = "fix:Repo"
+	};
 
 	[Fact]
 	public void ReadPair_ModifiedFile_ReturnsHeadAndDisk()

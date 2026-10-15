@@ -60,10 +60,53 @@ public sealed class CloneChangeReader
 		}
 	}
 
-	/// <summary>The repository-relative paths of <paramref name="changes"/> as an ordinal set.</summary>
-	/// <param name="changes">The changes.</param>
-	public static HashSet<string> PathsOf(IEnumerable<ChangedFile> changes)
-		=> new(changes.Select(c => c.Path), StringComparer.Ordinal);
+	/// <summary>
+	/// A fingerprint of <paramref name="file"/>'s on-disk state: lowercase hex SHA-256 of its bytes,
+	/// "deleted" when it is absent, "size:{length}:{lastWriteUtcTicks}" over the size cap, or
+	/// "unreadable". Never throws.
+	/// </summary>
+	/// <param name="clonePath">The clone's directory.</param>
+	/// <param name="file">The change to fingerprint.</param>
+	public string Fingerprint(string clonePath, ChangedFile file)
+	{
+		try
+		{
+			var diskPath = System.IO.Path.Combine(clonePath, file.Path);
+			if (file.Kind == ChangeKind.Deleted || !File.Exists(diskPath))
+			{
+				return "deleted";
+			}
+
+			var info = new FileInfo(diskPath);
+			if (info.Length > MaxBytes)
+			{
+				return $"size:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+			}
+
+			using var stream = new FileStream(diskPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+			return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stream));
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+		{
+			return "unreadable";
+		}
+	}
+
+	/// <summary>
+	/// The files already changed in the clone, each with its <see cref="Fingerprint"/>, keyed by
+	/// repository-relative path (ordinal). Empty when the clone cannot be read.
+	/// </summary>
+	/// <param name="clonePath">The clone's directory.</param>
+	public IReadOnlyDictionary<string, string> Baseline(string clonePath)
+	{
+		var baseline = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (var change in ReadChanges(clonePath))
+		{
+			baseline[change.Path] = Fingerprint(clonePath, change);
+		}
+
+		return baseline;
+	}
 
 	/// <summary>Reads both sides of <paramref name="file"/>.</summary>
 	/// <param name="clonePath">The clone's directory.</param>
