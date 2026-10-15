@@ -6,6 +6,7 @@ using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Remediations;
+using PanoramicData.NugetManagement.Web.Services.AiChange;
 
 namespace PanoramicData.NugetManagement.Web.Services;
 
@@ -53,7 +54,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// <param name="playbooks">The per-rule instructions an AI fix is prompted with.</param>
 /// <param name="sessionLogs">Where AI fix sessions are logged in full, or null to log nothing.</param>
 /// <param name="governance">Writes what was done to the governance ledger, or null to record nothing.</param>
-public sealed class WorkExecutors(
+public sealed partial class WorkExecutors(
 	DashboardService dashboard,
 	DashboardCacheService cache,
 	LocalRepoService localRepo,
@@ -1198,12 +1199,8 @@ public sealed class WorkExecutors(
 			{
 				// Deliberately no ReplaceRuleResult: the rule still says what Codacy last told it, and
 				// painting it green here would claim a verdict nothing has issued.
-				await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
-				cache.UpsertRow(row);
-
 				Say($"✅ {string.Join(", ", toolbox.FilesWritten)} changed and the build still passes. "
-					+ $"{ruleId} stays as it is until Codacy re-grades the pushed branch — review the "
-					+ "working tree before committing, a model wrote it.");
+					+ $"{ruleId} stays as it is until Codacy re-grades the merged branch.");
 			}
 			else if (succeeded)
 			{
@@ -1212,10 +1209,28 @@ public sealed class WorkExecutors(
 				var after = await ReEvaluateAsync(row, ruleId, cancellationToken).ConfigureAwait(false);
 				ReplaceRuleResult(row, ruleId, after);
 
-				await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
-				cache.UpsertRow(row);
+				Say($"✅ {outcome.Summary}");
+			}
 
-				Say($"✅ {outcome.Summary} Review the working tree before committing — a model wrote it.");
+			if (succeeded)
+			{
+				// Handed on rather than left for review: the tests, a pull request and CI are the evidence
+				// now, and the pipeline names whichever gate stopped it.
+				var delivered = await DeliverAiChangeAsync(
+					row,
+					AiChangeKind.RuleFix,
+					$"rule {ruleId}",
+					$"Fix {ruleId}: {result.RuleName}",
+					toolbox.FilesWritten,
+					cancellationToken).ConfigureAwait(false);
+
+				if (delivered.Kind == AiChangeOutcomeKind.Refused)
+				{
+					Say("↩️ The edits are still in the working tree: they were not delivered, and nothing else was touched.");
+				}
+
+				await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
+				cache.UpsertRow(row);
 			}
 		}
 		catch (OperationCanceledException)

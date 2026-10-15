@@ -238,6 +238,47 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 		_git.DeletedRemote.Should().BeFalse();
 	}
 
+	private Task<AiChangeOutcome> DeliverAsync(AiChangeRequest request, params string[] ownedPaths)
+		=> Pipeline().DeliverAsync(request, ownedPaths.ToHashSet(), _said.Add, TestContext.Current.CancellationToken);
+
+	[Fact]
+	public async Task Deliver_WorkAlreadyInTheTree_IsGatedPushedAndMergedWithoutRunningTheModel()
+	{
+		var outcome = await DeliverAsync(Rule(), "Lib/Parser.cs");
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.Merged);
+		_work.FixCalls.Should().Be(0, "the edits were made before delivery, so there is nothing for the model to do");
+		_work.RedAttempts.Should().Be(0);
+		_git.OwnedPathsSeen.Should().BeEquivalentTo(new[] { "Lib/Parser.cs" });
+		_github.MergedSha.Should().Be("abc123");
+	}
+
+	[Fact]
+	public async Task Deliver_WhenTheTreeHoldsChangesTheSessionDidNotMake_LeavesEverythingAlone()
+	{
+		_git.DeliverRefusal = "the clone has uncommitted changes the session did not make: notes.txt";
+
+		var outcome = await DeliverAsync(Rule(), "Lib/Parser.cs");
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.Refused);
+		_git.Calls.Should().NotContain(call => call.StartsWith("branch:", StringComparison.Ordinal));
+		_git.Calls.Should().NotContain("return",
+			"returning to main resets the tree, and that would destroy somebody else's uncommitted work");
+		_github.Calls.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task Deliver_AFailedLocalGate_ReturnsTheCloneToMainAndPushesNothing()
+	{
+		_tests.All = new TestRun(false, "total: 10\n  failed: 1");
+
+		var outcome = await DeliverAsync(Rule(), "Lib/Parser.cs");
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.LocalGateFailed);
+		_git.Calls.Should().NotContain("push");
+		_git.Calls.Should().Contain("return");
+	}
+
 	[Fact]
 	public async Task Run_StoppedPartWay_StillReturnsTheCloneToMain()
 	{

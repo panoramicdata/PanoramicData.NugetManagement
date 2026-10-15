@@ -38,6 +38,74 @@ public sealed class AiChangePipeline(
 			return Finish(say, new AiChangeOutcome(AiChangeOutcomeKind.Refused, refusal));
 		}
 
+		return await OnBranchAsync(
+			request,
+			say,
+			async () =>
+			{
+				string? redFilter = null;
+				var redEvidence = string.Empty;
+
+				if (request.RequiresRedTest)
+				{
+					(redFilter, redEvidence) = await FindRedTestAsync(request, say, cancellationToken).ConfigureAwait(false);
+
+					if (redFilter is null)
+					{
+						await ReportNoRedTestAsync(request, cancellationToken).ConfigureAwait(false);
+
+						return (new AiChangeOutcome(
+							AiChangeOutcomeKind.NoValidRedTest,
+							"No test could be made to reproduce the report, so no fix was attempted."), null, string.Empty);
+					}
+				}
+
+				var fix = await work.FixAsync(request, redFilter, cancellationToken).ConfigureAwait(false);
+
+				return fix.Succeeded
+					? (null, redFilter, redEvidence)
+					: (Failed("fix", fix.Summary), null, string.Empty);
+			},
+			cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Delivers edits that are already in the working tree: branch, gate, pull request, CI, merge.
+	/// </summary>
+	/// <param name="request">What was changed.</param>
+	/// <param name="ownedPaths">The repository-relative paths the caller wrote, which must be the only uncommitted changes.</param>
+	/// <param name="say">Where progress lines go.</param>
+	/// <param name="cancellationToken">Signalled when the user stops the work.</param>
+	/// <remarks>
+	/// For a task whose model session ran before delivery, such as a rule fix. There is no red step: a rule
+	/// is its own specification and was re-checked by the session that made the edit.
+	/// </remarks>
+	public async Task<AiChangeOutcome> DeliverAsync(
+		AiChangeRequest request,
+		IReadOnlySet<string> ownedPaths,
+		Action<string> say,
+		CancellationToken cancellationToken)
+	{
+		var refusal = await git.DeliverRefusalAsync(ownedPaths, cancellationToken).ConfigureAwait(false);
+
+		if (refusal is not null)
+		{
+			return Finish(say, new AiChangeOutcome(AiChangeOutcomeKind.Refused, refusal));
+		}
+
+		return await OnBranchAsync(
+			request,
+			say,
+			() => Task.FromResult<(AiChangeOutcome?, string?, string)>((null, null, string.Empty)),
+			cancellationToken).ConfigureAwait(false);
+	}
+
+	private async Task<AiChangeOutcome> OnBranchAsync(
+		AiChangeRequest request,
+		Action<string> say,
+		Func<Task<(AiChangeOutcome? Early, string? RedFilter, string RedEvidence)>> prepare,
+		CancellationToken cancellationToken)
+	{
 		var branch = $"ai/{request.Slug}";
 		var deleteRemote = false;
 
@@ -45,28 +113,11 @@ public sealed class AiChangePipeline(
 
 		try
 		{
-			string? redFilter = null;
-			var redEvidence = string.Empty;
+			var (early, redFilter, redEvidence) = await prepare().ConfigureAwait(false);
 
-			if (request.RequiresRedTest)
+			if (early is not null)
 			{
-				(redFilter, redEvidence) = await FindRedTestAsync(request, say, cancellationToken).ConfigureAwait(false);
-
-				if (redFilter is null)
-				{
-					await ReportNoRedTestAsync(request, cancellationToken).ConfigureAwait(false);
-
-					return Finish(say, new AiChangeOutcome(
-						AiChangeOutcomeKind.NoValidRedTest,
-						"No test could be made to reproduce the report, so no fix was attempted."));
-				}
-			}
-
-			var fix = await work.FixAsync(request, redFilter, cancellationToken).ConfigureAwait(false);
-
-			if (!fix.Succeeded)
-			{
-				return Finish(say, Failed("fix", fix.Summary));
+				return Finish(say, early);
 			}
 
 			var gate = await RunLocalGateAsync(redFilter, cancellationToken).ConfigureAwait(false);

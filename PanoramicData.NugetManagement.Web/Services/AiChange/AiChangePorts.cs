@@ -107,6 +107,18 @@ public interface IAiChangeGit
 	/// <returns>Null when ready; otherwise why the clone cannot be started from.</returns>
 	Task<string?> RefusalAsync(CancellationToken cancellationToken);
 
+	/// <summary>
+	/// Confirms the clone is on <c>main</c> and that every uncommitted change in it is one the caller made.
+	/// </summary>
+	/// <param name="ownedPaths">The repository-relative paths the caller wrote.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>Null when the changes are all the caller's; otherwise why they cannot be delivered.</returns>
+	/// <remarks>
+	/// Returning to <c>main</c> afterwards resets the tree, so a change nobody here made must stop the
+	/// delivery before it begins, not be swept away by it.
+	/// </remarks>
+	Task<string?> DeliverRefusalAsync(IReadOnlySet<string> ownedPaths, CancellationToken cancellationToken);
+
 	/// <summary>Creates and checks out a branch from <c>main</c>.</summary>
 	/// <param name="branch">The branch name.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>

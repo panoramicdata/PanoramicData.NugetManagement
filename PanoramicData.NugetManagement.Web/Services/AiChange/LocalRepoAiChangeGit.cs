@@ -31,6 +31,51 @@ public sealed class LocalRepoAiChangeGit(string clonePath) : IAiChangeGit
 	}
 
 	/// <inheritdoc />
+	public async Task<string?> DeliverRefusalAsync(IReadOnlySet<string> ownedPaths, CancellationToken cancellationToken)
+	{
+		var (ok, branch) = await GitAsync(["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken).ConfigureAwait(false);
+
+		if (!ok || branch.Trim() != "main")
+		{
+			return $"the clone is on '{branch.Trim()}', not main.";
+		}
+
+		// -uall lists the files inside an untracked folder, so one stray file cannot hide behind a folder
+		// that also holds files the caller wrote.
+		var (statusOk, status) = await GitAsync(["status", "--porcelain", "-uall"], cancellationToken).ConfigureAwait(false);
+
+		if (!statusOk)
+		{
+			return "the clone's status could not be read.";
+		}
+
+		var owned = ownedPaths.Select(NormalisePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		var foreign = status
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+			.Select(line => line.TrimEnd('\r'))
+			.Where(line => line.Length > 3)
+			.Select(line => StatusPath(line[3..]))
+			.Where(path => !owned.Contains(path))
+			.ToList();
+
+		return foreign.Count == 0
+			? null
+			: $"the clone has uncommitted changes this session did not make: {string.Join(", ", foreign)}.";
+	}
+
+	private static string StatusPath(string porcelainPath)
+	{
+		var path = porcelainPath.Contains(" -> ", StringComparison.Ordinal)
+			? porcelainPath[(porcelainPath.IndexOf(" -> ", StringComparison.Ordinal) + 4)..]
+			: porcelainPath;
+
+		return NormalisePath(path.Trim('"'));
+	}
+
+	private static string NormalisePath(string path) => path.Replace('\\', '/');
+
+	/// <inheritdoc />
 	public async Task CreateBranchAsync(string branch, CancellationToken cancellationToken)
 		=> await RequireAsync(["checkout", "-b", branch], cancellationToken).ConfigureAwait(false);
 

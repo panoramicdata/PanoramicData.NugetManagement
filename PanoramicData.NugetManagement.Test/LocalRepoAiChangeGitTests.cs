@@ -68,6 +68,44 @@ public sealed class LocalRepoAiChangeGitTests : TestWithOutput, IDisposable
 	}
 
 	[Fact]
+	public async Task DeliverRefusal_IsNullWhenEveryChangeIsOneTheCallerMade()
+	{
+		File.WriteAllText(Path.Combine(_clone, "a.cs"), "changed\n");
+
+		(await Adapter().DeliverRefusalAsync(new HashSet<string> { "a.cs" }, TestContext.Current.CancellationToken))
+			.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task DeliverRefusal_NamesAChangeNobodyOwns()
+	{
+		File.WriteAllText(Path.Combine(_clone, "a.cs"), "changed\n");
+		File.WriteAllText(Path.Combine(_clone, "notes.txt"), "mine\n");
+
+		(await Adapter().DeliverRefusalAsync(new HashSet<string> { "a.cs" }, TestContext.Current.CancellationToken))
+			.Should().Contain("notes.txt");
+	}
+
+	[Fact]
+	public async Task DeliverRefusal_SeesFilesInsideAnUntrackedFolder()
+	{
+		Directory.CreateDirectory(Path.Combine(_clone, "docs"));
+		File.WriteAllText(Path.Combine(_clone, "docs", "secret.md"), "mine\n");
+
+		(await Adapter().DeliverRefusalAsync(new HashSet<string>(), TestContext.Current.CancellationToken))
+			.Should().Contain("docs/secret.md", "an untracked folder is listed file by file, so one stray file cannot hide behind its owned neighbours");
+	}
+
+	[Fact]
+	public async Task DeliverRefusal_NamesABranchThatIsNotMain()
+	{
+		await Adapter().CreateBranchAsync("ai/x", TestContext.Current.CancellationToken);
+
+		(await Adapter().DeliverRefusalAsync(new HashSet<string>(), TestContext.Current.CancellationToken))
+			.Should().Contain("main");
+	}
+
+	[Fact]
 	public async Task ChangedFilesAsync_SeesCommittedAndUncommittedChangesAgainstMain()
 	{
 		var git = Adapter();

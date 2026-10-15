@@ -17,6 +17,16 @@ internal sealed class FakeAiChangeGit : IAiChangeGit
 		return Task.FromResult(Refusal);
 	}
 
+	public string? DeliverRefusal { get; set; }
+	public IReadOnlySet<string>? OwnedPathsSeen { get; private set; }
+
+	public Task<string?> DeliverRefusalAsync(IReadOnlySet<string> ownedPaths, CancellationToken cancellationToken)
+	{
+		Calls.Add("deliver-refusal");
+		OwnedPathsSeen = ownedPaths;
+		return Task.FromResult(DeliverRefusal);
+	}
+
 	public Task CreateBranchAsync(string branch, CancellationToken cancellationToken)
 	{
 		Calls.Add($"branch:{branch}");
@@ -82,9 +92,12 @@ internal sealed class FakeAiChangeWork : IAiChangeWork
 		return Task.FromResult(RedFilter);
 	}
 
+	public int FixCalls { get; private set; }
+
 	public Task<AiFixOutcome> FixAsync(AiChangeRequest request, string? redTestFilter, CancellationToken cancellationToken)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
+		FixCalls++;
 		return Task.FromResult(new AiFixOutcome(FixSucceeds, 1, "done"));
 	}
 }
