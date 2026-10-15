@@ -1455,7 +1455,81 @@ public partial class LocalRepoService
 		return (allPassed, string.Join('\n', combinedOutput));
 	}
 
-	private static List<(string ProjectPath, NugetManagementProjectConfig? Config)> GetConfiguredTestProjects(string localPath)
+	/// <summary>
+	/// The arguments for running one test project under the code-coverage collector.
+	/// </summary>
+	/// <param name="testProject">The test project path, relative to the clone.</param>
+	/// <param name="outputFile">Where the Cobertura report is to be written.</param>
+	/// <param name="filter">A test filter, or null for every test.</param>
+	public static IReadOnlyList<string> BuildCoverageArguments(string testProject, string outputFile, string? filter)
+	{
+		var args = new List<string>
+		{
+			"test", testProject, "--no-restore", "--coverage",
+			"--coverage-output-format", "cobertura",
+			"--coverage-output", outputFile
+		};
+
+		if (!string.IsNullOrWhiteSpace(filter))
+		{
+			args.Add("--filter");
+			args.Add(filter);
+		}
+
+		return args;
+	}
+
+	/// <summary>
+	/// Runs the repository's tests with coverage and returns the Cobertura report.
+	/// </summary>
+	/// <param name="repoIdentity">The repository.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>The report's XML, or null if the run produced none.</returns>
+	/// <remarks>
+	/// Always sandboxed (see <see cref="TestSandbox"/>): this runs tests a model wrote, so they see CI's
+	/// environment rather than this machine's credentials.
+	/// </remarks>
+	public async Task<string?> RunTestsWithCoverageAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		var environment = TestSandbox.Overrides();
+		var reports = new List<string>();
+
+		foreach (var (projectPath, _) in GetConfiguredTestProjects(path))
+		{
+			var output = Path.Combine(Path.GetTempPath(), $"aichange-cov-{Guid.NewGuid():N}.xml");
+
+			await RunCommandWithStreamingAsync(path, "dotnet", BuildCoverageArguments(projectPath, output, null), null, cancellationToken, environment).ConfigureAwait(false);
+
+			if (File.Exists(output))
+			{
+				reports.Add(await File.ReadAllTextAsync(output, cancellationToken).ConfigureAwait(false));
+				File.Delete(output);
+			}
+		}
+
+		// Wrapped in one root so several test projects' reports read as a single document;
+		// ChangedLineCoverage reads every <class> beneath whatever the root is.
+		return reports.Count == 0
+			? null
+			: "<reports>" + string.Concat(reports.Select(StripXmlDeclaration)) + "</reports>";
+	}
+
+	private static string StripXmlDeclaration(string xml)
+	{
+		var trimmed = xml.TrimStart('﻿', ' ', '\r', '\n', '\t');
+
+		if (!trimmed.StartsWith("<?xml", StringComparison.Ordinal))
+		{
+			return trimmed;
+		}
+
+		var end = trimmed.IndexOf("?>", StringComparison.Ordinal);
+
+		return end < 0 ? trimmed : trimmed[(end + 2)..];
+	}
+
+	internal static List<(string ProjectPath, NugetManagementProjectConfig? Config)> GetConfiguredTestProjects(string localPath)
 	{
 		var configPath = Path.Combine(localPath, NugetManagementRepositoryConfig.FileName);
 		var rawConfig = File.Exists(configPath) ? File.ReadAllText(configPath) : null;

@@ -61,6 +61,33 @@ public class ChangedLineCoverageTests(ITestOutputHelper output) : TestWithOutput
 	}
 
 	[Fact]
+	public void Evaluate_ReadsTheShapeTheRealCollectorWrites_WithoutCountingMethodLinesTwice()
+	{
+		const string real = """
+			<coverage><packages><package><classes>
+			  <class name="Lib.Parser" filename="C:\r\Lib\Parser.cs">
+			    <methods>
+			      <method name="Parse"><lines>
+			        <line number="5" hits="1" branch="False" />
+			        <line number="6" hits="0" branch="True" condition-coverage="50% (1/2)"><conditions><condition number="0" type="jump" coverage="50%" /></conditions></line>
+			      </lines></method>
+			    </methods>
+			    <lines>
+			      <line number="5" hits="1" branch="False" />
+			      <line number="6" hits="0" branch="True" condition-coverage="50% (1/2)"><conditions><condition number="0" type="jump" coverage="50%" /></conditions></line>
+			    </lines>
+			  </class>
+			</classes></package></packages></coverage>
+			""";
+
+		var result = ChangedLineCoverage.Evaluate([Changed("Lib/Parser.cs", 5, 6)], real);
+
+		result.Executable.Should().Be(2, "the method's lines are repeated at class level, and counting both would double them");
+		result.Covered.Should().Be(1);
+		result.Passed.Should().BeFalse("one of two is 50%, under the 60% bar");
+	}
+
+	[Fact]
 	public void Evaluate_TreatsAChangedFileMissingFromTheReportAsUncovered()
 	{
 		var result = ChangedLineCoverage.Evaluate([Changed("Lib/Other.cs", 5)], Cobertura);
