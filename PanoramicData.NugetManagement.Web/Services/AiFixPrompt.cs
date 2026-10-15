@@ -40,7 +40,9 @@ public static class AiFixPrompt
 		5. Do not reformat, re-indent, reorder or tidy anything.
 		6. Do not explain your reasoning. Call a tool instead.
 		7. Everything you need is in the task. You cannot see any other repository, so do not look for one.
-		8. When the goal is achieved, call finish. Do not call finish before you have changed something.
+		8. Read only the file you were told to change and the files it directly uses. Make your first change within six tool calls; do not tour the repository.
+		9. Never guess a type, a return type or a method name. Read where it is declared and copy it exactly.
+		10. When the goal is achieved, call finish. Do not call finish before you have changed something.
 
 		If a tool returns an error, read it and correct your next call.
 		""";
@@ -53,7 +55,7 @@ public static class AiFixPrompt
 	/// changes meaning, so a change in how sessions go can be traced to the change that caused it rather
 	/// than guessed at. A log that cannot say which prompt produced it cannot be compared with another.
 	/// </remarks>
-	public const string Version = "2";
+	public const string Version = "3";
 
 	/// <summary>
 	/// The task message for one rule in one repository.
@@ -104,6 +106,20 @@ public static class AiFixPrompt
 			builder.AppendLine("Guidance:");
 			builder.AppendLine(target.Detail);
 			builder.AppendLine();
+
+			// A playbook still has something to add to a one-file session: what finished looks like, and an
+			// example. Not its goal or file list, which describe the whole rule and would reintroduce the
+			// other files this branch exists to leave out.
+			if (playbook is not null)
+			{
+				builder.AppendLine("Done means:");
+				builder.AppendLine(playbook.ExpectedEndState);
+				builder.AppendLine();
+
+				builder.AppendLine("Example:");
+				builder.AppendLine(playbook.WorkedExample);
+				builder.AppendLine();
+			}
 		}
 		else if (playbook is not null)
 		{

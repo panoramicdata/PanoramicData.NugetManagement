@@ -366,6 +366,32 @@ public static partial class CoverageMeasurement
 	}
 
 	/// <summary>
+	/// The arguments that restrict a test run to some classes, in the form the project's runner takes.
+	/// </summary>
+	/// <param name="testingPlatform">Whether the project runs under Microsoft.Testing.Platform rather than VSTest.</param>
+	/// <param name="classNames">The simple class names to run.</param>
+	/// <remarks>
+	/// A name matches as a suffix, so it may take in an unrelated class that ends the same way. That is the
+	/// safe direction: running a few tests too many costs seconds, running too few misses a breakage.
+	/// </remarks>
+	public static IReadOnlyList<string> ClassFilterArguments(bool testingPlatform, IReadOnlyList<string> classNames)
+		=> testingPlatform
+			? [.. classNames.SelectMany(name => new[] { "--filter-class", $"*{name}" })]
+			: ["--filter", string.Join('|', classNames.Select(name => $"FullyQualifiedName~{name}"))];
+
+	/// <summary>
+	/// The classes declared in a C# source file.
+	/// </summary>
+	/// <param name="source">The file's text.</param>
+	public static IReadOnlyList<string> ClassesDeclaredIn(string source)
+		=> [.. DeclaredClass().Matches(source)
+			.Select(match => match.Groups["name"].Value)
+			.Distinct(StringComparer.Ordinal)];
+
+	[GeneratedRegex(@"\b(?:class|record)\s+(?<name>[A-Za-z_]\w*)")]
+	private static partial Regex DeclaredClass();
+
+	/// <summary>
 	/// The names of the tests a run reports as failed.
 	/// </summary>
 	/// <param name="output">The test runner's output.</param>

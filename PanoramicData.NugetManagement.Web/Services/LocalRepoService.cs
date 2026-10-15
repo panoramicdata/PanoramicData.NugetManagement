@@ -1316,7 +1316,8 @@ public partial class LocalRepoService
 		string repoIdentity,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default,
-		bool sandbox = false)
+		bool sandbox = false,
+		IReadOnlyList<string>? testClasses = null)
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Running tests in {Path}", path);
@@ -1343,7 +1344,21 @@ public partial class LocalRepoService
 
 			var filter = BuildTestFilter(projectConfig);
 			var args = new List<string> { "test", projectPath, "--no-build", "--no-restore", "--verbosity", "normal" };
-			if (!string.IsNullOrWhiteSpace(filter))
+
+			if (testClasses is { Count: > 0 })
+			{
+				// Only the classes asked for, in whichever form this project's runner takes. Replaces the
+				// project's own filter rather than adding to it: two filters on one run fight.
+				var projectFile = Path.Combine(path, projectPath);
+				var packages = Path.Combine(path, "Directory.Packages.props");
+
+				args.AddRange(CoverageMeasurement.ClassFilterArguments(
+					CoverageMeasurement.UsesTestingPlatform(
+						File.Exists(projectFile) ? File.ReadAllText(projectFile) : string.Empty,
+						File.Exists(packages) ? File.ReadAllText(packages) : string.Empty),
+					testClasses));
+			}
+			else if (!string.IsNullOrWhiteSpace(filter))
 			{
 				args.Add("--filter");
 				args.Add(filter);

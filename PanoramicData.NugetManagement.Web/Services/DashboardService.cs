@@ -2321,11 +2321,13 @@ public class DashboardService
 	/// Whether to run without this machine's credentials, as CI does. A model-driven run turns it on: the
 	/// tests it triggers should not reach real services with real secrets, or print them.
 	/// </param>
+	/// <param name="testClasses">Only these classes, or null for the whole suite.</param>
 	public async Task RunTestsAsync(
 		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
 		CancellationToken cancellationToken = default,
-		bool sandbox = false)
+		bool sandbox = false,
+		IReadOnlyList<string>? testClasses = null)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
@@ -2338,7 +2340,7 @@ public class DashboardService
 		row.Status = PackageStatus.Testing;
 		row.StatusMessage = "Running tests...";
 
-		var (success, _) = await _localRepo.RunTestsAsync(repoIdentity, onOutput, cancellationToken, sandbox).ConfigureAwait(false);
+		var (success, _) = await _localRepo.RunTestsAsync(repoIdentity, onOutput, cancellationToken, sandbox, testClasses).ConfigureAwait(false);
 
 		row.Status = success ? PackageStatus.TestsPassed : PackageStatus.TestsFailed;
 		row.StatusMessage = success ? "All tests passed." : "Tests failed.";

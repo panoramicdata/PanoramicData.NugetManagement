@@ -1043,7 +1043,12 @@ public sealed class WorkExecutors(
 				// Whether the test project still compiles, said in the result of the write that broke it.
 				afterWrite: coverageMode
 					? (path, token) => BuildFeedbackAsync(row.LocalPath, testProjects, path, token)
-					: null);
+					: null,
+
+				// Not offered where the check already runs the tests for the model: in a repository whose tests call
+				// a live service each run is minutes, and one session spent twenty-four of them on six calls that
+				// could not change anything it was able to do.
+				offerRunTests: !(IsRemotelyGraded(ruleId) && !coverageMode));
 
 			undoWrites = toolbox.Undo;
 			recordedToolbox = toolbox;
@@ -1133,7 +1138,7 @@ public sealed class WorkExecutors(
 				MaxAttempts = remotelyGraded && !coverageMode && !verifyTests ? 1 : ollama.MaxAttemptsPerRule,
 
 				// A clock as well as a turn count: a turn that writes a whole test file takes most of a minute.
-				TimeBudget = coverageMode ? _coverageTimeBudget : null
+				TimeBudget = coverageMode ? _coverageTimeBudget : _sessionTimeBudget
 			};
 
 			using var sessionLog = OpenSessionLog(row.RepositoryFullName, ruleId);
@@ -1282,6 +1287,12 @@ public sealed class WorkExecutors(
 
 	/// <summary>How many points of coverage a failed session must have added for its tests to be kept.</summary>
 	private const double _coverageProgressWorthKeeping = 2;
+
+	/// <summary>
+	/// How long any other AI session may run in all, checks included. The one that prompted this ran thirty-four
+	/// minutes on a change the model made in two, nearly all of it waiting for tests that call a live service.
+	/// </summary>
+	private static readonly TimeSpan _sessionTimeBudget = TimeSpan.FromMinutes(20);
 
 	/// <summary>How long a coverage session may run in all, whatever its turns and attempts allow.</summary>
 	private static readonly TimeSpan _coverageTimeBudget = TimeSpan.FromMinutes(25);
@@ -1503,6 +1514,39 @@ public sealed class WorkExecutors(
 	/// every Codacy fix, and a change that compiles is the bar this criterion is honest about clearing.
 	/// </para>
 	/// </remarks>
+	/// <summary>
+	/// The test classes that can have changed behaviour, when every file written is C# inside a test
+	/// project; otherwise null, meaning run everything.
+	/// </summary>
+	/// <param name="cloneRoot">The repository clone.</param>
+	/// <param name="written">The files written, relative to the clone.</param>
+	internal static IReadOnlyList<string>? TestClassesAffectedBy(string cloneRoot, IReadOnlyCollection<string> written)
+	{
+		if (written.Count == 0 || written.Any(file => !file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)))
+		{
+			return null;
+		}
+
+		var folders = CoverageMeasurement.FindTestProjects(cloneRoot)
+			.Select(project => (Path.GetDirectoryName(project) ?? string.Empty).Replace('\\', '/'))
+			.Where(folder => folder.Length > 0)
+			.ToList();
+
+		if (written.Any(file => !folders.Any(folder => file.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase))))
+		{
+			return null;
+		}
+
+		var classes = written
+			.Select(file => Path.Combine(cloneRoot, file))
+			.Where(File.Exists)
+			.SelectMany(path => CoverageMeasurement.ClassesDeclaredIn(File.ReadAllText(path)))
+			.Distinct(StringComparer.Ordinal)
+			.ToList();
+
+		return classes.Count == 0 ? null : classes;
+	}
+
 	private async Task<AiRuleCheck> CheckLocalChangeAsync(
 		RepositoryDashboardRow row,
 		AiFixToolbox toolbox,
@@ -1538,7 +1582,19 @@ public sealed class WorkExecutors(
 		if (testBaseline is not null)
 		{
 			var testOutput = new List<string>();
-			await dashboard.RunTestsAsync(row, testOutput.Add, cancellationToken, sandbox: true).ConfigureAwait(false);
+
+			// When the session touched nothing but test source, only the classes in those files can have
+			// changed behaviour, so only they are run. In a library whose tests call a live service the
+			// whole suite takes five to twenty-five minutes and fails on its own account now and then; one
+			// session was told that tests in an unrelated class had broken, and spent its last attempt on it.
+			var scope = TestClassesAffectedBy(row.LocalPath!, toolbox.FilesWritten);
+
+			if (scope is not null)
+			{
+				Say($"   🧪 Running only the classes in the changed test file(s): {string.Join(", ", scope)}.");
+			}
+
+			await dashboard.RunTestsAsync(row, testOutput.Add, cancellationToken, sandbox: true, testClasses: scope).ConfigureAwait(false);
 
 			var broken = CoverageMeasurement.ParseFailedTests(string.Join('\n', testOutput))
 				.Where(name => !testBaseline.Contains(name))

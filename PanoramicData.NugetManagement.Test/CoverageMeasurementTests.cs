@@ -343,6 +343,92 @@ public class CoverageMeasurementTests(ITestOutputHelper output) : TestWithOutput
 	}
 
 	[Fact]
+	public void ClassFilterArguments_TakeTheFormTheRunnerUnderstands()
+	{
+		CoverageMeasurement.ClassFilterArguments(testingPlatform: true, ["Alpha", "Beta"])
+			.Should().Equal("--filter-class", "*Alpha", "--filter-class", "*Beta");
+
+		CoverageMeasurement.ClassFilterArguments(testingPlatform: false, ["Alpha", "Beta"])
+			.Should().Equal("--filter", "FullyQualifiedName~Alpha|FullyQualifiedName~Beta");
+	}
+
+	[Fact]
+	public void ClassesDeclaredIn_FindsClassesAndRecords_Once()
+		=> CoverageMeasurement.ClassesDeclaredIn("""
+				public sealed class Alpha { }
+				internal record Beta(int X);
+				file class Alpha2 { }
+				// class Alpha again in a comment
+				""")
+			.Should().Contain(["Alpha", "Beta", "Alpha2"]).And.OnlyHaveUniqueItems();
+
+	private void WriteTestProject(string folder = "Lib.Tests")
+	{
+		Directory.CreateDirectory(Path.Combine(_root, folder));
+		File.WriteAllText(
+			Path.Combine(_root, folder, $"{folder}.csproj"),
+			"<Project><PropertyGroup><IsTestProject>true</IsTestProject></PropertyGroup></Project>");
+	}
+
+	[Fact]
+	public void WhenOnlyTestSourceWasWritten_OnlyThoseClassesAreRun()
+	{
+		WriteTestProject();
+		File.WriteAllText(Path.Combine(_root, "Lib.Tests", "A.cs"), "public class AlphaTests { } public class Helper { }");
+
+		Web.Services.WorkExecutors.TestClassesAffectedBy(_root, ["Lib.Tests/A.cs"])
+			.Should().BeEquivalentTo(["AlphaTests", "Helper"]);
+	}
+
+	[Theory]
+	[InlineData("Lib/Production.cs")]
+	[InlineData("Lib.Tests/Lib.Tests.csproj")]
+	[InlineData("Lib.Tests/data.json")]
+	public void WhenAnythingElseWasWritten_EverythingIsRun(string other)
+	{
+		WriteTestProject();
+		File.WriteAllText(Path.Combine(_root, "Lib.Tests", "A.cs"), "public class AlphaTests { }");
+
+		Web.Services.WorkExecutors.TestClassesAffectedBy(_root, ["Lib.Tests/A.cs", other]).Should().BeNull();
+	}
+
+	[Fact]
+	public void WhenNothingWasWritten_EverythingIsRun()
+		=> Web.Services.WorkExecutors.TestClassesAffectedBy(_root, []).Should().BeNull();
+
+	[Fact]
+	public void RunTests_CanBeWithheldFromTheModel()
+	{
+		new AiFixToolbox(_root, offerRunTests: false).Offers("run_tests").Should().BeFalse();
+		new AiFixToolbox(_root).Offers("run_tests").Should().BeTrue();
+	}
+
+	[Fact]
+	public void APlaybook_ReachesAOneFileSession_WithoutReintroducingTheOtherFiles()
+	{
+		var result = new RuleResult
+		{
+			RuleId = "CQ-06",
+			RuleName = "Codacy file grades",
+			Category = AssessmentCategory.CodeQuality,
+			Severity = AssessmentSeverity.Info,
+			Passed = false,
+			Message = "m",
+			Advisory = new RuleAdvisory
+			{
+				Summary = "s",
+				Detail = "d",
+				Targets = [new AdvisoryTarget("T/A.cs", "A is graded B.", "15% duplicated.")]
+			}
+		};
+
+		var task = AiFixPrompt.BuildTask(result, "o/r", new Web.Services.Playbooks.FileGradePlaybook(), "T/A.cs");
+
+		task.Should().Contain("Done means:").And.Contain("Example:").And.Contain("15% duplicated.");
+		task.Should().NotContain("the one file named in the task", "the playbook's file list describes the whole rule");
+	}
+
+	[Fact]
 	public void InCoverageMode_RunTestsIsNotOffered_BecauseRunCoverageSaysWhatItNeedsTo()
 	{
 		var coverage = new AiFixToolbox(_root, coverage: _ => Task.FromResult("x"));

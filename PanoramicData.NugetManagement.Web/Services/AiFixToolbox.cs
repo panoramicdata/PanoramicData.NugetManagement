@@ -44,7 +44,8 @@ public sealed class AiFixToolbox(
 	IReadOnlyCollection<string>? writableFolders = null,
 	Func<CancellationToken, Task<string>>? coverage = null,
 	bool newFilesOnly = false,
-	Func<string, CancellationToken, Task<string?>>? afterWrite = null)
+	Func<string, CancellationToken, Task<string?>>? afterWrite = null,
+	bool offerRunTests = true)
 {
 	/// <summary>
 	/// What to append to a successful write's result: whether it still compiles, say.
@@ -87,7 +88,7 @@ public sealed class AiFixToolbox(
 		// run_coverage already says whether the tests pass, and knows which failures were there before the
 		// session began. A bare run_tests shows the model failures it did not cause and cannot fix, which
 		// is how one session came to edit a library's integration tests.
-		"run_tests" => coverage is null,
+		"run_tests" => coverage is null && offerRunTests,
 		_ => true
 	};
 
