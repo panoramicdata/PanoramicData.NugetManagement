@@ -57,6 +57,18 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 			return Task.CompletedTask;
 		}
 
+		public Task<int> CreatePullRequestAsync(
+			string owner, string name, string head, string baseBranch, string title, string body, CancellationToken cancellationToken)
+			=> throw new NotSupportedException();
+
+		public Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(
+			string owner, string name, string sha, CancellationToken cancellationToken)
+			=> throw new NotSupportedException();
+
+		public Task MergePullRequestAsync(
+			string owner, string name, int number, string expectedHeadSha, CancellationToken cancellationToken)
+			=> throw new NotSupportedException();
+
 		public Task CloseIssueAsync(
 			string owner, string name, int number, CancellationToken cancellationToken)
 		{

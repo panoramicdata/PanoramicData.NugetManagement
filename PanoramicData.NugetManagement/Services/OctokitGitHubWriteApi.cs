@@ -87,4 +87,64 @@ public class OctokitGitHubWriteApi(IGitHubClient github) : IGitHubWriteApi
 		=> await _github.Issue
 			.Update(owner, name, number, new IssueUpdate { State = ItemState.Closed })
 			.ConfigureAwait(false);
+
+	/// <inheritdoc />
+	public async Task<int> CreatePullRequestAsync(
+		string owner,
+		string name,
+		string head,
+		string baseBranch,
+		string title,
+		string body,
+		CancellationToken cancellationToken)
+	{
+		var created = await _github.PullRequest
+			.Create(owner, name, new NewPullRequest(title, head, baseBranch) { Body = body })
+			.ConfigureAwait(false);
+
+		return created.Number;
+	}
+
+	/// <inheritdoc />
+	public async Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(
+		string owner,
+		string name,
+		string sha,
+		CancellationToken cancellationToken)
+	{
+		var response = await _github.Check.Run.GetAllForReference(owner, name, sha).ConfigureAwait(false);
+
+		return [.. response.CheckRuns.Select(run => new CheckRunState(run.Name, Classify(run)))];
+	}
+
+	/// <inheritdoc />
+	/// <remarks>
+	/// The expected SHA is sent so GitHub itself refuses a merge whose head has moved, rather than this
+	/// code checking and then merging a different commit in the gap between.
+	/// </remarks>
+	public async Task MergePullRequestAsync(
+		string owner,
+		string name,
+		int number,
+		string expectedHeadSha,
+		CancellationToken cancellationToken)
+		=> await _github.PullRequest
+			.Merge(owner, name, number, new MergePullRequest
+			{
+				Sha = expectedHeadSha,
+				MergeMethod = PullRequestMergeMethod.Squash
+			})
+			.ConfigureAwait(false);
+
+	private static CheckRunConclusion Classify(CheckRun run)
+	{
+		if (run.Status != CheckStatus.Completed)
+		{
+			return CheckRunConclusion.Pending;
+		}
+
+		return run.Conclusion?.Value is CheckConclusion.Success or CheckConclusion.Neutral or CheckConclusion.Skipped
+			? CheckRunConclusion.Passed
+			: CheckRunConclusion.Failed;
+	}
 }
