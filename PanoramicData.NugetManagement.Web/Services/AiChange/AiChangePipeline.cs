@@ -127,19 +127,38 @@ public sealed class AiChangePipeline(
 				return Finish(say, Failed(gate.FailedGate!, gate.Message));
 			}
 
-			var sha = await git.CommitAsync(request.Title, cancellationToken).ConfigureAwait(false);
-			await git.PushBranchAsync(branch, cancellationToken).ConfigureAwait(false);
+			// From here until a pull request owns the branch, it may exist on origin with nothing to clean it
+			// up, so a failure below must delete it.
+			deleteRemote = true;
 
-			var number = await github
-				.CreatePullRequestAsync(
-					request.Owner,
-					request.Name,
-					branch,
-					"main",
-					request.Title,
-					BuildBody(request, redEvidence, gate.Message),
-					cancellationToken)
-				.ConfigureAwait(false);
+			string sha;
+			int number;
+
+			try
+			{
+				sha = await git.CommitAsync(request.Title, cancellationToken).ConfigureAwait(false);
+				await git.PushBranchAsync(branch, cancellationToken).ConfigureAwait(false);
+
+				number = await github
+					.CreatePullRequestAsync(
+						request.Owner,
+						request.Name,
+						branch,
+						"main",
+						request.Title,
+						BuildBody(request, redEvidence, gate.Message),
+						cancellationToken)
+					.ConfigureAwait(false);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				return Finish(say, new AiChangeOutcome(
+					AiChangeOutcomeKind.DeliveryFailed,
+					$"Delivery failed before a pull request existed: {ex.Message}"));
+			}
+
+			// The pull request now owns the branch, and a failed check or merge leaves both for a person.
+			deleteRemote = false;
 
 			say($"Opened pull request #{number}.");
 
@@ -174,7 +193,14 @@ public sealed class AiChangePipeline(
 		finally
 		{
 			// CancellationToken.None on purpose: a stop is the very case that needs the clone put back.
-			await git.ReturnToMainAsync(branch, deleteRemote, CancellationToken.None).ConfigureAwait(false);
+			var problem = await git.ReturnToMainAsync(branch, deleteRemote, CancellationToken.None).ConfigureAwait(false);
+
+			// Said, not swallowed: a clone left on an ai/ branch blocks every later fix on this repository,
+			// and the outcome line alone (even "Merged") would not tell anyone.
+			if (problem is not null)
+			{
+				say($"⚠️ {problem}");
+			}
 		}
 	}
 
@@ -283,7 +309,9 @@ public sealed class AiChangePipeline(
 			return new GateResult(false, "tests", Tail(all.Output));
 		}
 
-		var code = changed.Where(file => IsCode(file.Path)).ToList();
+		// Production code only. A test file's own lines run by definition, and pooled with the production
+		// lines they would carry untested code over the bar.
+		var code = changed.Where(file => IsCode(file.Path) && !options.Limits.IsTestPath(file.Path)).ToList();
 
 		if (code.Count == 0)
 		{

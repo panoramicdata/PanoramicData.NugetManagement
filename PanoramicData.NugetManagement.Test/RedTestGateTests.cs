@@ -34,6 +34,25 @@ public class RedTestGateTests(ITestOutputHelper output) : TestWithOutput(output)
 	}
 
 	[Fact]
+	public void Validate_AFailureAlongsideOtherPassingTestsIsNotRed()
+	{
+		var verdict = RedTestGate.Validate(new TestRun(false, "Expected 3 but found 2.\n  total: 40\n  failed: 1\n  succeeded: 39"));
+
+		verdict.IsValidRed.Should().BeFalse(
+			"a broad filter that also matched thirty-nine unrelated tests proves nothing about the one that failed");
+		verdict.Message.Should().Contain("other tests");
+	}
+
+	[Fact]
+	public void Validate_AFailureWhoseSummaryCannotBeReadIsNotRed()
+	{
+		var verdict = RedTestGate.Validate(new TestRun(false, "something exploded"));
+
+		verdict.IsValidRed.Should().BeFalse("a red run is accepted on evidence, and there is none to read");
+		verdict.Message.Should().Contain("summary");
+	}
+
+	[Fact]
 	public void Validate_ARunThatMatchedNoTestsIsNotRed()
 	{
 		var verdict = RedTestGate.Validate(new TestRun(false, "Zero tests ran\n  total: 0"));

@@ -1226,6 +1226,7 @@ public sealed partial class WorkExecutors(
 					$"rule {ruleId}",
 					$"Fix {ruleId}: {result.RuleName}",
 					toolbox.FilesWritten,
+					new HashSet<string>(knownFailures.Concat(testBaseline), StringComparer.Ordinal),
 					cancellationToken).ConfigureAwait(false);
 
 				if (delivered.Kind == AiChangeOutcomeKind.Refused)
@@ -2260,13 +2261,11 @@ public sealed partial class WorkExecutors(
 				ollamaGate);
 
 			var pipeline = AiChangePipelineFactory.Create(
-				new LocalRepoAiChangeGit(row.LocalPath),
+				new LocalRepoAiChangeGit(row.LocalPath, row.RepositoryFullName),
 				new DashboardAiChangeTests(dashboard, localRepo, row, row.RepositoryFullName),
 				work,
 				new OctokitGitHubWriteApi(await CreateGitHubClientAsync().ConfigureAwait(false)),
-				path => brief.Paths.Contains(path, StringComparer.OrdinalIgnoreCase)
-					|| AiChangePipelineFactory.IsTestPath(path),
-				IssueAutonomyGate.MaxUnattendedPaths);
+				AiChangePipelineFactory.IssueFixLimits(brief.Paths, testFolders));
 
 			await pipeline.RunAsync(change, Say, cancellationToken).ConfigureAwait(false);
 

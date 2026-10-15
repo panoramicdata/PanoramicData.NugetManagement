@@ -42,17 +42,24 @@ internal sealed class FakeAiChangeGit : IAiChangeGit
 		return Task.FromResult("abc123");
 	}
 
+	public bool PushThrows { get; set; }
+
 	public Task PushBranchAsync(string branch, CancellationToken cancellationToken)
 	{
 		Calls.Add("push");
-		return Task.CompletedTask;
+
+		return PushThrows
+			? throw new InvalidOperationException("git push failed: remote rejected")
+			: Task.CompletedTask;
 	}
 
-	public Task ReturnToMainAsync(string branch, bool deleteRemoteBranch, CancellationToken cancellationToken)
+	public string? ReturnProblem { get; set; }
+
+	public Task<string?> ReturnToMainAsync(string branch, bool deleteRemoteBranch, CancellationToken cancellationToken)
 	{
 		Calls.Add("return");
 		DeletedRemote = deleteRemoteBranch;
-		return Task.CompletedTask;
+		return Task.FromResult(ReturnProblem);
 	}
 }
 
@@ -111,10 +118,15 @@ internal sealed class FakeGitHubWriteApi : IGitHubWriteApi
 	public string? MergedSha { get; private set; }
 	public bool MergeThrows { get; set; }
 
+	public bool CreatePullRequestThrows { get; set; }
+
 	public Task<int> CreatePullRequestAsync(string owner, string name, string head, string baseBranch, string title, string body, CancellationToken cancellationToken)
 	{
 		Calls.Add($"pr:{head}->{baseBranch}");
-		return Task.FromResult(7);
+
+		return CreatePullRequestThrows
+			? throw new InvalidOperationException("Validation Failed: no commits between main and the branch")
+			: Task.FromResult(7);
 	}
 
 	public Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(string owner, string name, string sha, CancellationToken cancellationToken)

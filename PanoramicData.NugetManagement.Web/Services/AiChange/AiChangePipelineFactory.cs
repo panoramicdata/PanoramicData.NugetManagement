@@ -16,19 +16,64 @@ public static partial class AiChangePipelineFactory
 	/// <param name="tests">Building and testing the clone.</param>
 	/// <param name="work">The model-facing work; unused when only delivering finished edits.</param>
 	/// <param name="github">The GitHub write API.</param>
-	/// <param name="isAllowedPath">Whether a repository-relative path may be changed.</param>
-	/// <param name="maxPaths">The most non-test files one change may touch.</param>
+	/// <param name="limits">What the change may touch.</param>
 	public static AiChangePipeline Create(
 		IAiChangeGit git,
 		IAiChangeTests tests,
 		IAiChangeWork work,
 		IGitHubWriteApi github,
-		Func<string, bool> isAllowedPath,
-		int maxPaths)
-		=> new(git, tests, work, github, new AiChangeOptions
+		AiChangeLimits limits)
+		=> new(git, tests, work, github, new AiChangeOptions { Limits = limits });
+
+	/// <summary>
+	/// The limits for a rule fix: any path, no cap.
+	/// </summary>
+	/// <remarks>
+	/// A rule's edits are bounded by its playbook and by the toolbox, which cannot write outside the clone,
+	/// and its prompt comes from an assessment rather than from a stranger's text.
+	/// </remarks>
+	public static AiChangeLimits RuleFixLimits() => new(_ => true, IsTestPath, int.MaxValue);
+
+	/// <summary>
+	/// The limits for an issue fix: the brief's files, anything in the test folders, and a small cap.
+	/// </summary>
+	/// <param name="briefPaths">The files the brief named, however they were spelled.</param>
+	/// <param name="testFolders">The test project folders the red-test step was confined to.</param>
+	/// <remarks>
+	/// Built from the same two lists the toolboxes were, and compared after the same normalisation, so the
+	/// gate accepts exactly what the toolboxes allowed the model to write and no more. A test file is any
+	/// file under a test folder, not only one whose name looks like a test: the red-test step may add a
+	/// fixture or a runner config there, and the cap counts the fix, not its proof.
+	/// </remarks>
+	public static AiChangeLimits IssueFixLimits(IReadOnlyCollection<string> briefPaths, IReadOnlyCollection<string> testFolders)
+	{
+		var allowed = briefPaths.Select(NormalisePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+		var folders = testFolders.Select(folder => NormalisePath(folder).TrimEnd('/') + "/").ToList();
+
+		bool InTestFolder(string path)
+			=> folders.Any(folder => NormalisePath(path).StartsWith(folder, StringComparison.OrdinalIgnoreCase));
+
+		return new AiChangeLimits(
+			path => allowed.Contains(NormalisePath(path)) || InTestFolder(path) || IsTestPath(path),
+			path => InTestFolder(path) || IsTestPath(path),
+			IssueAutonomyGate.MaxUnattendedPaths);
+	}
+
+	/// <summary>
+	/// One spelling for a repository-relative path: forward slashes, no leading <c>./</c> or <c>/</c>.
+	/// </summary>
+	/// <param name="path">The path as written.</param>
+	public static string NormalisePath(string path)
+	{
+		var normalised = path.Replace('\\', '/');
+
+		while (normalised.StartsWith("./", StringComparison.Ordinal))
 		{
-			Limits = new AiChangeLimits(isAllowedPath, IsTestPath, maxPaths)
-		});
+			normalised = normalised[2..];
+		}
+
+		return normalised.TrimStart('/');
+	}
 
 	/// <summary>
 	/// Whether a repository-relative path is a test file.

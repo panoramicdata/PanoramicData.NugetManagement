@@ -112,9 +112,21 @@ public class OctokitGitHubWriteApi(IGitHubClient github) : IGitHubWriteApi
 		string sha,
 		CancellationToken cancellationToken)
 	{
-		var response = await _github.Check.Run.GetAllForReference(owner, name, sha).ConfigureAwait(false);
+		var runs = await _github.Check.Run.GetAllForReference(owner, name, sha).ConfigureAwait(false);
 
-		return [.. response.CheckRuns.Select(run => new CheckRunState(run.Name, Classify(run)))];
+		// The older commit-status API too: an integration that reports only that way would otherwise look
+		// like a repository with no CI. A combined status with no statuses is empty, not pending.
+		var statuses = await _github.Repository.Status.GetCombined(owner, name, sha).ConfigureAwait(false);
+
+		return
+		[
+			.. runs.CheckRuns.Select(run => new CheckRunState(
+				run.Name,
+				GitHubCheckMapping.FromCheckRun(run.Status.Value, run.Conclusion?.Value))),
+			.. statuses.Statuses.Select(status => new CheckRunState(
+				status.Context,
+				GitHubCheckMapping.FromStatus(status.State.Value)))
+		];
 	}
 
 	/// <inheritdoc />
@@ -135,16 +147,4 @@ public class OctokitGitHubWriteApi(IGitHubClient github) : IGitHubWriteApi
 				MergeMethod = PullRequestMergeMethod.Squash
 			})
 			.ConfigureAwait(false);
-
-	private static CheckRunConclusion Classify(CheckRun run)
-	{
-		if (run.Status != CheckStatus.Completed)
-		{
-			return CheckRunConclusion.Pending;
-		}
-
-		return run.Conclusion?.Value is CheckConclusion.Success or CheckConclusion.Neutral or CheckConclusion.Skipped
-			? CheckRunConclusion.Passed
-			: CheckRunConclusion.Failed;
-	}
 }

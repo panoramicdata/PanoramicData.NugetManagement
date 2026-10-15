@@ -23,6 +23,7 @@ public sealed class LocalRepoAiChangeGitTests : TestWithOutput, IDisposable
 		Git(_root, "-c", "core.autocrlf=false", "clone", remote, seed);
 		Configure(seed);
 		File.WriteAllText(Path.Combine(seed, "a.cs"), "one\n");
+		File.WriteAllText(Path.Combine(seed, "b.cs"), "keep\n");
 		Git(seed, "add", "-A");
 		Git(seed, "commit", "-m", "init");
 		Git(seed, "push", "origin", "main");
@@ -54,6 +55,46 @@ public sealed class LocalRepoAiChangeGitTests : TestWithOutput, IDisposable
 	}
 
 	private LocalRepoAiChangeGit Adapter() => new(_clone);
+
+	private LocalRepoAiChangeGit AdapterExpecting(string identity) => new(_clone, identity);
+
+	private void PointOriginAt(string url) => Git(_clone, "remote", "set-url", "origin", url);
+
+	[Fact]
+	public async Task DeliverRefusal_RefusesACloneThatHoldsADifferentRepository()
+	{
+		PointOriginAt("https://github.com/o/r.git");
+
+		(await AdapterExpecting("x/y").DeliverRefusalAsync(new HashSet<string>(), TestContext.Current.CancellationToken))
+			.Should().Contain("o/r").And.Contain("x/y",
+				"a pull request opened and merged on evidence from the wrong repository's clone is the worst outcome here");
+	}
+
+	[Fact]
+	public async Task DeliverRefusal_AcceptsTheRightRepository_IgnoringCase()
+	{
+		PointOriginAt("https://github.com/o/r.git");
+
+		(await AdapterExpecting("O/R").DeliverRefusalAsync(new HashSet<string>(), TestContext.Current.CancellationToken))
+			.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task Refusal_RefusesACloneThatHoldsADifferentRepository()
+	{
+		PointOriginAt("https://github.com/o/r.git");
+
+		(await AdapterExpecting("x/y").RefusalAsync(TestContext.Current.CancellationToken)).Should().Contain("o/r");
+	}
+
+	[Fact]
+	public async Task DeliverRefusal_RefusesAnOriginThatIsNotGitHub()
+	{
+		PointOriginAt("https://example.com/o/r.git");
+
+		(await AdapterExpecting("o/r").DeliverRefusalAsync(new HashSet<string>(), TestContext.Current.CancellationToken))
+			.Should().Contain("not a GitHub");
+	}
 
 	[Fact]
 	public async Task Refusal_IsNullForACleanCloneOnMain()
@@ -119,16 +160,42 @@ public sealed class LocalRepoAiChangeGitTests : TestWithOutput, IDisposable
 	}
 
 	[Fact]
+	public async Task ChangedFilesAsync_ListsDeletedFilesBinariesAndBothSidesOfARename()
+	{
+		var git = Adapter();
+		await git.CreateBranchAsync("ai/x", TestContext.Current.CancellationToken);
+		File.Delete(Path.Combine(_clone, "a.cs"));
+		File.WriteAllBytes(Path.Combine(_clone, "tool.dll"), [0, 1, 2, 0, 255]);
+		File.Move(Path.Combine(_clone, "b.cs"), Path.Combine(_clone, "c.cs"));
+
+		var paths = (await git.ChangedFilesAsync(TestContext.Current.CancellationToken)).Select(file => file.Path).ToList();
+
+		paths.Should().Contain("a.cs", "a deleted workflow or test must reach the path allowlist, not vanish because it has no new lines");
+		paths.Should().Contain("tool.dll", "git prints a binary file with no line numbers at all, and the allowlist still has to see it");
+		paths.Should().Contain("b.cs").And.Contain("c.cs", "a rename is a delete and an add, and both paths are touched");
+	}
+
+	[Fact]
 	public async Task ReturnToMainAsync_DiscardsWorkAndDeletesTheBranch()
 	{
 		var git = Adapter();
 		await git.CreateBranchAsync("ai/x", TestContext.Current.CancellationToken);
 		File.WriteAllText(Path.Combine(_clone, "a.cs"), "scribble\n");
 
-		await git.ReturnToMainAsync("ai/x", deleteRemoteBranch: false, TestContext.Current.CancellationToken);
+		var problem = await git.ReturnToMainAsync("ai/x", deleteRemoteBranch: false, TestContext.Current.CancellationToken);
 
+		problem.Should().BeNull("everything went back cleanly");
 		File.ReadAllText(Path.Combine(_clone, "a.cs")).Should().Be("one\n");
 		(await Adapter().RefusalAsync(TestContext.Current.CancellationToken)).Should().BeNull("the clone is clean and back on main");
+	}
+
+	[Fact]
+	public async Task ReturnToMainAsync_SaysSoWhenTheBranchCouldNotBeDeleted()
+	{
+		var problem = await Adapter().ReturnToMainAsync("ai/never-created", deleteRemoteBranch: false, TestContext.Current.CancellationToken);
+
+		problem.Should().Contain("ai/never-created",
+			"a step that failed must be reported, not silently dropped, or the clone is left in a state nobody was told about");
 	}
 
 	[Fact]

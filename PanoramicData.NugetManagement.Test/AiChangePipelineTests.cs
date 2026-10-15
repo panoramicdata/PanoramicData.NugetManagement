@@ -84,6 +84,20 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 	}
 
 	[Fact]
+	public async Task Run_ARedTestThatFailsForTheWrongReason_IsRejectedAndTheModelIsToldWhy()
+	{
+		_tests.OnlyRuns.Enqueue(new TestRun(false, "Parser.Tests.cs(4,9): error CS0103: The name 'Foo' does not exist\nBuild FAILED."));
+		_tests.OnlyRuns.Enqueue(new TestRun(false, "Expected 3 but found 2.\n  total: 1\n  failed: 1"));
+		_tests.OnlyRuns.Enqueue(new TestRun(true, "total: 1\n  failed: 0"));
+
+		var outcome = await RunAsync(Issue());
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.Merged);
+		_work.RedAttempts.Should().Be(2, "the first attempt was rejected and the second was accepted");
+		_work.Feedback[1].Should().Contain("compile", "the second attempt is told that the first did not compile");
+	}
+
+	[Fact]
 	public async Task Run_ARuleFixSkipsTheRedStep()
 	{
 		var outcome = await RunAsync(Rule());
@@ -130,6 +144,34 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 		var outcome = await RunAsync(Issue());
 
 		outcome.Kind.Should().Be(AiChangeOutcomeKind.LocalGateFailed);
+		outcome.Message.Should().Contain("covered");
+	}
+
+	private static string CoberturaFor(params (string File, int From, int To, int Hits)[] spans)
+		=> "<coverage><packages><package><classes>"
+			+ string.Concat(spans.Select(span =>
+				$"<class filename=\"C:\\r\\{span.File}\"><lines>"
+				+ string.Concat(Enumerable.Range(span.From, span.To - span.From + 1)
+					.Select(line => $"<line number=\"{line}\" hits=\"{span.Hits}\" />"))
+				+ "</lines></class>"))
+			+ "</classes></package></packages></coverage>";
+
+	[Fact]
+	public async Task Run_ATestFileThatRunsCannotCoverForProductionCodeThatDoesNot()
+	{
+		RedThenGreen();
+		_git.Changed =
+		[
+			new ChangedFile("Lib/Parser.cs", Enumerable.Range(10, 10).ToHashSet()),
+			new ChangedFile("Lib.Test/ParserTests.cs", Enumerable.Range(1, 40).ToHashSet())
+		];
+		_tests.Cobertura = CoberturaFor(("Lib\\Parser.cs", 10, 19, 0), ("Lib.Test\\ParserTests.cs", 1, 40, 1));
+
+		var outcome = await RunAsync(Issue());
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.LocalGateFailed,
+			"forty executed test lines would otherwise carry ten untested production lines to 80%, and the "
+				+ "gate is meant to say the changed code was exercised, not that the test was");
 		outcome.Message.Should().Contain("covered");
 	}
 
@@ -277,6 +319,46 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 		outcome.Kind.Should().Be(AiChangeOutcomeKind.LocalGateFailed);
 		_git.Calls.Should().NotContain("push");
 		_git.Calls.Should().Contain("return");
+	}
+
+	[Fact]
+	public async Task Run_AReturnToMainThatFails_IsSaidInTheConsoleEvenAfterAMerge()
+	{
+		RedThenGreen();
+		_git.ReturnProblem = "could not return to main: checkout failed, a file is locked";
+
+		var outcome = await RunAsync(Issue());
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.Merged);
+		_said.Should().Contain(line => line.Contains("could not return to main", StringComparison.Ordinal),
+			"a clone left on an ai/ branch blocks every later fix, and the console must say so rather than report only the merge");
+	}
+
+	[Fact]
+	public async Task Run_APushThatFails_IsAnOutcomeNotARawExceptionAndCleansUp()
+	{
+		RedThenGreen();
+		_git.PushThrows = true;
+
+		var outcome = await RunAsync(Issue());
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.DeliveryFailed);
+		outcome.Message.Should().Contain("remote rejected");
+		_git.Calls.Should().Contain("return");
+		_github.Calls.Should().NotContain(call => call.StartsWith("pr:", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task Run_APullRequestThatCannotBeOpened_DeletesTheBranchItJustPushed()
+	{
+		RedThenGreen();
+		_github.CreatePullRequestThrows = true;
+
+		var outcome = await RunAsync(Issue());
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.DeliveryFailed);
+		_git.DeletedRemote.Should().BeTrue(
+			"the branch is on origin with no pull request to own it, and nothing else will ever clean it up");
 	}
 
 	[Fact]

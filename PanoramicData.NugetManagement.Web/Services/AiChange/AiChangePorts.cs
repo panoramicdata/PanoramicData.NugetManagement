@@ -51,7 +51,10 @@ public enum AiChangeOutcomeKind
 	LeftOpenMergeRefused,
 
 	/// <summary>The clone was not in a state to start from.</summary>
-	Refused
+	Refused,
+
+	/// <summary>Committing, pushing or opening the pull request failed; nothing was merged.</summary>
+	DeliveryFailed
 }
 
 /// <summary>
@@ -146,7 +149,8 @@ public interface IAiChangeGit
 	/// <param name="branch">The branch to leave.</param>
 	/// <param name="deleteRemoteBranch">Whether to delete the branch on origin as well.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-	Task ReturnToMainAsync(string branch, bool deleteRemoteBranch, CancellationToken cancellationToken);
+	/// <returns>Null when the clone is back on a clean <c>main</c>; otherwise what could not be done.</returns>
+	Task<string?> ReturnToMainAsync(string branch, bool deleteRemoteBranch, CancellationToken cancellationToken);
 }
 
 /// <summary>Building and testing the clone.</summary>

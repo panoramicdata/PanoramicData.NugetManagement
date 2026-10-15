@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
 namespace PanoramicData.NugetManagement.Web.Services.AiChange;
 
 /// <summary>
@@ -22,7 +25,7 @@ public sealed record RedTestVerdict(bool IsValidRed, string Message);
 /// compile, or that matched nothing, also exits non-zero, and accepting either would let any bug be
 /// "reproduced" by a test that proves nothing.
 /// </remarks>
-public static class RedTestGate
+public static partial class RedTestGate
 {
 	/// <summary>
 	/// Judges a run of the new test against the unfixed code.
@@ -56,6 +59,45 @@ public static class RedTestGate
 					+ "project and that its name matches the filter.");
 		}
 
+		var total = ReadCount(TotalPattern(), unfixed.Output);
+		var failed = ReadCount(FailedPattern(), unfixed.Output);
+
+		if (total is null || failed is null)
+		{
+			return new RedTestVerdict(
+				false,
+				"The run's summary (how many tests ran and how many failed) could not be read, so there is "
+					+ "no evidence the new test failed on its own. Run only your new test.");
+		}
+
+		// Every test the filter matched must have failed. A filter that also matched passing tests is too
+		// broad to say which one reproduced the report, and one that matched somebody else's failing test
+		// would confirm "red" on a failure the new test had nothing to do with.
+		if (failed.Value != total.Value)
+		{
+			return new RedTestVerdict(
+				false,
+				$"Your filter matched {total.Value} tests and only {failed.Value} failed, so it also selects other tests. "
+					+ "Narrow it to select only your new test.");
+		}
+
 		return new RedTestVerdict(true, "The test fails on the unfixed code.");
+	}
+
+	[GeneratedRegex(@"total:\s*(?<n>\d+)", RegexOptions.IgnoreCase)]
+	private static partial Regex TotalPattern();
+
+	[GeneratedRegex(@"failed:\s*(?<n>\d+)", RegexOptions.IgnoreCase)]
+	private static partial Regex FailedPattern();
+
+	private static int? ReadCount(Regex pattern, string output)
+	{
+		var matches = pattern.Matches(output);
+
+		// The last one: a run prints its own summary at the end, after anything a test wrote.
+		return matches.Count > 0
+			&& int.TryParse(matches[^1].Groups["n"].Value, CultureInfo.InvariantCulture, out var n)
+				? n
+				: null;
 	}
 }

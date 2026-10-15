@@ -22,6 +22,47 @@ public class AiChangePipelineFactoryTests(ITestOutputHelper output) : TestWithOu
 	public void Slug_IsLowerCaseBranchSafeAndUnique(string label, string unique, string expected)
 		=> AiChangePipelineFactory.Slug(label, unique).Should().Be(expected);
 
+	[Theory]
+	[InlineData("src/Foo.cs", "src/Foo.cs")]
+	[InlineData("./src/Foo.cs", "src/Foo.cs")]
+	[InlineData("src\\Foo.cs", "src/Foo.cs")]
+	[InlineData("/src/Foo.cs", "src/Foo.cs")]
+	public void NormalisePath_GivesOneSpellingToEveryWayOfWritingAPath(string path, string expected)
+		=> AiChangePipelineFactory.NormalisePath(path).Should().Be(expected);
+
+	[Fact]
+	public void IssueFixLimits_AllowTheBriefsPathsHoweverTheyAreSpelled()
+	{
+		var limits = AiChangePipelineFactory.IssueFixLimits(["src\\Foo.cs", "./src/Bar.cs"], []);
+
+		limits.IsAllowedPath("src/Foo.cs").Should().BeTrue(
+			"the toolbox let the model write the file the brief spelled with a backslash, so the gate must accept it too");
+		limits.IsAllowedPath("src/Bar.cs").Should().BeTrue();
+		limits.IsAllowedPath("src/Other.cs").Should().BeFalse();
+	}
+
+	[Fact]
+	public void IssueFixLimits_TreatEveryFileInATestFolderAsATestFile()
+	{
+		var limits = AiChangePipelineFactory.IssueFixLimits(["src/Foo.cs"], ["test/Foo.Specs"]);
+
+		limits.IsAllowedPath("test/Foo.Specs/Fixture.cs").Should().BeTrue(
+			"the red-test step may write any new file under the test folder, whatever the project is called");
+		limits.IsAllowedPath("test/Foo.Specs/xunit.runner.json").Should().BeTrue();
+		limits.IsTestPath("test/Foo.Specs/Fixture.cs").Should().BeTrue("a helper in the test project is not part of the fix's footprint");
+		limits.IsTestPath("src/Foo.cs").Should().BeFalse();
+	}
+
+	[Fact]
+	public void IssueFixLimits_RefuseAFileOutsideBothTheBriefAndTheTestFolders()
+		=> AiChangePipelineFactory.IssueFixLimits(["src/Foo.cs"], ["test/Foo.Specs"])
+			.IsAllowedPath(".github/workflows/ci.yml").Should().BeFalse();
+
+	[Fact]
+	public void IssueFixLimits_CapAtTheUnattendedMaximum()
+		=> AiChangePipelineFactory.IssueFixLimits(["a.cs"], []).MaxPaths
+			.Should().Be(PanoramicData.NugetManagement.Services.IssueAutonomyGate.MaxUnattendedPaths);
+
 	[Fact]
 	public void Shorten_LeavesAShortSingleLineAlone()
 		=> AiChangePipelineFactory.Shorten("Parser drops the last row", 60).Should().Be("Parser drops the last row");

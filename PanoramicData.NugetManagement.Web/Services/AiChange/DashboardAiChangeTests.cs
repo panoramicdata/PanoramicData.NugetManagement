@@ -13,12 +13,30 @@ namespace PanoramicData.NugetManagement.Web.Services.AiChange;
 /// <param name="repos">The local repository service, for filtered and coverage runs.</param>
 /// <param name="row">The repository's row.</param>
 /// <param name="repoIdentity">The repository identity the local service knows it by.</param>
+/// <param name="knownFailures">
+/// Tests that already failed here, in the sandbox, before the change (for example ones that need
+/// credentials the sandbox withholds). The suite counts as green if only these fail. Null or empty is strict.
+/// </param>
 public sealed class DashboardAiChangeTests(
 	DashboardService dashboard,
 	LocalRepoService repos,
 	RepositoryDashboardRow row,
-	string repoIdentity) : IAiChangeTests
+	string repoIdentity,
+	IReadOnlySet<string>? knownFailures = null) : IAiChangeTests
 {
+	/// <summary>
+	/// Whether a full run counts as green once failures that were already there are set aside.
+	/// </summary>
+	/// <param name="exitedGreen">Whether the run itself passed.</param>
+	/// <param name="failedNow">The tests that failed in this run.</param>
+	/// <param name="known">The tests that failed before the change.</param>
+	/// <remarks>
+	/// "No regressions" means nothing new broke, not that the repository was perfect to begin with. A run
+	/// that failed without naming a failing test, such as one that did not build, is never excused.
+	/// </remarks>
+	public static bool PassedGivenBaseline(bool exitedGreen, IReadOnlySet<string> failedNow, IReadOnlySet<string> known)
+		=> exitedGreen || (failedNow.Count > 0 && failedNow.IsSubsetOf(known));
+
 	/// <inheritdoc />
 	public async Task<IssueFixCheckStep> BuildAsync(CancellationToken cancellationToken)
 	{
@@ -34,7 +52,13 @@ public sealed class DashboardAiChangeTests(
 		var lines = new List<string>();
 		await dashboard.RunTestsAsync(row, lines.Add, cancellationToken, sandbox: true).ConfigureAwait(false);
 
-		return new TestRun(row.Status == PackageStatus.TestsPassed, string.Join('\n', lines));
+		var output = string.Join('\n', lines);
+		var passed = PassedGivenBaseline(
+			row.Status == PackageStatus.TestsPassed,
+			CoverageMeasurement.ParseFailedTests(output),
+			knownFailures ?? new HashSet<string>());
+
+		return new TestRun(passed, output);
 	}
 
 	/// <inheritdoc />

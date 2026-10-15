@@ -14,6 +14,7 @@ public sealed partial class WorkExecutors
 	/// <param name="label">What the edits are for, for the branch name, for example <c>rule CI-15</c>.</param>
 	/// <param name="title">The pull request title.</param>
 	/// <param name="writtenPaths">The repository-relative paths the session wrote.</param>
+	/// <param name="knownFailures">Tests that already failed before the session, which do not count against it.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
 	/// <returns>How delivery ended.</returns>
 	/// <remarks>
@@ -27,17 +28,17 @@ public sealed partial class WorkExecutors
 		string label,
 		string title,
 		IReadOnlyCollection<string> writtenPaths,
+		IReadOnlySet<string> knownFailures,
 		CancellationToken cancellationToken)
 	{
 		var parts = row.RepositoryFullName.Split('/');
 
 		var pipeline = AiChangePipelineFactory.Create(
-			new LocalRepoAiChangeGit(row.LocalPath!),
-			new DashboardAiChangeTests(dashboard, localRepo, row, row.RepositoryFullName),
+			new LocalRepoAiChangeGit(row.LocalPath!, row.RepositoryFullName),
+			new DashboardAiChangeTests(dashboard, localRepo, row, row.RepositoryFullName, knownFailures),
 			new DeliveryOnlyWork(),
 			new OctokitGitHubWriteApi(await CreateGitHubClientAsync().ConfigureAwait(false)),
-			_ => true,
-			int.MaxValue);
+			AiChangePipelineFactory.RuleFixLimits());
 
 		var request = new AiChangeRequest(
 			parts[0],

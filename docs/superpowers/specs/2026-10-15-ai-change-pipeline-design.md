@@ -157,11 +157,32 @@ Settled while building, because the code showed the first version of the design 
    go to the pipeline's `DeliverAsync` (branch, gate, pull request, CI, merge). There is no red step: the
    rule is its own specification. Delivery is refused, leaving the edits in place, when the working tree
    holds changes the session did not write, because returning to `main` resets the tree.
-10. **Every test run the pipeline makes is sandboxed**, so tests a model wrote see CI's environment and not
-    this machine's credentials.
-11. **The suite must already pass.** A repository whose tests fail in the sandbox before any change fails
-    the local gate with the failing tests named and cannot auto-merge. This is deliberate ("no
-    regressions"), and it means those repositories need their baseline fixed first.
+10. **Every test run the pipeline makes goes through `TestSandbox`, which is env scrubbing and not a
+    boundary.** It removes environment variables whose names look like credentials and redirects
+    `APPDATA`. The test process still runs as this user, with this user's filesystem and network, so
+    `~/.git-credentials`, `~/.ssh` and similar stores are readable by a test. Builds are not sandboxed at
+    all, so an MSBuild `Exec` target in a project file the model edited runs with the full environment.
+    That was already true of the rule-fix path; what the pipeline adds is that an issue from a stranger, via
+    the brief, can now lead to a model-written test being executed here. Before issue fixes run against
+    public repositories, run tests in a container or under a low-privilege account.
+11. **No regressions means nothing new broke.** A rule-fix session that measured a baseline (TST-10
+    coverage mode, and remote rules whose tests are checked) passes the gate when only those baseline
+    failures fail. A session that measured none is strict: a repository whose tests already fail in the
+    sandbox fails the local gate with the failing tests named and cannot auto-merge until its baseline is
+    fixed. Issue fixes are always strict.
+15. **A red test must fail on its own.** Every test the filter matched must have failed, and the run's
+    summary must be readable. A filter that also matched passing tests, or that confirms red on somebody
+    else's failure, is rejected.
+16. **Changed-line coverage counts production code only.** A test file's own lines run by definition and
+    would otherwise carry untested production lines over the bar.
+17. **The path allowlist and cap see every touched path**, including deleted files, binaries and both sides
+    of a rename, taken from `git diff --name-only --no-renames`. The line diff is used only for coverage.
+18. **The clone's origin must be the repository the caller named**, checked before anything is created, and
+    a failed return to `main` is reported in the console rather than swallowed.
+19. **Both of GitHub's CI reports are read**, check runs and legacy commit statuses, so a repository whose
+    CI uses only statuses is not mistaken for one with no CI.
+20. **A push or pull request that fails is an outcome, not a crash**, and a branch that was pushed with no
+    pull request to own it is deleted.
 12. **Issue fixes need an existing test project.** The red-test step may add new files in the test folders
     and nothing else. A repository with none gets a project from the TST-01 rule fix, whose prompt carries
     the test guide.
