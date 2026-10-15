@@ -200,9 +200,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Certify.Api": {
-    "latestVersion": "2.0.6",
-    "published": "2026-09-13T13:17:36.19+01:00",
-    "refreshedAtUtc": "2026-09-13T18:52:00.3935398+00:00"
+    "latestVersion": "2.0.22",
+    "published": "2026-10-15T13:09:58.04+01:00",
+    "refreshedAtUtc": "2026-10-15T12:23:36.6141053+00:00"
   },
   "ChartJs.Blazor.Fork": {
     "latestVersion": "2.0.2",
@@ -680,9 +680,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "MagicSuite.Api": {
-    "latestVersion": "4.6.1696",
-    "published": "2026-10-11T18:33:20+01:00",
-    "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
+    "latestVersion": "4.6.1745",
+    "published": "2026-10-15T12:33:25.007+01:00",
+    "refreshedAtUtc": "2026-10-15T12:23:36.6141053+00:00"
   },
   "MailKit": {
     "latestVersion": "4.18.1",
@@ -1255,9 +1255,9 @@
     "refreshedAtUtc": "2026-09-08T16:19:02.87148+00:00"
   },
   "Microsoft.ML": {
-    "latestVersion": "5.0.0",
-    "published": "2025-11-11T08:30:13.96+00:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "5.0.1",
+    "published": "2026-10-15T09:05:00.377+01:00",
+    "refreshedAtUtc": "2026-10-15T10:47:38.8465109+00:00"
   },
   "Microsoft.Net.Compilers.Toolset": {
     "latestVersion": "5.9.0",
@@ -1815,9 +1815,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "PuppeteerSharp": {
-    "latestVersion": "25.13.1",
-    "published": "2026-10-11T11:14:26.747+01:00",
-    "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
+    "latestVersion": "25.14.0",
+    "published": "2026-10-15T12:31:26.17+01:00",
+    "refreshedAtUtc": "2026-10-15T12:23:36.6141053+00:00"
   },
   "Quartz": {
     "latestVersion": "4.5.0",
