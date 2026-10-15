@@ -332,6 +332,9 @@ public static class AgentApi
 			WorkFanOut fanOut,
 			Remediations.RemediationRegistry remediationRegistry) =>
 		{
+			// Everything queued here is the agent API's doing, and the ledger says so.
+			using var origin = Governance.QueueOrigin.Use("agent-api");
+
 			if (string.IsNullOrWhiteSpace(request.Repository) || cache.GetRow(request.Repository) is not { } row)
 			{
 				return Results.Json(new { error = "no such repository" }, statusCode: StatusCodes.Status404NotFound);
@@ -409,6 +412,8 @@ public static class AgentApi
 			return Results.Json(new { queued = item is null ? 0 : 1, id = item?.Id });
 		});
 
+		MapGovernance(group);
+
 		group.MapPost("/work/{id}/cancel", (WorkLaneService lanes, string id) =>
 		{
 			lanes.Cancel(id);
@@ -416,6 +421,74 @@ public static class AgentApi
 			return Results.Json(new { cancelled = id });
 		});
 	}
+
+	/// <summary>
+	/// The governance record: the ledger, the policy, and the packets the ledger points at.
+	/// </summary>
+	private static void MapGovernance(RouteGroupBuilder group)
+	{
+		group.MapGet("/ledger", (Governance.GovernanceLedger ledger, string? kind, string? repo, int? take, long? before) =>
+			Results.Json(ledger.Query(kind, repo, take ?? 100, before)));
+
+		group.MapGet("/ledger/verify", (Governance.GovernanceLedger ledger) => Results.Json(ledger.Verify()));
+
+		group.MapPost("/ledger/note", (NoteRequest request, Governance.GovernanceLedger ledger) =>
+		{
+			if (string.IsNullOrWhiteSpace(request.Summary))
+			{
+				return Results.Json(new { error = "a note needs a summary" }, statusCode: StatusCodes.Status400BadRequest);
+			}
+
+			// Always attributed to the session, never to Autopilot: a note is a person or reviewer saying
+			// something about the record, and must not be mistaken for the system's own action.
+			var entry = ledger.Append(
+				"claude-session",
+				"note",
+				request.Repository,
+				request.RuleId,
+				new { request.Summary, request.Data });
+
+			return Results.Json(entry);
+		});
+
+		group.MapGet("/policy", (Governance.AutopilotPolicyStore store) => Results.Json(new { hash = store.PolicyHash, policy = store.Current }));
+
+		group.MapPut("/policy", (PolicyUpdate request, Governance.AutopilotPolicyStore store) =>
+		{
+			if (request.Policy is null || string.IsNullOrWhiteSpace(request.Reason))
+			{
+				return Results.Json(new { error = "a policy change needs a policy and a reason" }, statusCode: StatusCodes.Status400BadRequest);
+			}
+
+			return Results.Json(new { hash = store.Update(request.Policy, "agent-api", request.Reason) });
+		});
+
+		group.MapGet("/packet", (Governance.ReviewPacketStore packets, string path, string sha256) =>
+		{
+			try
+			{
+				return packets.Read(new Governance.PacketReference(path, sha256, 0)) is { } packet
+					? Results.Json(packet)
+					: Results.Json(new { error = "no such packet" }, statusCode: StatusCodes.Status404NotFound);
+			}
+			catch (InvalidDataException ex)
+			{
+				return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status409Conflict);
+			}
+		});
+	}
+
+	/// <summary>The request body for adding a note to the ledger.</summary>
+	/// <param name="Summary">What is being recorded.</param>
+	/// <param name="Repository">The repository it concerns, if any.</param>
+	/// <param name="RuleId">The rule it concerns, if any.</param>
+	/// <param name="Data">Anything further.</param>
+	public sealed record NoteRequest(string? Summary, string? Repository, string? RuleId, System.Text.Json.JsonElement? Data);
+
+	/// <summary>The request body for changing the policy.</summary>
+	/// <param name="Policy">The new policy, whole.</param>
+	/// <param name="Reason">Why. Required.</param>
+	public sealed record PolicyUpdate(Governance.AutopilotPolicy? Policy, string? Reason);
 
 	/// <summary>The request body for queueing work.</summary>
 	/// <param name="Kind">One of <c>ai-fix</c>, <c>reassess</c>, <c>build</c>, <c>test</c>, <c>clone</c>.</param>

@@ -69,6 +69,12 @@ public sealed partial class GovernanceLedger
 	/// <summary>The hash a chain starts from.</summary>
 	public static readonly string Genesis = new('0', 64);
 
+	/// <summary>The default location, under the application's data folder.</summary>
+	public static string DefaultFolder { get; } = Path.Combine(
+		Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+		"PanoramicData.NugetManagement",
+		"ledger");
+
 	private readonly Lock _gate = new();
 	private readonly string _directory;
 	private readonly Func<string?> _policyHash;

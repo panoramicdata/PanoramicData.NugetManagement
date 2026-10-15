@@ -155,7 +155,8 @@ public sealed class WorkLaneService(ILogger<WorkLaneService>? logger = null)
 				DedupKey = dedupKey,
 				Step = step,
 				ConsoleNodeKey = consoleNodeKey,
-				WasInterrupted = wasInterrupted
+				WasInterrupted = wasInterrupted,
+				QueuedBy = Governance.QueueOrigin.Current
 			};
 
 			lane.Items.Add(item);

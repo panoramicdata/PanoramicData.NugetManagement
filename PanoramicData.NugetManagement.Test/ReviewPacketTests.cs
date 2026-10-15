@@ -1,4 +1,3 @@
-using System.Text.Json;
 using PanoramicData.NugetManagement.Web.Services.Governance;
 
 namespace PanoramicData.NugetManagement.Test;
@@ -149,6 +148,5 @@ public class ReviewPacketTests(ITestOutputHelper output) : TestWithOutput(output
 
 		PacketScrubber.LooksLikeItHoldsASecret(raw).Should().BeTrue();
 		PacketScrubber.LooksLikeItHoldsASecret(PacketScrubber.Scrub(raw)).Should().BeFalse();
-		JsonSerializer.Serialize(new { raw }).Should().Contain("69ae5732", "the helper tests the text, not the serialiser");
 	}
 }

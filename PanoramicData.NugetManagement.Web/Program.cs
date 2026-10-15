@@ -8,6 +8,7 @@ using PanoramicData.NugetManagement.Web.Components;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Remediations;
 using PanoramicData.NugetManagement.Web.Services;
+using PanoramicData.NugetManagement.Web.Services.Governance;
 using Refit;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -57,6 +58,11 @@ builder.Services.AddSingleton<RuntimeSettingsService>();
 builder.Services.AddSingleton(sp => new AiSessionLogStore(
 	AiSessionLogStore.DefaultDirectory,
 	() => sp.GetRequiredService<RuntimeSettingsService>().Ollama.LogRetentionDays));
+// The governance record: ledger, policy, review packets and the recorder the executors write through.
+builder.Services.AddGovernance(
+	GovernanceLedger.DefaultFolder,
+	AutopilotPolicyStore.DefaultPath,
+	ReviewPacketStore.DefaultFolder);
 builder.Services.AddSingleton<IdeDetectionService>();
 builder.Services.AddSingleton<LocalFileSystemDataProvider>();
 builder.Services.AddSingleton<PackageDashboardDataProvider>();
@@ -247,6 +253,9 @@ app.MapGet("/api/user", (HttpContext context) =>
 
 // Only exists when a token is configured, for a coding agent on this machine. See AgentApi.
 app.Services.GetRequiredService<AgentWorkObserver>();
+
+// Built now rather than on first use, so the policy hash is in the ledger's hands before anything is written.
+app.Services.GetRequiredService<AutopilotPolicyStore>();
 app.MapAgentApi(settings.AgentApiToken);
 
 app.MapStaticAssets();

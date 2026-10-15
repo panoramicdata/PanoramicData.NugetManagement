@@ -52,6 +52,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// </param>
 /// <param name="playbooks">The per-rule instructions an AI fix is prompted with.</param>
 /// <param name="sessionLogs">Where AI fix sessions are logged in full, or null to log nothing.</param>
+/// <param name="governance">Writes what was done to the governance ledger, or null to record nothing.</param>
 public sealed class WorkExecutors(
 	DashboardService dashboard,
 	DashboardCacheService cache,
@@ -65,7 +66,8 @@ public sealed class WorkExecutors(
 	DependabotTriageRunner triageRunner,
 	OllamaGate ollamaGate,
 	AiPlaybookRegistry playbooks,
-	AiSessionLogStore? sessionLogs = null)
+	AiSessionLogStore? sessionLogs = null,
+	Governance.GovernanceRecorder? governance = null)
 {
 	/// <summary>
 	/// Opens the on-disk log for one AI fix session and says where it is.
@@ -762,6 +764,7 @@ public sealed class WorkExecutors(
 		{
 			var applied = await dashboard.ApplyRemediationsAsync(row, Say, cancellationToken).ConfigureAwait(false);
 			remediationCompleted = true;
+			governance?.RecordRemediation(item, row.RepositoryFullName, null, applied);
 
 			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
@@ -838,6 +841,7 @@ public sealed class WorkExecutors(
 		{
 			var applied = await dashboard.ApplyCategoryRemediationsAsync(row, category, Say, cancellationToken).ConfigureAwait(false);
 			remediationCompleted = true;
+			governance?.RecordRemediation(item, row.RepositoryFullName, null, applied);
 
 			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
@@ -934,6 +938,13 @@ public sealed class WorkExecutors(
 		var succeeded = false;
 		Func<int>? undoWrites = null;
 		Func<Task<string?>>? progressWorthKeeping = null;
+
+		// What the governance ledger needs once the session is over, gathered as it goes because the
+		// session's own variables are out of scope by the time it is recorded.
+		AiFixRequest? recordedRequest = null;
+		AiFixOutcome? recordedOutcome = null;
+		AiFixToolbox? recordedToolbox = null;
+		string? recordedLogPath = null;
 
 		try
 		{
@@ -1035,6 +1046,7 @@ public sealed class WorkExecutors(
 					: null);
 
 			undoWrites = toolbox.Undo;
+			recordedToolbox = toolbox;
 
 			// A coverage session that falls short has usually still done most of the work, and throwing it
 			// all away makes the next attempt start from nothing. If what is left compiles, passes, and has
@@ -1125,6 +1137,7 @@ public sealed class WorkExecutors(
 			};
 
 			using var sessionLog = OpenSessionLog(row.RepositoryFullName, ruleId);
+			recordedLogPath = sessionLog.Path;
 
 			var session = new AiFixSession(
 				new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow, ollama.ToDirect()),
@@ -1150,6 +1163,7 @@ public sealed class WorkExecutors(
 						: string.Empty),
 				AiFixPrompt.SystemPrompt);
 
+			recordedRequest = request;
 			LogSessionStart(sessionLog, request, ollama, fixOptions, writablePaths: coverageMode ? testFolders : null);
 
 			// Into the transcript before the first turn, so the pane reads in the order the model saw
@@ -1169,6 +1183,7 @@ public sealed class WorkExecutors(
 				.ConfigureAwait(false);
 
 			succeeded = outcome.Succeeded;
+			recordedOutcome = outcome;
 
 			if (succeeded && remotelyGraded)
 			{
@@ -1201,10 +1216,20 @@ public sealed class WorkExecutors(
 		}
 		finally
 		{
+			// Taken before anything is put back: Undo forgets what the session wrote, and the diff of a
+			// reverted change is exactly what a reviewer most wants to see.
+			var writtenFiles = recordedToolbox?.FilesWritten.Order(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
+
+			var sessionDiff = governance is not null && row.LocalPath is not null && writtenFiles.Count > 0
+				? await governance.CaptureDiffAsync(row.LocalPath, writtenFiles, CancellationToken.None).ConfigureAwait(false)
+				: string.Empty;
+
+			string? keptProgress = null;
+
 			if (!succeeded)
 			{
 				// Not on a stop the user asked for: that is a request to put things back as they were.
-				var keptProgress = progressWorthKeeping is not null && !cancellationToken.IsCancellationRequested
+				keptProgress = progressWorthKeeping is not null && !cancellationToken.IsCancellationRequested
 					? await progressWorthKeeping().ConfigureAwait(false)
 					: null;
 
@@ -1226,6 +1251,22 @@ public sealed class WorkExecutors(
 				}
 
 				await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
+			}
+
+			if (governance is not null && recordedRequest is not null)
+			{
+				governance.RecordAiSession(
+					item,
+					recordedRequest,
+					runtimeSettings.Ollama.Model,
+					recordedOutcome,
+					succeeded ? "applied"
+						: cancellationToken.IsCancellationRequested ? "cancelled"
+						: keptProgress is not null ? "kept"
+						: "reverted",
+					writtenFiles,
+					sessionDiff,
+					recordedLogPath);
 			}
 		}
 	}
@@ -1678,6 +1719,7 @@ public sealed class WorkExecutors(
 				.ApplyRuleRemediationAsync(row, result, Say, cancellationToken)
 				.ConfigureAwait(false);
 			remediationCompleted = true;
+			governance?.RecordRemediation(item, row.RepositoryFullName, result.RuleId, applied);
 
 			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
@@ -2416,6 +2458,15 @@ public sealed class WorkExecutors(
 			await dashboard.RunPublishAsync(row, Say, cancellationToken).ConfigureAwait(false);
 
 			Say(row.Status == PackageStatus.Published ? "✅ Published" : "❌ Publish failed");
+
+			governance?.RecordPublish(
+				item,
+				row.RepositoryFullName,
+				row.Status == PackageStatus.Published,
+				[.. row.Packages.Select(package => package.PackageId)],
+				row.LatestTag,
+				row.NextVersion,
+				row.TotalFailures);
 		}
 		catch (OperationCanceledException)
 		{
@@ -2456,6 +2507,12 @@ public sealed class WorkExecutors(
 		{
 			var commitMessage = $"NuGet governance remediation for {row.RepositoryFullName}";
 			var push = await dashboard.CommitAndPushAsync(row, commitMessage, Say).ConfigureAwait(false);
+
+			// Whatever the outcome: a refused or failed push is as much part of the record as a good one.
+			if (governance is not null)
+			{
+				await governance.RecordPushAsync(item, row.RepositoryFullName, push.Success, push.RefusalReason, row.LocalPath, CancellationToken.None).ConfigureAwait(false);
+			}
 
 			if (push.Success)
 			{

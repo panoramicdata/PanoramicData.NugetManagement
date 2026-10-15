@@ -242,3 +242,16 @@ Each phase ships and is useful on its own.
 
 None outstanding. The starting values above are policy and can be changed at any time; each change is a
 ledger entry.
+
+## Status
+
+- **Phase 1 (ledger, policy, packets): built** on 2026-10-15. `GovernanceLedger` (hash chain, verify, retention),
+  `AutopilotPolicy` and its store (hashed, every change a ledger entry), `ReviewPacketStore` with
+  `PacketScrubber`, and `GovernanceRecorder`, which the executors call for AI sessions, remediations, pushes
+  and publishes. `/agent/ledger`, `/agent/ledger/verify`, `/agent/ledger/note`, `/agent/policy` and
+  `/agent/packet` expose it. Work records who queued it (`QueuedBy`), so the ledger can tell `user`,
+  `agent-api` and, later, `autopilot` apart.
+- Known limits: truncating the *last* ledger entry cannot be detected from inside the chain (compare
+  `headHash` with one recorded elsewhere); the AI *issue*-fix path does not write to the ledger yet; policy
+  switches and caps are stored and hashed but nothing enforces them until the controller exists (phase 3 on).
+- Phases 2 to 7: not started.

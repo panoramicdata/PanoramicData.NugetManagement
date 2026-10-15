@@ -116,6 +116,12 @@ public sealed class WorkItem
 	public bool WasInterrupted { get; init; }
 
 	/// <summary>
+	/// Who asked for this work, such as <c>agent-api</c> or <c>autopilot</c>, or null for a person using the
+	/// buttons. Read by the governance ledger, which has to say who acted.
+	/// </summary>
+	public string? QueuedBy { get; init; }
+
+	/// <summary>
 	/// Whether the work reported the thing it was asked to do as having succeeded — as distinct from
 	/// whether it ran without throwing.
 	/// </summary>
