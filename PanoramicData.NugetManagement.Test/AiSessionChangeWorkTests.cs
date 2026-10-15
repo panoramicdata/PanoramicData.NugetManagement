@@ -45,21 +45,36 @@ public sealed class AiSessionChangeWorkTests(ITestOutputHelper output) : TestWit
 		}
 	}
 
-	private AiSessionChangeWork Work(
-		FinishingModel model,
-		bool checksPass = true)
+	private AiFixSession SessionFor(FinishingModel model)
 	{
 		Directory.CreateDirectory(_clone);
 
-		var session = new AiFixSession(
+		return new AiFixSession(
 			model,
 			new AiFixToolbox(_clone),
 			new AiFixOptions { MaxTurnsPerAttempt = 3, MaxAttempts = 1 },
 			_ => { });
+	}
 
+	/// <summary>
+	/// The adapter under test. The model given writes the red test; <paramref name="fixModel"/> makes the
+	/// fix, and is the same model when not given.
+	/// </summary>
+	private AiSessionChangeWork Work(
+		FinishingModel model,
+		bool checksPass = true,
+		FinishingModel? fixModel = null)
+	{
 		Task<AiRuleCheck> Check(CancellationToken _) => Task.FromResult(new AiRuleCheck(checksPass, "check"));
 
-		return new AiSessionChangeWork(session, "the report", "Fix it.", "system", Check, Check);
+		return new AiSessionChangeWork(
+			SessionFor(model),
+			SessionFor(fixModel ?? model),
+			"the report",
+			"Fix it.",
+			"system",
+			Check,
+			Check);
 	}
 
 	[Fact]
@@ -109,6 +124,22 @@ public sealed class AiSessionChangeWorkTests(ITestOutputHelper output) : TestWit
 
 		model.FirstTasks.Should().ContainSingle().Which
 			.Should().Contain("Fix it.").And.Contain("FullyQualifiedName~ParserTests").And.Contain("Do not edit that test");
+	}
+
+	[Fact]
+	public async Task EachStepUsesItsOwnSession()
+	{
+		var redModel = new FinishingModel("FILTER: X");
+		var fixModel = new FinishingModel("Done.");
+		var work = Work(redModel, fixModel: fixModel);
+
+		await work.WriteRedTestAsync(Request, null, TestContext.Current.CancellationToken);
+		redModel.FirstTasks.Should().HaveCount(1);
+		fixModel.FirstTasks.Should().BeEmpty("writing the test must not use the session that may edit production code");
+
+		await work.FixAsync(Request, "X", TestContext.Current.CancellationToken);
+		fixModel.FirstTasks.Should().HaveCount(1);
+		redModel.FirstTasks.Should().HaveCount(1, "fixing must not use the session that may only add test files");
 	}
 
 	[Fact]

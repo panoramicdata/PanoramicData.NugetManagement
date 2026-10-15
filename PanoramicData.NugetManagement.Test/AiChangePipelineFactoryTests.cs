@@ -23,6 +23,23 @@ public class AiChangePipelineFactoryTests(ITestOutputHelper output) : TestWithOu
 		=> AiChangePipelineFactory.Slug(label, unique).Should().Be(expected);
 
 	[Fact]
+	public void Shorten_LeavesAShortSingleLineAlone()
+		=> AiChangePipelineFactory.Shorten("Parser drops the last row", 60).Should().Be("Parser drops the last row");
+
+	[Fact]
+	public void Shorten_CutsALongTextToTheLengthWithAnEllipsis()
+	{
+		var shortened = AiChangePipelineFactory.Shorten(new string('x', 100), 20);
+
+		shortened.Should().HaveLength(20);
+		shortened.Should().EndWith("...");
+	}
+
+	[Fact]
+	public void Shorten_PutsALineBreakOnOneLine_BecauseATitleCannotHaveOne()
+		=> AiChangePipelineFactory.Shorten("first line\r\nsecond line", 60).Should().Be("first line second line");
+
+	[Fact]
 	public void Slug_NeverEmbedsAPathSeparatorOrSpace()
 		=> AiChangePipelineFactory.Slug("rule a/b  c", "x").Should().NotContainAny("/", " ", "\\");
 }

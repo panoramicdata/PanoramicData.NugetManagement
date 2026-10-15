@@ -57,15 +57,16 @@ public static class IssueFixPrompt
 				.AppendLine(", which will be re-checked afterwards.");
 		}
 
-		// Said out loud on purpose. This is the one fix path with no rule to check it, and a model
-		// that believes its output is the last word writes more ambitiously than one that knows a
-		// person is going to read the diff.
+		// Said out loud on purpose. Nobody reads this diff before it merges: a test that fails now must
+		// pass, the rest of the tests must still pass, and the change goes out as a pull request that
+		// merges itself once CI agrees. A model that thinks a person will catch its mistakes writes
+		// more ambitiously than one that knows the tests are the only check.
 		builder
 			.AppendLine()
 			.AppendLine(
-				"Make the smallest change that achieves the goal. Your change will be left "
-				+ "uncommitted for a human to review before it goes anywhere, so do not try to "
-				+ "finish anything beyond what is described above.");
+				"Make the smallest change that achieves the goal. The tests are the only check: your "
+				+ "change is delivered as a pull request that merges itself once every test passes, so "
+				+ "do not try to finish anything beyond what is described above.");
 
 		return builder.ToString();
 	}

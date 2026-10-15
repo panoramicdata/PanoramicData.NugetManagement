@@ -43,6 +43,18 @@ public static partial class AiChangePipelineFactory
 	}
 
 	/// <summary>
+	/// Puts a text on one line and cuts it to a length, for a pull request title.
+	/// </summary>
+	/// <param name="text">The text.</param>
+	/// <param name="length">The most characters to return, counting the ellipsis.</param>
+	public static string Shorten(string text, int length)
+	{
+		var oneLine = text.Replace("\r\n", " ", StringComparison.Ordinal).Replace('\n', ' ').Replace('\r', ' ').Trim();
+
+		return oneLine.Length <= length ? oneLine : oneLine[..(length - 3)] + "...";
+	}
+
+	/// <summary>
 	/// A unique, branch-safe label.
 	/// </summary>
 	/// <param name="label">What it is for, for example <c>rule CI-15</c> or <c>issue 42</c>.</param>

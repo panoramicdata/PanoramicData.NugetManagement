@@ -49,12 +49,14 @@ public class IssueFixPromptTests(ITestOutputHelper output) : TestWithOutput(outp
 	}
 
 	[Fact]
-	public void BuildTask_SaysTheChangeWillBeReviewedRatherThanTrusted()
+	public void BuildTask_SaysTheTestsAndCiAreTheCheck_NotAHumanReader()
 	{
 		var task = IssueFixPrompt.BuildTask(Brief, "panoramicdata/OpenProject.Api", 1);
 
-		task.Should().Contain("review",
-			"this is the one fix path with no rule to check it, so the model is told a human is the "
-				+ "check — a model that believes it is the last word writes more ambitiously");
+		task.Should().Contain("pull request").And.Contain("tests",
+			"the change is proven by a reproducing test and delivered as a pull request that merges itself, "
+				+ "and a model told otherwise is told something false");
+		task.Should().NotContain("left uncommitted for a human",
+			"nobody reads this diff before it merges, and saying so would let the model assume a safety net");
 	}
 }
