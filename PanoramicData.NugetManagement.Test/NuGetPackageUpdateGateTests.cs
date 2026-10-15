@@ -10,9 +10,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// are you behind a published release at this level.
 /// </summary>
 /// <remarks>
-/// Build and minor no longer carry a grace period. Only <see cref="NuGetMajorLevelUpdatesRule"/>
-/// still waits, because a major is breaking by definition and its fix is the one most likely to
-/// need a person.
+/// No level carries a grace period any more, major included.
 /// </remarks>
 public class NuGetPackageUpdateGateTests(ITestOutputHelper output) : TestWithOutput(output)
 {

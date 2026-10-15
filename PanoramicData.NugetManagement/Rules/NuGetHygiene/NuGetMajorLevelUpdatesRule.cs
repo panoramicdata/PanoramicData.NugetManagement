@@ -61,5 +61,10 @@ public sealed class NuGetMajorLevelUpdatesRule : NuGetPackageUpdateRuleBase
 	protected override string UpdateLevelDisplayName => "major-level";
 
 	/// <inheritdoc />
-	protected override int GraceDays => 365;
+	/// <remarks>
+	/// None, like every other level. A major is the release most likely to need a person, but its
+	/// remediation is proved by the build, and a 365-day wait left Dependabot pull requests for
+	/// majors labelled "No auto-fix" for a year with nothing queued to move them.
+	/// </remarks>
+	protected override int GraceDays => 0;
 }

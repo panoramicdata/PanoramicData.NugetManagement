@@ -54,21 +54,20 @@ public class OwnPackageZeroGraceTests(ITestOutputHelper output) : TestWithOutput
 			now: _published.AddDays(1),
 			owned: Owning(_ours));
 
-		result.Passed.Should().BeFalse("PKG-07's 365-day grace does not apply to a major of ours");
+		result.Passed.Should().BeFalse("there is no grace period for a major of ours");
 	}
 
 	[Fact]
-	public async Task SomebodyElsesMajorReleaseShouldStillGetItsGracePeriod()
+	public async Task SomebodyElsesMajorReleaseShouldFailTheDayItIsPublished()
 	{
-		// Major is the only level that still waits, so it is the only level on which "ours" and
-		// "theirs" can still be told apart. Build and minor now fail for everybody on day one.
+		// No level waits any more, so "ours" and "theirs" are no longer told apart at all.
 		var result = await Evaluate<NuGetMajorLevelUpdatesRule>(
 			declared: "3.1.138",
 			latest: "4.0.0",
 			now: _published.AddDays(1),
 			owned: new NuGetOwnedPackageCatalog(null));
 
-		result.Passed.Should().BeTrue("the 365-day major grace is untouched for packages we do not publish");
+		result.Passed.Should().BeFalse("PKG-07 has no grace period for anybody");
 	}
 
 	[Fact]
