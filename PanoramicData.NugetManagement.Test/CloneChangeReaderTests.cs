@@ -143,4 +143,96 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 			Directory.Delete(plain);
 		}
 	}
+
+	[Fact]
+	public void RepoWithNoCommits_IsEmpty()
+	{
+		var fresh = Path.Combine(Path.GetTempPath(), "nugetmanagement-tests", $"fresh-{Guid.NewGuid():n}");
+		Directory.CreateDirectory(fresh);
+		try
+		{
+			RunGitIn(fresh, "init", "-q");
+			File.WriteAllText(Path.Combine(fresh, "a.txt"), "a\n");
+			_reader.ReadChanges(fresh).Should().BeEmpty();
+		}
+		finally
+		{
+			Directory.Delete(fresh, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void ReadPair_CloneVanishes_DoesNotThrow()
+	{
+		var gone = Path.Combine(Path.GetTempPath(), "nugetmanagement-tests", $"vanished-{Guid.NewGuid():n}");
+		var pair = _reader.ReadPair(gone, new ChangedFile("keep.txt", ChangeKind.Modified));
+		pair.NotDiffableReason.Should().Be("could not read file");
+		pair.Original.Should().BeEmpty();
+		pair.Modified.Should().BeEmpty();
+	}
+
+	[Fact]
+	public void ReadPair_ModifiedFileMissingFromHead_SurfacesFailure()
+	{
+		File.WriteAllText(Path.Combine(_root, "keep.txt"), "two\n");
+		var pair = _reader.ReadPair(_root, new ChangedFile("keep.txt", ChangeKind.Modified, "no-such.txt"));
+		pair.NotDiffableReason.Should().Be("could not read file");
+	}
+
+	[Fact]
+	public void HugeFile_ReportsSizeWithoutReturningContent()
+	{
+		File.WriteAllText(Path.Combine(_root, "big.txt"), new string('a', 1_048_577));
+		var pair = _reader.ReadPair(_root, new ChangedFile("big.txt", ChangeKind.Added));
+		pair.NotDiffableReason.Should().Be("file too large (1048577 bytes)");
+		pair.Original.Should().BeEmpty();
+		pair.Modified.Should().BeEmpty();
+	}
+
+	[Fact]
+	public void Deleted_WithBinaryOrHugeHead_IsNotDiffable()
+	{
+		File.WriteAllBytes(Path.Combine(_root, "b.bin"), [1, 0, 2]);
+		File.WriteAllText(Path.Combine(_root, "big.txt"), new string('a', 1_048_577));
+		Git("add", "-A");
+		Git("commit", "-q", "-m", "more");
+		File.Delete(Path.Combine(_root, "b.bin"));
+		File.Delete(Path.Combine(_root, "big.txt"));
+
+		_reader.ReadPair(_root, new ChangedFile("b.bin", ChangeKind.Deleted)).NotDiffableReason.Should().StartWith("binary file");
+		_reader.ReadPair(_root, new ChangedFile("big.txt", ChangeKind.Deleted)).NotDiffableReason.Should().StartWith("file too large");
+	}
+
+	[Fact]
+	public void CrlfWorkingCopy_OriginalMatchesDiskForm()
+	{
+		Git("config", "core.autocrlf", "true");
+		File.WriteAllBytes(Path.Combine(_root, "crlf.txt"), "l1\r\nl2\r\nl3\r\n"u8.ToArray());
+		Git("add", "crlf.txt");
+		Git("commit", "-q", "-m", "crlf");
+		File.WriteAllBytes(Path.Combine(_root, "crlf.txt"), "l1\r\nCHANGED\r\nl3\r\n"u8.ToArray());
+
+		var pair = _reader.ReadPair(_root, new ChangedFile("crlf.txt", ChangeKind.Modified));
+
+		pair.NotDiffableReason.Should().BeNull();
+		var original = pair.Original.Split('\n');
+		var modified = pair.Modified.Split('\n');
+		original.Should().HaveCount(modified.Length);
+		original.Zip(modified).Count(p => p.First != p.Second).Should().Be(1);
+	}
+
+	private static void RunGitIn(string directory, params string[] args)
+	{
+		var info = new ProcessStartInfo("git") { WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true };
+		foreach (var arg in args)
+		{
+			info.ArgumentList.Add(arg);
+		}
+
+		using var process = Process.Start(info)!;
+		process.StandardOutput.ReadToEnd();
+		process.StandardError.ReadToEnd();
+		process.WaitForExit();
+		process.ExitCode.Should().Be(0);
+	}
 }

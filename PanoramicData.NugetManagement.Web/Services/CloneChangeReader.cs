@@ -33,6 +33,7 @@ public sealed record FilePair(string Original, string Modified, string? NotDiffa
 public sealed class CloneChangeReader
 {
 	private const int MaxBytes = 1_048_576;
+	private const string CouldNotRead = "could not read file";
 
 	/// <summary>Lists the files that differ from HEAD, or nothing when the clone cannot be read.</summary>
 	/// <param name="clonePath">The clone's directory.</param>
@@ -45,6 +46,11 @@ public sealed class CloneChangeReader
 
 		try
 		{
+			if (RunGitBytes(clonePath, "rev-parse", "--verify", "-q", "HEAD") is null)
+			{
+				return [];
+			}
+
 			var output = RunGit(clonePath, "status", "--porcelain=v1", "-z", "--untracked-files=all");
 			return output is null ? [] : Parse(output);
 		}
@@ -59,32 +65,68 @@ public sealed class CloneChangeReader
 	/// <param name="file">The file, as returned by <see cref="ReadChanges"/>.</param>
 	public FilePair ReadPair(string clonePath, ChangedFile file)
 	{
-		var diskPath = System.IO.Path.Combine(clonePath, file.Path);
-		byte[] modified = [];
-		if (file.Kind != ChangeKind.Deleted && File.Exists(diskPath))
+		try
 		{
-			modified = File.ReadAllBytes(diskPath);
-		}
-
-		var original = file.Kind == ChangeKind.Added
-			? []
-			: RunGitBytes(clonePath, "show", $"HEAD:{file.OriginalPath ?? file.Path}") ?? [];
-
-		foreach (var side in new[] { modified, original })
-		{
-			if (side.Length > MaxBytes)
+			byte[] modified = [];
+			var diskPath = System.IO.Path.Combine(clonePath, file.Path);
+			if (file.Kind != ChangeKind.Deleted && File.Exists(diskPath))
 			{
-				return new FilePair(string.Empty, string.Empty, $"file too large ({side.Length} bytes)");
+				var length = new FileInfo(diskPath).Length;
+				if (length > MaxBytes)
+				{
+					return NotDiffable($"file too large ({length} bytes)");
+				}
+
+				modified = File.ReadAllBytes(diskPath);
 			}
 
-			if (Array.IndexOf(side, (byte)0) >= 0)
+			byte[] original = [];
+			if (file.Kind != ChangeKind.Added)
 			{
-				return new FilePair(string.Empty, string.Empty, $"binary file ({side.Length} bytes)");
-			}
-		}
+				var spec = $"HEAD:{file.OriginalPath ?? file.Path}";
+				var sizeBytes = RunGitBytes(clonePath, "cat-file", "-s", spec);
+				if (sizeBytes is null || !long.TryParse(Encoding.ASCII.GetString(sizeBytes).Trim(), out var size))
+				{
+					return NotDiffable(CouldNotRead);
+				}
 
-		return new FilePair(Encoding.UTF8.GetString(original), Encoding.UTF8.GetString(modified), null);
+				if (size > MaxBytes)
+				{
+					return NotDiffable($"file too large ({size} bytes)");
+				}
+
+				// --filters gives the working-tree form (eol/smudge applied), so it lines up with the disk side.
+				var filtered = RunGitBytes(clonePath, "cat-file", "--filters", spec);
+				if (filtered is null)
+				{
+					return NotDiffable(CouldNotRead);
+				}
+
+				original = filtered;
+			}
+
+			foreach (var side in new[] { modified, original })
+			{
+				if (side.Length > MaxBytes)
+				{
+					return NotDiffable($"file too large ({side.Length} bytes)");
+				}
+
+				if (Array.IndexOf(side, (byte)0) >= 0)
+				{
+					return NotDiffable($"binary file ({side.Length} bytes)");
+				}
+			}
+
+			return new FilePair(Encoding.UTF8.GetString(original), Encoding.UTF8.GetString(modified), null);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
+		{
+			return NotDiffable(CouldNotRead);
+		}
 	}
+
+	private static FilePair NotDiffable(string reason) => new(string.Empty, string.Empty, reason);
 
 	private static List<ChangedFile> Parse(string porcelainZ)
 	{
