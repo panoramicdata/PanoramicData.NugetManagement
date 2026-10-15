@@ -60,6 +60,11 @@ public sealed class CloneChangeReader
 		}
 	}
 
+	/// <summary>The repository-relative paths of <paramref name="changes"/> as an ordinal set.</summary>
+	/// <param name="changes">The changes.</param>
+	public static HashSet<string> PathsOf(IEnumerable<ChangedFile> changes)
+		=> new(changes.Select(c => c.Path), StringComparer.Ordinal);
+
 	/// <summary>Reads both sides of <paramref name="file"/>.</summary>
 	/// <param name="clonePath">The clone's directory.</param>
 	/// <param name="file">The file, as returned by <see cref="ReadChanges"/>.</param>

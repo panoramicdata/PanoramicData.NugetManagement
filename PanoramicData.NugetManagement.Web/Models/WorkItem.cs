@@ -93,6 +93,13 @@ public sealed class WorkItem
 	/// </remarks>
 	public WorkTranscript Transcript { get; } = new();
 
+	/// <summary>
+	/// The paths that were already changed in the clone when an AI fix session started. The Changes tab
+	/// labels them "pre-existing" so the session is not blamed for them. Not persisted: a baseline
+	/// belongs to a run.
+	/// </summary>
+	public IReadOnlySet<string> PreExistingChanges { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
 	/// <summary>Where the item has got to.</summary>
 	public WorkItemState State { get; set; } = WorkItemState.Pending;
 

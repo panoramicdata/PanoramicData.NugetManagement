@@ -960,6 +960,9 @@ public sealed class WorkExecutors(
 				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
 			});
 
+			// Before anything below can touch the clone: what is already changed is not this session's doing.
+			await RecordPreExistingChangesAsync(item, row.LocalPath).ConfigureAwait(false);
+
 			// TST-10 is the one remotely graded rule that can be measured locally: the same tests, run
 			// under coverage, give a figure close to the one Codacy will later report. Measured before the
 			// model starts, so it is told where it stands and a repository that cannot be measured is
@@ -1453,6 +1456,15 @@ public sealed class WorkExecutors(
 	/// what it gets.
 	/// </para>
 	/// </remarks>
+	/// <summary>
+	/// Notes which files are already changed in the clone, so the Changes tab can label them pre-existing.
+	/// Runs git off the calling thread; <see cref="CloneChangeReader.ReadChanges"/> never throws.
+	/// </summary>
+	internal static async Task RecordPreExistingChangesAsync(WorkItem item, string clonePath)
+		=> item.PreExistingChanges = await Task
+			.Run(() => CloneChangeReader.PathsOf(new CloneChangeReader().ReadChanges(clonePath)))
+			.ConfigureAwait(false);
+
 	private static string SummariseRun(string what, bool succeeded, List<string> output)
 	{
 		var verdict = succeeded ? $"{what} succeeded." : $"{what} failed.";
@@ -2080,6 +2092,8 @@ public sealed class WorkExecutors(
 				ApiKey = ollama.ApiKey,
 				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
 			});
+
+			await RecordPreExistingChangesAsync(item, row.LocalPath).ConfigureAwait(false);
 
 			var toolbox = new AiFixToolbox(
 				row.LocalPath,

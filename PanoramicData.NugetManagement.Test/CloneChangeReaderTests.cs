@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Services;
 
 namespace PanoramicData.NugetManagement.Test;
@@ -65,6 +66,48 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 		changes["keep.txt"].Kind.Should().Be(ChangeKind.Modified);
 		changes["new.txt"].Kind.Should().Be(ChangeKind.Added);
 		changes["gone.txt"].Kind.Should().Be(ChangeKind.Deleted);
+	}
+
+	[Fact]
+	public void PathsOf_ReturnsOrdinalSet()
+	{
+		var set = CloneChangeReader.PathsOf([new ChangedFile("A.cs", ChangeKind.Modified), new ChangedFile("a.cs", ChangeKind.Added)]);
+		set.Should().BeEquivalentTo(["A.cs", "a.cs"]);
+		set.Should().HaveCount(2);
+	}
+
+	[Fact]
+	public async Task RecordPreExistingChangesAsync_NotesOnlyWhatIsAlreadyDirty()
+	{
+		File.WriteAllText(Path.Combine(_root, "keep.txt"), "dirty before the session\n");
+		var item = new WorkItem
+		{
+			Id = "1",
+			Title = "Fix",
+			Descriptor = WorkDescriptor.ForRepository(WorkKind.FixWithAiRule, "panoramicdata", "Repo"),
+			DedupKey = "fix:Repo"
+		};
+
+		await WorkExecutors.RecordPreExistingChangesAsync(item, _root);
+		File.WriteAllText(Path.Combine(_root, "later.txt"), "made by the session\n");
+
+		item.PreExistingChanges.Should().BeEquivalentTo(["keep.txt"]);
+	}
+
+	[Fact]
+	public async Task RecordPreExistingChangesAsync_MissingClone_IsEmptyAndDoesNotThrow()
+	{
+		var item = new WorkItem
+		{
+			Id = "1",
+			Title = "Fix",
+			Descriptor = WorkDescriptor.ForRepository(WorkKind.FixWithAiRule, "panoramicdata", "Repo"),
+			DedupKey = "fix:Repo"
+		};
+
+		await WorkExecutors.RecordPreExistingChangesAsync(item, Path.Combine(_root, "nope"));
+
+		item.PreExistingChanges.Should().BeEmpty();
 	}
 
 	[Fact]
