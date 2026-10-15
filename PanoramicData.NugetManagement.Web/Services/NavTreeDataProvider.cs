@@ -847,7 +847,29 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 					&& string.Equals(lane.Organization, organization, StringComparison.OrdinalIgnoreCase))
 				.OrderBy(lane => lane.Key, StringComparer.OrdinalIgnoreCase)
 				.SelectMany(lane => lane.Items
-					.Select(item => (item.RepositoryFullName ?? lane.Key, item)))];
+					.Select(item => (item.RepositoryFullName ?? lane.Key, item)))
+
+				// Stable, so within each group the order is still by repository and then the lane's own.
+				.OrderBy(entry => ActivityRank(entry.item))];
+
+	/// <summary>
+	/// Where an item belongs in a list of everything outstanding: what is working first, then what is
+	/// waiting.
+	/// </summary>
+	/// <param name="item">The work item.</param>
+	/// <remarks>
+	/// Ordered by repository name, a list of thirty items put the one doing something wherever its
+	/// repository happened to fall, and finding it meant scanning for the spinner. Of the running items
+	/// the one that has reported progress comes first: every lane's head is "running", but only one
+	/// holds the model, and an AI session reports a status line only once it does. The others are
+	/// running in the sense of owning a lane while they wait their turn.
+	/// </remarks>
+	internal static int ActivityRank(Models.WorkItem item) => item.State switch
+	{
+		Models.WorkItemState.Running or Models.WorkItemState.Cancelling when item.Progress is { Length: > 0 } => 0,
+		Models.WorkItemState.Running or Models.WorkItemState.Cancelling => 1,
+		_ => 2
+	};
 
 	/// <summary>
 	/// A mirrored item's label: the repository, then what the work is.

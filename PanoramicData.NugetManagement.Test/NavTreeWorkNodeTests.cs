@@ -347,6 +347,41 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 				"the same title appears under every repository, so it has to say which one this is");
 	}
 
+	/// <summary>
+	/// Listed by repository name, thirty items put the one doing something wherever its repository fell, and
+	/// finding it meant scanning for the spinner. What is working comes first — and of the running items the
+	/// one that has reported progress, because every lane's head is "running" but only one holds the model.
+	/// </summary>
+	[Fact]
+	public void OrganisationWorkNode_ListsTheActiveSessionFirst_ThenTheOtherRunning_ThenWhatIsWaiting()
+	{
+		var lanes = new WorkLaneService { MaxConcurrentLanes = 3 };
+
+		WorkItem Queue(string repo)
+			=> lanes.Enqueue($"Fix on {repo}", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", $"panoramicdata/{repo}"), $"k:{repo}", null, null)!;
+
+		var alpha = Queue("Alpha.Api");
+		var bravo = Queue("Bravo.Api");
+		var charlie = Queue("Charlie.Api");
+		var delta = Queue("Delta.Api");
+
+		lanes.TryStartNext(out _);
+		lanes.TryStartNext(out _);
+		lanes.TryStartNext(out _);
+
+		// Charlie is the one talking to the model; Alpha and Bravo own lanes and are waiting their turn.
+		lanes.ReportProgress(charlie, "attempt 1/3 · turn 2/30");
+
+		var order = NewProvider(lanes, withRepository: Repo).BuildNavItems()
+			.Where(i => i.ParentKey == NavTreeDataProvider.OrgWorkKey("panoramicdata"))
+			.OrderBy(i => i.SortOrder)
+			.Select(i => i.WorkItemId)
+			.ToList();
+
+		order.Should().Equal([charlie.Id, alpha.Id, bravo.Id, delta.Id]);
+		delta.State.Should().Be(WorkItemState.Pending);
+	}
+
 	[Fact]
 	public void OrganisationWorkNode_MirroringWork_DoesNotReuseTheRepositoryNodesKeys()
 	{

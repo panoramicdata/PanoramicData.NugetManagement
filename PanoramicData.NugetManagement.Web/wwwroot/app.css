@@ -2233,10 +2233,26 @@ i + .breadcrumb-link-text {
 
 /* Org (root) tree row: lay it out as a full-width flex row so its action buttons
    sit flush against the right edge of the sidebar. */
-.pdtreenode_content:has(.nav-org-actions) {
+.pdtreenode_content:has(.nav-org-actions),
+.pdtreenode_content:has(.nav-work-item) {
     display: flex;
     align-items: center;
     width: 100%;
+}
+
+/* A work item's progress and stop/remove button sit at the far right of the row, so clearing a queue is a
+   run of clicks down one column rather than a mouse that has to follow each title's length. */
+.pdtreenode_content:has(.nav-work-item) .nav-work-item {
+    margin-left: auto;
+    flex-shrink: 0;
+    padding-right: 2px;
+}
+
+.pdtreenode_content:has(.nav-work-item) .nav-node-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .nav-org-actions {

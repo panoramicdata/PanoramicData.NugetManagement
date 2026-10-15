@@ -87,7 +87,7 @@ else
 						@* The tree fills the whole area below the filter now that work hangs off the node it
 						   acts on rather than in a queue pane of its own. *@
 						<div class="nav-split-area">
-									<div class="nav-tree-scroll">
+									<div class="nav-tree-scroll" @onkeydown="OnNavTreeKeyDown">
 										<PDTree @ref="_navTree"
 												TItem="NavItem"
 												DataProvider="NavDataProvider"
@@ -1303,6 +1303,37 @@ else
 	}
 
 	// === Navigation ===
+
+	/// <summary>
+	/// Delete on a selected work item takes it out of the queue, or stops it if it is running.
+	/// </summary>
+	/// <param name="args">The key that was pressed.</param>
+	/// <remarks>
+	/// The same two actions as the buttons at the end of the row, without having to aim at them. No
+	/// confirmation, on purpose: a queued item costs nothing to queue again, and a stop already reverts
+	/// anything half-applied, so asking would only slow down clearing a long queue. Only on a work item:
+	/// Delete on any other node does nothing here.
+	/// </remarks>
+	private void OnNavTreeKeyDown(KeyboardEventArgs args)
+	{
+		if (args.Key != "Delete" || _currentView != NavView.WorkItemDetail || _selectedWorkItemId is not { Length: > 0 } id)
+		{
+			return;
+		}
+
+		var item = Lanes.Lanes.SelectMany(lane => lane.Items).FirstOrDefault(candidate => candidate.Id == id);
+
+		switch (item?.State)
+		{
+			case WorkItemState.Running:
+				Lanes.Cancel(id);
+				break;
+
+			case WorkItemState.Pending:
+				Lanes.Remove(id);
+				break;
+		}
+	}
 
 	private void OnNavSelectionChanged(TreeNode<NavItem> node)
 	{
