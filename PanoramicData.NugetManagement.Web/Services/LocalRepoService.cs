@@ -1344,7 +1344,7 @@ public partial class LocalRepoService
 	/// Only <see cref="IsTransientNetworkFailure"/> is retried: a refusal such as an archived repository
 	/// or a rejected push is the same answer every time, and repeating it would only delay saying so.
 	/// </remarks>
-	private static async Task<(bool Success, string Output)> RunNetworkGitWithRetryAsync(
+	internal static async Task<(bool Success, string Output)> RunNetworkGitWithRetryAsync(
 		string workingDirectory,
 		IReadOnlyList<string> arguments,
 		Action<string>? onOutput,
