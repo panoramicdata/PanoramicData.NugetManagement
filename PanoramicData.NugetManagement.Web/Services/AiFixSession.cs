@@ -74,13 +74,65 @@ public sealed class AiFixSession(
 	AiFixOptions options,
 	Action<string> onOutput,
 	Action<AiStreamDelta>? onDelta = null,
-	AiSessionLog? sessionLog = null)
+	AiSessionLog? sessionLog = null,
+	Action<string>? onStatus = null,
+	Func<string?>? statusDetail = null)
 {
 	private readonly AiSessionLog _log = sessionLog ?? AiSessionLog.None;
 
 	private readonly Stopwatch _clock = new();
 
 	private bool OutOfTime => options.TimeBudget is { } budget && _clock.Elapsed > budget;
+
+	private int _attempt = 1;
+
+	private int _turn;
+
+	private string? _lastEvent;
+
+	/// <summary>
+	/// Says where the session has got to, in one line, for the work pane and the tree.
+	/// </summary>
+	/// <param name="activity">What it is doing right now.</param>
+	/// <remarks>
+	/// The pane is a scrolling log, which answers "what happened" and not "where are we". This is the second
+	/// question: which attempt and turn, how much of the clock is spent, whatever the caller wants shown
+	/// alongside (the coverage figure, for one), and the last thing that came back.
+	/// </remarks>
+	private void ReportStatus(string activity)
+	{
+		if (onStatus is null)
+		{
+			return;
+		}
+
+		var minutes = _clock.Elapsed.TotalMinutes.ToString("0", CultureInfo.InvariantCulture);
+
+		var parts = new List<string>
+		{
+			$"attempt {_attempt.ToString(CultureInfo.InvariantCulture)}/{options.MaxAttempts.ToString(CultureInfo.InvariantCulture)}",
+			$"turn {_turn.ToString(CultureInfo.InvariantCulture)}/{options.MaxTurnsPerAttempt.ToString(CultureInfo.InvariantCulture)}",
+			options.TimeBudget is { } budget
+				? $"{minutes} of {budget.TotalMinutes.ToString("0", CultureInfo.InvariantCulture)} min"
+				: $"{minutes} min"
+		};
+
+		if (statusDetail?.Invoke() is { Length: > 0 } detail)
+		{
+			parts.Add(detail);
+		}
+
+		if (_lastEvent is { Length: > 0 })
+		{
+			parts.Add($"last: {_lastEvent}");
+		}
+
+		parts.Add(activity);
+
+		onStatus(string.Join(" · ", parts));
+	}
+
+	private static string Truncate(string text, int length) => text.Length <= length ? text : text[..length] + "…";
 
 	/// <summary>
 	/// The tools this session can actually run. A tool described to the model that the toolbox cannot
@@ -192,9 +244,12 @@ public sealed class AiFixSession(
 
 			_log.Write("attempt_start", new Dictionary<string, object?> { ["attempt"] = attempt });
 
+			_attempt = attempt;
+
 			var finishedByModel = await RunAttemptAsync(conversation, request, attempt, cancellationToken)
 				.ConfigureAwait(false);
 
+			ReportStatus("checking whether that fixed it");
 			var checkTimer = Stopwatch.StartNew();
 			var check = await checkRuleAsync(cancellationToken).ConfigureAwait(false);
 			checkTimer.Stop();
@@ -280,6 +335,8 @@ public sealed class AiFixSession(
 			}
 
 			var turnNumber = turn + 1;
+			_turn = turnNumber;
+			ReportStatus("waiting for the model");
 			var turnTimer = Stopwatch.StartNew();
 
 			AiModelTurn next;
@@ -371,6 +428,13 @@ public sealed class AiFixSession(
 				onOutput($"   {(result.IsError ? "⚠️" : "→")} {call.Name}{DescribeArguments(call)}: "
 					+ $"{Summarise(result.Content)} ({Seconds(toolTimer.Elapsed)})");
 
+				// With thinking off there is no reasoning to watch, so what the model is doing has to be shown
+				// instead: the text it is putting in, which says more than a file name does.
+				if (CallDetail(call) is { Length: > 0 } detail)
+				{
+					onDelta?.Invoke(new AiStreamDelta(AiDeltaKind.Content, detail + "\n"));
+				}
+
 				_log.Write("tool_result", new Dictionary<string, object?>
 				{
 					["attempt"] = attempt,
@@ -382,6 +446,9 @@ public sealed class AiFixSession(
 				});
 
 				conversation.Add(new AiMessage("tool", result.Content));
+
+				_lastEvent = $"{call.Name}{DescribeArguments(call)}: {Truncate(Summarise(result.Content), 70)}";
+				ReportStatus("waiting for the model");
 
 				if (result.IsFinish)
 				{
@@ -416,6 +483,26 @@ public sealed class AiFixSession(
 		=> $"{span.TotalSeconds.ToString("N1", CultureInfo.InvariantCulture)}s";
 
 	/// <summary>The arguments worth showing in the log: the path, where there is one.</summary>
+	/// <summary>
+	/// The text a write puts into a file, shortened, for the pane. Null for a call with nothing worth showing.
+	/// </summary>
+	/// <param name="call">The tool call.</param>
+	internal static string? CallDetail(AiToolCall call)
+	{
+		static string Cut(string text) => text.Length <= 400 ? text : text[..400] + $"… ({text.Length.ToString(CultureInfo.InvariantCulture)} characters)";
+
+		return call.Name switch
+		{
+			"replace_in_file" when call.Arguments.TryGetValue("old_text", out var old) && call.Arguments.TryGetValue("new_text", out var replacement)
+				=> $"replace in {call.Arguments.GetValueOrDefault("path")}:\n- {Cut(old).Replace("\n", "\n- ", StringComparison.Ordinal)}\n+ {Cut(replacement).Replace("\n", "\n+ ", StringComparison.Ordinal)}",
+			"write_file" when call.Arguments.TryGetValue("content", out var content)
+				=> $"write {call.Arguments.GetValueOrDefault("path")}:\n{Cut(content)}",
+			"finish" when call.Arguments.TryGetValue("summary", out var summary)
+				=> $"finish: {Cut(summary)}",
+			_ => null
+		};
+	}
+
 	private static string DescribeArguments(AiToolCall call)
 		=> call.Arguments.TryGetValue("path", out var path) ? $" {path}" : string.Empty;
 

@@ -955,6 +955,9 @@ public sealed class WorkExecutors(
 			// declined now rather than after twelve turns of writing tests nothing can score.
 			var coverageMode = string.Equals(ruleId, "TST-10", StringComparison.OrdinalIgnoreCase);
 			CoverageRun? baseline = null;
+
+			// The latest coverage figure, shown in the pane's status line next to the turn and the clock.
+			string? coverageNow = null;
 			IReadOnlyList<string> testFolders = [];
 			IReadOnlyList<string> testProjects = [];
 
@@ -985,6 +988,8 @@ public sealed class WorkExecutors(
 					return;
 				}
 
+				coverageNow = CoverageStatus(baseline);
+
 				Say($"📏 {baseline.Report.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}% to start, aiming for "
 					+ $"{_coverageTarget.ToString("0", CultureInfo.InvariantCulture)}%.");
 			}
@@ -1012,9 +1017,13 @@ public sealed class WorkExecutors(
 				// that is uncovered or by editing it until it is easy to cover.
 				writableFolders: coverageMode ? testFolders : null,
 				coverage: coverageMode
-					? async token => DescribeCoverage(
-						await CoverageMeasurement.MeasureAsync(row.LocalPath, null, token).ConfigureAwait(false),
-						knownFailures)
+					? async token =>
+					{
+						var run = await CoverageMeasurement.MeasureAsync(row.LocalPath, null, token).ConfigureAwait(false);
+						coverageNow = CoverageStatus(run);
+
+						return DescribeCoverage(run, knownFailures);
+					}
 					: null,
 
 				// Only new files: "add tests" is not a licence to change the ones that exist.
@@ -1125,7 +1134,9 @@ public sealed class WorkExecutors(
 				// Straight into this item's transcript rather than through Say: a token is a fragment,
 				// not a line, and the shared console has no way to render a hundred of them a second.
 				AiTranscriptSink.For(item.Transcript),
-				sessionLog);
+				sessionLog,
+				onStatus: progress.Report,
+				statusDetail: () => coverageNow);
 
 			var request = new AiFixRequest(
 				row.RepositoryFullName,
@@ -1150,7 +1161,7 @@ public sealed class WorkExecutors(
 				.RunAsync(
 					request,
 					token => coverageMode
-						? CheckCoverageAsync(row, toolbox, knownFailures, token)
+						? CheckCoverageAsync(row, toolbox, knownFailures, status => coverageNow = status, token)
 						: remotelyGraded
 							? CheckLocalChangeAsync(row, toolbox, verifyTests ? testBaseline : null, token)
 							: ReEvaluateAndBuildAsync(row, ruleId, toolbox, buildWasBroken, token),
@@ -1275,6 +1286,13 @@ public sealed class WorkExecutors(
 		return "IT DOES NOT COMPILE. Fix this before writing anything else:\n" + string.Join("\n", errors);
 	}
 
+	/// <summary>A coverage run as one phrase for the status line, for example "coverage 54.5% of 62%".</summary>
+	private static string CoverageStatus(CoverageRun run)
+		=> run.Report is null
+			? "coverage not measurable"
+			: $"coverage {run.Report.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}% of "
+				+ $"{_coverageTarget.ToString("0", CultureInfo.InvariantCulture)}%";
+
 	/// <summary>
 	/// A coverage run as the model reads it: whether the tests passed, the figure, and where to look next.
 	/// </summary>
@@ -1333,6 +1351,7 @@ public sealed class WorkExecutors(
 		RepositoryDashboardRow row,
 		AiFixToolbox toolbox,
 		IReadOnlySet<string> knownFailures,
+		Action<string> noteCoverage,
 		CancellationToken cancellationToken)
 	{
 		if (toolbox.FilesWritten.Count == 0)
@@ -1341,6 +1360,7 @@ public sealed class WorkExecutors(
 		}
 
 		var run = await CoverageMeasurement.MeasureAsync(row.LocalPath!, null, cancellationToken).ConfigureAwait(false);
+		noteCoverage(CoverageStatus(run));
 		var testsFine = run.TestsPassed || OnlyKnownFailures(run, knownFailures);
 		var passed = run.Report is not null && testsFine && run.Report.LinePercent >= _coverageTarget;
 
@@ -2009,7 +2029,8 @@ public sealed class WorkExecutors(
 				fixOptions,
 				Say,
 				AiTranscriptSink.For(item.Transcript),
-				sessionLog);
+				sessionLog,
+				onStatus: progress.Report);
 
 			var request = new AiFixRequest(
 				row.RepositoryFullName,

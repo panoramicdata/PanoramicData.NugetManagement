@@ -102,7 +102,7 @@ public class AiFixSessionTests(ITestOutputHelper output) : TestWithOutput(output
 		await session.RunAsync(Request(), PassesOnAttempt(1), TestContext.Current.CancellationToken);
 
 		model.WasGivenASink.Should().BeTrue("a session that keeps the sink to itself streams nowhere");
-		streamed.Should().Equal([
+		streamed.Take(2).Should().Equal([
 			new AiStreamDelta(AiDeltaKind.Thinking, "the rule wants a SECURITY.md"),
 			new AiStreamDelta(AiDeltaKind.Content, "writing it now")]);
 	}

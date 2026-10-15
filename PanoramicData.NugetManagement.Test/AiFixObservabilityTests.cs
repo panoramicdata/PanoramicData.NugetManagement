@@ -361,6 +361,62 @@ public class AiFixObservabilityTests(ITestOutputHelper output) : TestWithOutput(
 	}
 
 	[Fact]
+	public void CallDetail_ShowsWhatAWritePutsIn_AndNothingForAReadOnlyCall()
+	{
+		AiFixSession.CallDetail(Call("replace_in_file", ("path", "a.cs"), ("old_text", "x\ny"), ("new_text", "z")))
+			.Should().Be("replace in a.cs:\n- x\n- y\n+ z");
+		AiFixSession.CallDetail(Call("write_file", ("path", "T.cs"), ("content", new string('a', 500))))
+			.Should().StartWith("write T.cs:\n").And.Contain("500 characters");
+		AiFixSession.CallDetail(Call("read_file", ("path", "a.cs"))).Should().BeNull();
+	}
+
+	[Fact]
+	public async Task RunAsync_StreamsWhatTheModelWrote_ToThePane_EvenWithNoThinking()
+	{
+		Directory.CreateDirectory(_root);
+		var model = new ScriptedModel(
+			new AiModelTurn(null, [Call("write_file", ("path", "n.txt"), ("content", "hello"))]));
+		var shown = new List<AiStreamDelta>();
+
+		var session = new AiFixSession(
+			model, new AiFixToolbox(_root), new AiFixOptions { MaxTurnsPerAttempt = 4, MaxAttempts = 1 }, _ => { }, shown.Add);
+
+		await session.RunAsync(Request(), Passes(), TestContext.Current.CancellationToken);
+
+		shown.Should().Contain(delta => delta.Kind == AiDeltaKind.Content && delta.Text.Contains("write n.txt:\nhello"));
+	}
+
+	/// <summary>
+	/// The pane is a log of what happened; the status line is where the session stands. It has to carry the
+	/// attempt, the turn, the clock, whatever the caller adds, and the last thing that came back.
+	/// </summary>
+	[Fact]
+	public async Task RunAsync_ReportsAStatusLine_OfWhereItHasGotTo()
+	{
+		Directory.CreateDirectory(_root);
+		var statuses = new List<string>();
+
+		var model = new ScriptedModel(
+			new AiModelTurn(null, [Call("write_file", ("path", "n.txt"), ("content", "x"))]));
+
+		var session = new AiFixSession(
+			model,
+			new AiFixToolbox(_root),
+			new AiFixOptions { MaxTurnsPerAttempt = 6, MaxAttempts = 2, TimeBudget = TimeSpan.FromMinutes(25) },
+			_ => { },
+			sessionLog: null,
+			onStatus: statuses.Add,
+			statusDetail: () => "coverage 54.5% of 62%");
+
+		await session.RunAsync(Request(), Passes(), TestContext.Current.CancellationToken);
+
+		statuses.Should().Contain(status => status.StartsWith("attempt 1/2 · turn 1/6 · 0 of 25 min", StringComparison.Ordinal)
+			&& status.Contains("coverage 54.5% of 62%") && status.EndsWith("waiting for the model", StringComparison.Ordinal));
+		statuses.Should().Contain(status => status.Contains("last: write_file n.txt: Wrote n.txt."));
+		statuses.Last().Should().EndWith("checking whether that fixed it");
+	}
+
+	[Fact]
 	public void ToolSpecs_DescribeReplaceInFile()
 		=> AiFixSession.ToolSpecs.Select(spec => spec.Name).Should().Contain("replace_in_file");
 
