@@ -16,7 +16,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// </remarks>
 public sealed class AgentWorkObserver
 {
-	private const int Capacity = 200;
+	private const int Capacity = 1000;
 
 	private readonly Lock _gate = new();
 	private readonly List<WorkItem> _seen = [];
@@ -97,8 +97,52 @@ public static class AgentApi
 		["reassess"] = WorkKind.Reassess,
 		["build"] = WorkKind.Build,
 		["test"] = WorkKind.Test,
-		["clone"] = WorkKind.Clone
+		["clone"] = WorkKind.Clone,
+		["git-sync"] = WorkKind.GitSync,
+		["fix-all"] = WorkKind.FixAll,
+		["fix-rule"] = WorkKind.FixRule,
+		["commit-and-push"] = WorkKind.CommitAndPush,
+		["publish"] = WorkKind.Publish
 	};
+
+	/// <summary>
+	/// Kinds that leave the machine, and so are refused unless the repository is in the state that makes
+	/// them reasonable.
+	/// </summary>
+	/// <remarks>
+	/// Both guards sit here, ahead of the executors' own, so that an agent's loop cannot reach them with
+	/// a repository the person would never have chosen. Publishing to nuget.org cannot be undone — a
+	/// version, once published, can only be unlisted — so it additionally needs <c>confirm: true</c>.
+	/// </remarks>
+	private static string? Refusal(WorkKind kind, RepositoryDashboardRow row, bool confirm)
+	{
+		switch (kind)
+		{
+			case WorkKind.CommitAndPush:
+				return row.IsClonedLocally ? null : "the repository is not cloned locally";
+
+			case WorkKind.Publish:
+				if (!confirm)
+				{
+					return "publishing is irreversible and needs confirm: true";
+				}
+
+				if (row.Assessment is null || row.TotalFailures != 0)
+				{
+					return $"the repository is not green ({row.TotalFailures} failing)";
+				}
+
+				if (row.IsWorkingTreeClean != true || row.HasUnpushedCommits == true || row.IsSyncedWithOrigin != true)
+				{
+					return "the working tree is not clean and in step with origin";
+				}
+
+				return null;
+
+			default:
+				return null;
+		}
+	}
 
 	/// <summary>Maps the endpoints, or maps nothing when no token is configured.</summary>
 	/// <param name="app">The application.</param>
@@ -172,13 +216,24 @@ public static class AgentApi
 					repository = r.RepositoryFullName,
 					cloned = r.IsClonedLocally,
 					status = r.Status.ToString(),
-					failing = FailingRuleIds(r)
+					failing = FailingRuleIds(r),
+					totalFailures = r.TotalFailures,
+					staleIssues = r.StaleIssues.Count(),
+					green = r.Assessment is not null && r.TotalFailures == 0,
+					clean = r.IsWorkingTreeClean,
+					unpushed = r.HasUnpushedCommits,
+					packages = r.Packages.Select(pk => new { id = pk.PackageId, latest = pk.LatestVersion }),
+					latestTag = r.LatestTag
 				});
 
 			return Results.Json(rows);
 		});
 
-		group.MapGet("/repos/{owner}/{name}", (DashboardCacheService cache, string owner, string name) =>
+		group.MapGet("/repos/{owner}/{name}", (
+			DashboardCacheService cache,
+			Remediations.RemediationRegistry remediations,
+			string owner,
+			string name) =>
 			cache.GetRow($"{owner}/{name}") is not { } row
 				? Results.Json(new { error = "no such repository" }, statusCode: StatusCodes.Status404NotFound)
 				: Results.Json(new
@@ -189,10 +244,16 @@ public static class AgentApi
 					branch = row.CurrentBranch,
 					workingTreeClean = row.IsWorkingTreeClean,
 					unpushedCommits = row.HasUnpushedCommits,
+					syncedWithOrigin = row.IsSyncedWithOrigin,
 					status = row.Status.ToString(),
 					statusMessage = row.StatusMessage,
 					lastBuild = row.LastBuildState?.ToString(),
 					lastTest = row.LastTestState?.ToString(),
+					totalFailures = row.TotalFailures,
+					staleIssues = row.StaleIssues.Select(i => new { i.Number, i.Title }),
+					packages = row.Packages.Select(pk => new { id = pk.PackageId, latest = pk.LatestVersion }),
+					latestTag = row.LatestTag,
+					nextVersion = row.NextVersion,
 					failingRules = row.Assessment?.RuleResults
 						.Where(r => !r.Passed && r.IsApplicable)
 						.Select(r => new
@@ -200,12 +261,40 @@ public static class AgentApi
 							rule = r.RuleId,
 							name = r.RuleName,
 							severity = r.Severity.ToString(),
-							message = r.Message
+							message = r.Message,
+							fix = FixRoute(r.RuleId, remediations),
+							targets = r.Advisory?.Targets?.Select(t => t.Path),
+
+							// What the rule itself says about the failure, which is more than its one-line
+							// message — for the Codacy rules it is the individual issues. Cut, because an
+							// advisory can run to many pages.
+							detail = Truncate(r.Advisory?.Detail, 3000),
+							data = r.Advisory?.Data
 						})
 				}));
 
-		group.MapGet("/work", (AgentWorkObserver observer) => Results.Json(
-			observer.Items.Select(Describe).Reverse().Take(100)));
+		group.MapGet("/rules", (Remediations.RemediationRegistry remediations, AiPlaybookRegistry playbooks) =>
+			Results.Json(PanoramicData.NugetManagement.Services.RuleRegistry.Rules.Select(rule => new
+			{
+				rule = rule.RuleId,
+				name = rule.RuleName,
+				category = rule.Category.ToString(),
+				severity = rule.Severity.ToString(),
+				fix = FixRoute(rule.RuleId, remediations),
+				playbook = playbooks.For(rule.RuleId) is not null
+			})));
+
+		group.MapGet("/work", (AgentWorkObserver observer, string? kind, string? state, string? repo, int? take) =>
+			Results.Json(observer.Items
+				.Where(i => string.IsNullOrWhiteSpace(kind)
+					|| string.Equals(i.Descriptor.Kind.ToString(), kind, StringComparison.OrdinalIgnoreCase))
+				.Where(i => string.IsNullOrWhiteSpace(state)
+					|| string.Equals(i.State.ToString(), state, StringComparison.OrdinalIgnoreCase))
+				.Where(i => string.IsNullOrWhiteSpace(repo)
+					|| string.Equals(i.RepositoryFullName, repo, StringComparison.OrdinalIgnoreCase))
+				.Reverse()
+				.Take(Math.Clamp(take ?? 100, 1, 1000))
+				.Select(Describe)));
 
 		group.MapGet("/work/{id}", (AgentWorkObserver observer, string id) =>
 			observer.Find(id) is { } item
@@ -240,7 +329,8 @@ public static class AgentApi
 			QueueRequest request,
 			DashboardCacheService cache,
 			WorkLaneService lanes,
-			WorkFanOut fanOut) =>
+			WorkFanOut fanOut,
+			Remediations.RemediationRegistry remediationRegistry) =>
 		{
 			if (string.IsNullOrWhiteSpace(request.Repository) || cache.GetRow(request.Repository) is not { } row)
 			{
@@ -252,6 +342,23 @@ public static class AgentApi
 				if (string.IsNullOrWhiteSpace(request.RuleId))
 				{
 					return Results.Json(new { error = "ai-fix needs ruleId" }, statusCode: StatusCodes.Status400BadRequest);
+				}
+
+				// "*" is every rule the app itself would offer Fix with AI for, one session per file where a
+				// rule names files, minus anything the caller asks to skip.
+				if (request.RuleId == "*")
+				{
+					var skip = new HashSet<string>(request.Skip ?? [], StringComparer.OrdinalIgnoreCase);
+
+					var targets = AiFixCandidates.For(row, remediationRegistry)
+						.Where(target => !skip.Contains(target.RuleId))
+						.ToList();
+
+					return Results.Json(new
+					{
+						queued = fanOut.EnqueueAiFix(row.Organization, row.RepositoryFullName, targets, consoleNodeKey: null),
+						targets = targets.Select(t => t.ToString())
+					});
 				}
 
 				var failing = row.Assessment?.RuleResults.Any(r => !r.Passed
@@ -278,10 +385,24 @@ public static class AgentApi
 					statusCode: StatusCodes.Status400BadRequest);
 			}
 
+			if (Refusal(kind, row, request.Confirm == true) is { } refusal)
+			{
+				return Results.Json(new { error = $"refused: {refusal}" }, statusCode: StatusCodes.Status409Conflict);
+			}
+
+			if (kind == WorkKind.FixRule && string.IsNullOrWhiteSpace(request.RuleId))
+			{
+				return Results.Json(new { error = "fix-rule needs ruleId" }, statusCode: StatusCodes.Status400BadRequest);
+			}
+
+			var parameters = kind == WorkKind.FixRule
+				? new[] { ("ruleId", request.RuleId!.ToUpperInvariant()) }
+				: [];
+
 			var item = lanes.Enqueue(
 				$"{kind} {row.RepositoryFullName}",
-				WorkDescriptor.ForRepository(kind, row.Organization, row.RepositoryFullName),
-				$"{kind}:{row.RepositoryFullName}:",
+				WorkDescriptor.ForRepository(kind, row.Organization, row.RepositoryFullName, parameters),
+				$"{kind}:{row.RepositoryFullName}:{string.Join(',', parameters.Select(p => p.Item2))}",
 				step: null,
 				consoleNodeKey: null);
 
@@ -301,7 +422,40 @@ public static class AgentApi
 	/// <param name="Repository">The repository, as "owner/name".</param>
 	/// <param name="RuleId">For <c>ai-fix</c>, the failing rule.</param>
 	/// <param name="Path">For <c>ai-fix</c>, optionally the one file to fix.</param>
-	public sealed record QueueRequest(string? Kind, string? Repository, string? RuleId, string? Path);
+	/// <param name="Confirm">Required, and true, for <c>publish</c>.</param>
+	/// <param name="Skip">For <c>ai-fix</c> with <c>ruleId: "*"</c>, rule ids to leave out.</param>
+	public sealed record QueueRequest(
+		string? Kind,
+		string? Repository,
+		string? RuleId,
+		string? Path,
+		bool? Confirm = null,
+		string[]? Skip = null);
+
+	/// <summary>
+	/// How a rule can be fixed: by a deterministic remediation, remotely (graded on the published branch),
+	/// outside the working tree, or by the model.
+	/// </summary>
+	private static string FixRoute(string ruleId, Remediations.RemediationRegistry remediations)
+	{
+		var rule = PanoramicData.NugetManagement.Services.RuleRegistry.Rules
+			.FirstOrDefault(r => string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+
+		if (remediations.Get(ruleId) is not null)
+		{
+			return rule is PanoramicData.NugetManagement.Rules.IRemotelyGraded ? "remediation+remote" : "remediation";
+		}
+
+		return rule switch
+		{
+			PanoramicData.NugetManagement.Rules.IFixedOutsideTheWorkingTree => "outside-tree",
+			PanoramicData.NugetManagement.Rules.IRemotelyGraded => "ai+remote",
+			_ => "ai"
+		};
+	}
+
+	private static string? Truncate(string? text, int length)
+		=> text is null || text.Length <= length ? text : text[..length] + "…";
 
 	private static List<string> FailingRuleIds(RepositoryDashboardRow row)
 		=> row.Assessment?.RuleResults

@@ -1,7 +1,22 @@
+using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Ollama.Api;
 using Ollama.Api.Models;
 
 namespace PanoramicData.NugetManagement.Web.Services;
+
+/// <summary>
+/// How to reach Ollama directly, for the one thing the client library cannot do.
+/// </summary>
+/// <param name="BaseUri">The server's base address.</param>
+/// <param name="ApiKey">An optional bearer key.</param>
+/// <param name="IdleTimeout">How long the server may be silent before the turn is abandoned.</param>
+/// <param name="Think">Whether the model may reason before answering.</param>
+public sealed record OllamaDirectOptions(Uri BaseUri, string? ApiKey, TimeSpan IdleTimeout, bool Think);
 
 /// <summary>
 /// <see cref="IChatModel"/> backed by an Ollama server, via the Ollama.Api client.
@@ -16,8 +31,19 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// the loop, which tells it to call a tool and moves on.
 /// </para>
 /// </remarks>
-public sealed class OllamaChatModel(OllamaClient client, string model, int? contextWindow) : IChatModel
+public sealed class OllamaChatModel(
+	OllamaClient client,
+	string model,
+	int? contextWindow,
+	OllamaDirectOptions? direct = null) : IChatModel
 {
+	private static readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+
+	private static readonly JsonSerializerOptions _json = new()
+	{
+		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+	};
+
 	/// <inheritdoc />
 	public async Task<AiModelTurn> NextAsync(
 		string systemPrompt,
@@ -46,9 +72,91 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 			Options = contextWindow is null ? null : new GenerateOptions { NumCtx = contextWindow }
 		};
 
+		// The direct route exists for one field the client cannot send: <c>think</c>, which Ollama reads
+		// from the top level of the request and silently ignores inside options. A reasoning model left to
+		// think spent four minutes and five thousand tokens deliberating one turn of a one-line fix.
+		if (direct is not null)
+		{
+			return await StreamAsync(
+				DirectChunksAsync(request, direct, cancellationToken),
+				onDelta ?? (_ => { }),
+				cancellationToken).ConfigureAwait(false);
+		}
+
 		return onDelta is null
 			? await CompleteAsync(request, cancellationToken).ConfigureAwait(false)
-			: await StreamAsync(request, onDelta, cancellationToken).ConfigureAwait(false);
+			: await StreamAsync(client.Chat.ChatStreamAsync(request, cancellationToken), onDelta, cancellationToken)
+				.ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// The request as the JSON Ollama receives it, with <c>think</c> added at the top level.
+	/// </summary>
+	/// <param name="request">The request to send.</param>
+	/// <param name="think">Whether the model may reason before answering.</param>
+	internal static string BuildDirectBody(ChatRequest request, bool think)
+	{
+		var body = JsonSerializer.SerializeToNode(request, _json)!.AsObject();
+		body["stream"] = true;
+		body["think"] = think;
+
+		return body.ToJsonString();
+	}
+
+	/// <summary>
+	/// Streams a chat turn over plain HTTP, one decoded chunk per line the server sends.
+	/// </summary>
+	/// <remarks>
+	/// The timeout is idle rather than total: it is reset on every line, so a long turn that keeps
+	/// producing tokens is never cut off and a stalled one is.
+	/// </remarks>
+	private static async IAsyncEnumerable<ChatResponse> DirectChunksAsync(
+		ChatRequest request,
+		OllamaDirectOptions options,
+		[EnumeratorCancellation] CancellationToken cancellationToken)
+	{
+		using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		idle.CancelAfter(options.IdleTimeout);
+
+		using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(options.BaseUri, "api/chat"))
+		{
+			Content = new StringContent(BuildDirectBody(request, options.Think), Encoding.UTF8, "application/json")
+		};
+
+		if (!string.IsNullOrWhiteSpace(options.ApiKey))
+		{
+			message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
+		}
+
+		using var response = await _http
+			.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, idle.Token)
+			.ConfigureAwait(false);
+
+		if (!response.IsSuccessStatusCode)
+		{
+			var detail = await response.Content.ReadAsStringAsync(idle.Token).ConfigureAwait(false);
+
+			throw IsMalformedOutput(detail)
+				? new AiModelOutputException($"Ollama returned {(int)response.StatusCode}: {detail}")
+				: new InvalidOperationException($"Ollama returned {(int)response.StatusCode}: {detail}");
+		}
+
+		var stream = await response.Content.ReadAsStreamAsync(idle.Token).ConfigureAwait(false);
+		await using var disposeStream = stream.ConfigureAwait(false);
+		using var reader = new StreamReader(stream);
+
+		while (await reader.ReadLineAsync(idle.Token).ConfigureAwait(false) is { } line)
+		{
+			idle.CancelAfter(options.IdleTimeout);
+
+			if (line.Length == 0)
+			{
+				continue;
+			}
+
+			yield return JsonSerializer.Deserialize<ChatResponse>(line, _json)
+				?? throw new InvalidOperationException("Ollama sent a line that was not a chat response.");
+		}
 	}
 
 	/// <summary>
@@ -80,17 +188,17 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 	/// turn.
 	/// </para>
 	/// </remarks>
-	private async Task<AiModelTurn> StreamAsync(
-		ChatRequest request,
+	private static async Task<AiModelTurn> StreamAsync(
+		IAsyncEnumerable<ChatResponse> chunks,
 		Action<AiStreamDelta> onDelta,
 		CancellationToken cancellationToken)
 	{
-		var content = new System.Text.StringBuilder();
-		var thinkingText = new System.Text.StringBuilder();
+		var content = new StringBuilder();
+		var thinkingText = new StringBuilder();
 		var calls = new List<AiToolCall>();
 		AiTurnMetrics? metrics = null;
 
-		await foreach (var chunk in client.Chat.ChatStreamAsync(request, cancellationToken).ConfigureAwait(false))
+		await foreach (var chunk in chunks.WithCancellation(cancellationToken).ConfigureAwait(false))
 		{
 			Throw(chunk.Error);
 
@@ -171,11 +279,25 @@ public sealed class OllamaChatModel(OllamaClient client, string model, int? cont
 	/// <summary>Fails the turn on an error the server reported, which is not an HTTP failure.</summary>
 	private static void Throw(string? error)
 	{
-		if (error is { Length: > 0 })
+		if (error is not { Length: > 0 })
 		{
-			throw new InvalidOperationException($"Ollama reported: {error}");
+			return;
 		}
+
+		throw IsMalformedOutput(error)
+			? new AiModelOutputException($"Ollama reported: {error}")
+			: new InvalidOperationException($"Ollama reported: {error}");
 	}
+
+	/// <summary>
+	/// Whether a server error is the model's own badly formed output rather than a fault in the setup.
+	/// </summary>
+	/// <param name="error">The server's error text.</param>
+	internal static bool IsMalformedOutput(string error)
+		=> error.Contains("syntax error", StringComparison.OrdinalIgnoreCase)
+			|| error.Contains("error parsing tool call", StringComparison.OrdinalIgnoreCase)
+			|| error.Contains("unexpected end", StringComparison.OrdinalIgnoreCase)
+			|| error.Contains("invalid character", StringComparison.OrdinalIgnoreCase);
 
 	private static List<AiToolCall> Calls(ChatMessage? message)
 		=> message?.ToolCalls?.Select(Translate).ToList() ?? [];

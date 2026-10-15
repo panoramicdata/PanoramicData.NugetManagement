@@ -106,13 +106,6 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 		=> await AssertFixesRuleAsync("META-04").ConfigureAwait(true);
 
 	/// <summary>
-	/// The same, for META-05, which needs two edits in one file that have to agree — a harder ask.
-	/// </summary>
-	[Fact]
-	public async Task ItFixesTheMissingPackageIcon()
-		=> await AssertFixesRuleAsync("META-05").ConfigureAwait(true);
-
-	/// <summary>
 	/// Runs a real AI fix for one rule against a throwaway copy of the fixture, and asserts the rule
 	/// goes from failing to passing.
 	/// </summary>

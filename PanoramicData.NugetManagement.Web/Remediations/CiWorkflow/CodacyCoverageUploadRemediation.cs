@@ -50,9 +50,41 @@ public sealed class CodacyCoverageUploadRemediation : IRemediation
 			return;
 		}
 
+		AddCollector(localPath, result, applied, onOutput);
 		File.WriteAllText(fullPath, edited);
 		applied.Add(workflowFile);
 		onOutput?.Invoke($"✅ [CI-15] {workflowFile} now collects coverage and uploads it to Codacy (needs the CODACY_PROJECT_TOKEN secret — see CQ-07)");
+	}
+
+	/// <summary>
+	/// Adds the coverage collector the workflow edit depends on, when the rule found none referenced.
+	/// </summary>
+	private static void AddCollector(string localPath, RuleResult result, List<string> applied, Action<string>? onOutput)
+	{
+		var data = result.Advisory?.Data;
+		if (data is null
+			|| !data.TryGetValue("add_collector", out var package) || package is not string packageName
+			|| !data.TryGetValue("collector_version", out var version) || version is not string packageVersion
+			|| !data.TryGetValue("collector_target_project", out var project) || project is not string targetProject)
+		{
+			return;
+		}
+
+		var usesCpm = data.TryGetValue("uses_cpm", out var cpm) && cpm is true;
+		if (usesCpm)
+		{
+			RemediationHelpers.AddPackageVersion(localPath, packageName, packageVersion, result, applied, onOutput);
+		}
+
+		RemediationHelpers.EnsurePackageReference(
+			localPath,
+			targetProject,
+			packageName,
+			usesCpm ? null : packageVersion,
+			"all",
+			result,
+			applied,
+			onOutput);
 	}
 
 	private static bool TryRead(RuleResult result, out string workflowFile, out CoverageRunner runner)

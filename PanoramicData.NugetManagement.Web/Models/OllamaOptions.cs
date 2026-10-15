@@ -1,3 +1,5 @@
+using PanoramicData.NugetManagement.Web.Services;
+
 namespace PanoramicData.NugetManagement.Web.Models;
 
 /// <summary>
@@ -70,6 +72,29 @@ public sealed class OllamaOptions
 	public int LogRetentionDays { get; set; } = 30;
 
 	/// <summary>
+	/// Whether a reasoning model may think before each tool call.
+	/// </summary>
+	/// <remarks>
+	/// Off by default. The logged cost was plain: one turn of a one-line change generated 5,497 tokens of
+	/// deliberation, which at the box's 24 tokens a second is nearly four minutes. Turn it on to see
+	/// whether a hard rule needs it.
+	/// </remarks>
+	public bool Think { get; set; }
+
+	/// <summary>
+	/// The route to Ollama that can carry the <see cref="Think"/> setting.
+	/// </summary>
+	/// <returns>Null when the server address is unusable.</returns>
+	public OllamaDirectOptions? ToDirect()
+		=> Uri.TryCreate(BaseUrl, UriKind.Absolute, out var uri)
+			? new OllamaDirectOptions(
+				uri,
+				ApiKey,
+				TimeSpan.FromMilliseconds(Math.Max(5_000, RequestTimeoutMs)),
+				Think)
+			: null;
+
+	/// <summary>
 	/// Whether there is enough here to attempt an AI fix at all.
 	/// </summary>
 	/// <remarks>
@@ -99,6 +124,7 @@ public sealed class OllamaOptions
 		MaxConcurrency = Math.Max(1, MaxConcurrency),
 		MaxTurnsPerAttempt = Math.Max(1, MaxTurnsPerAttempt),
 		MaxAttemptsPerRule = Math.Max(1, MaxAttemptsPerRule),
-		LogRetentionDays = Math.Max(0, LogRetentionDays)
+		LogRetentionDays = Math.Max(0, LogRetentionDays),
+		Think = Think
 	};
 }

@@ -18,6 +18,16 @@ public sealed class AiFixOptions
 
 	/// <summary>Attempts allowed before giving up on the rule.</summary>
 	public int MaxAttempts { get; init; } = 3;
+
+	/// <summary>
+	/// How long the whole session may run, or null for no limit.
+	/// </summary>
+	/// <remarks>
+	/// Turns bound how much a model may do and not how long it may take, and the two come apart: a
+	/// session that writes whole test files spends most of a minute on a single turn. Without a clock one
+	/// stubborn repository can hold the only model for an hour while the rest of the estate waits.
+	/// </remarks>
+	public TimeSpan? TimeBudget { get; init; }
 }
 
 /// <summary>
@@ -67,6 +77,16 @@ public sealed class AiFixSession(
 	AiSessionLog? sessionLog = null)
 {
 	private readonly AiSessionLog _log = sessionLog ?? AiSessionLog.None;
+
+	private readonly Stopwatch _clock = new();
+
+	private bool OutOfTime => options.TimeBudget is { } budget && _clock.Elapsed > budget;
+
+	/// <summary>
+	/// The tools this session can actually run. A tool described to the model that the toolbox cannot
+	/// execute costs a turn to find out, so what is described follows what is offered.
+	/// </summary>
+	private readonly IReadOnlyList<AiToolSpec> _tools = [.. ToolSpecs.Where(spec => toolbox.Offers(spec.Name))];
 
 	/// <summary>
 	/// The tools described to the model, in the order they are most likely to be needed.
@@ -126,6 +146,12 @@ public sealed class AiFixSession(
 			new Dictionary<string, string>(),
 			[]),
 		new(
+			"run_coverage",
+			"Run the tests with coverage and return the line coverage figure, whether the tests passed, and the "
+			+ "files with the most lines that never run, with their line numbers. Use it to see where tests are missing.",
+			new Dictionary<string, string>(),
+			[]),
+		new(
 			"finish",
 			"Call this when the task is complete. Do not call it before you have made the change.",
 			new Dictionary<string, string>
@@ -148,9 +174,17 @@ public sealed class AiFixSession(
 	{
 		var conversation = new List<AiMessage> { new("user", request.Task) };
 
+		_clock.Restart();
+
 		for (var attempt = 1; attempt <= options.MaxAttempts; attempt++)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
+
+			if (OutOfTime)
+			{
+				onOutput($"⏱ {request.RuleId}: the {options.TimeBudget!.Value.TotalMinutes:0}-minute budget is spent, so no further attempt is made.");
+				break;
+			}
 
 			onOutput($"🤖 {request.RuleId} on {request.RepositoryFullName}: attempt "
 				+ $"{attempt.ToString(CultureInfo.InvariantCulture)} of "
@@ -239,12 +273,46 @@ public sealed class AiFixSession(
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 
+			if (OutOfTime)
+			{
+				onOutput("   ⏱ Time budget spent; checking the rule with what has been done.");
+				return false;
+			}
+
 			var turnNumber = turn + 1;
 			var turnTimer = Stopwatch.StartNew();
 
-			var next = await model
-				.NextAsync(request.SystemPrompt, conversation, ToolSpecs, onDelta, cancellationToken)
-				.ConfigureAwait(false);
+			AiModelTurn next;
+
+			try
+			{
+				next = await model
+					.NextAsync(request.SystemPrompt, conversation, _tools, onDelta, cancellationToken)
+					.ConfigureAwait(false);
+			}
+			catch (AiModelOutputException ex)
+			{
+				// The model's own garbled tool call. Worth one turn and a plain telling-off, not the session:
+				// the same call usually comes out right the second time once it knows it came out wrong.
+				turnTimer.Stop();
+
+				onOutput($"   ⚠️ Turn {turnNumber.ToString(CultureInfo.InvariantCulture)}: the model's tool call could not be read ({Summarise(ex.Message)}).");
+
+				_log.Write("model_error", new Dictionary<string, object?>
+				{
+					["attempt"] = attempt,
+					["turn"] = turnNumber,
+					["message"] = ex.Message,
+					["wall_seconds"] = Math.Round(turnTimer.Elapsed.TotalSeconds, 1)
+				});
+
+				conversation.Add(new AiMessage(
+					"user",
+					"Your last tool call was malformed and could not be read. Make it again. Keep every argument "
+					+ "plain text, and do not put XML or tool-call markup inside file contents."));
+
+				continue;
+			}
 
 			turnTimer.Stop();
 

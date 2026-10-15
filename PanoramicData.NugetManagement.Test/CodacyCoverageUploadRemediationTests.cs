@@ -53,14 +53,35 @@ public class CodacyCoverageUploadRemediationTests(ITestOutputHelper output) : Te
 	}
 
 	[Fact]
-	public async Task ShouldOfferNoFix_WhenTheCollectorThatRunnerNeedsIsNotReferenced()
+	public async Task ShouldOfferAFixThatAddsTheCollector_WhenTheCollectorThatRunnerNeedsIsNotReferenced()
 	{
-		// MTP runner, but only coverlet — which is inert under MTP. Adding the flags would produce no
-		// report, and the upload would then send nothing.
+		// MTP runner, but only coverlet — which is inert under MTP. The flags alone would produce no
+		// report, so the fix must add the extension too.
 		var result = await EvaluateAsync(_workflow, _vsTestProject, _mtpGlobalJson).ConfigureAwait(true);
 
-		result.Passed.Should().BeFalse("CI-15 still fails: nothing uploads");
-		result.Advisory!.Data.Should().NotContainKey("workflow_file");
+		result.Passed.Should().BeFalse("CI-15 fails until the fix is applied");
+		result.Advisory!.Data["add_collector"].Should().Be("Microsoft.Testing.Extensions.CodeCoverage");
+	}
+
+	[Fact]
+	public async Task Fix_ShouldAddTheMissingCollector_AndLeaveARepositoryThatPasses()
+	{
+		const string bareProject = "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"xunit\" /></ItemGroup></Project>";
+		var failing = await EvaluateAsync(_workflow, bareProject, globalJson: null).ConfigureAwait(true);
+		failing.Advisory!.Data["add_collector"].Should().Be("coverlet.collector");
+
+		var workflowPath = Path.Combine(_root, _workflowPath);
+		Directory.CreateDirectory(Path.GetDirectoryName(workflowPath)!);
+		File.WriteAllText(workflowPath, _workflow);
+		var projectPath = Path.Combine(_root, "Acme.Widget.Test", "Acme.Widget.Test.csproj");
+		Directory.CreateDirectory(Path.GetDirectoryName(projectPath)!);
+		File.WriteAllText(projectPath, bareProject);
+		var applied = new List<string>();
+
+		new CodacyCoverageUploadRemediation().Apply(_root, failing, applied, null);
+
+		File.ReadAllText(projectPath).Should().Contain("coverlet.collector");
+		File.ReadAllText(workflowPath).Should().Contain("codacy-coverage-reporter-action");
 	}
 
 	[Fact]

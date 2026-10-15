@@ -3997,6 +3997,15 @@ else
 					</span>
 				</div>
 				<div class="form-group">
+					<label>
+						<input type="checkbox" @bind="_ollamaDraft.Think" /> Let the model think before each step
+					</label>
+					<span class="settings-hint">
+						Off is much faster: reasoning once took four minutes on a one-line change. Turn it on
+						for a rule the model cannot manage without.
+					</span>
+				</div>
+				<div class="form-group">
 					<label>Keep session logs (days)</label>
 					<input type="number" @bind="_ollamaDraft.LogRetentionDays" />
 					<span class="settings-hint">
@@ -4582,7 +4591,8 @@ else
 			MaxConcurrency = stored.MaxConcurrency,
 			MaxTurnsPerAttempt = stored.MaxTurnsPerAttempt,
 			MaxAttemptsPerRule = stored.MaxAttemptsPerRule,
-			LogRetentionDays = stored.LogRetentionDays
+			LogRetentionDays = stored.LogRetentionDays,
+			Think = stored.Think
 		};
 
 		_ollamaStatus = null;

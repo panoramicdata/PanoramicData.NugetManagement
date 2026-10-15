@@ -14,8 +14,20 @@ public class AiPlaybookContentTests(ITestOutputHelper output) : TestWithOutput(o
 
 	[Fact]
 	public void APlaybookExistsForTheMetadataRules()
-		=> _registry.RuleIds.Should().Contain(["META-04", "META-05"],
+		=> _registry.RuleIds.Should().Contain(["META-04"],
 			"a csproj property with a known value is the most tractable thing a small model can be asked to do");
+
+	/// <summary>
+	/// META-05 was a playbook until a model, asked to add the icon file, wrote the base64 text of a PNG
+	/// into a file named Logo.png. An image cannot be authored through a text tool, so the whole fix
+	/// moved into a remediation, which copies a real one.
+	/// </summary>
+	[Fact]
+	public void ThePackageIconIsFixedByARemediation_NotAPlaybook()
+	{
+		_registry.RuleIds.Should().NotContain("META-05");
+		new RemediationRegistry().Get("META-05").Should().NotBeNull();
+	}
 
 	/// <summary>
 	/// Fix and Fix with AI are disjoint: Fix does what a remediation can do, Fix with AI does what

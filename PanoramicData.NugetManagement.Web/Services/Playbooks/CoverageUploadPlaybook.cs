@@ -3,16 +3,17 @@ using PanoramicData.NugetManagement.Rules;
 namespace PanoramicData.NugetManagement.Web.Services.Playbooks;
 
 /// <summary>
-/// TST-10: get the repository's coverage into Codacy by adding a coverage job to its CI workflow.
+/// TST-10: raise line coverage by writing tests.
 /// </summary>
 /// <remarks>
-/// Written because the advisory's own instruction was "copy the job from another repository", which a
-/// session confined to one clone cannot do — the first logged run spent twelve turns hunting for a file
-/// it had no way to read. The job is therefore spelled out here.
+/// This used to describe adding a CI coverage job, which was the wrong job for the model: that edit is
+/// deterministic and belongs to CI-15's remediation, and a session asked to do it spent twelve turns
+/// looking for a reference file it could not read. What only a model can do is write the tests, and
+/// what it needs for that is an oracle that does not wait for a push — so the session is given
+/// <c>run_coverage</c>, and is judged on the figure that tool reports.
 /// <para>
-/// TST-10 is graded by Codacy on the published branch, so the session is judged on whether the
-/// workflow changed and the repository still builds. Whether the upload then works is established by
-/// the next CI run, and needs a <c>CODACY_PROJECT_TOKEN</c> secret that no file edit can supply.
+/// A repository with no coverage figure at all is not a candidate (see <see cref="AiFixCandidates"/>):
+/// writing tests cannot make Codacy receive a report.
 /// </para>
 /// </remarks>
 public sealed class CoverageUploadPlaybook : IRuleAiPlaybook
@@ -22,41 +23,51 @@ public sealed class CoverageUploadPlaybook : IRuleAiPlaybook
 
 	/// <inheritdoc />
 	public string Goal
-		=> "Add a job named coverage to the CI workflow that runs the tests with coverage and uploads the "
-			+ "Cobertura report to Codacy.";
+		=> "Add unit tests so that line coverage reaches the target given below.";
 
 	/// <inheritdoc />
-	public IReadOnlyList<string> Files => [".github/workflows/ci.yml"];
+	public IReadOnlyList<string> Files => ["test files inside the test project's folder"];
 
 	/// <inheritdoc />
 	public string ExpectedEndState
-		=> "The workflow file has a job that runs the test project with coverage, writing a Cobertura XML "
-			+ "file, followed by a step using codacy/codacy-coverage-reporter-action with the "
-			+ "CODACY_PROJECT_TOKEN secret and that same file as its coverage-reports. No other job and no "
-			+ "other file is changed. Do not edit project files, even if the build complains about them.";
+		=> "run_coverage reports line coverage at or above the target, and none of your tests fails. Tests it "
+			+ "says failed before you started are not yours: ignore them. You wrote only inside the test "
+			+ "project's folder, and only new files: existing files are read-only. You did not change the "
+			+ "code being tested.";
 
 	/// <inheritdoc />
 	public string WorkedExample
 		=> """
-			Add this job under the existing jobs: key, using the same runs-on, checkout and setup-dotnet
-			steps the other jobs in the file already use. Change only the test project path.
+			How to work:
+			1. Call run_coverage. It names the files with the most lines that never run, and which lines.
+			2. Read the one file with the most uncovered lines. Look at one existing test for the test framework
+			   and assertion library to use. But many of the existing tests are integration tests that call a
+			   live service with credentials: they are what is failing now, and you must NOT copy them. Do not
+			   use any TestConfiguration, appsettings, user secrets or environment variable, and do not touch
+			   the network. Every test you write must pass on a machine with none of those.
+			3. Write a new test file for that class. Each write tells you whether the test project still compiles:
+			   fix any error it reports before writing anything else. One focused test per public method or branch. Call the
+			   real code with simple inputs, and assert on the result.
+			4. Call run_coverage again to see the figure move. Repeat for the next file.
+			Prefer many small, plain tests over a few clever ones. If a test fails, fix the test, not the code.
 
-			  coverage:
-			    runs-on: ubuntu-latest
-			    steps:
-			    - uses: actions/checkout@v4
-			    - uses: actions/setup-dotnet@v4
-			      with:
-			        dotnet-version: '10.0.x'
-			    - name: Run tests with coverage
-			      run: dotnet test --project Example.Test --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml
-			    - name: Upload coverage to Codacy
-			      uses: codacy/codacy-coverage-reporter-action@v1
-			      with:
-			        project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
-			        coverage-reports: '**/coverage.cobertura.xml'
+			Do not copy and paste. Codacy grades duplicated code as poor, and a file of near-identical tests
+			fails it. Where several tests differ only in their inputs, write one test with [Theory] and
+			[InlineData] (or [MemberData]). Put setup that more than one test needs in a private helper
+			method. Keep each test file short, and give every test class and method a clear name.
 
-			The secret itself is added by a person in the repository's settings. You cannot add it and
-			must not try.
+			For a class that calls HTTP, give it a client whose handler returns a fixed response:
+
+			  private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
+			  {
+			      protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+			          => Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) });
+			  }
+
+			For a model or options class, create it, set its properties, and assert they read back. If it
+			serialises, round-trip it through System.Text.Json and compare.
+
+			Put each new test class in its own file inside the test project folder, named after the class
+			it tests, for example ProfilesTests.cs.
 			""";
 }

@@ -40,8 +40,92 @@ public sealed class AiFixToolbox(
 	string cloneRoot,
 	Func<CancellationToken, Task<string>>? build = null,
 	Func<CancellationToken, Task<string>>? test = null,
-	IReadOnlyCollection<string>? writablePaths = null)
+	IReadOnlyCollection<string>? writablePaths = null,
+	IReadOnlyCollection<string>? writableFolders = null,
+	Func<CancellationToken, Task<string>>? coverage = null,
+	bool newFilesOnly = false,
+	Func<string, CancellationToken, Task<string?>>? afterWrite = null)
 {
+	/// <summary>
+	/// What to append to a successful write's result: whether it still compiles, say.
+	/// </summary>
+	/// <remarks>
+	/// A model that writes several files before it builds finds out about its first mistake after its
+	/// fourth, and rewrites all four. Telling it in the result of the write that made the mistake costs
+	/// one build and saves the rest. Null from the delegate means there is nothing to add.
+	/// </remarks>
+	private async Task<string> WithWriteFeedbackAsync(string message, string relativePath, CancellationToken cancellationToken)
+	{
+		if (afterWrite is null)
+		{
+			return message;
+		}
+
+		return await afterWrite(relativePath, cancellationToken).ConfigureAwait(false) is { Length: > 0 } note
+			? $"{message}\n{note}"
+			: message;
+	}
+
+	/// <summary>
+	/// Folders this session may write anywhere under, in addition to <c>writablePaths</c>.
+	/// </summary>
+	/// <remarks>
+	/// For work whose whole product is new files — a session writing tests cannot name them in advance, but
+	/// can be confined to the test project's folder, which keeps it from "fixing" coverage by editing the
+	/// production code the tests are meant to exercise.
+	/// </remarks>
+	private readonly string[]? _writableFolders = writableFolders?
+		.Select(folder => folder.Replace('\\', '/').Trim('/') + "/")
+		.ToArray();
+
+	/// <summary>Whether this toolbox can run <paramref name="toolName"/>, which decides whether it is described to the model.</summary>
+	/// <param name="toolName">The tool.</param>
+	public bool Offers(string toolName) => toolName switch
+	{
+		"run_coverage" => coverage is not null,
+
+		// run_coverage already says whether the tests pass, and knows which failures were there before the
+		// session began. A bare run_tests shows the model failures it did not cause and cannot fix, which
+		// is how one session came to edit a library's integration tests.
+		"run_tests" => coverage is null,
+		_ => true
+	};
+
+	/// <summary>
+	/// The refusal for a path this session may not write, or null when it may.
+	/// </summary>
+	private AiToolResult? RefuseUnwritable(string relativePath)
+	{
+		if (_writable is null && _writableFolders is null)
+		{
+			return null;
+		}
+
+		if (_writable?.Contains(relativePath) == true)
+		{
+			return null;
+		}
+
+		if (_writableFolders?.Any(folder => relativePath.StartsWith(folder, StringComparison.OrdinalIgnoreCase)) == true)
+		{
+			// New files only: a file this session created may be edited again, one that was already there
+			// may not. Adding tests cannot be done by changing the tests that exist, and refusing the
+			// attempt is the only guarantee that none was weakened, skipped or deleted along the way.
+			var existed = File.Exists(Path.Combine(_root, relativePath))
+				&& !(_originals.TryGetValue(relativePath, out var original) && original is null);
+
+			return newFilesOnly && existed
+				? Error($"'{relativePath}' already exists, and in this session existing files are read-only. "
+					+ "Create a new file with a different name instead; do not edit this one.")
+				: null;
+		}
+
+		var allowed = (_writable ?? []).Order(StringComparer.Ordinal)
+			.Concat((_writableFolders ?? []).Select(folder => folder + "…"));
+
+		return Error($"You may not write '{relativePath}'. This session may only write: {string.Join(", ", allowed)}.");
+	}
+
 	/// <summary>
 	/// The only files this session may write, or null when it may write anywhere in the clone.
 	/// </summary>
@@ -74,7 +158,7 @@ public sealed class AiFixToolbox(
 	/// <summary>Every tool this toolbox executes, which is also every tool described to the model.</summary>
 	public static IReadOnlySet<string> ToolNames { get; } = new HashSet<string>(StringComparer.Ordinal)
 	{
-		"list_files", "read_file", "replace_in_file", "write_file", "run_build", "run_tests", "finish"
+		"list_files", "read_file", "replace_in_file", "write_file", "run_build", "run_tests", "run_coverage", "finish"
 	};
 
 	private readonly string _root = Path.GetFullPath(cloneRoot);
@@ -172,6 +256,7 @@ public sealed class AiFixToolbox(
 			"write_file" => await WriteFileAsync(call, cancellationToken).ConfigureAwait(false),
 			"run_build" => await RunAsync(build, "run_build", cancellationToken).ConfigureAwait(false),
 			"run_tests" => await RunAsync(test, "run_tests", cancellationToken).ConfigureAwait(false),
+			"run_coverage" => await RunAsync(coverage, "run_coverage", cancellationToken).ConfigureAwait(false),
 			"finish" => Finish(call),
 			_ => Error(
 				$"There is no tool called '{call.Name}'. The tools available are: "
@@ -286,11 +371,9 @@ public sealed class AiFixToolbox(
 			return refusal;
 		}
 
-		if (_writable is not null && !_writable.Contains(relativePath))
+		if (RefuseUnwritable(relativePath) is { } refused)
 		{
-			return Error(
-				$"You may not write '{relativePath}'. This session may only write: "
-				+ $"{string.Join(", ", _writable.Order(StringComparer.Ordinal))}.");
+			return refused;
 		}
 
 		if (!call.Arguments.TryGetValue("old_text", out var oldText) || oldText.Length == 0)
@@ -335,14 +418,14 @@ public sealed class AiFixToolbox(
 
 		Remember(relativePath, fullPath);
 
-		await File.WriteAllTextAsync(
+		await WriteTextKeepingStyleAsync(
 			fullPath,
 			string.Concat(content.AsSpan(0, first), replacement, content.AsSpan(first + search.Length)),
 			cancellationToken).ConfigureAwait(false);
 
 		_filesWritten.Add(relativePath);
 
-		return new AiToolResult($"Replaced the text in {relativePath}.");
+		return new AiToolResult(await WithWriteFeedbackAsync($"Replaced the text in {relativePath}.", relativePath, cancellationToken).ConfigureAwait(false));
 	}
 
 	private async Task<AiToolResult> WriteFileAsync(AiToolCall call, CancellationToken cancellationToken)
@@ -352,11 +435,9 @@ public sealed class AiFixToolbox(
 			return refusal;
 		}
 
-		if (_writable is not null && !_writable.Contains(relativePath))
+		if (RefuseUnwritable(relativePath) is { } refused)
 		{
-			return Error(
-				$"You may not write '{relativePath}'. This session may only write: "
-				+ $"{string.Join(", ", _writable.Order(StringComparer.Ordinal))}.");
+			return refused;
 		}
 
 		if (!call.Arguments.TryGetValue("content", out var content))
@@ -373,11 +454,43 @@ public sealed class AiFixToolbox(
 
 		Remember(relativePath, fullPath);
 
-		await File.WriteAllTextAsync(fullPath, content, cancellationToken).ConfigureAwait(false);
+		await WriteTextKeepingStyleAsync(fullPath, content, cancellationToken).ConfigureAwait(false);
 
 		_filesWritten.Add(relativePath);
 
-		return new AiToolResult($"Wrote {relativePath}.");
+		return new AiToolResult(await WithWriteFeedbackAsync($"Wrote {relativePath}.", relativePath, cancellationToken).ConfigureAwait(false));
+	}
+
+	/// <summary>
+	/// Writes text the way the file it replaces was written: same byte-order mark, same line endings.
+	/// </summary>
+	/// <remarks>
+	/// A model sees and emits plain text with <c>\n</c> line breaks and no byte-order mark, so a file
+	/// written through it comes out different from how it went in even where not one character was meant
+	/// to change. Across an estate that is thousands of lines of unrelated diff, and for a CRLF
+	/// repository it is the whole file. A file that did not exist is written as given.
+	/// </remarks>
+	private static async Task WriteTextKeepingStyleAsync(string fullPath, string text, CancellationToken cancellationToken)
+	{
+		var bom = false;
+		var crlf = false;
+
+		if (File.Exists(fullPath))
+		{
+			var existing = await File.ReadAllBytesAsync(fullPath, cancellationToken).ConfigureAwait(false);
+
+			bom = existing.Length >= 3 && existing[0] == 0xEF && existing[1] == 0xBB && existing[2] == 0xBF;
+			crlf = Encoding.UTF8.GetString(existing).Contains("\r\n", StringComparison.Ordinal);
+		}
+
+		var normalised = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+		if (crlf)
+		{
+			normalised = normalised.Replace("\n", "\r\n", StringComparison.Ordinal);
+		}
+
+		await File.WriteAllTextAsync(fullPath, normalised, new UTF8Encoding(bom), cancellationToken).ConfigureAwait(false);
 	}
 
 	private static async Task<AiToolResult> RunAsync(

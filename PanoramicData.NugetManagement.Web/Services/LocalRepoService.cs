@@ -1032,10 +1032,18 @@ public partial class LocalRepoService
 	public async Task<(bool Success, string Output)> BuildAsync(
 		string repoIdentity,
 		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		bool restore = false)
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Building in {Path}", path);
+
+		if (restore)
+		{
+			// Asked for explicitly because what the project references has just changed.
+			return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
+		}
+
 		var result = await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--no-restore", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (result.Success || cancellationToken.IsCancellationRequested || !IsMissingRestoreFailure(result.Output))
 		{
@@ -1248,15 +1256,19 @@ public partial class LocalRepoService
 	public async Task<(bool Success, string Output)> RunTestsAsync(
 		string repoIdentity,
 		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		bool sandbox = false)
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Running tests in {Path}", path);
 
+		// See TestSandbox: a model-driven run sees CI's environment, not this machine's credentials.
+		var environment = sandbox ? TestSandbox.Overrides() : null;
+
 		var testProjects = GetConfiguredTestProjects(path);
 		if (testProjects.Count == 0)
 		{
-			return await RunCommandWithStreamingAsync(path, "dotnet", ["test", "--no-build", "--no-restore", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
+			return await RunCommandWithStreamingAsync(path, "dotnet", ["test", "--no-build", "--no-restore", "--verbosity", "normal"], onOutput, cancellationToken, environment).ConfigureAwait(false);
 		}
 
 		var combinedOutput = new List<string>();
@@ -1279,7 +1291,7 @@ public partial class LocalRepoService
 			}
 
 			onOutput?.Invoke($"▶ dotnet {string.Join(' ', args)}");
-			var (success, output) = await RunCommandWithStreamingAsync(path, "dotnet", args, onOutput, cancellationToken).ConfigureAwait(false);
+			var (success, output) = await RunCommandWithStreamingAsync(path, "dotnet", args, onOutput, cancellationToken, environment).ConfigureAwait(false);
 			combinedOutput.Add(output);
 			allPassed &= success;
 		}
@@ -1454,7 +1466,8 @@ public partial class LocalRepoService
 	internal static ProcessStartInfo BuildProcessStartInfo(
 		string workingDirectory,
 		string fileName,
-		IReadOnlyList<string> arguments)
+		IReadOnlyList<string> arguments,
+		IReadOnlyDictionary<string, string?>? environment = null)
 	{
 		var startInfo = new ProcessStartInfo
 		{
@@ -1470,6 +1483,20 @@ public partial class LocalRepoService
 		foreach (var argument in arguments)
 		{
 			startInfo.ArgumentList.Add(argument);
+		}
+
+		// A null value removes the variable rather than blanking it: a credential set to the empty string
+		// is still a variable a test can find and choose to use.
+		foreach (var (name, value) in environment ?? new Dictionary<string, string?>())
+		{
+			if (value is null)
+			{
+				startInfo.Environment.Remove(name);
+			}
+			else
+			{
+				startInfo.Environment[name] = value;
+			}
 		}
 
 		return startInfo;
@@ -1517,11 +1544,12 @@ public partial class LocalRepoService
 		string fileName,
 		IReadOnlyList<string> arguments,
 		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		IReadOnlyDictionary<string, string?>? environment = null)
 	{
 		using var process = new Process
 		{
-			StartInfo = BuildProcessStartInfo(workingDirectory, fileName, arguments)
+			StartInfo = BuildProcessStartInfo(workingDirectory, fileName, arguments, environment)
 		};
 
 		var outputLines = new List<string>();

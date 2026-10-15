@@ -57,6 +57,7 @@ public static class AiFixCandidates
 				.Where(result => !result.Passed)
 				.Where(result => remediations.Get(result.RuleId) is null)
 				.Where(result => !IsFixedElsewhere(result.RuleId))
+				.Where(result => !HasNoCoverageFigure(result))
 				.SelectMany(Expand)
 				.Distinct()
 				.OrderBy(target => target.RuleId, StringComparer.OrdinalIgnoreCase)
@@ -75,6 +76,18 @@ public static class AiFixCandidates
 		=> PanoramicData.NugetManagement.Services.RuleRegistry.Rules
 			.FirstOrDefault(rule => string.Equals(rule.RuleId, ruleId, StringComparison.OrdinalIgnoreCase))
 			is IFixedOutsideTheWorkingTree;
+
+	/// <summary>
+	/// Whether this is TST-10 reporting that Codacy holds no coverage at all.
+	/// </summary>
+	/// <remarks>
+	/// Not work for a model. With no figure the cause is that CI never uploads (CI-15, which has its own
+	/// remediation) or that the upload has no token (CQ-07, which no file edit can fix), and writing tests
+	/// can do nothing about either. A figure that exists but is low is the case tests can move.
+	/// </remarks>
+	private static bool HasNoCoverageFigure(RuleResult result)
+		=> string.Equals(result.RuleId, "TST-10", StringComparison.OrdinalIgnoreCase)
+			&& result.Advisory?.Data.ContainsKey("measured_line") != true;
 
 	/// <summary>
 	/// One failure, as the session or sessions that would address it.

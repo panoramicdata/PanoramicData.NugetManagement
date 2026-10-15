@@ -94,12 +94,12 @@ public class AiFixCandidateTests(ITestOutputHelper output) : TestWithOutput(outp
 	{
 		var candidates = AiFixCandidates.For(
 			Row(
-				Result("META-05", passed: false),
+				Result("TST-09", passed: false),
 				Result("META-04", passed: false),
 				Result("CQ-03", passed: false)),
 			_remediations);
 
-		candidates.Should().Equal([Rule("CQ-03"), Rule("META-04"), Rule("META-05")],
+		candidates.Should().Equal([Rule("CQ-03"), Rule("META-04"), Rule("TST-09")],
 			"a stable order makes the queue readable and the fan-out repeatable");
 	}
 

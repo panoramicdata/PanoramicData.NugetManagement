@@ -1529,10 +1529,20 @@ public class DashboardService
 	/// <summary>
 	/// Builds a local repository.
 	/// </summary>
+	/// <param name="row">The repository.</param>
+	/// <param name="onOutput">Where the build's output goes.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <param name="restore">
+	/// Whether to restore packages first. Off by default, for speed. A caller that has just changed what
+	/// is referenced — a model swapping one package for another — has to turn it on, because a build that
+	/// skips restore compiles against the old references, passes, and is then followed by a test run
+	/// against assemblies that never matched the project files.
+	/// </param>
 	public async Task BuildAsync(
 		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		bool restore = false)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
@@ -1545,7 +1555,7 @@ public class DashboardService
 		row.Status = PackageStatus.Building;
 		row.StatusMessage = "Building...";
 
-		var (success, _) = await _localRepo.BuildAsync(repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+		var (success, _) = await _localRepo.BuildAsync(repoIdentity, onOutput, cancellationToken, restore).ConfigureAwait(false);
 
 		row.Status = success ? PackageStatus.BuildSucceeded : PackageStatus.BuildFailed;
 		row.StatusMessage = success ? "Build succeeded." : "Build failed.";
@@ -2304,10 +2314,18 @@ public class DashboardService
 	/// <summary>
 	/// Runs tests on a local repository.
 	/// </summary>
+	/// <param name="row">The repository.</param>
+	/// <param name="onOutput">Where the test output goes.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <param name="sandbox">
+	/// Whether to run without this machine's credentials, as CI does. A model-driven run turns it on: the
+	/// tests it triggers should not reach real services with real secrets, or print them.
+	/// </param>
 	public async Task RunTestsAsync(
 		RepositoryDashboardRow row,
 		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		bool sandbox = false)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
@@ -2320,7 +2338,7 @@ public class DashboardService
 		row.Status = PackageStatus.Testing;
 		row.StatusMessage = "Running tests...";
 
-		var (success, _) = await _localRepo.RunTestsAsync(repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+		var (success, _) = await _localRepo.RunTestsAsync(repoIdentity, onOutput, cancellationToken, sandbox).ConfigureAwait(false);
 
 		row.Status = success ? PackageStatus.TestsPassed : PackageStatus.TestsFailed;
 		row.StatusMessage = success ? "All tests passed." : "Tests failed.";

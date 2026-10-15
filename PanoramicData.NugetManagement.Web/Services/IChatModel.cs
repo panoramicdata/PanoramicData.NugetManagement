@@ -81,6 +81,19 @@ public sealed record AiTurnMetrics(
 }
 
 /// <summary>
+/// The model produced something the server could not read, as opposed to the server being unreachable
+/// or misconfigured.
+/// </summary>
+/// <remarks>
+/// A small model sometimes emits a tool call that is not well formed — Ollama's own parser then reports
+/// an XML syntax error and sends no call at all. That is the model's mistake and the model can be told
+/// about it, which is worth one turn. It is kept apart from every other failure so that the loop
+/// retries this and nothing else: retrying a missing model or a refused connection would only spend the
+/// whole turn budget discovering the same thing twelve times.
+/// </remarks>
+public sealed class AiModelOutputException(string message) : Exception(message);
+
+/// <summary>
 /// The model, reduced to the one question this application asks of it.
 /// </summary>
 /// <remarks>

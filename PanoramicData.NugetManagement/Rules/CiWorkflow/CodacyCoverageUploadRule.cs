@@ -109,10 +109,10 @@ public class CodacyCoverageUploadRule : RuleBase
 	/// Names the workflow and test runner when — and only when — the edit is one that can be made safely.
 	/// </summary>
 	/// <remarks>
-	/// Each guard exists because the alternative reads as a pass while uploading nothing: the runner's
-	/// collector must already be referenced (the MTP flags do nothing without the extension, and coverlet
-	/// is inert under MTP), and the workflow editor declines anything it cannot edit with certainty. A
-	/// repository that fails any of them keeps the failing result and the prose advisory for AI.
+	/// The workflow editor declines anything it cannot edit with certainty, and the runner's collector
+	/// is added by the fix when no project references it (the MTP flags do nothing without the extension,
+	/// and coverlet is inert under MTP), because an edit without it reads as a pass while uploading nothing.
+	/// A repository the editor declines keeps the failing result and the prose advisory for AI.
 	/// </remarks>
 	private static void AddAutomatedFix(RepositoryContext context, List<string> workflows, Dictionary<string, object> data)
 	{
@@ -120,7 +120,7 @@ public class CodacyCoverageUploadRule : RuleBase
 			&& globalJson.Contains(Standards.MtpTestRunnerName, StringComparison.OrdinalIgnoreCase);
 
 		var collector = mtp ? Standards.CodeCoveragePackage : Standards.VsTestCodeCoveragePackage;
-		if (!ProjectsReference(context, collector))
+		if (context.FindCoverageTestProjectFiles().FirstOrDefault() is null)
 		{
 			return;
 		}
@@ -139,6 +139,7 @@ public class CodacyCoverageUploadRule : RuleBase
 			{
 				data["workflow_file"] = path;
 				data["coverage_runner"] = mtp ? "mtp" : "vstest";
+				AddCollectorData(context, collector, mtp, data);
 				return;
 			}
 		}
@@ -166,6 +167,8 @@ public class CodacyCoverageUploadRule : RuleBase
 				data["workflow_file"] = path;
 				data["coverage_runner"] = runner == CoverageRunner.MicrosoftTestingPlatform ? "mtp" : "vstest";
 				data["test_project"] = testProject;
+			var mtp = runner == CoverageRunner.MicrosoftTestingPlatform;
+			AddCollectorData(context, mtp ? Standards.CodeCoveragePackage : Standards.VsTestCodeCoveragePackage, mtp, data);
 				return true;
 			}
 		}
@@ -185,6 +188,24 @@ public class CodacyCoverageUploadRule : RuleBase
 				&& !Path.GetFileName(path).Equals("Directory.Packages.props", StringComparison.OrdinalIgnoreCase))
 			.Any(path => context.GetFileContent(path) is { } content
 				&& content.Contains($"Include=\"{packageId}\"", StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// When no project references the collector, records what the fix must add. Without it the MTP flags
+	/// do nothing and the VSTest flag is ignored, so the edit would read as a pass while uploading nothing.
+	/// </summary>
+	private static void AddCollectorData(RepositoryContext context, string collector, bool mtp, Dictionary<string, object> data)
+	{
+		if (ProjectsReference(context, collector))
+		{
+			return;
+		}
+
+		var props = context.GetFileContent("Directory.Packages.props");
+		data["add_collector"] = collector;
+		data["collector_version"] = mtp ? Standards.CodeCoverageVersion : Standards.VsTestCodeCoverageVersion;
+		data["collector_target_project"] = context.FindCoverageTestProjectFiles().OrderBy(path => path, StringComparer.OrdinalIgnoreCase).First();
+		data["uses_cpm"] = props is not null && props.Contains("ManagePackageVersionsCentrally", StringComparison.OrdinalIgnoreCase);
+	}
 
 	private static bool IsWorkflowFile(string path)
 		=> path.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase)

@@ -31,6 +31,12 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- The one logo every package carries, copied into a repository by the META-05 remediation. A
+             model cannot author an image, and once wrote base64 text into a file named Logo.png. -->
+        <EmbeddedResource Include="..\PanoramicData.NugetManagement\Logo.png" LogicalName="Logo.png" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="AspNet.Security.OAuth.GitHub" />
         <PackageReference Include="Octokit" />
         <PackageReference Include="Ollama.Api" />

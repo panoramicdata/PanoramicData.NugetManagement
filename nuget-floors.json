@@ -256,7 +256,7 @@
   "Microsoft.Identity.Web.UI": "4.13.0",
   "Microsoft.IdentityModel.Protocols.OpenIdConnect": "6.8.0",
   "Microsoft.IdentityModel.Tokens": "8.14.0",
-  "Microsoft.JSInterop": "10.0.12",
+  "Microsoft.JSInterop": "10.0.13",
   "Microsoft.Kiota.Abstractions": "1.22.2",
   "Microsoft.ML": "5.0.0",
   "Microsoft.Net.Compilers.Toolset": "5.9.0",

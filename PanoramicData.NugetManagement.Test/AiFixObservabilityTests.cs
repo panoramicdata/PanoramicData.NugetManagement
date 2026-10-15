@@ -231,6 +231,135 @@ public class AiFixObservabilityTests(ITestOutputHelper output) : TestWithOutput(
 		result.Content.Should().Be("src/A.csproj");
 	}
 
+	/// <summary>
+	/// Ollama reads <c>think</c> from the top level of the request and ignores it inside options. The
+	/// body is built here from the client's own model, so this holds the two together: if the library's
+	/// property names ever change, the model would stop receiving its tools or its context size without
+	/// any error.
+	/// </summary>
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void DirectBody_CarriesThinkAtTheTopLevel_AlongsideTheRequestTheClientBuilds(bool think)
+	{
+		var request = new Ollama.Api.Models.ChatRequest
+		{
+			Model = "qwen3.8:27b",
+			Messages = [new() { Role = "user", Content = "hi" }],
+			Tools = [.. AiFixSession.ToolSpecs.Select(spec => new Ollama.Api.Models.ChatTool
+			{
+				Type = Ollama.Api.Models.McpType.Function,
+				Function = new Ollama.Api.Models.ChatToolFunction { Name = spec.Name, Description = spec.Description }
+			})],
+			Options = new Ollama.Api.Models.GenerateOptions { NumCtx = 131_072 }
+		};
+
+		var body = JsonDocument.Parse(OllamaChatModel.BuildDirectBody(request, think)).RootElement;
+
+		body.GetProperty("think").GetBoolean().Should().Be(think);
+		body.GetProperty("stream").GetBoolean().Should().BeTrue();
+		body.GetProperty("model").GetString().Should().Be("qwen3.8:27b");
+		body.GetProperty("messages")[0].GetProperty("content").GetString().Should().Be("hi");
+		body.GetProperty("tools").GetArrayLength().Should().Be(AiFixSession.ToolSpecs.Count);
+		body.GetProperty("options").GetProperty("num_ctx").GetInt32().Should().Be(131_072);
+	}
+
+	[Fact]
+	public void DirectBody_CarriesAnAssistantsToolCalls()
+	{
+		var request = new Ollama.Api.Models.ChatRequest
+		{
+			Model = "m",
+			Messages =
+			[
+				new()
+				{
+					Role = "assistant",
+					Content = string.Empty,
+					ToolCalls =
+					[
+						new Ollama.Api.Models.ChatToolCall
+						{
+							Function = new Ollama.Api.Models.ChatToolFunctionCall
+							{
+								Name = "write_file",
+								Arguments = new Dictionary<string, object?> { ["path"] = "a.txt" }
+							}
+						}
+					]
+				}
+			]
+		};
+
+		var call = JsonDocument.Parse(OllamaChatModel.BuildDirectBody(request, false)).RootElement
+			.GetProperty("messages")[0].GetProperty("tool_calls")[0].GetProperty("function");
+
+		call.GetProperty("name").GetString().Should().Be("write_file");
+		call.GetProperty("arguments").GetProperty("path").GetString().Should().Be("a.txt");
+	}
+
+	[Fact]
+	public void OllamaOptions_ThinkIsOffByDefault_AndSurvivesNormalising()
+	{
+		new PanoramicData.NugetManagement.Web.Models.OllamaOptions().Think.Should().BeFalse();
+
+		new PanoramicData.NugetManagement.Web.Models.OllamaOptions { Think = true }
+			.Normalised().Think.Should().BeTrue();
+	}
+
+	/// <summary>
+	/// A model emits plain text with <c>\n</c> and no byte-order mark. Writing a file through it must not
+	/// change either: the whole-file diff that results is what buried a one-line fix in noise.
+	/// </summary>
+	[Fact]
+	public async Task WriteFile_KeepsTheExistingFilesByteOrderMarkAndLineEndings()
+	{
+		var path = Path.Combine(_root, "p.csproj");
+		Directory.CreateDirectory(_root);
+		await File.WriteAllBytesAsync(
+			path,
+			[.. new byte[] { 0xEF, 0xBB, 0xBF }, .. System.Text.Encoding.UTF8.GetBytes("<a>\r\n</a>\r\n")],
+			TestContext.Current.CancellationToken);
+
+		await new AiFixToolbox(_root).ExecuteAsync(
+			Call("write_file", ("path", "p.csproj"), ("content", "<a>\n<b/>\n</a>\n")),
+			TestContext.Current.CancellationToken);
+
+		var bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+
+		bytes.Take(3).Should().Equal(0xEF, 0xBB, 0xBF);
+		System.Text.Encoding.UTF8.GetString(bytes).Should().Be("﻿<a>\r\n<b/>\r\n</a>\r\n");
+	}
+
+	[Fact]
+	public async Task ReplaceInFile_KeepsTheByteOrderMark()
+	{
+		var path = Path.Combine(_root, "p.csproj");
+		Directory.CreateDirectory(_root);
+		await File.WriteAllBytesAsync(
+			path,
+			[.. new byte[] { 0xEF, 0xBB, 0xBF }, .. System.Text.Encoding.UTF8.GetBytes("<a>x</a>")],
+			TestContext.Current.CancellationToken);
+
+		await ReplaceAsync("p.csproj", "x", "y");
+
+		(await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken)).Take(3)
+			.Should().Equal(0xEF, 0xBB, 0xBF);
+	}
+
+	[Fact]
+	public async Task WriteFile_ForANewFile_WritesItAsGiven_WithNoByteOrderMark()
+	{
+		Directory.CreateDirectory(_root);
+
+		await new AiFixToolbox(_root).ExecuteAsync(
+			Call("write_file", ("path", "new.txt"), ("content", "a\nb\n")),
+			TestContext.Current.CancellationToken);
+
+		(await File.ReadAllBytesAsync(Path.Combine(_root, "new.txt"), TestContext.Current.CancellationToken))
+			.Should().Equal(System.Text.Encoding.UTF8.GetBytes("a\nb\n"));
+	}
+
 	[Fact]
 	public void ToolSpecs_DescribeReplaceInFile()
 		=> AiFixSession.ToolSpecs.Select(spec => spec.Name).Should().Contain("replace_in_file");
@@ -298,6 +427,56 @@ public class AiFixObservabilityTests(ITestOutputHelper output) : TestWithOutput(
 
 		assistant.ToolCalls.Should().ContainSingle()
 			.Which.Arguments["content"].Should().Be("hello");
+	}
+
+	[Theory]
+	[InlineData("XML syntax error on line 3: element <function> closed by </parameter>", true)]
+	[InlineData("error parsing tool call: raw='{...' err=unexpected end of JSON input", true)]
+	[InlineData("model 'qwen3.8:27b' not found", false)]
+	[InlineData("connection refused", false)]
+	public void MalformedOutput_IsTold_ApartFromARealFault(string error, bool malformed)
+		=> OllamaChatModel.IsMalformedOutput(error).Should().Be(malformed);
+
+	private sealed class FlakyModel : IChatModel
+	{
+		private int _calls;
+
+		public List<IReadOnlyList<AiMessage>> Conversations { get; } = [];
+
+		public Task<AiModelTurn> NextAsync(
+			string systemPrompt,
+			IReadOnlyList<AiMessage> conversation,
+			IReadOnlyList<AiToolSpec> tools,
+			Action<AiStreamDelta>? onDelta,
+			CancellationToken cancellationToken)
+		{
+			Conversations.Add([.. conversation]);
+
+			return _calls++ == 0
+				? throw new AiModelOutputException("XML syntax error on line 3")
+				: Task.FromResult(new AiModelTurn(null, [Call("finish", ("summary", "done"))]));
+		}
+	}
+
+	/// <summary>
+	/// A garbled tool call is the model's mistake, and it costs a turn rather than the session. It used
+	/// to escape as an exception and end the run with the model never told.
+	/// </summary>
+	[Fact]
+	public async Task RunAsync_ASessionSurvivesOneMalformedToolCall_AndTellsTheModel()
+	{
+		Directory.CreateDirectory(_root);
+		var model = new FlakyModel();
+		var lines = new List<string>();
+
+		var session = new AiFixSession(
+			model, new AiFixToolbox(_root), new AiFixOptions { MaxTurnsPerAttempt = 4, MaxAttempts = 1 }, lines.Add);
+
+		var outcome = await session.RunAsync(Request(), Passes(), TestContext.Current.CancellationToken);
+
+		outcome.Succeeded.Should().BeTrue();
+		model.Conversations[1].Last().Content.Should().Contain("malformed");
+		lines.Should().Contain(line => line.Contains("could not be read"));
 	}
 
 	[Fact]
