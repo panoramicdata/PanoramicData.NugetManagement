@@ -58,7 +58,11 @@ public sealed record AiRuleCheck(bool Passed, string Message);
 /// <param name="Succeeded">Whether the rule ended up passing.</param>
 /// <param name="Attempts">How many attempts it took, or were spent failing.</param>
 /// <param name="Summary">A line for the work item's output.</param>
-public sealed record AiFixOutcome(bool Succeeded, int Attempts, string Summary);
+/// <param name="FinishText">
+/// What the model said when it called <c>finish</c>, for a session that ended in success; null otherwise.
+/// A step that asks the model to name something (a test filter, say) reads it from here.
+/// </param>
+public sealed record AiFixOutcome(bool Succeeded, int Attempts, string Summary, string? FinishText = null);
 
 /// <summary>
 /// Runs a model against one rule in one repository until the rule agrees it is fixed.
@@ -89,6 +93,9 @@ public sealed class AiFixSession(
 	private int _turn;
 
 	private string? _lastEvent;
+
+	/// <summary>What the model said when it last called <c>finish</c> in the current run.</summary>
+	private string? _finishText;
 
 	/// <summary>
 	/// Says where the session has got to, in one line, for the work pane and the tree.
@@ -235,6 +242,7 @@ public sealed class AiFixSession(
 	{
 		var conversation = new List<AiMessage> { new("user", request.Task) };
 
+		_finishText = null;
 		_clock.Restart();
 
 		for (var attempt = 1; attempt <= options.MaxAttempts; attempt++)
@@ -281,7 +289,8 @@ public sealed class AiFixSession(
 					new AiFixOutcome(
 						true,
 						attempt,
-						$"{request.RuleName} fixed on attempt {attempt.ToString(CultureInfo.InvariantCulture)}."));
+						$"{request.RuleName} fixed on attempt {attempt.ToString(CultureInfo.InvariantCulture)}.",
+						_finishText));
 			}
 
 			onOutput($"↻ {request.RuleId} still fails: {check.Message} (re-check {Seconds(checkTimer.Elapsed)})");
@@ -462,6 +471,7 @@ public sealed class AiFixSession(
 				if (result.IsFinish)
 				{
 					finished = true;
+					_finishText = result.Content;
 				}
 			}
 
