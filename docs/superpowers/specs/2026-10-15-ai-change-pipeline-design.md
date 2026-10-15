@@ -57,7 +57,7 @@ One `AiChangePipeline` per attempt, run on the repository's own lane so nothing 
    the red run, the green run and the changed-line coverage. An issue PR says `Fixes #n`.
 7. **CI gate.** Poll the PR's check runs. All completed and none failed: merge (squash). Any failed: leave
    the PR open and report which check failed. Still pending after the timeout: leave it open and report
-   that it timed out. No checks at all: merge on the local gate.
+   that it timed out. No checks after a 2-minute grace period: merge on the local gate.
 8. **Finish.** Return the clone to `main`, fast-forward it, delete the local and remote branch.
 
 A failed gate at any step restores the clone to `main` and removes the branch, and the console says
@@ -145,3 +145,28 @@ These were not settled in discussion and are the places to correct:
    re-evaluated locally.
 6. **Three attempts** to produce a valid red test before reporting the testing gap, matching the existing
    `MaxAttempts`.
+
+Settled while building, because the code showed the first version of the design was incomplete:
+
+7. **No checks are believed only after a 2-minute grace.** GitHub registers check runs a moment after a
+   push, so an empty list straight away is treated as "not yet", and only an empty list that persists
+   past the grace period means the repository has no CI.
+8. **Test files do not count against the path cap**, so a fix plus its reproducing test fits within it.
+9. **Rule fixes are delivered after the model session, not wrapped around it.** The TST-10 coverage mode,
+   progress-keeping and test baselines in the rule-fix session are unchanged; once it succeeds, its edits
+   go to the pipeline's `DeliverAsync` (branch, gate, pull request, CI, merge). There is no red step: the
+   rule is its own specification. Delivery is refused, leaving the edits in place, when the working tree
+   holds changes the session did not write, because returning to `main` resets the tree.
+10. **Every test run the pipeline makes is sandboxed**, so tests a model wrote see CI's environment and not
+    this machine's credentials.
+11. **The suite must already pass.** A repository whose tests fail in the sandbox before any change fails
+    the local gate with the failing tests named and cannot auto-merge. This is deliberate ("no
+    regressions"), and it means those repositories need their baseline fixed first.
+12. **Issue fixes need an existing test project.** The red-test step may add new files in the test folders
+    and nothing else. A repository with none gets a project from the TST-01 rule fix, whose prompt carries
+    the test guide.
+13. **The model's server is held only around calls into the model**, never across the CI wait.
+14. **A rule fix may edit `.github/workflows` and merge it after CI.** This is the one place the policy
+    trusts model-written workflow files, and CI on the pull request runs the edited workflow with the
+    repository's secrets. The model is the local Ollama and the prompt comes from an assessment, not from a
+    stranger's text, but it is the decision most worth revisiting.
