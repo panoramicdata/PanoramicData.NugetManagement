@@ -1,4 +1,4 @@
-namespace PanoramicData.NugetManagement.Web.Services;
+﻿namespace PanoramicData.NugetManagement.Web.Services;
 
 /// <summary>
 /// What the Changes tab shows: the changed files, a label per file, the selected file and its diff.
@@ -14,6 +14,9 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 	/// <summary>Label for a file that was already changed when the session started and has been edited since.</summary>
 	public const string EditedLabel = "(pre-existing, edited by this session)";
 
+	/// <summary>The most files listed (and labelled); a clone with an un-ignored output folder has thousands.</summary>
+	public const int MaxListed = 500;
+
 	private readonly Lock _gate = new();
 	private DateTime _lastRead = DateTime.MinValue;
 	private bool _reading;
@@ -22,6 +25,14 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 
 	/// <summary>The latest result. Replaced as a whole, so a reader on another thread never sees a half-built one.</summary>
 	public Snapshot Current => Volatile.Read(ref _current);
+
+	/// <summary>The part of <paramref name="changes"/> that is listed.</summary>
+	/// <param name="changes">The changed files.</param>
+	public static IEnumerable<ChangedFile> Listed(IReadOnlyList<ChangedFile> changes) => changes.Take(MaxListed);
+
+	/// <summary>How many of <paramref name="changes"/> are left off the list.</summary>
+	/// <param name="changes">The changed files.</param>
+	public static int NotListed(IReadOnlyList<ChangedFile> changes) => Math.Max(0, changes.Count - MaxListed);
 
 	/// <summary>Chooses the selected path: the current one if it is still changed, otherwise the first change.</summary>
 	/// <param name="selected">The path selected so far, if any.</param>
@@ -89,7 +100,7 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 		{
 			var changes = reader.ReadChanges(clonePath);
 			var labels = new Dictionary<string, string>(StringComparer.Ordinal);
-			foreach (var change in changes)
+			foreach (var change in Listed(changes))
 			{
 				var label = LabelFor(change.Path, preExisting, () => reader.Fingerprint(clonePath, change));
 				if (label is not null)

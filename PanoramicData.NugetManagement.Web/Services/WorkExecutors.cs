@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
@@ -961,7 +961,7 @@ public sealed class WorkExecutors(
 			});
 
 			// Before anything below can touch the clone: what is already changed is not this session's doing.
-			await RecordPreExistingChangesAsync(item, row.LocalPath).ConfigureAwait(false);
+			await RecordPreExistingChangesAsync(item, row.LocalPath, cancellationToken).ConfigureAwait(false);
 
 			// TST-10 is the one remotely graded rule that can be measured locally: the same tests, run
 			// under coverage, give a figure close to the one Codacy will later report. Measured before the
@@ -1445,13 +1445,19 @@ public sealed class WorkExecutors(
 	/// label them pre-existing. Runs git off the calling thread. A baseline is only a label, so any
 	/// failure leaves it empty rather than failing or delaying the fix.
 	/// </summary>
-	internal static async Task RecordPreExistingChangesAsync(WorkItem item, string clonePath)
+	internal static async Task RecordPreExistingChangesAsync(WorkItem item, string clonePath, CancellationToken cancellationToken = default)
 	{
 		try
 		{
 			item.PreExistingChanges = await Task
-				.Run(() => new CloneChangeReader().Baseline(clonePath))
+				.Run(() => new CloneChangeReader().Baseline(clonePath), cancellationToken)
+				.WaitAsync(cancellationToken)
 				.ConfigureAwait(false);
+		}
+		catch (OperationCanceledException)
+		{
+			// A cancelled fix stops now rather than after the baseline.
+			throw;
 		}
 		catch (Exception)
 		{
@@ -2103,7 +2109,7 @@ public sealed class WorkExecutors(
 				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
 			});
 
-			await RecordPreExistingChangesAsync(item, row.LocalPath).ConfigureAwait(false);
+			await RecordPreExistingChangesAsync(item, row.LocalPath, cancellationToken).ConfigureAwait(false);
 
 			var toolbox = new AiFixToolbox(
 				row.LocalPath,

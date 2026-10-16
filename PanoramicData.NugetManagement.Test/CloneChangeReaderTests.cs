@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using PanoramicData.NugetManagement.Web.Models;
 using PanoramicData.NugetManagement.Web.Services;
 
@@ -121,7 +121,7 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 		File.WriteAllText(Path.Combine(_root, "keep.txt"), "dirty before the session\n");
 		var item = NewItem();
 
-		await WorkExecutors.RecordPreExistingChangesAsync(item, _root);
+		await WorkExecutors.RecordPreExistingChangesAsync(item, _root, TestContext.Current.CancellationToken);
 		File.WriteAllText(Path.Combine(_root, "later.txt"), "made by the session\n");
 
 		item.PreExistingChanges.Keys.Should().BeEquivalentTo(["keep.txt"]);
@@ -133,9 +133,20 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 		var item = NewItem();
 		item.PreExistingChanges = new Dictionary<string, string> { ["stale.txt"] = "abc" };
 
-		await WorkExecutors.RecordPreExistingChangesAsync(item, Path.Combine(_root, "nope"));
+		await WorkExecutors.RecordPreExistingChangesAsync(item, Path.Combine(_root, "nope"), TestContext.Current.CancellationToken);
 
 		item.PreExistingChanges.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task RecordPreExistingChangesAsync_CancelledFixIsNotDelayed()
+	{
+		using var cts = new CancellationTokenSource();
+		await cts.CancelAsync();
+
+		var act = () => WorkExecutors.RecordPreExistingChangesAsync(NewItem(), _root, cts.Token);
+
+		await act.Should().ThrowAsync<OperationCanceledException>();
 	}
 
 	private static WorkItem NewItem() => new()
@@ -298,6 +309,93 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 		var modified = pair.Modified.Split('\n');
 		original.Should().HaveCount(modified.Length);
 		original.Zip(modified).Count(p => p.First != p.Second).Should().Be(1);
+	}
+
+	[Fact]
+	public void ReadChanges_TakesNoOptionalLocksAndLeavesTheIndexAlone()
+	{
+		// Make the stat information stale, which is when a plain `git status` refreshes (rewrites) the
+		// index, taking index.lock to do it. That is what would collide with the app's own git commands.
+		var tracked = Path.Combine(_root, "keep.txt");
+		File.SetLastWriteTimeUtc(tracked, DateTime.UtcNow.AddHours(-3));
+		File.WriteAllText(Path.Combine(_root, "new.txt"), "x\n");
+
+		var index = Path.Combine(_root, ".git", "index");
+		var before = File.ReadAllBytes(index);
+		var beforeTime = File.GetLastWriteTimeUtc(index);
+
+		// Control: git without the option does rewrite the index here, so the assertions below can fail.
+		var control = _root + "-control";
+		CopyDirectory(_root, control);
+		try
+		{
+			var controlInfo = new ProcessStartInfo("git", "status --porcelain") { WorkingDirectory = control, RedirectStandardOutput = true };
+			controlInfo.Environment.Remove("GIT_OPTIONAL_LOCKS");
+			using (var p = Process.Start(controlInfo)!)
+			{
+				p.StandardOutput.ReadToEnd();
+				p.WaitForExit();
+			}
+
+			File.ReadAllBytes(Path.Combine(control, ".git", "index")).Should().NotEqual(before, "plain git status refreshes a stale index");
+		}
+		finally
+		{
+			DeleteDirectory(control);
+		}
+
+		var changes = _reader.ReadChanges(_root);
+
+		changes.Select(c => c.Path).Should().Contain("new.txt");
+		File.ReadAllBytes(index).Should().Equal(before);
+		File.GetLastWriteTimeUtc(index).Should().Be(beforeTime);
+		File.Exists(Path.Combine(_root, ".git", "index.lock")).Should().BeFalse();
+	}
+
+	[Fact]
+	public void ReadChanges_KillsAGitThatNeverFinishes()
+	{
+		var shim = Path.Combine(_root, OperatingSystem.IsWindows() ? "hang-git.cmd" : "hang-git.sh");
+		File.WriteAllText(shim, OperatingSystem.IsWindows()
+			? "@echo off\r\nping -n 60 127.0.0.1 > nul\r\n"
+			: "#!/bin/sh\nsleep 60\n");
+		if (!OperatingSystem.IsWindows())
+		{
+			File.SetUnixFileMode(shim, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+		}
+
+		var reader = new CloneChangeReader(TimeSpan.FromMilliseconds(300), shim);
+		var stopwatch = Stopwatch.StartNew();
+
+		var changes = reader.ReadChanges(_root);
+
+		stopwatch.Stop();
+		changes.Should().BeEmpty();
+		stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(20), "the command is abandoned at the timeout, not waited for");
+	}
+
+	private static void CopyDirectory(string from, string to)
+	{
+		foreach (var dir in Directory.EnumerateDirectories(from, "*", SearchOption.AllDirectories))
+		{
+			Directory.CreateDirectory(Path.Combine(to, Path.GetRelativePath(from, dir)));
+		}
+
+		Directory.CreateDirectory(to);
+		foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
+		{
+			File.Copy(file, Path.Combine(to, Path.GetRelativePath(from, file)), overwrite: true);
+		}
+	}
+
+	private static void DeleteDirectory(string path)
+	{
+		foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+		{
+			File.SetAttributes(file, FileAttributes.Normal);
+		}
+
+		Directory.Delete(path, recursive: true);
 	}
 
 	private static void RunGitIn(string directory, params string[] args)

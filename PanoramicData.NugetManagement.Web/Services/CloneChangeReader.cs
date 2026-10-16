@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 
@@ -35,6 +35,22 @@ public sealed class CloneChangeReader
 	private const int MaxBytes = 1_048_576;
 	private const string CouldNotRead = "could not read file";
 
+	private readonly TimeSpan _gitTimeout;
+	private readonly string _gitExecutable;
+
+	/// <summary>Creates a reader that gives each git command ten seconds.</summary>
+	public CloneChangeReader() : this(TimeSpan.FromSeconds(10), "git")
+	{
+	}
+
+	/// <summary>The seam for tests: how long a git command may run, and what to run as git.</summary>
+	/// <param name="gitTimeout">A command still running after this long is killed (with its children) and counts as failed.</param>
+	/// <param name="gitExecutable">The program to run in place of git.</param>
+	internal CloneChangeReader(TimeSpan gitTimeout, string gitExecutable)
+	{
+		_gitTimeout = gitTimeout;
+		_gitExecutable = gitExecutable;
+	}
 	/// <summary>Lists the files that differ from HEAD, or nothing when the clone cannot be read.</summary>
 	/// <param name="clonePath">The clone's directory.</param>
 	public IReadOnlyList<ChangedFile> ReadChanges(string clonePath)
@@ -206,15 +222,15 @@ public sealed class CloneChangeReader
 		return changes;
 	}
 
-	private static string? RunGit(string directory, params string[] args)
+	private string? RunGit(string directory, params string[] args)
 	{
 		var bytes = RunGitBytes(directory, args);
 		return bytes is null ? null : Encoding.UTF8.GetString(bytes);
 	}
 
-	private static byte[]? RunGitBytes(string directory, params string[] args)
+	private byte[]? RunGitBytes(string directory, params string[] args)
 	{
-		var info = new ProcessStartInfo("git")
+		var info = new ProcessStartInfo(_gitExecutable)
 		{
 			WorkingDirectory = directory,
 			RedirectStandardOutput = true,
@@ -222,6 +238,12 @@ public sealed class CloneChangeReader
 			UseShellExecute = false,
 			CreateNoWindow = true
 		};
+
+		// The Changes tab polls while the app itself runs add/commit/checkout/reset on the same clone.
+		// A plain `git status` refreshes the index and takes index.lock to do it, which would make the
+		// app's own command fail. Never take optional locks: said twice, as the variable and the option.
+		info.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+		info.ArgumentList.Add("--no-optional-locks");
 		info.ArgumentList.Add("-c");
 		info.ArgumentList.Add("core.quotepath=off");
 		foreach (var arg in args)
@@ -231,10 +253,34 @@ public sealed class CloneChangeReader
 
 		using var process = Process.Start(info) ?? throw new InvalidOperationException("git did not start.");
 		using var stdout = new MemoryStream();
+		var copying = process.StandardOutput.BaseStream.CopyToAsync(stdout);
 		var errors = process.StandardError.ReadToEndAsync();
-		process.StandardOutput.BaseStream.CopyTo(stdout);
-		process.WaitForExit();
-		_ = errors.GetAwaiter().GetResult();
+
+		bool finished;
+		try
+		{
+			finished = process.WaitForExit(_gitTimeout) && Task.WaitAll([copying, errors], _gitTimeout);
+		}
+		catch (AggregateException)
+		{
+			finished = false;
+		}
+
+		if (!finished)
+		{
+			// Hung (a file system monitor, antivirus, a network share): never wait on it indefinitely.
+			try
+			{
+				process.Kill(entireProcessTree: true);
+			}
+			catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+			{
+				// It exited in the meantime.
+			}
+
+			return null;
+		}
+
 		return process.ExitCode == 0 ? stdout.ToArray() : null;
 	}
 }

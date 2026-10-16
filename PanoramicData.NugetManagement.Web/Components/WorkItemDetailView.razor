@@ -67,34 +67,37 @@ else
 
 		@if (ChangesShowing)
 		{
-			var shown = Changes;
 			<div class="work-changes">
 				<div class="work-changes-files">
-					@foreach (var change in shown.Changes)
+					@foreach (var change in ChangesTabModel.Listed(snap.Changes))
 					{
 						var path = change.Path;
-						<button type="button" class="work-changes-file @(path == shown.SelectedPath ? "selected" : "")" @onclick="() => SelectFile(path)">
+						<button type="button" class="work-changes-file @(path == snap.SelectedPath ? "selected" : "")" @onclick="() => SelectFile(path)">
 							<span class="badge bg-secondary">@change.Kind</span>
 							@path
-							@if (shown.Labels.TryGetValue(path, out var label))
+							@if (snap.Labels.TryGetValue(path, out var label))
 							{
 								<span class="text-muted small">@label</span>
 							}
 						</button>
 					}
-					@if (shown.Changes.Count == 0)
+						@if (ChangesTabModel.NotListed(snap.Changes) is > 0 and var notListed)
+					{
+						<div class="text-muted small p-2">...and @notListed more not shown</div>
+					}
+					@if (snap.Changes.Count == 0)
 					{
 						<div class="text-muted small p-2">No changes in the clone yet.</div>
 					}
 				</div>
 				<div class="work-changes-diff">
-					@if (shown.Pair is { NotDiffableReason: { } reason })
+					@if (snap.Pair is { NotDiffableReason: { } reason })
 					{
 						<div class="alert alert-secondary">Not diffable: @reason</div>
 					}
-					else if (shown.Pair is { } pair)
+					else if (snap.Pair is { } pair)
 					{
-						<PDDiffPanel Original="@pair.Original" Modified="@pair.Modified" FileName="@shown.SelectedPath" Theme="vs-dark" Height="100%" />
+						<PDDiffPanel Original="@pair.Original" Modified="@pair.Modified" FileName="@snap.SelectedPath" Theme="vs-dark" Height="100%" />
 					}
 				</div>
 			</div>
@@ -292,16 +295,19 @@ else
 	/// <param name="force">Skip the one-second spacing (a tab or file switch).</param>
 	private async Task RefreshChangesAsync(bool force = false)
 	{
-		if (!ChangesShowing || Item is not { RepositoryFullName: { } repo } item || !_changesModel.TryBeginRead(DateTime.UtcNow, force, out var generation))
-		{
-			return;
-		}
-
-		var selected = _selectedPath;
-		var preExisting = item.PreExistingChanges;
 		try
 		{
-			await Task.Run(() => _changesModel.Refresh(generation, LocalRepos.GetLocalPath(repo), selected, preExisting));
+			// Decided on the render thread: the timer calls this from another one, and the item can change
+			// between reading it and claiming a generation. Run here, the two cannot be split, so a read
+			// started for one item can only publish for that item's generation.
+			ReadRequest? request = null;
+			await InvokeAsync(() => { request = BeginRead(force); });
+			if (request is not { } read)
+			{
+				return;
+			}
+
+			await Task.Run(() => _changesModel.Refresh(read.Generation, read.ClonePath, read.Selected, read.PreExisting));
 			if (force)
 			{
 				await InvokeAsync(StateHasChanged);
@@ -312,4 +318,16 @@ else
 			// The circuit is going away.
 		}
 	}
+
+	private ReadRequest? BeginRead(bool force)
+	{
+		if (!ChangesShowing || Item is not { RepositoryFullName: { } repo } item || !_changesModel.TryBeginRead(DateTime.UtcNow, force, out var generation))
+		{
+			return null;
+		}
+
+		return new ReadRequest(generation, LocalRepos.GetLocalPath(repo), _selectedPath, item.PreExistingChanges);
+	}
+
+	private readonly record struct ReadRequest(int Generation, string ClonePath, string? Selected, IReadOnlyDictionary<string, string> PreExisting);
 }

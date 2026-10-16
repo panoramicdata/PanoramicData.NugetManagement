@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Web.Services;
+﻿using PanoramicData.NugetManagement.Web.Services;
 
 namespace PanoramicData.NugetManagement.Test;
 
@@ -38,6 +38,18 @@ public class ChangesTabModelTests(ITestOutputHelper output) : TestWithOutput(out
 		ChangesTabModel.ResolveSelection("gone.txt", changes).Should().Be("a.txt");
 		ChangesTabModel.ResolveSelection(null, changes).Should().Be("a.txt");
 		ChangesTabModel.ResolveSelection("a.txt", []).Should().BeNull();
+	}
+
+	[Fact]
+	public void TheListIsCappedAndTheRestCounted()
+	{
+		var changes = Enumerable.Range(0, ChangesTabModel.MaxListed + 37)
+			.Select(i => new ChangedFile($"f{i}.txt", ChangeKind.Added))
+			.ToList();
+
+		ChangesTabModel.Listed(changes).Should().HaveCount(ChangesTabModel.MaxListed);
+		ChangesTabModel.NotListed(changes).Should().Be(37);
+		ChangesTabModel.NotListed(changes.Take(3).ToList()).Should().Be(0);
 	}
 
 	private static string MissingClone() => Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():n}");
