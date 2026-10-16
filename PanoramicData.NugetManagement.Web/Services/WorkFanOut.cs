@@ -137,6 +137,21 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 	}
 
 	/// <summary>
+	/// Queues the work that gets one clone out from behind its uncommitted changes.
+	/// </summary>
+	/// <param name="organization">The owning organisation, or null.</param>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="consoleNodeKey">The console the output belongs to.</param>
+	/// <returns>Whether an item was queued; false when one is already waiting for this repository.</returns>
+	public bool EnqueueUnstick(string? organization, string repositoryFullName, string? consoleNodeKey)
+		=> lanes.Enqueue(
+			$"Unstick {ShortName(repositoryFullName)} with AI",
+			WorkDescriptor.ForRepository(WorkKind.UnstickWithAi, organization, repositoryFullName),
+			$"unstick:{repositoryFullName}",
+			null,
+			consoleNodeKey) is not null;
+
+	/// <summary>
 	/// Queues one analysis per human-raised issue.
 	/// </summary>
 	/// <param name="organization">The owning organisation, or null.</param>

@@ -62,6 +62,17 @@ public enum WorkKind
 	/// </remarks>
 	FixWithAiIssue,
 
+	/// <summary>
+	/// Get a clone out from behind uncommitted changes that stop it syncing: verify them, have the local
+	/// model repair what does not build or pass, commit and push what does, and set aside in a git stash
+	/// whatever cannot be made to.
+	/// </summary>
+	/// <remarks>
+	/// Reached through Fix with AI, which is where "the model should deal with this" already lives. It
+	/// never discards: the worst outcome is a stash, which a person can bring back.
+	/// </remarks>
+	UnstickWithAi,
+
 	/// <summary>Build one repository.</summary>
 	Build,
 

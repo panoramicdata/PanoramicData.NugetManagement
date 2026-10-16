@@ -41,6 +41,9 @@ public static class BuildStatusLifetime
 		// the files it was allowed to write, which changes the tree back and leaves any build result
 		// taken in between describing neither state.
 		WorkKind.FixWithAiIssue,
+
+		// Rewrites, restores or stashes files, and then syncs: nothing remembered before it describes the tree after.
+		WorkKind.UnstickWithAi,
 		WorkKind.GitSync,
 		WorkKind.Clone
 	];

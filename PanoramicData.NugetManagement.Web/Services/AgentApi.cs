@@ -381,10 +381,22 @@ public static class AgentApi
 				return Results.Json(new { queued = queuedFixes });
 			}
 
+			if (string.Equals(request.Kind, "unstick", StringComparison.OrdinalIgnoreCase))
+			{
+				if (!AiFixTargets.IsStuck(row))
+				{
+					return Results.Json(
+						new { error = $"{row.RepositoryFullName} is not stuck: it needs uncommitted changes and to be out of sync" },
+						statusCode: StatusCodes.Status409Conflict);
+				}
+
+				return Results.Json(new { queued = fanOut.EnqueueUnstick(row.Organization, row.RepositoryFullName, consoleNodeKey: null) ? 1 : 0 });
+			}
+
 			if (request.Kind is null || !_queueable.TryGetValue(request.Kind, out var kind))
 			{
 				return Results.Json(
-					new { error = $"kind must be one of: ai-fix, {string.Join(", ", _queueable.Keys)}" },
+					new { error = $"kind must be one of: ai-fix, unstick, {string.Join(", ", _queueable.Keys)}" },
 					statusCode: StatusCodes.Status400BadRequest);
 			}
 

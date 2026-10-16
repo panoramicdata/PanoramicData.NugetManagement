@@ -50,5 +50,20 @@ public static class AiFixTargets
 	/// <param name="row">The repository.</param>
 	/// <param name="remediations">The deterministic remediations, whose coverage is excluded.</param>
 	public static int WorkCount(RepositoryDashboardRow row, RemediationRegistry remediations)
-		=> AiFixCandidates.For(row, remediations).Count + UnanalysedHumanIssues(row).Count;
+		=> AiFixCandidates.For(row, remediations).Count + UnanalysedHumanIssues(row).Count + (IsStuck(row) ? 1 : 0);
+
+	/// <summary>
+	/// Whether the clone is stuck: uncommitted changes in it, and out of step with its remote.
+	/// </summary>
+	/// <remarks>
+	/// The state the dashboard shows as Dirty beside Out of sync. A dirty tree alone is ordinary work in
+	/// progress; it becomes a problem when it is also what stops the clone syncing, which is when
+	/// something only a person or a model can untangle is needed. A clone whose state is not known is
+	/// not called stuck.
+	/// </remarks>
+	/// <param name="row">The repository.</param>
+	public static bool IsStuck(RepositoryDashboardRow row)
+		=> row.IsClonedLocally
+			&& row.IsWorkingTreeClean == false
+			&& row.IsSyncedWithOrigin != true;
 }

@@ -502,6 +502,7 @@
   "xunit.v3": "4.0.2",
   "xunit.v3.assert": "4.0.2",
   "xunit.v3.common": "4.0.2",
+  "xunit.v3.extensibility.core": "4.0.2",
   "xunit.v3.mtp-v2": "3.2.2",
   "YamlDotNet": "18.1.0",
   "Yarp.ReverseProxy": "2.3.0",

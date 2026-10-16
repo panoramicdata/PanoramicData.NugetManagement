@@ -204,6 +204,15 @@ public sealed class AiFixSession(
 			new Dictionary<string, string>(),
 			[]),
 		new(
+			"restore_file",
+			"Put one file back exactly as it is in the last commit, undoing every uncommitted change to it. "
+			+ "Use it when a changed file cannot be made to work and the change is not worth keeping.",
+			new Dictionary<string, string>
+			{
+				["path"] = "Path relative to the repository root."
+			},
+			["path"]),
+		new(
 			"finish",
 			"Call this when the task is complete. Do not call it before you have made the change.",
 			new Dictionary<string, string>

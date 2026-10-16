@@ -15,7 +15,7 @@ public static class WorkDescription
 	/// <summary>Whether a model does this work, which is what makes its pane a session rather than a log.</summary>
 	/// <param name="kind">The kind of work.</param>
 	public static bool IsAi(WorkKind kind)
-		=> kind is WorkKind.FixWithAiRule or WorkKind.AnalyseIssue or WorkKind.FixWithAiIssue;
+		=> kind is WorkKind.FixWithAiRule or WorkKind.AnalyseIssue or WorkKind.FixWithAiIssue or WorkKind.UnstickWithAi;
 
 	/// <summary>Whether the kind has a sentence of its own.</summary>
 	/// <param name="kind">The kind of work.</param>
@@ -58,6 +58,10 @@ public static class WorkDescription
 			$"Asking a local model to carry out the fix an analysis proposed for an issue in {scope}. It "
 				+ "sees the brief and never the issue, may write only the files that brief named, and is "
 				+ "judged on whether the repository still builds and tests green.",
+		WorkKind.UnstickWithAi =>
+			$"Getting {scope} out from behind its uncommitted changes. They are built and tested as they stand; "
+				+ "if they pass they are committed and pushed, if not a local model repairs them, and anything "
+				+ "it cannot repair is set aside in a git stash — never thrown away — so the clone can sync.",
 		WorkKind.Build => $"Building {scope}.",
 		WorkKind.Test => $"Running the tests in {scope}.",
 		WorkKind.TriageDependabot => $"Deciding what to do about each open Dependabot pull request in {scope}.",

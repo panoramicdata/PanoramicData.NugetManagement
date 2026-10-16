@@ -680,9 +680,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "MagicSuite.Api": {
-    "latestVersion": "4.6.1745",
-    "published": "2026-10-15T12:33:25.007+01:00",
-    "refreshedAtUtc": "2026-10-15T12:23:36.6141053+00:00"
+    "latestVersion": "4.6.1764",
+    "published": "2026-10-15T22:48:49.913+01:00",
+    "refreshedAtUtc": "2026-10-16T03:11:18.3156361+00:00"
   },
   "MailKit": {
     "latestVersion": "4.18.1",
@@ -695,9 +695,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Markdig": {
-    "latestVersion": "1.4.0",
-    "published": "2026-09-20T08:59:47.8+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "1.4.1",
+    "published": "2026-10-16T05:45:44.14+01:00",
+    "refreshedAtUtc": "2026-10-16T09:11:18.3198478+00:00"
   },
   "MarkdownDeep.NET.Core": {
     "latestVersion": "1.5.0.4",
@@ -1925,9 +1925,9 @@
     "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
   },
   "Selenium.WebDriver.ChromeDriver": {
-    "latestVersion": "155.0.8059.7900",
-    "published": "2026-10-14T13:07:19.82+01:00",
-    "refreshedAtUtc": "2026-10-14T15:14:25.9233747+00:00"
+    "latestVersion": "155.0.8059.8400",
+    "published": "2026-10-16T00:21:11.867+01:00",
+    "refreshedAtUtc": "2026-10-16T03:11:18.3156361+00:00"
   },
   "Serilog": {
     "latestVersion": "4.4.0",
@@ -2380,9 +2380,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Verify.XunitV3": {
-    "latestVersion": "33.3.3",
-    "published": "2026-10-10T08:06:09.193+01:00",
-    "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
+    "latestVersion": "33.3.4",
+    "published": "2026-10-16T01:07:13.417+01:00",
+    "refreshedAtUtc": "2026-10-16T03:11:18.3156361+00:00"
   },
   "Vizor.ECharts.Net80": {
     "latestVersion": "0.10.6",
@@ -2473,6 +2473,11 @@
     "latestVersion": "4.0.2",
     "published": "2026-10-09T18:08:34.237+01:00",
     "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
+  },
+  "xunit.v3.extensibility.core": {
+    "latestVersion": "4.0.2",
+    "published": "2026-10-09T18:08:40.927+01:00",
+    "refreshedAtUtc": "2026-10-16T03:11:18.3156361+00:00"
   },
   "xunit.v3.mtp-v2": {
     "latestVersion": "4.0.2",

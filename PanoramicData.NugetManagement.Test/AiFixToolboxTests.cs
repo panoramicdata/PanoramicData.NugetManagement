@@ -269,7 +269,7 @@ public class AiFixToolboxTests(ITestOutputHelper output) : TestWithOutput(output
 	[Fact]
 	public void TheToolDefinitions_CoverEveryToolTheToolboxExecutes()
 		=> AiFixToolbox.ToolNames.Should().BeEquivalentTo(
-			["list_files", "read_file", "replace_in_file", "write_file", "run_build", "run_tests", "run_coverage", "finish"],
+			["list_files", "read_file", "replace_in_file", "write_file", "run_build", "run_tests", "run_coverage", "restore_file", "finish"],
 			"a tool described to the model but not executed wastes a turn, and one executed but not "
 			+ "described will never be called");
 }

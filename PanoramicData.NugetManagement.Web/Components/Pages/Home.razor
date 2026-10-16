@@ -4820,7 +4820,7 @@ else
 			? EstateAiFixRows().Count
 			: _selectedRow is null
 				? 0
-				: AiFixCandidates.For(_selectedRow, Remediations).Count + UnanalysedHumanIssues().Count;
+				: AiFixTargets.WorkCount(_selectedRow, Remediations);
 
 	/// <summary>
 	/// The ticked repositories that have something only a local model can do.
@@ -4885,9 +4885,17 @@ else
 		}
 
 		var issues = UnanalysedHumanIssues().Count;
-		var rules = count - issues;
+		var stuck = _selectedRow is not null && AiFixTargets.IsStuck(_selectedRow);
+		var rules = count - issues - (stuck ? 1 : 0);
 
 		var parts = new List<string>();
+
+		if (stuck)
+		{
+			parts.Add("get this clone out from behind its uncommitted changes (they are built and tested; "
+				+ "what passes is committed and pushed, the model repairs what does not, and anything it cannot "
+				+ "repair is set aside in a git stash, never thrown away)");
+		}
 
 		if (rules > 0)
 		{
@@ -4980,8 +4988,9 @@ else
 	{
 		var candidates = AiFixCandidates.For(row, Remediations);
 		var issues = AiFixTargets.UnanalysedHumanIssues(row);
+		var stuck = AiFixTargets.IsStuck(row);
 
-		if (candidates.Count == 0 && issues.Count == 0)
+		if (candidates.Count == 0 && issues.Count == 0 && !stuck)
 		{
 			if (announceNothingToDo)
 			{
@@ -4990,6 +4999,14 @@ else
 			}
 
 			return;
+		}
+
+		// First, and on its own lane slot ahead of the rest: a clone that cannot sync cannot be pushed
+		// from either, so any fix queued behind it would finish into a tree nothing can publish.
+		if (stuck
+			&& FanOut.EnqueueUnstick(row.Organization, row.RepositoryFullName, _selectedNodeKey))
+		{
+			AppendConsole($"⏳ Queued getting {row.RepositoryName} out from behind its uncommitted changes.");
 		}
 
 		if (candidates.Count > 0)

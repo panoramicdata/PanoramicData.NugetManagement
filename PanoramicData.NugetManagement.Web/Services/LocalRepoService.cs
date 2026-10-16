@@ -526,6 +526,88 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
+	/// Sets aside everything uncommitted, untracked files included, in a git stash, leaving the tree clean.
+	/// </summary>
+	/// <param name="repoIdentity">The repository.</param>
+	/// <param name="message">The stash's label, which is how a person finds it again in <c>git stash list</c>.</param>
+	/// <param name="cancellationToken">Signalled when the work is stopped.</param>
+	/// <remarks>
+	/// Preferred to <see cref="DiscardLocalChangesAsync"/> wherever the changes were made by a model or a
+	/// remediation nobody has reviewed: setting work aside costs a line in the stash list, and throwing it
+	/// away cannot be taken back. Returns false, with git's output, when there was nothing to stash.
+	/// </remarks>
+	public async Task<(bool Success, string Output)> StashLocalChangesAsync(
+		string repoIdentity,
+		string message,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		if (!Directory.Exists(path))
+		{
+			return (false, "The clone does not exist.");
+		}
+
+		var (exit, output) = await RunCommandAsync(path, "git", ["stash", "push", "--include-untracked", "-m", message], cancellationToken)
+			.ConfigureAwait(false);
+
+		_logger.LogInformation("Stashed local changes in {Path}: {Output}", path, output.Trim());
+
+		return (exit == 0 && !output.Contains("No local changes", StringComparison.OrdinalIgnoreCase), output);
+	}
+
+	/// <summary>
+	/// Brings back the most recent stash, which is the one <see cref="StashLocalChangesAsync"/> made.
+	/// </summary>
+	/// <param name="repoIdentity">The repository.</param>
+	/// <param name="cancellationToken">Signalled when the work is stopped.</param>
+	public async Task<(bool Success, string Output)> PopStashAsync(
+		string repoIdentity,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		var (exit, output) = await RunCommandAsync(path, "git", ["stash", "pop"], cancellationToken).ConfigureAwait(false);
+
+		return (exit == 0, output);
+	}
+
+	/// <summary>
+	/// Puts one file back as the last commit has it, or removes it when the commit does not have it.
+	/// </summary>
+	/// <param name="repoIdentity">The repository.</param>
+	/// <param name="relativePath">The file, relative to the clone root.</param>
+	/// <param name="cancellationToken">Signalled when the work is stopped.</param>
+	/// <returns>A sentence saying what happened, in the form a model reads back as a tool result.</returns>
+	public async Task<string> RestoreFileAsync(
+		string repoIdentity,
+		string relativePath,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+
+		var (trackedExit, _) = await RunCommandAsync(path, "git", ["ls-files", "--error-unmatch", "--", relativePath], cancellationToken)
+			.ConfigureAwait(false);
+
+		if (trackedExit == 0)
+		{
+			var (exit, output) = await RunCommandAsync(path, "git", ["checkout", "HEAD", "--", relativePath], cancellationToken)
+				.ConfigureAwait(false);
+
+			return exit == 0
+				? $"Restored {relativePath} to the last commit."
+				: $"Could not restore {relativePath}: {output.Trim()}";
+		}
+
+		var full = Path.GetFullPath(Path.Combine(path, relativePath));
+		if (File.Exists(full))
+		{
+			File.Delete(full);
+			return $"Removed {relativePath}: it is not in the last commit.";
+		}
+
+		return $"{relativePath} is not in the last commit and does not exist, so there is nothing to restore.";
+	}
+
+	/// <summary>
 	/// Opens a folder in this machine's file manager. Returns false, with the reason, if it cannot be.
 	/// </summary>
 	/// <remarks>

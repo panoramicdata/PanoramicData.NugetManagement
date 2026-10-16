@@ -45,7 +45,8 @@ public sealed class AiFixToolbox(
 	Func<CancellationToken, Task<string>>? coverage = null,
 	bool newFilesOnly = false,
 	Func<string, CancellationToken, Task<string?>>? afterWrite = null,
-	bool offerRunTests = true)
+	bool offerRunTests = true,
+	Func<string, CancellationToken, Task<string>>? restoreFile = null)
 {
 	/// <summary>
 	/// What to append to a successful write's result: whether it still compiles, say.
@@ -84,6 +85,9 @@ public sealed class AiFixToolbox(
 	public bool Offers(string toolName) => toolName switch
 	{
 		"run_coverage" => coverage is not null,
+
+		// Only a session untangling uncommitted edits has a committed version to go back to.
+		"restore_file" => restoreFile is not null,
 
 		// run_coverage already says whether the tests pass, and knows which failures were there before the
 		// session began. A bare run_tests shows the model failures it did not cause and cannot fix, which
@@ -159,7 +163,7 @@ public sealed class AiFixToolbox(
 	/// <summary>Every tool this toolbox executes, which is also every tool described to the model.</summary>
 	public static IReadOnlySet<string> ToolNames { get; } = new HashSet<string>(StringComparer.Ordinal)
 	{
-		"list_files", "read_file", "replace_in_file", "write_file", "run_build", "run_tests", "run_coverage", "finish"
+		"list_files", "read_file", "replace_in_file", "write_file", "run_build", "run_tests", "run_coverage", "restore_file", "finish"
 	};
 
 	private readonly string _root = Path.GetFullPath(cloneRoot);
@@ -258,6 +262,7 @@ public sealed class AiFixToolbox(
 			"run_build" => await RunAsync(build, "run_build", cancellationToken).ConfigureAwait(false),
 			"run_tests" => await RunAsync(test, "run_tests", cancellationToken).ConfigureAwait(false),
 			"run_coverage" => await RunAsync(coverage, "run_coverage", cancellationToken).ConfigureAwait(false),
+			"restore_file" => await RestoreFileAsync(call, cancellationToken).ConfigureAwait(false),
 			"finish" => Finish(call),
 			_ => Error(
 				$"There is no tool called '{call.Name}'. The tools available are: "
@@ -460,6 +465,40 @@ public sealed class AiFixToolbox(
 		_filesWritten.Add(relativePath);
 
 		return new AiToolResult(await WithWriteFeedbackAsync($"Wrote {relativePath}.", relativePath, cancellationToken).ConfigureAwait(false));
+	}
+
+	/// <summary>
+	/// Puts one file back as it is in the last commit, or removes it if the commit does not have it.
+	/// </summary>
+	/// <remarks>
+	/// For a session untangling edits nobody reviewed: the quickest honest fix for a change that broke the
+	/// build is often to not have made it. The file's current bytes are remembered first, so the session's
+	/// own undo still returns the tree to how it stood before the session began.
+	/// </remarks>
+	private async Task<AiToolResult> RestoreFileAsync(AiToolCall call, CancellationToken cancellationToken)
+	{
+		if (restoreFile is null)
+		{
+			return Error("restore_file is not available for this repository.");
+		}
+
+		if (!TryResolve(call, out var relativePath, out var fullPath, out var refusal))
+		{
+			return refusal;
+		}
+
+		if (RefuseUnwritable(relativePath) is { } refused)
+		{
+			return refused;
+		}
+
+		Remember(relativePath, fullPath);
+
+		var message = await restoreFile(relativePath, cancellationToken).ConfigureAwait(false);
+
+		_filesWritten.Add(relativePath);
+
+		return new AiToolResult(await WithWriteFeedbackAsync(message, relativePath, cancellationToken).ConfigureAwait(false));
 	}
 
 	/// <summary>
