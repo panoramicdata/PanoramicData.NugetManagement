@@ -27,7 +27,7 @@ public static class Standards
 	/// Deliberately the floor rather than the channel's newest SDK. <c>rollForward</c> never rolls
 	/// down, so pinning <c>10.0.400</c> makes a 4xx install a build requirement for everyone: a
 	/// machine whose newest band is 3xx cannot run any dotnet command. Nor is security a reason to
-	/// pin higher — Microsoft services every live feature band in the same release, so <c>10.0.111</c>
+	/// pin higher: Microsoft services every live feature band in the same release, so <c>10.0.111</c>
 	/// carries the same fixes as <c>10.0.400</c>. What the pin needs alongside it is a band-crossing
 	/// <c>rollForward</c>, which is what VER-03 checks.
 	/// </remarks>
@@ -253,7 +253,7 @@ public static class Standards
 		## Coding Standards
 
 		- All public members must have XML documentation comments
-		- Use `System.Text.Json` — do not introduce `Newtonsoft.Json`
+		- Use `System.Text.Json`; do not introduce `Newtonsoft.Json`
 		- Use Refit for HTTP client interfaces
 		- Use file-scoped namespaces
 		- Use the `required` keyword for DTO properties where appropriate
@@ -291,7 +291,7 @@ public static class Standards
 
 	/// <summary>
 	/// The standard global.json content pinning the SDK version, and opting <c>dotnet test</c> into
-	/// the Microsoft.Testing.Platform runner when — and only when — the repository can run on it.
+	/// the Microsoft.Testing.Platform runner when, and only when, the repository can run on it.
 	/// </summary>
 	/// <param name="includeTestRunner">
 	/// True for a repository on xunit.v3, which needs the opt-in to run its tests at all on the .NET
@@ -640,14 +640,14 @@ public static class Standards
 
 	/// <summary>
 	/// The standard CLAUDE.md content: local Copilot instructions plus an <c>@import</c> of the shared
-	/// Panoramic Data skills. The <c>@import</c> syntax degrades gracefully — Claude Code simply skips
+	/// Panoramic Data skills. The <c>@import</c> syntax degrades gracefully: Claude Code simply skips
 	/// a path that does not resolve, so a contributor without access to the private
 	/// <c>PanoramicData.Skills</c> repository is unaffected.
 	/// </summary>
 	/// <remarks>
 	/// Structured with headings, an identity, boundaries, and tool notes (not just the bare
 	/// <c>@import</c> lines) because Codacy's Agentlinter grades instruction files on exactly those
-	/// things — a two-line file grades F even though the imports it points at are complete.
+	/// things: a two-line file grades F even though the imports it points at are complete.
 	/// </remarks>
 	public static string ClaudeMdContent => $"""
 		# CLAUDE.md
@@ -740,7 +740,7 @@ public static class Standards
 
 		    {SharedSkillsCopilotInstructionsPath}
 
-		If that path exists, read it before starting work — it documents organization-wide
+		If that path exists, read it before starting work, as it documents organization-wide
 		conventions and skills.
 
 		**If that path does not exist** (for example, you are an external contributor without access
