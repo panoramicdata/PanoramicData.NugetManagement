@@ -17,6 +17,7 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 	private readonly Lock _gate = new();
 	private DateTime _lastRead = DateTime.MinValue;
 	private bool _reading;
+	private int _generation;
 	private Snapshot _current = Snapshot.Empty;
 
 	/// <summary>The latest result. Replaced as a whole, so a reader on another thread never sees a half-built one.</summary>
@@ -45,10 +46,12 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 	/// </summary>
 	/// <param name="now">The current time.</param>
 	/// <param name="force">Skip the interval check (the overlap check still applies).</param>
-	public bool TryBeginRead(DateTime now, bool force = false)
+	/// <param name="generation">The generation the read belongs to; pass it to <see cref="Refresh"/>.</param>
+	public bool TryBeginRead(DateTime now, bool force, out int generation)
 	{
 		lock (_gate)
 		{
+			generation = _generation;
 			if (_reading || (!force && now - _lastRead < minimumInterval))
 			{
 				return false;
@@ -60,11 +63,27 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 		}
 	}
 
+	/// <summary>
+	/// Starts over for a different work item: clears the result and invalidates any read under way, so a
+	/// result that arrives late is discarded rather than shown against the new item.
+	/// </summary>
+	public void Reset()
+	{
+		lock (_gate)
+		{
+			_generation++;
+			_reading = false;
+			_lastRead = DateTime.MinValue;
+			Volatile.Write(ref _current, Snapshot.Empty);
+		}
+	}
+
 	/// <summary>Reads the clone and publishes a new <see cref="Current"/>. Call after <see cref="TryBeginRead"/> succeeds. Never throws.</summary>
+	/// <param name="generation">The generation returned by <see cref="TryBeginRead"/>; a result from an older one is discarded.</param>
 	/// <param name="clonePath">The clone's directory.</param>
 	/// <param name="selected">The path the user has selected, if any.</param>
 	/// <param name="preExisting">Path to fingerprint, captured when the session started.</param>
-	public void Refresh(string clonePath, string? selected, IReadOnlyDictionary<string, string> preExisting)
+	public void Refresh(int generation, string clonePath, string? selected, IReadOnlyDictionary<string, string> preExisting)
 	{
 		try
 		{
@@ -82,7 +101,14 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 			var path = ResolveSelection(selected, changes);
 			var file = changes.FirstOrDefault(c => c.Path == path);
 			var pair = file is null ? null : reader.ReadPair(clonePath, file);
-			Volatile.Write(ref _current, new Snapshot(changes, labels, path, pair));
+			var snapshot = new Snapshot(changes, labels, path, pair);
+			lock (_gate)
+			{
+				if (generation == _generation)
+				{
+					Volatile.Write(ref _current, snapshot);
+				}
+			}
 		}
 		catch (Exception)
 		{
@@ -92,7 +118,10 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 		{
 			lock (_gate)
 			{
-				_reading = false;
+				if (generation == _generation)
+				{
+					_reading = false;
+				}
 			}
 		}
 	}

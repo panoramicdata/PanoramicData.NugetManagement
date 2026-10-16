@@ -1,4 +1,4 @@
-@using PanoramicData.NugetManagement.Web.Models
+﻿@using PanoramicData.NugetManagement.Web.Models
 @using PanoramicData.NugetManagement.Web.Services
 @implements IDisposable
 @inject IJSRuntime JS
@@ -53,43 +53,48 @@ else
 			</div>
 		}
 
+		@{
+			var snap = Changes;
+		}
+
 		@if (IsAi)
 		{
 			<ul class="nav nav-tabs mb-2">
 				<li class="nav-item"><button type="button" class="nav-link @(_tab == Tab.Log ? "active" : "")" @onclick="ShowLog">Log</button></li>
-				<li class="nav-item"><button type="button" class="nav-link @(_tab == Tab.Changes ? "active" : "")" @onclick="ShowChanges">Changes (@Changes.Changes.Count)</button></li>
+				<li class="nav-item"><button type="button" class="nav-link @(_tab == Tab.Changes ? "active" : "")" @onclick="ShowChanges">Changes (@snap.Changes.Count)</button></li>
 			</ul>
 		}
 
 		@if (ChangesShowing)
 		{
+			var shown = Changes;
 			<div class="work-changes">
 				<div class="work-changes-files">
-					@foreach (var change in Changes.Changes)
+					@foreach (var change in shown.Changes)
 					{
 						var path = change.Path;
-						<button type="button" class="work-changes-file @(path == Changes.SelectedPath ? "selected" : "")" @onclick="() => SelectFile(path)">
+						<button type="button" class="work-changes-file @(path == shown.SelectedPath ? "selected" : "")" @onclick="() => SelectFile(path)">
 							<span class="badge bg-secondary">@change.Kind</span>
 							@path
-							@if (Changes.Labels.TryGetValue(path, out var label))
+							@if (shown.Labels.TryGetValue(path, out var label))
 							{
 								<span class="text-muted small">@label</span>
 							}
 						</button>
 					}
-					@if (Changes.Changes.Count == 0)
+					@if (shown.Changes.Count == 0)
 					{
 						<div class="text-muted small p-2">No changes in the clone yet.</div>
 					}
 				</div>
 				<div class="work-changes-diff">
-					@if (Changes.Pair is { NotDiffableReason: { } reason })
+					@if (shown.Pair is { NotDiffableReason: { } reason })
 					{
 						<div class="alert alert-secondary">Not diffable: @reason</div>
 					}
-					else if (Changes.Pair is { } pair)
+					else if (shown.Pair is { } pair)
 					{
-						<PDDiffPanel Original="@pair.Original" Modified="@pair.Modified" FileName="@Changes.SelectedPath" Theme="vs-dark" Height="100%" />
+						<PDDiffPanel Original="@pair.Original" Modified="@pair.Modified" FileName="@shown.SelectedPath" Theme="vs-dark" Height="100%" />
 					}
 				</div>
 			</div>
@@ -130,6 +135,7 @@ else
 	private string _followedExtent = string.Empty;
 	private Tab _tab = Tab.Log;
 	private string? _selectedPath;
+	private string? _shownItemId;
 	private readonly ChangesTabModel _changesModel = new(new CloneChangeReader(), TimeSpan.FromSeconds(1));
 
 	private enum Tab { Log, Changes }
@@ -173,6 +179,23 @@ else
 		WorkItemState.Cancelling => "fas fa-rotate-left fa-spin text-warning",
 		_ => "fas fa-clock text-muted"
 	};
+
+	/// <summary>
+	/// The same instance is reused when another item is selected, so everything that belongs to an item
+	/// (the tab, the selected file, the changes read for it, any read still under way) is dropped when
+	/// the item changes.
+	/// </summary>
+	protected override void OnParametersSet()
+	{
+		if (!string.Equals(_shownItemId, Item?.Id, StringComparison.Ordinal))
+		{
+			_shownItemId = Item?.Id;
+			_tab = Tab.Log;
+			_selectedPath = null;
+			_followedExtent = string.Empty;
+			_changesModel.Reset();
+		}
+	}
 
 	protected override void OnInitialized()
 	{
@@ -269,7 +292,7 @@ else
 	/// <param name="force">Skip the one-second spacing (a tab or file switch).</param>
 	private async Task RefreshChangesAsync(bool force = false)
 	{
-		if (!ChangesShowing || Item is not { RepositoryFullName: { } repo } item || !_changesModel.TryBeginRead(DateTime.UtcNow, force))
+		if (!ChangesShowing || Item is not { RepositoryFullName: { } repo } item || !_changesModel.TryBeginRead(DateTime.UtcNow, force, out var generation))
 		{
 			return;
 		}
@@ -278,7 +301,7 @@ else
 		var preExisting = item.PreExistingChanges;
 		try
 		{
-			await Task.Run(() => _changesModel.Refresh(LocalRepos.GetLocalPath(repo), selected, preExisting));
+			await Task.Run(() => _changesModel.Refresh(generation, LocalRepos.GetLocalPath(repo), selected, preExisting));
 			if (force)
 			{
 				await InvokeAsync(StateHasChanged);
