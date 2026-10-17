@@ -2238,28 +2238,45 @@ i + .breadcrumb-link-text {
     color: color-mix(in srgb, var(--accent) 85%, var(--bg-primary));
 }
 
-/* Org (root) tree row: lay it out as a full-width flex row so its action buttons
-   sit flush against the right edge of the sidebar. */
-.pdtreenode_content:has(.nav-org-actions),
-.pdtreenode_content:has(.nav-work-item) {
+/* Every tree row is a flex row that fits the sidebar: buttons sit flush right, and a long label
+   truncates instead of widening the row. min-width:0 is load-bearing: PDTree gives the row width:100%
+   inside a flex header, and a flex item's default min-width is its content's, so a long nowrap label
+   (the "Not governed" reasons, a work item's progress) pushed the row — and its buttons — past the
+   scrollbar and made the whole tree scroll sideways. */
+.nav-tree-scroll .pdtreenode_content {
     display: flex;
     align-items: center;
-    width: 100%;
+    min-width: 0;
 }
 
-/* A work item's progress and stop/remove button sit at the far right of the row, so clearing a queue is a
-   run of clicks down one column rather than a mouse that has to follow each title's length. */
-.pdtreenode_content:has(.nav-work-item) .nav-work-item {
-    margin-left: auto;
+.nav-tree-scroll .pdtreenode_header > i {
     flex-shrink: 0;
-    padding-right: 2px;
 }
 
-.pdtreenode_content:has(.nav-work-item) .nav-node-label {
+.nav-tree-scroll .nav-node-label {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* A work item's progress and stop/remove button sit at the far right of the row, so clearing a queue is a
+   run of clicks down one column rather than a mouse that has to follow each title's length. The progress
+   truncates; the button never does. */
+.pdtreenode_content:has(.nav-work-item) .nav-work-item {
+    margin-left: auto;
+    min-width: 0;
+    padding-right: 2px;
+}
+
+.nav-work-item .nav-work-progress {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nav-work-item .nav-org-action-btn {
+    flex-shrink: 0;
 }
 
 .nav-org-actions {
