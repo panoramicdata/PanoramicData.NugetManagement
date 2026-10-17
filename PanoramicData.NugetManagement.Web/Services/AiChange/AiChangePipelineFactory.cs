@@ -17,13 +17,15 @@ public static partial class AiChangePipelineFactory
 	/// <param name="work">The model-facing work; unused when only delivering finished edits.</param>
 	/// <param name="github">The GitHub write API.</param>
 	/// <param name="limits">What the change may touch.</param>
+	/// <param name="changesReady">Called when the edits exist and before the clone is reset, to keep a copy of them.</param>
 	public static AiChangePipeline Create(
 		IAiChangeGit git,
 		IAiChangeTests tests,
 		IAiChangeWork work,
 		IGitHubWriteApi github,
-		AiChangeLimits limits)
-		=> new(git, tests, work, github, new AiChangeOptions { Limits = limits });
+		AiChangeLimits limits,
+		Func<CancellationToken, Task>? changesReady = null)
+		=> new(git, tests, work, github, new AiChangeOptions { Limits = limits, ChangesReady = changesReady });
 
 	/// <summary>
 	/// The limits for a rule fix: any path, no cap.

@@ -67,6 +67,16 @@ else
 
 		@if (ChangesShowing)
 		{
+			if (snap.Delivery is { } delivery)
+			{
+				<div class="alert alert-info small py-1 mb-2">
+					@delivery.Summary
+					@if (delivery.PullRequestUrl is { } pullRequestUrl)
+					{
+						<a href="@pullRequestUrl" target="_blank" rel="noopener noreferrer">View the pull request</a>
+					}
+				</div>
+			}
 			<div class="work-changes">
 				<div class="work-changes-files">
 					@foreach (var change in ChangesTabModel.Listed(snap.Changes))
@@ -307,7 +317,7 @@ else
 				return;
 			}
 
-			await Task.Run(() => _changesModel.Refresh(read.Generation, read.ClonePath, read.Selected, read.PreExisting));
+			await Task.Run(() => _changesModel.Refresh(read.Generation, read.ClonePath, read.Selected, read.PreExisting, read.Delivered));
 			if (force)
 			{
 				await InvokeAsync(StateHasChanged);
@@ -326,8 +336,8 @@ else
 			return null;
 		}
 
-		return new ReadRequest(generation, LocalRepos.GetLocalPath(repo), _selectedPath, item.PreExistingChanges);
+		return new ReadRequest(generation, LocalRepos.GetLocalPath(repo), _selectedPath, item.PreExistingChanges, item.Delivered);
 	}
 
-	private readonly record struct ReadRequest(int Generation, string ClonePath, string? Selected, IReadOnlyDictionary<string, string> PreExisting);
+	private readonly record struct ReadRequest(int Generation, string ClonePath, string? Selected, IReadOnlyDictionary<string, string> PreExisting, DeliveredChange? Delivered);
 }

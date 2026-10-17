@@ -101,6 +101,13 @@ public sealed class WorkItem
 	/// </summary>
 	public IReadOnlyDictionary<string, string> PreExistingChanges { get; set; } = new Dictionary<string, string>(StringComparer.Ordinal);
 
+	/// <summary>
+	/// What an AI fix delivered, kept because the AI change pipeline returns the clone to <c>main</c>
+	/// afterwards and the Changes tab would otherwise have nothing left to show. Null until a fix reaches
+	/// the point of delivery. Not persisted: it belongs to a run.
+	/// </summary>
+	public DeliveredChange? Delivered { get; set; }
+
 	/// <summary>Where the item has got to.</summary>
 	public WorkItemState State { get; set; } = WorkItemState.Pending;
 

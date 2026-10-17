@@ -19,9 +19,13 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 
 	private static AiChangeRequest Rule() => new("o", "r", AiChangeKind.RuleFix, "rule-ci-15-a1b2", "Fix CI-15", null, false);
 
-	private AiChangePipeline Pipeline(Func<string, bool>? isAllowed = null, int maxPaths = 3)
+	private AiChangePipeline Pipeline(
+		Func<string, bool>? isAllowed = null,
+		int maxPaths = 3,
+		Func<CancellationToken, Task>? changesReady = null)
 		=> new(_git, _tests, _work, _github, new AiChangeOptions
 		{
+			ChangesReady = changesReady,
 			Limits = new AiChangeLimits(
 				isAllowed ?? (_ => true),
 				path => path.Contains(".Test", StringComparison.Ordinal),
@@ -359,6 +363,59 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 		outcome.Kind.Should().Be(AiChangeOutcomeKind.DeliveryFailed);
 		_git.DeletedRemote.Should().BeTrue(
 			"the branch is on origin with no pull request to own it, and nothing else will ever clean it up");
+	}
+
+	private Func<CancellationToken, Task> Announce => _ =>
+	{
+		_git.Calls.Add("changes-ready");
+		return Task.CompletedTask;
+	};
+
+	[Fact]
+	public async Task Run_TellsTheCallerTheChangesAreReady_BeforeCommittingAndBeforeTheCloneIsReset()
+	{
+		RedThenGreen();
+
+		await Pipeline(changesReady: Announce).RunAsync(Issue(), _said.Add, TestContext.Current.CancellationToken);
+
+		var calls = _git.Calls;
+		calls.Count(call => call == "changes-ready").Should().Be(1);
+		calls.IndexOf("changes-ready").Should().BeLessThan(calls.IndexOf("commit"));
+		calls.IndexOf("changes-ready").Should().BeLessThan(calls.IndexOf("return"),
+			"after the reset the clone holds nothing, which is the whole reason the caller wants to keep a copy");
+	}
+
+	[Fact]
+	public async Task Deliver_TellsTheCallerTheChangesAreReadyToo()
+	{
+		await Pipeline(changesReady: Announce)
+			.DeliverAsync(Rule(), new HashSet<string> { "Lib/Parser.cs" }, _said.Add, TestContext.Current.CancellationToken);
+
+		_git.Calls.Should().Contain("changes-ready");
+		_git.Calls.IndexOf("changes-ready").Should().BeLessThan(_git.Calls.IndexOf("return"));
+	}
+
+	[Fact]
+	public async Task Run_DoesNotAnnounceChangesWhenNoFixWasMade()
+	{
+		RedThenGreen();
+		_work.FixSucceeds = false;
+
+		await Pipeline(changesReady: Announce).RunAsync(Issue(), _said.Add, TestContext.Current.CancellationToken);
+
+		_git.Calls.Should().NotContain("changes-ready", "a failed fix has nothing worth keeping a copy of");
+	}
+
+	[Fact]
+	public async Task Run_StillDeliversWhenTheCallerFailsToKeepItsCopy()
+	{
+		RedThenGreen();
+
+		var outcome = await Pipeline(changesReady: _ => throw new IOException("disk full"))
+			.RunAsync(Issue(), _said.Add, TestContext.Current.CancellationToken);
+
+		outcome.Kind.Should().Be(AiChangeOutcomeKind.Merged,
+			"keeping a copy for the Changes tab is a convenience and must never stop a change that passed its gates");
 	}
 
 	[Fact]
