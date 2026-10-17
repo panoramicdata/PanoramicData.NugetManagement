@@ -240,9 +240,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Codacy.Api": {
-    "latestVersion": "4.0.27",
-    "published": "2026-10-15T17:54:52.183+01:00",
-    "refreshedAtUtc": "2026-10-15T21:11:18.3139911+00:00"
+    "latestVersion": "4.0.28",
+    "published": "2026-10-17T15:42:58.163+01:00",
+    "refreshedAtUtc": "2026-10-17T15:33:56.6519367+00:00"
   },
   "Codeuctivity.ImageSharpCompare": {
     "latestVersion": "4.1.390",
@@ -550,9 +550,9 @@
     "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
   },
   "Highlight.Api": {
-    "latestVersion": "2.0.51",
-    "published": "2026-09-12T19:23:51.21+01:00",
-    "refreshedAtUtc": "2026-09-13T00:00:56.7897024+00:00"
+    "latestVersion": "2.0.70",
+    "published": "2026-10-17T15:43:04.997+01:00",
+    "refreshedAtUtc": "2026-10-17T15:33:56.6519367+00:00"
   },
   "HtmlAgilityPack": {
     "latestVersion": "1.13.1",
