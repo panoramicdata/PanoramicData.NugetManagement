@@ -21,7 +21,7 @@ a report to you; it is not shown to the user. Relay what matters.
 
 > You are implementing part of <P>, Panoramic Data's new open-source .NET 10 NuGet client for the <Vendor> <API> REST API (Refit + System.Text.Json, xUnit v3 + AwesomeAssertions). The quality bar is very high: complete coverage of the documented API, exact request tests, live verification, zero warnings, Codacy grade A.
 >
-> **Where to work:** your worktree is <path> (branch feat/<name>, already checked out). Work only there. Commit in small logical commits (author <the user's git name and email>, each message ending with a blank line and the `Co-Authored-By:` line from your session's commit-attribution instructions). Do not push, merge or open PRs. Other agents are working on other categories at the same time and share the live test instance.
+> **Where to work:** your worktree is <path> (branch feat/<name>, already checked out). Work only there. Commit in small logical commits (author <the user's git name and email>, with no `Co-Authored-By` trailer or other AI attribution). Do not push, merge or open PRs. Other agents are working on other categories at the same time and share the live test instance.
 >
 > **Read first:**
 > 1. docs/IMPLEMENTING.md, the binding conventions.

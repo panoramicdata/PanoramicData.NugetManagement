@@ -256,7 +256,7 @@ app.Services.GetRequiredService<AgentWorkObserver>();
 
 // Built now rather than on first use, so the policy hash is in the ledger's hands before anything is written.
 app.Services.GetRequiredService<AutopilotPolicyStore>();
-app.MapAgentApi(settings.AgentApiToken);
+app.MapAgentApi(AgentApiTokenFile.Resolve(settings.AgentApiToken));
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

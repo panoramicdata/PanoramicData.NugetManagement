@@ -937,6 +937,20 @@ public sealed partial class WorkExecutors(
 			return;
 		}
 
+		// A fix is delivered as a pull request, and delivery refuses a clone holding changes the session did not
+		// make. So a session started on a dirty clone could only end with its work left uncommitted, and the next
+		// one would find more of it: Aruba.Api and AlienFx.Api collected dozens of "successful" sessions that way
+		// and never changed a grade. Said now, before minutes of model time are spent on a result that cannot go.
+		await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+
+		if (row.IsWorkingTreeClean == false)
+		{
+			Say($"⏭️ {row.RepositoryFullName} has uncommitted changes, so a fix made now could not be delivered. "
+				+ "Press Fix with AI again: it first gets the clone out from behind them (builds and tests them, "
+				+ "commits what passes, repairs or sets aside what does not), and this fix is queued behind that.");
+			return;
+		}
+
 		var succeeded = false;
 		Func<int>? undoWrites = null;
 		Func<Task<string?>>? progressWorthKeeping = null;
@@ -2750,7 +2764,8 @@ public sealed partial class WorkExecutors(
 
 			if (resolved)
 			{
-				pushed = await CommitUnstuckChangesAsync(item, row, cancellationToken).ConfigureAwait(false);
+				pushed = await DeliverUnstuckChangesAsync(row, changed, baseline ?? new HashSet<string>(), cancellationToken)
+					.ConfigureAwait(false);
 			}
 
 			if (!pushed)
@@ -2951,32 +2966,65 @@ public sealed partial class WorkExecutors(
 	}
 
 	/// <summary>
-	/// Commits and pushes changes that built and passed, recording the push whatever came of it.
+	/// Delivers changes that built and passed through the AI change pipeline: a branch, a pull request, CI and a merge.
 	/// </summary>
-	/// <returns>Whether they were pushed.</returns>
-	private async Task<bool> CommitUnstuckChangesAsync(WorkItem item, RepositoryDashboardRow row, CancellationToken cancellationToken)
+	/// <param name="row">The repository.</param>
+	/// <param name="changed">The <c>git status --porcelain</c> lines of what is uncommitted.</param>
+	/// <param name="knownFailures">Tests that already failed on the last commit, which do not count against the changes.</param>
+	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
+	/// <returns>Whether the pull request was merged.</returns>
+	/// <remarks>
+	/// The same route every other AI-touched change takes, rather than a straight push to the default branch:
+	/// these changes were made by tools nobody reviewed and, often, repaired by a model, which is exactly the
+	/// case the pipeline's gates exist for. The pipeline puts the clone back to main whatever happens, and
+	/// that discards an undelivered edit, so the changes are first recorded in the stash list — the tree
+	/// untouched — and the entry is only dropped once they are safely merged.
+	/// </remarks>
+	private async Task<bool> DeliverUnstuckChangesAsync(
+		RepositoryDashboardRow row,
+		IReadOnlyList<string> changed,
+		IReadOnlySet<string> knownFailures,
+		CancellationToken cancellationToken)
 	{
-		var push = await dashboard
-			.CommitAndPushAsync(row, $"NuGet governance remediation for {row.RepositoryFullName}", Say, cancellationToken)
+		var snapshotName = $"unstick snapshot {DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)} UTC";
+
+		var snapshotted = await localRepo
+			.SnapshotLocalChangesAsync(row.RepositoryFullName, snapshotName, CancellationToken.None)
 			.ConfigureAwait(false);
 
-		if (governance is not null)
+		if (!snapshotted)
 		{
-			await governance
-				.RecordPushAsync(item, row.RepositoryFullName, push.Success, push.RefusalReason, row.LocalPath, CancellationToken.None)
-				.ConfigureAwait(false);
+			// Not delivered without a way back: a refusal here costs a retry, and losing the repair costs the repair.
+			Say("⚠️ Could not make a safety copy of the changes, so they were not delivered.");
+			return false;
 		}
 
-		if (push.Success)
+		var (files, folders) = UnstickPrompt.PathsIn(changed);
+
+		// A folder git reported whole holds files the pipeline must be told about one by one.
+		var owned = files
+			.Concat(folders.SelectMany(folder =>
+				Directory.EnumerateFiles(Path.Combine(row.LocalPath!, folder), "*", SearchOption.AllDirectories)
+					.Select(file => Path.GetRelativePath(row.LocalPath!, file).Replace('\\', '/'))))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		var outcome = await DeliverAiChangeAsync(
+			row,
+			AiChangeKind.RuleFix,
+			"unstick",
+			$"Commit reviewed remediation edits for {row.RepositoryFullName}",
+			owned,
+			knownFailures,
+			cancellationToken).ConfigureAwait(false);
+
+		if (outcome.Kind == AiChangeOutcomeKind.Merged)
 		{
-			Say("✅ Committed and pushed.");
+			await localRepo.DropSnapshotAsync(row.RepositoryFullName, snapshotName, CancellationToken.None).ConfigureAwait(false);
+			Say($"✅ {outcome.Message}");
 			return true;
 		}
 
-		Say(push.WasRefused
-			? $"⛔ The push was refused: {push.RefusalReason}"
-			: "❌ Commit and push failed.");
-
+		Say($"⚠️ Not merged ({outcome.Kind}): {outcome.Message} The changes are kept in `git stash list` as \"{snapshotName}\".");
 		return false;
 	}
 
@@ -2997,7 +3045,11 @@ public sealed partial class WorkExecutors(
 		Say(stashed
 			? "📦 Set the changes aside in a git stash — nothing was thrown away. To look at them: "
 				+ $"`git stash list` and `git stash show -p` in {row.LocalPath}; to bring them back: `git stash pop`."
-			: $"⚠️ Could not set the changes aside: {FirstLine(output)}");
+			: output.Contains("No local changes", StringComparison.OrdinalIgnoreCase)
+				// Delivery puts the clone back to main when it fails, which empties the tree — but not before the
+				// changes were copied into the stash list, so there is still nothing lost.
+				? $"ℹ️ The working tree is already clean. Any changes it held are in `git stash list` in {row.LocalPath}."
+				: $"⚠️ Could not set the changes aside: {FirstLine(output)}");
 
 		await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
 	}

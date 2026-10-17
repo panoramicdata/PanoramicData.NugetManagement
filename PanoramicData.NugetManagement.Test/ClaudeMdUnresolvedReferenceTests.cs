@@ -59,6 +59,13 @@ public class ClaudeMdUnresolvedReferenceTests(ITestOutputHelper output) : TestWi
 		is not checked out next to this one, Claude Code silently skips it.
 		""";
 
+	/// <summary>
+	/// The current CLAUDE.md template without what AI-06 adds: the v1.2 file once only AI-04 has fixed it.
+	/// </summary>
+	private static string ClaudeMdBeforeAi06 => Normalise(Standards.ClaudeMdContent)
+		.Replace("Version: " + Standards.AiInstructionsTemplateVersion, "Version: 1.2")
+		.Replace("\n- " + Standards.NoAiAttributionInstruction, string.Empty);
+
 	private readonly string _root = Directory.CreateTempSubdirectory("claudemd").FullName;
 
 	public void Dispose()
@@ -107,10 +114,11 @@ public class ClaudeMdUnresolvedReferenceTests(ITestOutputHelper output) : TestWi
 	public async Task Fix_ShouldTurnTheGeneratedV12TemplateIntoTheCurrentOne()
 	{
 		// The estate's files are v1.2 as generated, so fixing them must land exactly on what a new
-		// repository gets — otherwise the fix and the template drift apart.
+		// repository gets — otherwise the fix and the template drift apart. AI-06 does the rest of the
+		// way to v1.3.
 		var fixedContent = await ApplyFixAsync(_generatedV12).ConfigureAwait(true);
 
-		Normalise(fixedContent).Should().Be(Normalise(Standards.ClaudeMdContent));
+		Normalise(fixedContent).Should().Be(ClaudeMdBeforeAi06);
 		fixedContent.Should().NotContain("CONTRIBUTING.md");
 	}
 
@@ -169,7 +177,7 @@ public class ClaudeMdUnresolvedReferenceTests(ITestOutputHelper output) : TestWi
 
 		new RemediationRegistry().Get("AI-04")!.Apply(_root, failing, [], null);
 
-		Normalise(File.ReadAllText(Path.Combine(_root, "CLAUDE.md"))).Should().Be(Normalise(Standards.ClaudeMdContent));
+		Normalise(File.ReadAllText(Path.Combine(_root, "CLAUDE.md"))).Should().Be(ClaudeMdBeforeAi06);
 		Normalise(File.ReadAllText(Path.Combine(_root, "AGENTS.md"))).Should().Be(Normalise(Standards.AgentsMdContent));
 	}
 

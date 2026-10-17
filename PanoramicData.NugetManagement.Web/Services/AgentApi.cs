@@ -386,7 +386,7 @@ public static class AgentApi
 				if (!AiFixTargets.IsStuck(row))
 				{
 					return Results.Json(
-						new { error = $"{row.RepositoryFullName} is not stuck: it needs uncommitted changes and to be out of sync" },
+						new { error = $"{row.RepositoryFullName} is not stuck: its working tree has no uncommitted changes" },
 						statusCode: StatusCodes.Status409Conflict);
 				}
 

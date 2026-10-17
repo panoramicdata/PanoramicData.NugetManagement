@@ -70,7 +70,9 @@ public class AppSettings
 	/// </summary>
 	/// <remarks>
 	/// Meant to be set per launch, from the environment (<c>AppSettings__AgentApiToken</c>), and never
-	/// committed: anyone holding it on this machine can queue work against the local clones.
+	/// committed: anyone holding it on this machine can queue work against the local clones. When this is
+	/// empty the application falls back to <c>agent-token.txt</c> in its local application data folder, if
+	/// that file exists, so a restart by another session does not lock the agent out.
 	/// </remarks>
 	public string? AgentApiToken { get; set; }
 

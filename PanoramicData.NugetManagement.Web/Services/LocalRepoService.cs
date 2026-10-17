@@ -556,6 +556,79 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
+	/// Records everything uncommitted, untracked files included, as an entry in the stash list while leaving the
+	/// working tree exactly as it is.
+	/// </summary>
+	/// <param name="repoIdentity">The repository.</param>
+	/// <param name="message">The entry's label.</param>
+	/// <param name="cancellationToken">Signalled when the work is stopped.</param>
+	/// <returns>Whether an entry was made; false when there was nothing to record.</returns>
+	/// <remarks>
+	/// A safety net for work that is about to go through something that resets the tree if it fails: the
+	/// changes are recoverable afterwards whatever happens. <c>git stash create</c> ignores untracked files, so
+	/// they are staged for the instant it takes and unstaged again; the files themselves are never touched.
+	/// </remarks>
+	public async Task<bool> SnapshotLocalChangesAsync(
+		string repoIdentity,
+		string message,
+		CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		if (!Directory.Exists(path))
+		{
+			return false;
+		}
+
+		await RunCommandAsync(path, "git", ["add", "-A"], cancellationToken).ConfigureAwait(false);
+
+		try
+		{
+			var (createExit, sha) = await RunCommandAsync(path, "git", ["stash", "create"], cancellationToken).ConfigureAwait(false);
+			var commit = sha.Trim();
+
+			if (createExit != 0 || commit.Length != 40)
+			{
+				return false;
+			}
+
+			var (storeExit, _) = await RunCommandAsync(path, "git", ["stash", "store", "-m", message, commit], cancellationToken).ConfigureAwait(false);
+			return storeExit == 0;
+		}
+		finally
+		{
+			await RunCommandAsync(path, "git", ["reset", "-q"], CancellationToken.None).ConfigureAwait(false);
+		}
+	}
+
+	/// <summary>
+	/// Removes the stash entry <see cref="SnapshotLocalChangesAsync"/> made, once what it protected is safe.
+	/// </summary>
+	/// <param name="repoIdentity">The repository.</param>
+	/// <param name="message">The label the entry was made with.</param>
+	/// <param name="cancellationToken">Signalled when the work is stopped.</param>
+	public async Task DropSnapshotAsync(string repoIdentity, string message, CancellationToken cancellationToken = default)
+	{
+		var path = GetLocalPath(repoIdentity);
+		var (exit, output) = await RunCommandAsync(path, "git", ["stash", "list", "--format=%gd|%gs"], cancellationToken).ConfigureAwait(false);
+
+		if (exit != 0)
+		{
+			return;
+		}
+
+		foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			var parts = line.Trim().Split('|', 2);
+
+			if (parts.Length == 2 && parts[1].EndsWith(message, StringComparison.Ordinal))
+			{
+				await RunCommandAsync(path, "git", ["stash", "drop", parts[0]], cancellationToken).ConfigureAwait(false);
+				return;
+			}
+		}
+	}
+
+	/// <summary>
 	/// Brings back the most recent stash, which is the one <see cref="StashLocalChangesAsync"/> made.
 	/// </summary>
 	/// <param name="repoIdentity">The repository.</param>

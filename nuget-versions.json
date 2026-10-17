@@ -680,9 +680,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "MagicSuite.Api": {
-    "latestVersion": "4.6.1776",
-    "published": "2026-10-16T16:37:45.66+01:00",
-    "refreshedAtUtc": "2026-10-16T18:28:07.432119+00:00"
+    "latestVersion": "4.6.1785",
+    "published": "2026-10-17T17:36:56.373+01:00",
+    "refreshedAtUtc": "2026-10-17T20:03:49.3076097+00:00"
   },
   "MailKit": {
     "latestVersion": "4.18.1",
@@ -1840,24 +1840,24 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Refit": {
-    "latestVersion": "16.3.0",
-    "published": "2026-09-26T08:53:42.017+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "16.4.0",
+    "published": "2026-10-17T17:15:01.747+01:00",
+    "refreshedAtUtc": "2026-10-17T20:03:49.3076097+00:00"
   },
   "Refit.HttpClientFactory": {
-    "latestVersion": "16.3.0",
-    "published": "2026-09-26T08:53:43.28+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "16.4.0",
+    "published": "2026-10-17T17:15:03.01+01:00",
+    "refreshedAtUtc": "2026-10-17T20:03:49.3076097+00:00"
   },
   "Refit.Newtonsoft.Json": {
-    "latestVersion": "16.3.0",
-    "published": "2026-09-26T08:53:44.497+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "16.4.0",
+    "published": "2026-10-17T17:15:04.28+01:00",
+    "refreshedAtUtc": "2026-10-17T20:03:49.3076097+00:00"
   },
   "Refit.Reflection": {
-    "latestVersion": "16.3.0",
-    "published": "2026-09-26T08:53:45.547+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "16.4.0",
+    "published": "2026-10-17T17:15:05.347+01:00",
+    "refreshedAtUtc": "2026-10-17T20:03:49.3076097+00:00"
   },
   "ReflectionMagic": {
     "latestVersion": "6.0.0",

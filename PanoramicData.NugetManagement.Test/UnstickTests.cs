@@ -42,11 +42,11 @@ public class UnstickTests(ITestOutputHelper output) : TestWithOutput(output), ID
 	[Theory]
 	[InlineData(true, false, false, true)]
 	[InlineData(true, false, null, true)]
-	[InlineData(true, false, true, false)]
+	[InlineData(true, false, true, true)]
 	[InlineData(true, true, false, false)]
 	[InlineData(true, null, false, false)]
 	[InlineData(false, false, false, false)]
-	public void IsStuck_NeedsADirtyTreeThatIsAlsoOutOfStep(bool cloned, bool? clean, bool? synced, bool expected)
+	public void IsStuck_IsADirtyTree_WhetherOrNotItIsLevelWithItsRemote(bool cloned, bool? clean, bool? synced, bool expected)
 		=> AiFixTargets.IsStuck(Row(cloned, clean, synced)).Should().Be(expected);
 
 	[Fact]
@@ -203,6 +203,57 @@ public class UnstickTests(ITestOutputHelper output) : TestWithOutput(output), ID
 		popped.Should().BeTrue();
 		(await File.ReadAllTextAsync(Path.Combine(path, "tracked.txt"), TestContext.Current.CancellationToken).ConfigureAwait(true)).Should().Be("changed\n");
 		File.Exists(Path.Combine(path, "new.txt")).Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task Snapshot_RecordsTheChangesInTheStashList_WithoutTouchingTheTree()
+	{
+		var service = CreateService();
+		var path = await InitRepoAsync(service).ConfigureAwait(true);
+
+		await File.WriteAllTextAsync(Path.Combine(path, "tracked.txt"), "changed\n", TestContext.Current.CancellationToken).ConfigureAwait(true);
+		await File.WriteAllTextAsync(Path.Combine(path, "new.txt"), "new\n", TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+		var made = await service.SnapshotLocalChangesAsync("o/Sample", "my snapshot", TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+		made.Should().BeTrue();
+		(await File.ReadAllTextAsync(Path.Combine(path, "tracked.txt"), TestContext.Current.CancellationToken).ConfigureAwait(true)).Should().Be("changed\n");
+		File.Exists(Path.Combine(path, "new.txt")).Should().BeTrue();
+
+		var (_, status) = await LocalRepoService.RunCommandAsync(path, "git", ["status", "--porcelain"], TestContext.Current.CancellationToken).ConfigureAwait(true);
+		status.Should().Contain("tracked.txt").And.Contain("?? new.txt", "the changes are still uncommitted and the untracked file is still untracked");
+
+		var (_, list) = await LocalRepoService.RunCommandAsync(path, "git", ["stash", "list"], TestContext.Current.CancellationToken).ConfigureAwait(true);
+		list.Should().Contain("my snapshot");
+
+		// It really holds the untracked file too, which `git stash create` alone would have left out.
+		var (_, files) = await LocalRepoService.RunCommandAsync(path, "git", ["ls-tree", "-r", "--name-only", "stash@{0}"], TestContext.Current.CancellationToken).ConfigureAwait(true);
+		files.Should().Contain("tracked.txt").And.Contain("new.txt");
+	}
+
+	[Fact]
+	public async Task DropSnapshot_RemovesOnlyTheNamedEntry()
+	{
+		var service = CreateService();
+		var path = await InitRepoAsync(service).ConfigureAwait(true);
+
+		await File.WriteAllTextAsync(Path.Combine(path, "tracked.txt"), "changed\n", TestContext.Current.CancellationToken).ConfigureAwait(true);
+		await service.SnapshotLocalChangesAsync("o/Sample", "keep me", TestContext.Current.CancellationToken).ConfigureAwait(true);
+		await service.SnapshotLocalChangesAsync("o/Sample", "drop me", TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+		await service.DropSnapshotAsync("o/Sample", "drop me", TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+		var (_, list) = await LocalRepoService.RunCommandAsync(path, "git", ["stash", "list"], TestContext.Current.CancellationToken).ConfigureAwait(true);
+		list.Should().Contain("keep me").And.NotContain("drop me");
+	}
+
+	[Fact]
+	public async Task Snapshot_OfACleanTree_MakesNothing()
+	{
+		var service = CreateService();
+		await InitRepoAsync(service).ConfigureAwait(true);
+
+		(await service.SnapshotLocalChangesAsync("o/Sample", "nothing", TestContext.Current.CancellationToken).ConfigureAwait(true)).Should().BeFalse();
 	}
 
 	[Fact]

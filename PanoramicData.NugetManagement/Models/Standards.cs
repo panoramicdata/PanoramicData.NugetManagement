@@ -636,7 +636,13 @@ public static class Standards
 	/// The version marker written into <see cref="ClaudeMdContent"/> and <see cref="AgentsMdContent"/>.
 	/// Bump this when either template's content changes materially.
 	/// </summary>
-	public const string AiInstructionsTemplateVersion = "1.2";
+	public const string AiInstructionsTemplateVersion = "1.3";
+
+	/// <summary>
+	/// The instruction AI-06 requires in CLAUDE.md and AGENTS.md. Agents add a co-author trailer to
+	/// every commit unless told not to, and Panoramic Data does not want them in its history.
+	/// </summary>
+	public const string NoAiAttributionInstruction = "Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
 
 	/// <summary>
 	/// The standard CLAUDE.md content: local Copilot instructions plus an <c>@import</c> of the shared
@@ -668,6 +674,7 @@ public static class Standards
 		- Do not commit secrets, credentials, or API tokens.
 		- Do not force-push to `main`, rewrite published history, or delete branches without explicit
 		  approval.
+		- {NoAiAttributionInstruction}
 
 		## Tools
 
@@ -712,6 +719,10 @@ public static class Standards
 		to the private `PanoramicData.Skills` repository), ignore this section and continue. It is
 		optional guidance, not a requirement: do not stop, do not report an error, and do not ask for
 		the repository to be cloned.
+
+		## Commits
+
+		{NoAiAttributionInstruction}
 		""";
 
 	/// <summary>

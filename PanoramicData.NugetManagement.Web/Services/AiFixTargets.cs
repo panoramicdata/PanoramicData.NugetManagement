@@ -53,17 +53,16 @@ public static class AiFixTargets
 		=> AiFixCandidates.For(row, remediations).Count + UnanalysedHumanIssues(row).Count + (IsStuck(row) ? 1 : 0);
 
 	/// <summary>
-	/// Whether the clone is stuck: uncommitted changes in it, and out of step with its remote.
+	/// Whether the clone is stuck behind uncommitted changes.
 	/// </summary>
 	/// <remarks>
-	/// The state the dashboard shows as Dirty beside Out of sync. A dirty tree alone is ordinary work in
-	/// progress; it becomes a problem when it is also what stops the clone syncing, which is when
-	/// something only a person or a model can untangle is needed. A clone whose state is not known is
-	/// not called stuck.
+	/// Any dirty tree, not only one that is also out of sync. Out of sync is the symptom that is easy to see,
+	/// and was the first definition; but a dirty clone that is level with its remote is just as stuck for
+	/// the purpose that matters here, because an AI fix is delivered as a pull request and delivery refuses
+	/// a clone holding changes the fix did not make. Aruba.Api and AlienFx.Api were exactly that, and went
+	/// unnoticed. A clone whose state is not known is not called stuck.
 	/// </remarks>
 	/// <param name="row">The repository.</param>
 	public static bool IsStuck(RepositoryDashboardRow row)
-		=> row.IsClonedLocally
-			&& row.IsWorkingTreeClean == false
-			&& row.IsSyncedWithOrigin != true;
+		=> row.IsClonedLocally && row.IsWorkingTreeClean == false;
 }
