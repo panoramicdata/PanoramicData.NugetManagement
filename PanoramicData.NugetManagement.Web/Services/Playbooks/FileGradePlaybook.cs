@@ -42,5 +42,13 @@ public sealed class FileGradePlaybook : IRuleAiPlaybook
 			  Before: three tests each contain the same four lines that create a client and call it.
 			  After: one private method holds those four lines and returns the result;
 			         each test calls the method and keeps its own assertions.
+
+			Shape of the change, when the task says the same code is in other files:
+
+			  Before: four interfaces each declare the same two methods.
+			  After: one new interface in the same folder declares them;
+			         each of the four inherits from it and keeps only what is its own.
+
+			Joining lines, moving braces or renaming does not remove a repeat.
 			""";
 }

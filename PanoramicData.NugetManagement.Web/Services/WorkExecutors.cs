@@ -1014,6 +1014,31 @@ public sealed class WorkExecutors(
 			// to do with coverage — and are told to the model as known, not left for it to discover.
 			IReadOnlySet<string> knownFailures = baseline?.FailedTests ?? new HashSet<string>();
 
+			// A file graded down for duplication is repeated across files, so editing it alone cannot fix it, and
+			// the only local check — does it build — passes for a change that joins two lines. Measured here
+			// instead, so the session is told where the repeats are, may touch the files that share them, and is
+			// judged on whether the file really became less repetitive. Aruba.Api's interfaces were "fixed" three
+			// and four times each by reformatting, and graded F every time.
+			DuplicationReport? duplicationBefore = null;
+
+			if (string.Equals(ruleId, "CQ-06", StringComparison.OrdinalIgnoreCase) && targetPath is { Length: > 0 })
+			{
+				var measured = await Task.Run(() => DuplicationMeasurement.Measure(row.LocalPath, targetPath), cancellationToken)
+					.ConfigureAwait(false);
+
+				// Below this the grade is about something else — complexity, an issue — and a duplication check
+				// would reject a change that was right.
+				if (measured is { Percent: >= 15 })
+				{
+					duplicationBefore = measured;
+					Say($"📏 {targetPath} is {measured.Percent.ToString("0", CultureInfo.InvariantCulture)}% repeated by a local "
+						+ $"measure, across {measured.PeerFiles.Count.ToString(CultureInfo.InvariantCulture)} other file(s).");
+				}
+			}
+
+			var duplicationMode = duplicationBefore is not null;
+			var targetFolder = duplicationMode ? Path.GetDirectoryName(targetPath)?.Replace('\\', '/') : null;
+
 			var toolbox = new AiFixToolbox(
 				row.LocalPath,
 				build: async token =>
@@ -1030,7 +1055,13 @@ public sealed class WorkExecutors(
 				},
 				// Confined to the test project, so "raising coverage" cannot be done by deleting the code
 				// that is uncovered or by editing it until it is easy to cover.
-				writableFolders: coverageMode ? testFolders : null,
+				writableFolders: coverageMode
+					? testFolders
+					: targetFolder is { Length: > 0 } ? [targetFolder] : null,
+
+				// The file and the files that share its repeats, and nothing else: moving a repeat into one place
+				// means changing every copy.
+				writablePaths: duplicationMode ? [targetPath!, .. duplicationBefore!.PeerFiles] : null,
 				coverage: coverageMode
 					? async token =>
 					{
@@ -1042,7 +1073,7 @@ public sealed class WorkExecutors(
 					: null,
 
 				// Only new files: "add tests" is not a licence to change the ones that exist.
-				newFilesOnly: coverageMode,
+				newFilesOnly: coverageMode || duplicationMode,
 
 				// Whether the test project still compiles, said in the result of the write that broke it.
 				afterWrite: coverageMode
@@ -1169,6 +1200,14 @@ public sealed class WorkExecutors(
 						? $"\nTest project folder (the only place you may write): {string.Join(", ", testFolders)}\n"
 							+ "Existing files there are read-only: add new test files, with new names.\n"
 							+ $"Measured now:\n{DescribeCoverage(baseline, knownFailures)}\n"
+						: string.Empty)
+					+ (duplicationBefore is not null
+						? $"\n{DuplicationMeasurement.Describe(duplicationBefore)}"
+							+ "The same code appears in more than one file, so changing only this file cannot remove it. "
+							+ $"You may edit this file and these files that share it: {string.Join(", ", duplicationBefore.PeerFiles)}. "
+							+ "You may also add one new file in the same folder to hold the shared code. "
+							+ "Joining lines, moving braces or renaming does not reduce duplication and will not be counted: "
+							+ "put each repeated run in one place and use it from every copy.\n"
 						: string.Empty),
 				AiFixPrompt.SystemPrompt);
 
@@ -1186,7 +1225,12 @@ public sealed class WorkExecutors(
 					token => coverageMode
 						? CheckCoverageAsync(row, toolbox, knownFailures, status => coverageNow = status, token)
 						: remotelyGraded
-							? CheckLocalChangeAsync(row, toolbox, verifyTests ? testBaseline : null, token)
+							? CheckLocalChangeAsync(
+								row,
+								toolbox,
+								verifyTests ? testBaseline : null,
+								token,
+								duplicationBefore is null ? null : (duplicationBefore, targetPath!))
 							: ReEvaluateAndBuildAsync(row, ruleId, toolbox, buildWasBroken, token),
 					cancellationToken)
 				.ConfigureAwait(false);
@@ -1580,7 +1624,8 @@ public sealed class WorkExecutors(
 		RepositoryDashboardRow row,
 		AiFixToolbox toolbox,
 		IReadOnlySet<string>? testBaseline,
-		CancellationToken cancellationToken)
+		CancellationToken cancellationToken,
+		(DuplicationReport Before, string Target)? duplication = null)
 	{
 		if (toolbox.FilesWritten.Count == 0)
 		{
@@ -1642,6 +1687,33 @@ public sealed class WorkExecutors(
 			}
 
 			Say("   ✓ No test that passed before fails now.");
+		}
+
+		// Last, because it is the cheap check and the others are the ones that can fail for reasons the model can
+		// fix quickly; but it is the one that says whether the change did anything about the grade.
+		if (duplication is { } measure)
+		{
+			var after = await Task.Run(() => DuplicationMeasurement.Measure(row.LocalPath!, measure.Target), cancellationToken)
+				.ConfigureAwait(false);
+
+			if (after is not null)
+			{
+				Say($"   📏 Repeated code in {measure.Target}: "
+					+ $"{measure.Before.Percent.ToString("0", CultureInfo.InvariantCulture)}% → "
+					+ $"{after.Percent.ToString("0", CultureInfo.InvariantCulture)}%.");
+
+				if (!DuplicationMeasurement.IsMeaningfulImprovement(measure.Before, after))
+				{
+					return new AiRuleCheck(
+						false,
+						$"The build passes, but {measure.Target} is still {after.Percent.ToString("0", CultureInfo.InvariantCulture)}% "
+						+ $"repeated (it was {measure.Before.Percent.ToString("0", CultureInfo.InvariantCulture)}%). "
+						+ "Reformatting or joining lines does not change that: it is the same code in more than one place. "
+						+ "Put a repeated run in one shared place — a base interface, a helper method, a new file in the "
+						+ "same folder — and use it from each copy.\n"
+						+ DuplicationMeasurement.Describe(after));
+				}
+			}
 		}
 
 		return new AiRuleCheck(true, $"{toolbox.FilesWritten.Count} file(s) changed and the build succeeded.");
