@@ -132,6 +132,16 @@ public static class AiFixPrompt
 
 		AppendData(builder, result.Advisory, targetPath);
 
+		// The testing rules are the ones whose fix is a test project, and a project the model builds
+		// without being told how this estate builds one fails the very rules it was asked to satisfy.
+		// Kept off every other rule: a model fixing a SECURITY.md that is told about testing starts
+		// writing tests.
+		if (result.RuleId.StartsWith("TST-", StringComparison.OrdinalIgnoreCase))
+		{
+			builder.AppendLine();
+			builder.AppendLine(AiChange.AiTestGuide.Text);
+		}
+
 		return builder.ToString();
 	}
 

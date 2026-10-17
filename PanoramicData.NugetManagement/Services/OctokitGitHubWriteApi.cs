@@ -87,4 +87,64 @@ public class OctokitGitHubWriteApi(IGitHubClient github) : IGitHubWriteApi
 		=> await _github.Issue
 			.Update(owner, name, number, new IssueUpdate { State = ItemState.Closed })
 			.ConfigureAwait(false);
+
+	/// <inheritdoc />
+	public async Task<int> CreatePullRequestAsync(
+		string owner,
+		string name,
+		string head,
+		string baseBranch,
+		string title,
+		string body,
+		CancellationToken cancellationToken)
+	{
+		var created = await _github.PullRequest
+			.Create(owner, name, new NewPullRequest(title, head, baseBranch) { Body = body })
+			.ConfigureAwait(false);
+
+		return created.Number;
+	}
+
+	/// <inheritdoc />
+	public async Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(
+		string owner,
+		string name,
+		string sha,
+		CancellationToken cancellationToken)
+	{
+		var runs = await _github.Check.Run.GetAllForReference(owner, name, sha).ConfigureAwait(false);
+
+		// The older commit-status API too: an integration that reports only that way would otherwise look
+		// like a repository with no CI. A combined status with no statuses is empty, not pending.
+		var statuses = await _github.Repository.Status.GetCombined(owner, name, sha).ConfigureAwait(false);
+
+		return
+		[
+			.. runs.CheckRuns.Select(run => new CheckRunState(
+				run.Name,
+				GitHubCheckMapping.FromCheckRun(run.Status.Value, run.Conclusion?.Value))),
+			.. statuses.Statuses.Select(status => new CheckRunState(
+				status.Context,
+				GitHubCheckMapping.FromStatus(status.State.Value)))
+		];
+	}
+
+	/// <inheritdoc />
+	/// <remarks>
+	/// The expected SHA is sent so GitHub itself refuses a merge whose head has moved, rather than this
+	/// code checking and then merging a different commit in the gap between.
+	/// </remarks>
+	public async Task MergePullRequestAsync(
+		string owner,
+		string name,
+		int number,
+		string expectedHeadSha,
+		CancellationToken cancellationToken)
+		=> await _github.PullRequest
+			.Merge(owner, name, number, new MergePullRequest
+			{
+				Sha = expectedHeadSha,
+				MergeMethod = PullRequestMergeMethod.Squash
+			})
+			.ConfigureAwait(false);
 }

@@ -178,6 +178,37 @@ public class AiFixSessionTests(ITestOutputHelper output) : TestWithOutput(output
 	}
 
 	[Fact]
+	public async Task TheModelsOwnFinishSummary_IsCarriedOnTheOutcome()
+	{
+		var model = new ScriptedModel(
+			Turn(Call("write_file", ("path", "SECURITY.md"), ("content", "# Security\n"))),
+			Turn(Call("finish", ("summary", "Wrote the test.\nFILTER: FullyQualifiedName~ParserTests"))));
+
+		var outcome = await NewSession(model)
+			.RunAsync(Request(), PassesOnAttempt(1), TestContext.Current.CancellationToken)
+			.ConfigureAwait(true);
+
+		outcome.FinishText.Should().Contain("FILTER: FullyQualifiedName~ParserTests",
+			"the red-test step reads the filter the model names from what it said when it finished");
+	}
+
+	[Fact]
+	public async Task AFailedSession_HasNoFinishText()
+	{
+		var model = new ScriptedModel(
+			Turn(Call("finish", ("summary", "Gave up"))),
+			Turn(Call("finish", ("summary", "Gave up"))),
+			Turn(Call("finish", ("summary", "Gave up"))));
+
+		var outcome = await NewSession(model)
+			.RunAsync(Request(), PassesOnAttempt(99), TestContext.Current.CancellationToken)
+			.ConfigureAwait(true);
+
+		outcome.Succeeded.Should().BeFalse();
+		outcome.FinishText.Should().BeNull("only a session that ended in success has a finish text worth reading");
+	}
+
+	[Fact]
 	public async Task TheRuleStillFailing_StartsAnotherAttemptWithTheFailureFedBack()
 	{
 		var model = new ScriptedModel(

@@ -95,4 +95,57 @@ public interface IGitHubWriteApi
 		string name,
 		int number,
 		CancellationToken cancellationToken);
+
+	/// <summary>
+	/// Opens a pull request.
+	/// </summary>
+	/// <param name="owner">The repository owner.</param>
+	/// <param name="name">The repository name.</param>
+	/// <param name="head">The branch holding the change.</param>
+	/// <param name="baseBranch">The branch it is to merge into.</param>
+	/// <param name="title">The pull request title.</param>
+	/// <param name="body">The pull request body, in markdown.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>The new pull request's number.</returns>
+	Task<int> CreatePullRequestAsync(
+		string owner,
+		string name,
+		string head,
+		string baseBranch,
+		string title,
+		string body,
+		CancellationToken cancellationToken);
+
+	/// <summary>
+	/// Reads the check runs on a commit.
+	/// </summary>
+	/// <param name="owner">The repository owner.</param>
+	/// <param name="name">The repository name.</param>
+	/// <param name="sha">The commit, normally a pull request's head.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>The check runs on that commit; empty if none have been registered.</returns>
+	Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(
+		string owner,
+		string name,
+		string sha,
+		CancellationToken cancellationToken);
+
+	/// <summary>
+	/// Squash-merges a pull request, but only if its head is still the commit that was checked.
+	/// </summary>
+	/// <param name="owner">The repository owner.</param>
+	/// <param name="name">The repository name.</param>
+	/// <param name="number">The pull request number.</param>
+	/// <param name="expectedHeadSha">The head commit the checks were run against.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// Throws when GitHub refuses, for instance because the head has moved since it was checked. The
+	/// caller treats that as a refusal to merge, not as something to retry blindly.
+	/// </remarks>
+	Task MergePullRequestAsync(
+		string owner,
+		string name,
+		int number,
+		string expectedHeadSha,
+		CancellationToken cancellationToken);
 }

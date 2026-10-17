@@ -45,6 +45,15 @@ public static class IssueAutonomyGate
 	public const int MaxUnattendedPaths = 3;
 
 	/// <summary>
+	/// Whether an unattended issue fix must be reproduced by a test that fails first.
+	/// </summary>
+	/// <remarks>
+	/// Always. This is what replaced "the existing tests still pass", which could not say whether the
+	/// reported problem was solved.
+	/// </remarks>
+	public const bool RequiresRedTest = true;
+
+	/// <summary>
 	/// Whether a fix may be queued against the clone without a human reading the verdict.
 	/// </summary>
 	/// <param name="verdict">What the analysis concluded.</param>

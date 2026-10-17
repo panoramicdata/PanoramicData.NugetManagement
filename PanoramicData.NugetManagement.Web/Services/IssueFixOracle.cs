@@ -8,17 +8,17 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public sealed record IssueFixCheckStep(bool Succeeded, string Output);
 
 /// <summary>
-/// The oracle for a fix that has no rule behind it.
+/// The model's per-attempt check for a fix that has no rule behind it.
 /// </summary>
 /// <remarks>
 /// Every other AI fix here is checked by re-running the rule that asked for it: free, exact, and the
 /// reason a 27b model can be pointed at a clone at all. An issue-driven fix has no rule, so the check
 /// becomes build-then-test.
 /// <para>
-/// That is a genuinely weaker oracle and this class is written to stay honest about it. Green means
-/// the change compiles and broke nothing — not that the reporter's problem is solved, which nothing
-/// available here can establish. The passing message says so in as many words, because a summary
-/// claiming a fix is how an unreviewed change derived from a stranger's prose ends up committed.
+/// By the time this runs the reproducing test is already in the tree, so a green suite is one that
+/// includes it, and the model is told so. This is feedback between attempts, not the decision to
+/// deliver: the pipeline's own gates decide that, and re-check everything, including that the
+/// reproducing test failed before the fix.
 /// </para>
 /// </remarks>
 public sealed class IssueFixOracle(
@@ -57,8 +57,8 @@ public sealed class IssueFixOracle(
 		return test.Succeeded
 			? new AiRuleCheck(
 				true,
-				"It compiles and the tests pass. That is not proof the reported problem is solved — "
-					+ "only that the change is plausible and broke nothing.")
+				"It compiles and every test passes, including the reproducing test that failed before "
+					+ "your change. Finish now.")
 			: new AiRuleCheck(
 				false,
 				$"It compiles, but tests fail:\n{Tail(test.Output)}");

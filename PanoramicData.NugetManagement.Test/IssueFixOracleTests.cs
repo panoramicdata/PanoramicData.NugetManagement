@@ -79,14 +79,16 @@ public class IssueFixOracleTests(ITestOutputHelper output) : TestWithOutput(outp
 	}
 
 	[Fact]
-	public async Task CheckAsync_SaysGreenIsNotProofTheIssueIsFixed()
+	public async Task CheckAsync_SaysTheNewTestIsAmongTheTestsThatPass()
 	{
 		var oracle = new IssueFixOracle(Step(true, "Build succeeded"), Step(true, "1310 passed"));
 
 		var check = await oracle.CheckAsync(TestContext.Current.CancellationToken);
 
-		check.Message.Should().Contain("not proof",
-			"a summary that claimed the issue was fixed is how an unreviewed change derived from a "
-				+ "stranger's prose ends up committed on somebody's word");
+		check.Message.Should().Contain("reproducing test",
+			"the reproducing test is in the tree while the model works, so a green suite includes it, and "
+				+ "that is what the message must say");
+		check.Message.Should().NotContain("not proof",
+			"the red-then-green test is now the proof, and the old caveat would tell the model it is not done");
 	}
 }

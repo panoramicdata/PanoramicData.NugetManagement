@@ -35,6 +35,22 @@ public class AiFixPromptTests(ITestOutputHelper output) : TestWithOutput(output)
 				}
 		};
 
+	[Theory]
+	[InlineData("TST-01")]
+	[InlineData("TST-08")]
+	public void BuildTask_ForATestRule_IncludesTheTestGuide(string ruleId)
+		=> AiFixPrompt.BuildTask(Failing(ruleId: ruleId), "panoramicdata/Sample", playbook: null)
+			.Should().Contain(Web.Services.AiChange.AiTestGuide.Text,
+				"the model that creates or edits a test project must be told how this estate writes one");
+
+	[Theory]
+	[InlineData("COM-01")]
+	[InlineData("CI-15")]
+	public void BuildTask_ForAnyOtherRule_LeavesTheTestGuideOut(string ruleId)
+		=> AiFixPrompt.BuildTask(Failing(ruleId: ruleId), "panoramicdata/Sample", playbook: null)
+			.Should().NotContain("Testing conventions for this repository",
+				"a small model told about testing while fixing a SECURITY.md will start writing tests");
+
 	private sealed class StubPlaybook : IRuleAiPlaybook
 	{
 		public string RuleId => "COM-01";
