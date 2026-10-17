@@ -162,8 +162,8 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 		RedThenGreen();
 		_git.Changed =
 		[
-			new ChangedFile("Lib/Parser.cs", Enumerable.Range(10, 10).ToHashSet()),
-			new ChangedFile("Lib.Test/ParserTests.cs", Enumerable.Range(1, 40).ToHashSet())
+			new ChangedFileLines("Lib/Parser.cs", Enumerable.Range(10, 10).ToHashSet()),
+			new ChangedFileLines("Lib.Test/ParserTests.cs", Enumerable.Range(1, 40).ToHashSet())
 		];
 		_tests.Cobertura = CoberturaFor(("Lib\\Parser.cs", 10, 19, 0), ("Lib.Test\\ParserTests.cs", 1, 40, 1));
 
@@ -179,7 +179,7 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 	public async Task Run_ADisallowedPath_FailsTheLocalGate()
 	{
 		RedThenGreen();
-		_git.Changed = [new ChangedFile("secrets/.env", new HashSet<int> { 1 })];
+		_git.Changed = [new ChangedFileLines("secrets/.env", new HashSet<int> { 1 })];
 
 		var outcome = await Pipeline(isAllowed: path => !path.StartsWith("secrets/", StringComparison.Ordinal))
 			.RunAsync(Issue(), _said.Add, TestContext.Current.CancellationToken);
@@ -194,10 +194,10 @@ public class AiChangePipelineTests(ITestOutputHelper output) : TestWithOutput(ou
 		RedThenGreen();
 		_git.Changed =
 		[
-			new ChangedFile("Lib/A.cs", new HashSet<int> { 10 }),
-			new ChangedFile("Lib/B.cs", new HashSet<int> { 10 }),
-			new ChangedFile("Lib.Test/ATests.cs", new HashSet<int> { 1 }),
-			new ChangedFile("Lib.Test/BTests.cs", new HashSet<int> { 1 })
+			new ChangedFileLines("Lib/A.cs", new HashSet<int> { 10 }),
+			new ChangedFileLines("Lib/B.cs", new HashSet<int> { 10 }),
+			new ChangedFileLines("Lib.Test/ATests.cs", new HashSet<int> { 1 }),
+			new ChangedFileLines("Lib.Test/BTests.cs", new HashSet<int> { 1 })
 		];
 		_tests.Cobertura = """
 			<coverage><packages><package><classes>

@@ -122,7 +122,7 @@ public sealed class LocalRepoAiChangeGit(string clonePath, string? expectedIdent
 		=> await RequireAsync(["checkout", "-b", branch], cancellationToken).ConfigureAwait(false);
 
 	/// <inheritdoc />
-	public async Task<IReadOnlyList<ChangedFile>> ChangedFilesAsync(CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<ChangedFileLines>> ChangedFilesAsync(CancellationToken cancellationToken)
 	{
 		// Untracked files are added intent-to-add so a brand-new test file shows up in the diff.
 		await GitAsync(["add", "-N", "."], cancellationToken).ConfigureAwait(false);
@@ -144,7 +144,7 @@ public sealed class LocalRepoAiChangeGit(string clonePath, string? expectedIdent
 			.. names
 				.Split('\n', StringSplitOptions.RemoveEmptyEntries)
 				.Select(name => name.TrimEnd('\r'))
-				.Select(name => withLines.TryGetValue(name, out var file) ? file : new ChangedFile(name, new HashSet<int>()))
+				.Select(name => withLines.TryGetValue(name, out var file) ? file : new ChangedFileLines(name, new HashSet<int>()))
 		];
 	}
 

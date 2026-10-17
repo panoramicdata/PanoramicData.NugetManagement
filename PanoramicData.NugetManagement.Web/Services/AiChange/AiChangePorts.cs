@@ -129,7 +129,7 @@ public interface IAiChangeGit
 
 	/// <summary>The files and lines changed relative to <c>main</c>, committed or not.</summary>
 	/// <param name="cancellationToken">A cancellation token.</param>
-	Task<IReadOnlyList<ChangedFile>> ChangedFilesAsync(CancellationToken cancellationToken);
+	Task<IReadOnlyList<ChangedFileLines>> ChangedFilesAsync(CancellationToken cancellationToken);
 
 	/// <summary>Stages everything and commits it.</summary>
 	/// <param name="message">The commit message.</param>

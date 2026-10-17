@@ -7,7 +7,7 @@ namespace PanoramicData.NugetManagement.Test;
 internal sealed class FakeAiChangeGit : IAiChangeGit
 {
 	public string? Refusal { get; set; }
-	public IReadOnlyList<ChangedFile> Changed { get; set; } = [new ChangedFile("Lib/Parser.cs", new HashSet<int> { 10 })];
+	public IReadOnlyList<ChangedFileLines> Changed { get; set; } = [new ChangedFileLines("Lib/Parser.cs", new HashSet<int> { 10 })];
 	public List<string> Calls { get; } = [];
 	public bool? DeletedRemote { get; private set; }
 
@@ -33,7 +33,7 @@ internal sealed class FakeAiChangeGit : IAiChangeGit
 		return Task.CompletedTask;
 	}
 
-	public Task<IReadOnlyList<ChangedFile>> ChangedFilesAsync(CancellationToken cancellationToken)
+	public Task<IReadOnlyList<ChangedFileLines>> ChangedFilesAsync(CancellationToken cancellationToken)
 		=> Task.FromResult(Changed);
 
 	public Task<string> CommitAsync(string message, CancellationToken cancellationToken)

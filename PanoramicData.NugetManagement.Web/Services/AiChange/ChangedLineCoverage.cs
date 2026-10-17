@@ -7,7 +7,7 @@ namespace PanoramicData.NugetManagement.Web.Services.AiChange;
 /// </summary>
 /// <param name="Path">The repository-relative path, with forward slashes.</param>
 /// <param name="Lines">The changed line numbers.</param>
-public sealed record ChangedFile(string Path, IReadOnlySet<int> Lines);
+public sealed record ChangedFileLines(string Path, IReadOnlySet<int> Lines);
 
 /// <summary>
 /// How well the changed lines were exercised.
@@ -36,7 +36,7 @@ public static class ChangedLineCoverage
 	/// </summary>
 	/// <param name="changed">The changed files and lines.</param>
 	/// <param name="coberturaXml">The report from the test run that included the change.</param>
-	public static ChangedLineCoverageResult Evaluate(IReadOnlyList<ChangedFile> changed, string coberturaXml)
+	public static ChangedLineCoverageResult Evaluate(IReadOnlyList<ChangedFileLines> changed, string coberturaXml)
 	{
 		var hitsByFile = ReadHits(coberturaXml);
 		var executable = 0;

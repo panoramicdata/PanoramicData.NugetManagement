@@ -16,9 +16,9 @@ public static partial class ChangedLineParser
 	/// </summary>
 	/// <param name="unifiedZeroDiff">The output of <c>git diff -U0</c>.</param>
 	/// <returns>One entry per file that still exists, with the lines it gained or changed.</returns>
-	public static IReadOnlyList<ChangedFile> Parse(string unifiedZeroDiff)
+	public static IReadOnlyList<ChangedFileLines> Parse(string unifiedZeroDiff)
 	{
-		var result = new List<ChangedFile>();
+		var result = new List<ChangedFileLines>();
 		HashSet<int>? lines = null;
 
 		foreach (var line in unifiedZeroDiff.Split('\n').Select(l => l.TrimEnd('\r')))
@@ -34,7 +34,7 @@ public static partial class ChangedLineParser
 
 				if (path is not null)
 				{
-					result.Add(new ChangedFile(path, lines!));
+					result.Add(new ChangedFileLines(path, lines!));
 				}
 
 				continue;

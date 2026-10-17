@@ -21,7 +21,7 @@ public class ChangedLineCoverageTests(ITestOutputHelper output) : TestWithOutput
 		</coverage>
 		""";
 
-	private static ChangedFile Changed(string path, params int[] lines) => new(path, lines.ToHashSet());
+	private static ChangedFileLines Changed(string path, params int[] lines) => new(path, lines.ToHashSet());
 
 	[Fact]
 	public void Evaluate_PassesWhenEnoughChangedExecutableLinesRan()
