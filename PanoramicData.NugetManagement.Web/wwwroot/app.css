@@ -2771,3 +2771,11 @@ i + .breadcrumb-link-text {
 /* The GitHub API budget chip was removed: normal dashboard use never approaches the hourly limit, so
    a permanent counter was noise. The budget is still checked before any action that would consume a
    meaningful share of it — see ConfirmApiBudgetAsync — it just no longer shows a running total. */
+
+/* The Changes tab of an AI fix session: file list beside a Monaco diff. The explicit height matters:
+   PDDiffPanel's Height="100%" collapses to about 200px inside an auto-height parent. */
+.work-changes { display: flex; gap: .5rem; height: 60vh; }
+.work-changes-files { width: 28%; overflow: auto; display: flex; flex-direction: column; }
+.work-changes-file { text-align: left; background: none; border: 0; padding: .25rem .5rem; color: inherit; font-family: monospace; font-size: .8rem; }
+.work-changes-file.selected { background: rgba(255, 255, 255, .12); }
+.work-changes-diff { flex: 1; min-width: 0; height: 100%; }

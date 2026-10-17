@@ -53,7 +53,56 @@ else
 			</div>
 		}
 
-		@if (Lines.Count == 0)
+		@{
+			var snap = Changes;
+		}
+
+		@if (IsAi)
+		{
+			<ul class="nav nav-tabs mb-2">
+				<li class="nav-item"><button type="button" class="nav-link @(_tab == Tab.Log ? "active" : "")" @onclick="ShowLog">Log</button></li>
+				<li class="nav-item"><button type="button" class="nav-link @(_tab == Tab.Changes ? "active" : "")" @onclick="ShowChanges">Changes (@snap.Changes.Count)</button></li>
+			</ul>
+		}
+
+		@if (ChangesShowing)
+		{
+			<div class="work-changes">
+				<div class="work-changes-files">
+					@foreach (var change in ChangesTabModel.Listed(snap.Changes))
+					{
+						var path = change.Path;
+						<button type="button" class="work-changes-file @(path == snap.SelectedPath ? "selected" : "")" @onclick="() => SelectFile(path)">
+							<span class="badge bg-secondary">@change.Kind</span>
+							@path
+							@if (snap.Labels.TryGetValue(path, out var label))
+							{
+								<span class="text-muted small">@label</span>
+							}
+						</button>
+					}
+						@if (ChangesTabModel.NotListed(snap.Changes) is > 0 and var notListed)
+					{
+						<div class="text-muted small p-2">...and @notListed more not shown</div>
+					}
+					@if (snap.Changes.Count == 0)
+					{
+						<div class="text-muted small p-2">No changes in the clone yet.</div>
+					}
+				</div>
+				<div class="work-changes-diff">
+					@if (snap.Pair is { NotDiffableReason: { } reason })
+					{
+						<div class="alert alert-secondary">Not diffable: @reason</div>
+					}
+					else if (snap.Pair is { } pair)
+					{
+						<PDDiffPanel Original="@pair.Original" Modified="@pair.Modified" FileName="@snap.SelectedPath" Theme="vs-dark" Height="100%" />
+					}
+				</div>
+			</div>
+		}
+		else if (Lines.Count == 0)
 		{
 			<div class="alert alert-secondary">
 				Nothing said yet.
@@ -87,6 +136,19 @@ else
 	private bool _showPrompt = true;
 	private ElementReference _transcriptElement;
 	private string _followedExtent = string.Empty;
+	private Tab _tab = Tab.Log;
+	private string? _selectedPath;
+	private string? _shownItemId;
+	private readonly ChangesTabModel _changesModel = new(new CloneChangeReader(), TimeSpan.FromSeconds(1));
+
+	private enum Tab { Log, Changes }
+
+	[Inject]
+	private LocalRepoService LocalRepos { get; set; } = default!;
+
+	private ChangesTabModel.Snapshot Changes => _changesModel.Current;
+
+	private bool ChangesShowing => _tab == Tab.Changes && IsAi;
 
 	/// <summary>The item to show, or null when it has left the queue.</summary>
 	[Parameter]
@@ -121,12 +183,34 @@ else
 		_ => "fas fa-clock text-muted"
 	};
 
+	/// <summary>
+	/// The same instance is reused when another item is selected, so everything that belongs to an item
+	/// (the tab, the selected file, the changes read for it, any read still under way) is dropped when
+	/// the item changes.
+	/// </summary>
+	protected override void OnParametersSet()
+	{
+		if (!string.Equals(_shownItemId, Item?.Id, StringComparison.Ordinal))
+		{
+			_shownItemId = Item?.Id;
+			_tab = Tab.Log;
+			_selectedPath = null;
+			_followedExtent = string.Empty;
+			_changesModel.Reset();
+		}
+	}
+
 	protected override void OnInitialized()
 	{
 		// Its own timer rather than the lane-changed event: that one debounces into a tree rebuild,
 		// and a stream of tokens is not a reason to rebuild the tree.
 		_refresh = new System.Timers.Timer(RefreshMilliseconds) { AutoReset = true };
-		_refresh.Elapsed += async (_, _) => await InvokeAsync(StateHasChanged);
+		_refresh.Elapsed += async (_, _) =>
+		{
+			var read = RefreshChangesAsync();
+			await InvokeAsync(StateHasChanged);
+			await read;
+		};
 		_refresh.Start();
 	}
 
@@ -144,6 +228,12 @@ else
 		// into one line for hundreds of tokens at a time. Counting lines alone left the pane still for
 		// the whole of every turn — exactly the stretch anybody watching wants to see — and moved it
 		// only once the turn was over.
+		if (ChangesShowing)
+		{
+			// No transcript in the DOM; the follow state is re-established when the Log tab returns.
+			return;
+		}
+
 		var lines = Item is null ? [] : Lines;
 		var extent = lines.Count == 0
 			? string.Empty
@@ -178,4 +268,66 @@ else
 
 	private void TogglePrompt(ChangeEventArgs args)
 		=> _showPrompt = args.Value as bool? ?? true;
+
+	private void ShowLog()
+	{
+		_tab = Tab.Log;
+		_followedExtent = string.Empty;
+	}
+
+	private void ShowChanges()
+	{
+		_tab = Tab.Changes;
+		_ = RefreshChangesAsync(force: true);
+	}
+
+	private void SelectFile(string path)
+	{
+		_selectedPath = path;
+		_ = RefreshChangesAsync(force: true);
+	}
+
+	/// <summary>
+	/// Re-reads the clone at most once a second, and only while the Changes tab is showing. The reads run
+	/// git, so they go on the thread pool, and a read already under way is never doubled up. The result
+	/// is picked up by the next redraw.
+	/// </summary>
+	/// <param name="force">Skip the one-second spacing (a tab or file switch).</param>
+	private async Task RefreshChangesAsync(bool force = false)
+	{
+		try
+		{
+			// Decided on the render thread: the timer calls this from another one, and the item can change
+			// between reading it and claiming a generation. Run here, the two cannot be split, so a read
+			// started for one item can only publish for that item's generation.
+			ReadRequest? request = null;
+			await InvokeAsync(() => { request = BeginRead(force); });
+			if (request is not { } read)
+			{
+				return;
+			}
+
+			await Task.Run(() => _changesModel.Refresh(read.Generation, read.ClonePath, read.Selected, read.PreExisting));
+			if (force)
+			{
+				await InvokeAsync(StateHasChanged);
+			}
+		}
+		catch (ObjectDisposedException)
+		{
+			// The circuit is going away.
+		}
+	}
+
+	private ReadRequest? BeginRead(bool force)
+	{
+		if (!ChangesShowing || Item is not { RepositoryFullName: { } repo } item || !_changesModel.TryBeginRead(DateTime.UtcNow, force, out var generation))
+		{
+			return null;
+		}
+
+		return new ReadRequest(generation, LocalRepos.GetLocalPath(repo), _selectedPath, item.PreExistingChanges);
+	}
+
+	private readonly record struct ReadRequest(int Generation, string ClonePath, string? Selected, IReadOnlyDictionary<string, string> PreExisting);
 }

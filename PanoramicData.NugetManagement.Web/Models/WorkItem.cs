@@ -93,6 +93,14 @@ public sealed class WorkItem
 	/// </remarks>
 	public WorkTranscript Transcript { get; } = new();
 
+	/// <summary>
+	/// The files already changed in the clone when an AI fix session started: path to fingerprint of the
+	/// file's on-disk state at that moment (see <see cref="CloneChangeReader.Fingerprint"/>). The Changes tab
+	/// labels them "pre-existing" so the session is not blamed for them. Not persisted: a baseline
+	/// belongs to a run.
+	/// </summary>
+	public IReadOnlyDictionary<string, string> PreExistingChanges { get; set; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
 	/// <summary>Where the item has got to.</summary>
 	public WorkItemState State { get; set; } = WorkItemState.Pending;
 

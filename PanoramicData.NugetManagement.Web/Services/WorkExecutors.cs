@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
@@ -961,6 +961,9 @@ public sealed class WorkExecutors(
 				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
 			});
 
+			// Before anything below can touch the clone: what is already changed is not this session's doing.
+			await RecordPreExistingChangesAsync(item, row.LocalPath, cancellationToken).ConfigureAwait(false);
+
 			// TST-10 is the one remotely graded rule that can be measured locally: the same tests, run
 			// under coverage, give a figure close to the one Codacy will later report. Measured before the
 			// model starts, so it is told where it stands and a repository that cannot be measured is
@@ -1437,6 +1440,31 @@ public sealed class WorkExecutors(
 	/// forty errors has caused one error forty times.
 	/// </remarks>
 	private const int _diagnosticLineLimit = 30;
+
+	/// <summary>
+	/// Notes which files are already changed in the clone, and what they contain, so the Changes tab can
+	/// label them pre-existing. Runs git off the calling thread. A baseline is only a label, so any
+	/// failure leaves it empty rather than failing or delaying the fix.
+	/// </summary>
+	internal static async Task RecordPreExistingChangesAsync(WorkItem item, string clonePath, CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			item.PreExistingChanges = await Task
+				.Run(() => new CloneChangeReader().Baseline(clonePath), cancellationToken)
+				.WaitAsync(cancellationToken)
+				.ConfigureAwait(false);
+		}
+		catch (OperationCanceledException)
+		{
+			// A cancelled fix stops now rather than after the baseline.
+			throw;
+		}
+		catch (Exception)
+		{
+			item.PreExistingChanges = new Dictionary<string, string>(StringComparer.Ordinal);
+		}
+	}
 
 	/// <summary>
 	/// What a build or test run says, in a form worth sending to a model and worth keeping in a
@@ -2081,6 +2109,8 @@ public sealed class WorkExecutors(
 				ApiKey = ollama.ApiKey,
 				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
 			});
+
+			await RecordPreExistingChangesAsync(item, row.LocalPath, cancellationToken).ConfigureAwait(false);
 
 			var toolbox = new AiFixToolbox(
 				row.LocalPath,
