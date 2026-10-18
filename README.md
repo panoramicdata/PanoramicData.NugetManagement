@@ -126,6 +126,28 @@ dotnet user-secrets set "AppSettings:DevAuthBypass" "true" --project PanoramicDa
 dotnet user-secrets set "AppSettings:DevAuthUser" "your-github-username" --project PanoramicData.NugetManagement.Web
 ```
 
+### Running the background work as a GitHub App
+
+GitHub applies its 5,000-an-hour REST limit **per user**, so everything one person runs shares a single
+quota. One organisation-wide refresh on your own token can spend all of it and stop everything else you
+run. A GitHub App's installation token has a quota of its own, so the background work (refreshes,
+assessments, filing issues) can run as an App instead. Create the App with read access to contents, checks,
+actions and commit statuses, write access to issues, and install it on the organisation, then:
+
+```shell
+dotnet user-secrets set "AppSettings:GitHubAppId" "<app id>" --project PanoramicData.NugetManagement.Web
+dotnet user-secrets set "AppSettings:GitHubAppPrivateKeyFile" "<path to the .pem>" --project PanoramicData.NugetManagement.Web
+# optional: found automatically when the App has a single installation on your organisation
+dotnet user-secrets set "AppSettings:GitHubAppInstallationId" "<installation id>" --project PanoramicData.NugetManagement.Web
+```
+
+The key may instead be supplied as `AppSettings__GitHubAppPrivateKey`, where `\n` may stand for a newline.
+Never commit it. Only background work uses the App; actions you start yourself keep using your own token.
+Once an App id is set, a problem with the App (no key, a refused exchange, no installation) is an error: the
+runner never falls back to your token, because that would silently put the load back on the shared quota.
+Without the App's administration and secrets permissions, the private-vulnerability-reporting and
+Actions-secret-name checks report "unknown" instead of a value.
+
 ### Recommended settings
 
 | Setting | Why you want it |

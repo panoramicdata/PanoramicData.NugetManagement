@@ -22,8 +22,15 @@ namespace PanoramicData.NugetManagement.Web.Services;
 /// Thread-safe: written by circuits as they open and read by up to <c>MaxConcurrentLanes</c> runner
 /// threads at once.
 /// </para>
+/// <para>
+/// When a GitHub App is configured, background work uses its installation token instead
+/// (<see cref="GetWorkTokenAsync"/>), so it spends the App's own rate limit and not this user's.
+/// </para>
 /// </remarks>
-public sealed class GitHubTokenProvider
+/// <param name="appTokens">
+/// The App token source, or null when there is none (as in tests that build the provider directly).
+/// </param>
+public sealed class GitHubTokenProvider(GitHubAppTokenSource? appTokens = null)
 {
 	private volatile string? _accessToken;
 
@@ -32,6 +39,26 @@ public sealed class GitHubTokenProvider
 	/// application started.
 	/// </summary>
 	public string? AccessToken => _accessToken;
+
+	/// <summary>
+	/// True when background work acts as a GitHub App, so its calls do not touch the signed-in user's
+	/// rate limit.
+	/// </summary>
+	public bool UsesGitHubApp => appTokens?.IsConfigured == true;
+
+	/// <summary>
+	/// The token background work should use: the GitHub App's installation token when an App is
+	/// configured, otherwise the most recently published user token.
+	/// </summary>
+	/// <param name="cancellationToken">Cancels a token request in progress.</param>
+	/// <returns>The token, or null when there is no App and no user token has been published.</returns>
+	/// <exception cref="InvalidOperationException">
+	/// An App is configured but cannot be used. The user's token is deliberately not used instead.
+	/// </exception>
+	public async Task<string?> GetWorkTokenAsync(CancellationToken cancellationToken = default)
+		=> UsesGitHubApp
+			? await appTokens!.GetTokenAsync(cancellationToken).ConfigureAwait(false)
+			: _accessToken;
 
 	/// <summary>
 	/// Publishes the token a circuit read from its own request, for work that runs later without one.

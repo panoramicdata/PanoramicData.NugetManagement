@@ -91,6 +91,37 @@ public class AppSettings
 	public string? GitHubPat { get; set; }
 
 	/// <summary>
+	/// The id of a GitHub App for the work runner to act as. With a private key and an installation, the
+	/// background work (organisation refreshes, assessments, issue filing) uses the App's installation
+	/// token, which has a rate limit of its own, instead of the signed-in user's token.
+	/// </summary>
+	/// <remarks>
+	/// GitHub applies its 5,000-an-hour REST limit per user, so one large refresh on the user's token can
+	/// stop everything else that user runs. Leave empty to keep using the signed-in user's token.
+	/// Once set, a problem with the App is an error: the runner never falls back to the user's token.
+	/// </remarks>
+	public string? GitHubAppId { get; set; }
+
+	/// <summary>
+	/// The installation of the App on the organisation. Optional: when empty, the App's single installation
+	/// on <see cref="GitHubOrganization"/> is found automatically.
+	/// </summary>
+	public long? GitHubAppInstallationId { get; set; }
+
+	/// <summary>
+	/// The App's private key, PEM-encoded. Prefer <see cref="GitHubAppPrivateKeyFile"/>, or an environment
+	/// variable (<c>AppSettings__GitHubAppPrivateKey</c>, where <c>\n</c> may stand for a newline), and never
+	/// commit it.
+	/// </summary>
+	public string? GitHubAppPrivateKey { get; set; }
+
+	/// <summary>
+	/// Path to a file holding the App's PEM-encoded private key, used when
+	/// <see cref="GitHubAppPrivateKey"/> is empty.
+	/// </summary>
+	public string? GitHubAppPrivateKeyFile { get; set; }
+
+	/// <summary>
 	/// The repository that gets an issue when Dependabot raises a valid pull request no remediation
 	/// covers — that is, this application's own repository.
 	/// </summary>

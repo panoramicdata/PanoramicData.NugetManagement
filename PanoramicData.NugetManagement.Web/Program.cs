@@ -70,6 +70,14 @@ builder.Services.AddSingleton<NavTreeDataProvider>();
 // Work runs with no HTTP context, so the signed-in GitHub token has to be handed forward from a
 // circuit rather than read from a request. See GitHubTokenProvider.
 builder.Services.AddSingleton<GitHubTokenProvider>();
+// The GitHub App the work runner acts as, when one is configured: its installation token has a rate
+// limit of its own, so a refresh cannot spend the signed-in user's. Named for the same reason as above.
+builder.Services.AddHttpClient(GitHubAppTokenSource.HttpClientName, client =>
+{
+	client.Timeout = TimeSpan.FromSeconds(15);
+	client.DefaultRequestHeaders.UserAgent.ParseAdd("PanoramicData.NugetManagement");
+});
+builder.Services.AddSingleton<GitHubAppTokenSource>();
 builder.Services.AddSingleton<RegressionGuardService>();
 builder.Services.AddSingleton(_ => NuGetVersionCache.Default);
 builder.Services.AddSingleton(_ => NuGetFloorCatalog.Default);
