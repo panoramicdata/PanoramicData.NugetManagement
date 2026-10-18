@@ -470,7 +470,35 @@ public class DashboardService
 					declared);
 			}).ConfigureAwait(false);
 
-		return result;
+		// Repositories that packages point at but that the list does not show under that name: renamed, and
+		// in this organisation's habit archived by being renamed. Asked for by the old name, GitHub says what
+		// it is now, so one that is archived is known to be, whatever it is called today.
+		var moved = await UnlistedRepositoryResolver.ResolveAsync(
+			organization,
+			published,
+			result,
+			async (fullName, ct) =>
+			{
+				var slash = fullName.IndexOf('/', StringComparison.Ordinal);
+
+				try
+				{
+					var repository = await github.Repository
+						.Get(fullName[..slash], fullName[(slash + 1)..])
+						.WaitAsync(ct)
+						.ConfigureAwait(false);
+
+					return new ResolvedRepository(repository.FullName, repository.Archived, repository.Fork);
+				}
+				catch (NotFoundException)
+				{
+					return null;
+				}
+			},
+			logger,
+			cancellationToken).ConfigureAwait(false);
+
+		return [.. result, .. moved];
 	}
 
 	/// <summary>

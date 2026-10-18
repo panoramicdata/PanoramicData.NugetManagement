@@ -148,6 +148,27 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 	}
 
 	[Fact]
+	public void ARepositoryRenamedThenArchivedIsMarkedUnderTheNameItsPackageRecords()
+	{
+		// The package's nuspec still names the old repository; the organisation's list shows only the new
+		// name. The listing step adds the answer GitHub gives for the old name, carried under that old name.
+		var packages = new List<NuGetPackageInfo>
+		{
+			Package("DocMagic.Api", "https://github.com/panoramicdata/PanoramicData.DocMagic")
+		};
+
+		var (rows, _) = Build(
+			packages,
+			Listed(
+				Repo("panoramicdata/PanoramicData.DocMagic.Archived", isArchived: true),
+				Repo("panoramicdata/PanoramicData.DocMagic", isArchived: true)));
+
+		var row = rows.Should().ContainSingle().Which;
+		row.RepositoryFullName.Should().Be("panoramicdata/PanoramicData.DocMagic");
+		row.IsArchived.Should().BeTrue("an archived repository is excluded from governance, however it was renamed");
+	}
+
+	[Fact]
 	public void APackagedRepositoryThatIsArchivedShouldBeMarkedToo()
 	{
 		var packages = new List<NuGetPackageInfo> { Package("Old.Api", "https://github.com/panoramicdata/Old.Api") };
