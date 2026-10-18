@@ -17,6 +17,22 @@ public static partial class AiChangePipelineFactory
 	/// <param name="work">The model-facing work; unused when only delivering finished edits.</param>
 	/// <param name="github">The GitHub write API.</param>
 	/// <param name="limits">What the change may touch.</param>
+	public static AiChangePipeline Create(
+		IAiChangeGit git,
+		IAiChangeTests tests,
+		IAiChangeWork work,
+		IGitHubWriteApi github,
+		AiChangeLimits limits)
+		=> Create(git, tests, work, github, limits, changesReady: null);
+
+	/// <summary>
+	/// Builds the pipeline with a hook that keeps a copy of the edits before the clone is reset.
+	/// </summary>
+	/// <param name="git">The clone's git operations.</param>
+	/// <param name="tests">Building and testing the clone.</param>
+	/// <param name="work">The model-facing work; unused when only delivering finished edits.</param>
+	/// <param name="github">The GitHub write API.</param>
+	/// <param name="limits">What the change may touch.</param>
 	/// <param name="changesReady">Called when the edits exist and before the clone is reset, to keep a copy of them.</param>
 	public static AiChangePipeline Create(
 		IAiChangeGit git,
@@ -24,7 +40,7 @@ public static partial class AiChangePipelineFactory
 		IAiChangeWork work,
 		IGitHubWriteApi github,
 		AiChangeLimits limits,
-		Func<CancellationToken, Task>? changesReady = null)
+		Func<CancellationToken, Task>? changesReady)
 		=> new(git, tests, work, github, new AiChangeOptions { Limits = limits, ChangesReady = changesReady });
 
 	/// <summary>

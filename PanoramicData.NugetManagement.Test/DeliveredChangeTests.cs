@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using PanoramicData.NugetManagement.Web.Services;
 using PanoramicData.NugetManagement.Web.Services.AiChange;
 
@@ -40,18 +39,8 @@ public class DeliveredChangeTests : TestWithOutput, IDisposable
 
 	private void Git(params string[] args)
 	{
-		var info = new ProcessStartInfo("git") { WorkingDirectory = _root, RedirectStandardOutput = true, RedirectStandardError = true };
-
-		foreach (var arg in args)
-		{
-			info.ArgumentList.Add(arg);
-		}
-
-		using var process = Process.Start(info)!;
-		process.StandardOutput.ReadToEnd();
-		process.StandardError.ReadToEnd();
-		process.WaitForExit();
-		process.ExitCode.Should().Be(0);
+		var (exitCode, output) = LocalRepoService.RunCommandAsync(_root, "git", args).GetAwaiter().GetResult();
+		exitCode.Should().Be(0, output);
 	}
 
 	[Fact]

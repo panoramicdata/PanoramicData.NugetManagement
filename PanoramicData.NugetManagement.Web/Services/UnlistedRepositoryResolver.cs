@@ -64,44 +64,50 @@ public static class UnlistedRepositoryResolver
 		await Parallel.ForEachAsync(
 			unlisted,
 			new ParallelOptions { MaxDegreeOfParallelism = MaxConcurrentLookups, CancellationToken = cancellationToken },
-			async (recordedName, ct) =>
-			{
-				try
-				{
-					var resolved = await lookup(recordedName, ct).ConfigureAwait(false);
-
-					if (resolved is null)
-					{
-						return;
-					}
-
-					if (!string.Equals(resolved.FullName, recordedName, StringComparison.OrdinalIgnoreCase))
-					{
-						logger.LogInformation(
-							"{Recorded} has moved to {Current} (archived: {Archived}).",
-							recordedName,
-							resolved.FullName,
-							resolved.IsArchived);
-					}
-
-					found.Add(new GitHubRepositoryInfo(
-						recordedName,
-						$"https://github.com/{resolved.FullName}",
-						resolved.IsArchived,
-						resolved.IsFork));
-				}
-				catch (OperationCanceledException)
-				{
-					throw;
-				}
-				catch (Exception ex)
-				{
-					// Not knowing is not a reason to change what we believed: it stays governed, as before.
-					logger.LogWarning(ex, "Could not look up {Repository}, so whether it is archived is unknown.", recordedName);
-				}
-			}).ConfigureAwait(false);
+			(recordedName, ct) => new ValueTask(LookUpAsync(recordedName, lookup, logger, found, ct))).ConfigureAwait(false);
 
 		return [.. found.OrderBy(repository => repository.FullName, StringComparer.OrdinalIgnoreCase)];
+	}
+
+	/// <summary>
+	/// Looks up one repository and records what was found; a failed lookup is logged and leaves nothing.
+	/// </summary>
+	private static async Task LookUpAsync(
+		string recordedName,
+		Func<string, CancellationToken, Task<ResolvedRepository?>> lookup,
+		ILogger logger,
+		ConcurrentBag<GitHubRepositoryInfo> found,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			var resolved = await lookup(recordedName, cancellationToken).ConfigureAwait(false);
+
+			if (resolved is null)
+			{
+				return;
+			}
+
+			if (!string.Equals(resolved.FullName, recordedName, StringComparison.OrdinalIgnoreCase))
+			{
+				logger.LogInformation(
+					"{Recorded} has moved to {Current} (archived: {Archived}).",
+					recordedName,
+					resolved.FullName,
+					resolved.IsArchived);
+			}
+
+			found.Add(new GitHubRepositoryInfo(
+				recordedName,
+				$"https://github.com/{resolved.FullName}",
+				resolved.IsArchived,
+				resolved.IsFork));
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			// Not knowing is not a reason to change what we believed: it stays governed, as before.
+			logger.LogWarning(ex, "Could not look up {Repository}, so whether it is archived is unknown.", recordedName);
+		}
 	}
 
 	private static string OwnerOf(string fullName)
