@@ -158,13 +158,16 @@ public sealed class GitHubAppTokenSource(
 		long installationId,
 		CancellationToken cancellationToken)
 	{
-		using var json = await JsonDocument.ParseAsync(
-			await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
-			cancellationToken: cancellationToken).ConfigureAwait(false);
+		using var json = await ReadJsonAsync(
+			response,
+			$"installation token response for installation {installationId}",
+			cancellationToken).ConfigureAwait(false);
 
 		var root = json.RootElement;
-		var token = root.TryGetProperty("token", out var tokenElement) ? tokenElement.GetString() : null;
-		var expiry = root.TryGetProperty("expires_at", out var expiresElement) ? expiresElement.GetString() : null;
+		var token = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("token", out var tokenElement) ? tokenElement.GetString() : null;
+		var expiry = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("expires_at", out var expiresElement)
+			? expiresElement.GetString()
+			: null;
 		if (string.IsNullOrEmpty(token)
 			|| !DateTimeOffset.TryParse(expiry, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var expiresAt))
 		{
@@ -228,19 +231,47 @@ public sealed class GitHubAppTokenSource(
 				+ "Check the App id and the private key, or set AppSettings:GitHubAppInstallationId.");
 		}
 
-		using var json = await JsonDocument.ParseAsync(
-			await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
-			cancellationToken: cancellationToken).ConfigureAwait(false);
+		using var json = await ReadJsonAsync(response, "list of the App's installations", cancellationToken).ConfigureAwait(false);
+		if (json.RootElement.ValueKind != JsonValueKind.Array)
+		{
+			throw new InvalidOperationException("GitHub's list of the App's installations was not a list.");
+		}
 
 		return [.. json.RootElement.EnumerateArray().Select(ReadInstallation)];
 	}
 
 	private static (long Id, string Account) ReadInstallation(JsonElement element)
 	{
-		var login = element.TryGetProperty("account", out var account) && account.TryGetProperty("login", out var loginElement)
-			? loginElement.GetString()
-			: null;
-		return (element.GetProperty("id").GetInt64(), login ?? string.Empty);
+		if (element.ValueKind != JsonValueKind.Object
+			|| !element.TryGetProperty("id", out var idElement)
+			|| !idElement.TryGetInt64(out var id))
+		{
+			throw new InvalidOperationException("GitHub's list of the App's installations held an entry without an id.");
+		}
+
+		var login = element.TryGetProperty("account", out var account)
+			&& account.ValueKind == JsonValueKind.Object
+			&& account.TryGetProperty("login", out var loginElement)
+				? loginElement.GetString()
+				: null;
+		return (id, login ?? string.Empty);
+	}
+
+	private static async Task<JsonDocument> ReadJsonAsync(
+		HttpResponseMessage response,
+		string description,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			return await JsonDocument.ParseAsync(
+				await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
+				cancellationToken: cancellationToken).ConfigureAwait(false);
+		}
+		catch (JsonException)
+		{
+			throw new InvalidOperationException($"GitHub's {description} was not valid JSON.");
+		}
 	}
 
 	private static HttpRequestMessage NewRequest(HttpMethod method, string path, string jwt)

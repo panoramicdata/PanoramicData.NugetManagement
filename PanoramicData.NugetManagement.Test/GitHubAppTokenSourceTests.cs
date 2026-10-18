@@ -181,6 +181,56 @@ public class GitHubAppTokenSourceTests(ITestOutputHelper output) : TestWithOutpu
 		AssertNoKeyMaterial(message);
 	}
 
+	[Theory]
+	[InlineData("""{"expires_at":"2026-10-18T13:00:00Z"}""", "no usable token")]
+	[InlineData("""{"token":"ghs_x"}""", "no usable token")]
+	[InlineData("""{"token":"ghs_x","expires_at":"soon"}""", "no usable token")]
+	[InlineData("""{"token":"","expires_at":"2026-10-18T13:00:00Z"}""", "no usable token")]
+	[InlineData("[]", "no usable token")]
+	[InlineData("<html>Unicorn</html>", "not valid JSON")]
+	public async Task ShouldRejectAMalformedTokenResponse(string body, string expectedInMessage)
+	{
+		var (source, _, _) = Create(Settings(), Json(HttpStatusCode.Created, body));
+
+		var act = () => source.GetTokenAsync(TestContext.Current.CancellationToken);
+
+		(await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain(expectedInMessage);
+	}
+
+	[Theory]
+	[InlineData("""{"message":"not a list"}""", "was not a list")]
+	[InlineData("""[{"account":{"login":"panoramicdata"}}]""", "without an id")]
+	[InlineData("""["panoramicdata"]""", "without an id")]
+	[InlineData("<html>Unicorn</html>", "not valid JSON")]
+	public async Task ShouldRejectAMalformedInstallationList(string body, string expectedInMessage)
+	{
+		var (source, _, _) = Create(Settings(installation: null), Json(HttpStatusCode.OK, body));
+
+		var act = () => source.GetTokenAsync(TestContext.Current.CancellationToken);
+
+		(await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain(expectedInMessage);
+	}
+
+	[Fact]
+	public async Task ShouldRenewAfterAMinuteWhenGitHubHandsBackAnAlmostExpiredToken()
+	{
+		var (source, handler, time) = Create(
+			Settings(),
+			Token("ghs_short", _start.AddMinutes(2)),
+			Token("ghs_second", _start.AddHours(1)));
+		var ct = TestContext.Current.CancellationToken;
+
+		(await source.GetTokenAsync(ct)).Should().Be("ghs_short");
+
+		time.Advance(TimeSpan.FromSeconds(30));
+		(await source.GetTokenAsync(ct)).Should().Be("ghs_short");
+		handler.Requests.Should().HaveCount(1);
+
+		time.Advance(TimeSpan.FromSeconds(40));
+		(await source.GetTokenAsync(ct)).Should().Be("ghs_second");
+		handler.Requests.Should().HaveCount(2);
+	}
+
 	[Fact]
 	public async Task ShouldFailClearlyWhenThereIsNoPrivateKey()
 	{
