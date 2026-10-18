@@ -84,6 +84,8 @@
   "PanoramicData.SheetMagic",
   "PanoramicData.SheetMagic.Benchmarks",
   "PanoramicData.Slack.Webhooks",
+  "PanoramicData.SoundPrint",
+  "PanoramicData.SoundPrint.Postgres",
   "PanoramicData.SshServer",
   "PanoramicData.SyslogServer",
   "PanoramicData.System.Windows.Forms.DataVisualization",
