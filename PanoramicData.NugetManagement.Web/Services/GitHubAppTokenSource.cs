@@ -36,6 +36,8 @@ public sealed class GitHubAppTokenSource(
 	public const string HttpClientName = "GitHubApp";
 
 	private const string _apiRoot = "https://api.github.com/";
+	private const int _installationsPageSize = 100;
+	private const int _maximumInstallationPages = 50;
 
 	// GitHub rejects a JWT that expires more than ten minutes ahead, and asks for the issued-at time to
 	// be backdated to allow for clock skew.
@@ -64,7 +66,7 @@ public sealed class GitHubAppTokenSource(
 	/// <param name="cancellationToken">Cancels a mint in progress.</param>
 	/// <returns>A token that is valid for at least five more minutes.</returns>
 	/// <exception cref="InvalidOperationException">No App is configured, or the App cannot be used.</exception>
-	public async Task<string> GetTokenAsync(CancellationToken cancellationToken = default)
+	public async Task<string> GetTokenAsync(CancellationToken cancellationToken)
 	{
 		if (!IsConfigured)
 		{
@@ -120,22 +122,7 @@ public sealed class GitHubAppTokenSource(
 				+ "and that the App is still installed on the organisation.");
 		}
 
-		using var json = await JsonDocument.ParseAsync(
-			await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
-			cancellationToken: cancellationToken).ConfigureAwait(false);
-
-		if (!json.RootElement.TryGetProperty("token", out var tokenElement)
-			|| tokenElement.GetString() is not { Length: > 0 } token
-			|| !json.RootElement.TryGetProperty("expires_at", out var expiresElement)
-			|| !DateTimeOffset.TryParse(
-				expiresElement.GetString(),
-				CultureInfo.InvariantCulture,
-				DateTimeStyles.AssumeUniversal,
-				out var expiresAt))
-		{
-			throw new InvalidOperationException(
-				$"GitHub's installation token response for installation {installationId} had no usable token or expiry.");
-		}
+		var (token, expiresAt) = await ReadTokenAsync(response, installationId.Value, cancellationToken).ConfigureAwait(false);
 
 		var renewAt = expiresAt - _renewBefore;
 		if (renewAt <= now)
@@ -150,13 +137,73 @@ public sealed class GitHubAppTokenSource(
 		return new CachedToken(token, renewAt);
 	}
 
+	private static async Task<(string Token, DateTimeOffset ExpiresAt)> ReadTokenAsync(
+		HttpResponseMessage response,
+		long installationId,
+		CancellationToken cancellationToken)
+	{
+		using var json = await JsonDocument.ParseAsync(
+			await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
+			cancellationToken: cancellationToken).ConfigureAwait(false);
+
+		var root = json.RootElement;
+		var token = root.TryGetProperty("token", out var tokenElement) ? tokenElement.GetString() : null;
+		var expiry = root.TryGetProperty("expires_at", out var expiresElement) ? expiresElement.GetString() : null;
+		if (string.IsNullOrEmpty(token)
+			|| !DateTimeOffset.TryParse(expiry, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var expiresAt))
+		{
+			throw new InvalidOperationException(
+				$"GitHub's installation token response for installation {installationId} had no usable token or expiry.");
+		}
+
+		return (token, expiresAt);
+	}
+
 	private static async Task<long> DiscoverInstallationAsync(
 		HttpClient client,
 		string jwt,
 		string organisation,
 		CancellationToken cancellationToken)
 	{
-		using var request = NewRequest(HttpMethod.Get, "app/installations?per_page=100", jwt);
+		var installations = new List<(long Id, string Account)>();
+		for (var page = 1; page <= _maximumInstallationPages; page++)
+		{
+			var batch = await ListInstallationsAsync(client, jwt, page, cancellationToken).ConfigureAwait(false);
+			installations.AddRange(batch);
+			if (batch.Count < _installationsPageSize)
+			{
+				break;
+			}
+		}
+
+		var candidates = string.IsNullOrWhiteSpace(organisation)
+			? installations
+			: installations.Where(i => string.Equals(i.Account, organisation, StringComparison.OrdinalIgnoreCase)).ToList();
+
+		if (candidates.Count == 1)
+		{
+			return candidates[0].Id;
+		}
+
+		if (candidates.Count == 0)
+		{
+			throw new InvalidOperationException(
+				$"The GitHub App has no installation on '{organisation}' ({installations.Count} installation(s) in total). "
+				+ "Install it on the organisation, or set AppSettings:GitHubAppInstallationId.");
+		}
+
+		throw new InvalidOperationException(
+			$"The GitHub App has {candidates.Count} installations to choose from. "
+			+ "Set AppSettings:GitHubAppInstallationId to pick one.");
+	}
+
+	private static async Task<List<(long Id, string Account)>> ListInstallationsAsync(
+		HttpClient client,
+		string jwt,
+		int page,
+		CancellationToken cancellationToken)
+	{
+		using var request = NewRequest(HttpMethod.Get, $"app/installations?per_page={_installationsPageSize}&page={page}", jwt);
 		using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
 		if (!response.IsSuccessStatusCode)
 		{
@@ -169,28 +216,15 @@ public sealed class GitHubAppTokenSource(
 			await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
 			cancellationToken: cancellationToken).ConfigureAwait(false);
 
-		var installations = json.RootElement.EnumerateArray()
-			.Select(element => (
-				Id: element.GetProperty("id").GetInt64(),
-				Account: element.TryGetProperty("account", out var account) && account.TryGetProperty("login", out var login)
-					? login.GetString() ?? string.Empty
-					: string.Empty))
-			.ToList();
+		return [.. json.RootElement.EnumerateArray().Select(ReadInstallation)];
+	}
 
-		var candidates = string.IsNullOrWhiteSpace(organisation)
-			? installations
-			: installations.Where(i => string.Equals(i.Account, organisation, StringComparison.OrdinalIgnoreCase)).ToList();
-
-		if (candidates.Count == 1)
-		{
-			return candidates[0].Id;
-		}
-
-		throw new InvalidOperationException(candidates.Count == 0
-			? $"The GitHub App has no installation on '{organisation}' ({installations.Count} installation(s) in total). "
-				+ "Install it on the organisation, or set AppSettings:GitHubAppInstallationId."
-			: $"The GitHub App has {candidates.Count} installations to choose from. "
-				+ "Set AppSettings:GitHubAppInstallationId to pick one.");
+	private static (long Id, string Account) ReadInstallation(JsonElement element)
+	{
+		var login = element.TryGetProperty("account", out var account) && account.TryGetProperty("login", out var loginElement)
+			? loginElement.GetString()
+			: null;
+		return (element.GetProperty("id").GetInt64(), login ?? string.Empty);
 	}
 
 	private static HttpRequestMessage NewRequest(HttpMethod method, string path, string jwt)

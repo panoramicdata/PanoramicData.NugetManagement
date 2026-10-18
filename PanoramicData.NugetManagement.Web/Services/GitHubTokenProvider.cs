@@ -55,7 +55,7 @@ public sealed class GitHubTokenProvider(GitHubAppTokenSource? appTokens = null)
 	/// <exception cref="InvalidOperationException">
 	/// An App is configured but cannot be used. The user's token is deliberately not used instead.
 	/// </exception>
-	public async Task<string?> GetWorkTokenAsync(CancellationToken cancellationToken = default)
+	public async Task<string?> GetWorkTokenAsync(CancellationToken cancellationToken)
 		=> UsesGitHubApp
 			? await appTokens!.GetTokenAsync(cancellationToken).ConfigureAwait(false)
 			: _accessToken;

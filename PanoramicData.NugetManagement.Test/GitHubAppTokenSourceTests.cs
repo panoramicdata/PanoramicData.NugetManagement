@@ -108,8 +108,26 @@ public class GitHubAppTokenSourceTests(ITestOutputHelper output) : TestWithOutpu
 		(await source.GetTokenAsync(TestContext.Current.CancellationToken)).Should().Be("ghs_first");
 
 		handler.Requests[0].Method.Should().Be(HttpMethod.Get);
-		handler.Requests[0].Url.Should().Be("https://api.github.com/app/installations?per_page=100");
+		handler.Requests[0].Url.Should().Be("https://api.github.com/app/installations?per_page=100&page=1");
 		handler.Requests[1].Url.Should().Be("https://api.github.com/app/installations/42/access_tokens");
+	}
+
+	[Fact]
+	public async Task ShouldReadEveryPageOfInstallationsBeforeChoosing()
+	{
+		var firstPage = "[" + string.Join(",", Enumerable.Range(1, 100).Select(i => $$$"""{"id":{{{i}}},"account":{"login":"other-{{{i}}}"}}""")) + "]";
+		var (source, handler, _) = Create(
+			Settings(installation: null),
+			Json(HttpStatusCode.OK, firstPage),
+			Json(HttpStatusCode.OK, """[{"id":4242,"account":{"login":"panoramicdata"}}]"""),
+			Token("ghs_first", _start.AddHours(1)));
+
+		(await source.GetTokenAsync(TestContext.Current.CancellationToken)).Should().Be("ghs_first");
+
+		handler.Requests.Should().HaveCount(3);
+		handler.Requests[0].Url.Should().Be("https://api.github.com/app/installations?per_page=100&page=1");
+		handler.Requests[1].Url.Should().Be("https://api.github.com/app/installations?per_page=100&page=2");
+		handler.Requests[2].Url.Should().Be("https://api.github.com/app/installations/4242/access_tokens");
 	}
 
 	[Fact]

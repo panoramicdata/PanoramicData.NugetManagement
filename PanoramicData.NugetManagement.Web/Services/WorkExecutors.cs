@@ -3288,7 +3288,7 @@ public sealed partial class WorkExecutors(
 	{
 		var client = new GitHubClient(new ProductHeaderValue("PanoramicData.NugetManagement.Web"));
 
-		var accessToken = await gitHubTokens.GetWorkTokenAsync().ConfigureAwait(false);
+		var accessToken = await gitHubTokens.GetWorkTokenAsync(CancellationToken.None).ConfigureAwait(false);
 
 		if (string.IsNullOrWhiteSpace(accessToken) && !gitHubTokens.UsesGitHubApp && httpContextAccessor.HttpContext is { } httpContext)
 		{
