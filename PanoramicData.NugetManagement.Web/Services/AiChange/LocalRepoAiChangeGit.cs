@@ -145,7 +145,29 @@ public sealed class LocalRepoAiChangeGit(string clonePath, string? expectedIdent
 				.Split('\n', StringSplitOptions.RemoveEmptyEntries)
 				.Select(name => name.TrimEnd('\r'))
 				.Select(name => withLines.TryGetValue(name, out var file) ? file : new ChangedFileLines(name, new HashSet<int>()))
+				.Select(file => file with { DeclarationsOnly = IsDeclarationsOnlyFile(file.Path) })
 		];
+	}
+
+	/// <summary>Whether a changed C# file, as it now stands on disk, holds declarations only.</summary>
+	private bool IsDeclarationsOnlyFile(string relativePath)
+	{
+		if (!relativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		var full = Path.Combine(clonePath, relativePath);
+
+		try
+		{
+			// A deleted file is not on disk, and has no lines left to cover either way.
+			return File.Exists(full) && DeclarationOnlySource.Is(File.ReadAllText(full));
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			return false;
+		}
 	}
 
 	/// <inheritdoc />

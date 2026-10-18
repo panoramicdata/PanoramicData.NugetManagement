@@ -96,4 +96,38 @@ public class ChangedLineCoverageTests(ITestOutputHelper output) : TestWithOutput
 			"a changed code file the coverage run never saw has not been exercised, and passing it would "
 				+ "let any unreferenced file through");
 	}
+
+	[Fact]
+	public void Evaluate_SparesAFileThatOnlyDeclaresThings_WhetherOrNotTheReportMentionsIt()
+	{
+		var declarations = new ChangedFileLines("Lib/IClient.cs", new HashSet<int> { 3, 4, 5 }, DeclarationsOnly: true);
+
+		// Missing from the report, as an interface normally is.
+		ChangedLineCoverage.Evaluate([declarations], Cobertura).Passed.Should().BeTrue();
+
+		// Present with unrun lines, as a Refit interface is when the generator attributes its code to the file.
+		var inReport = """
+			<coverage><packages><package><classes>
+			  <class filename="C:\src\repo\Lib\IClient.cs"><lines>
+			    <line number="3" hits="0" /><line number="4" hits="0" /><line number="5" hits="0" />
+			  </lines></class>
+			</classes></package></packages></coverage>
+			""";
+
+		var result = ChangedLineCoverage.Evaluate([declarations], inReport);
+
+		result.Passed.Should().BeTrue();
+		result.Executable.Should().Be(0, "a declaration has no logic for a test to run");
+	}
+
+	[Fact]
+	public void Evaluate_StillHoldsRealCodeToTheBar_AlongsideASparedDeclarationFile()
+	{
+		var declarations = new ChangedFileLines("Lib/IClient.cs", new HashSet<int> { 3 }, DeclarationsOnly: true);
+
+		var result = ChangedLineCoverage.Evaluate([declarations, Changed("Lib/Parser.cs", 10, 11)], Cobertura);
+
+		result.Passed.Should().BeFalse("sparing the declarations must not lift the logic over the bar");
+		result.Executable.Should().Be(2);
+	}
 }

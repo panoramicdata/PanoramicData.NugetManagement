@@ -7,7 +7,11 @@ namespace PanoramicData.NugetManagement.Web.Services.AiChange;
 /// </summary>
 /// <param name="Path">The repository-relative path, with forward slashes.</param>
 /// <param name="Lines">The changed line numbers.</param>
-public sealed record ChangedFileLines(string Path, IReadOnlySet<int> Lines);
+/// <param name="DeclarationsOnly">
+/// Whether the file declares things and has no logic (see <see cref="DeclarationOnlySource"/>), so there is
+/// nothing in it for a test to cover. False unless something has looked.
+/// </param>
+public sealed record ChangedFileLines(string Path, IReadOnlySet<int> Lines, bool DeclarationsOnly = false);
 
 /// <summary>
 /// How well the changed lines were exercised.
@@ -45,6 +49,13 @@ public static class ChangedLineCoverage
 
 		foreach (var file in changed)
 		{
+			// Nothing here for a test to run. Whether it is in the report is beside the point: a generator can
+			// attribute lines to an interface that no unit test will ever execute.
+			if (file.DeclarationsOnly)
+			{
+				continue;
+			}
+
 			var hits = FindHits(hitsByFile, file.Path);
 
 			if (hits is null)
