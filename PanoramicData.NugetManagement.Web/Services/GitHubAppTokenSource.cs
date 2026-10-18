@@ -33,7 +33,7 @@ public sealed class GitHubAppTokenSource(
 	ILogger<GitHubAppTokenSource> logger)
 {
 	/// <summary>The name of the pooled HTTP client used to talk to the GitHub API.</summary>
-	public const string HttpClientName = "GitHubApp";
+	public static readonly string HttpClientName = "GitHubApp";
 
 	private const string _apiRoot = "https://api.github.com/";
 	private const int _installationsPageSize = 100;
@@ -104,13 +104,7 @@ public sealed class GitHubAppTokenSource(
 
 		using var client = httpClientFactory.CreateClient(HttpClientName);
 
-		var installationId = options.GitHubAppInstallationId ?? _discoveredInstallationId;
-		if (installationId is null)
-		{
-			installationId = await DiscoverInstallationAsync(client, jwt, options.GitHubOrganization, cancellationToken)
-				.ConfigureAwait(false);
-			_discoveredInstallationId = installationId;
-		}
+		var installationId = await ResolveInstallationIdAsync(client, jwt, options, cancellationToken).ConfigureAwait(false);
 
 		using var request = NewRequest(HttpMethod.Post, $"app/installations/{installationId}/access_tokens", jwt);
 		using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -122,7 +116,7 @@ public sealed class GitHubAppTokenSource(
 				+ "and that the App is still installed on the organisation.");
 		}
 
-		var (token, expiresAt) = await ReadTokenAsync(response, installationId.Value, cancellationToken).ConfigureAwait(false);
+		var (token, expiresAt) = await ReadTokenAsync(response, installationId, cancellationToken).ConfigureAwait(false);
 
 		var renewAt = expiresAt - _renewBefore;
 		if (renewAt <= now)
@@ -135,6 +129,28 @@ public sealed class GitHubAppTokenSource(
 			installationId,
 			renewAt);
 		return new CachedToken(token, renewAt);
+	}
+
+	private async Task<long> ResolveInstallationIdAsync(
+		HttpClient client,
+		string jwt,
+		AppSettings options,
+		CancellationToken cancellationToken)
+	{
+		if (options.GitHubAppInstallationId is { } configured)
+		{
+			return configured;
+		}
+
+		if (_discoveredInstallationId is { } known)
+		{
+			return known;
+		}
+
+		var discovered = await DiscoverInstallationAsync(client, jwt, options.GitHubOrganization, cancellationToken)
+			.ConfigureAwait(false);
+		_discoveredInstallationId = discovered;
+		return discovered;
 	}
 
 	private static async Task<(string Token, DateTimeOffset ExpiresAt)> ReadTokenAsync(
