@@ -120,6 +120,18 @@ public sealed class AiChangePipeline(
 				return Finish(say, early);
 			}
 
+			if (options.ChangesReady is { } changesReady)
+			{
+				try
+				{
+					await changesReady(cancellationToken).ConfigureAwait(false);
+				}
+				catch (Exception ex) when (ex is not OperationCanceledException)
+				{
+					say($"⚠️ Could not keep a copy of the changes for the Changes tab: {ex.Message}");
+				}
+			}
+
 			var gate = await RunLocalGateAsync(redFilter, cancellationToken).ConfigureAwait(false);
 
 			if (!gate.Passed)

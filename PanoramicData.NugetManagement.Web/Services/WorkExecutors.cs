@@ -1279,6 +1279,7 @@ public sealed partial class WorkExecutors(
 				// Handed on rather than left for review: the tests, a pull request and CI are the evidence
 				// now, and the pipeline names whichever gate stopped it.
 				var delivered = await DeliverAiChangeAsync(
+					item,
 					row,
 					AiChangeKind.RuleFix,
 					$"rule {ruleId}",
@@ -2351,9 +2352,11 @@ public sealed partial class WorkExecutors(
 				new DashboardAiChangeTests(dashboard, localRepo, row, row.RepositoryFullName),
 				work,
 				new OctokitGitHubWriteApi(await CreateGitHubClientAsync().ConfigureAwait(false)),
-				AiChangePipelineFactory.IssueFixLimits(brief.Paths, testFolders));
+				AiChangePipelineFactory.IssueFixLimits(brief.Paths, testFolders),
+				KeepDeliveredChange(item, row.LocalPath));
 
-			await pipeline.RunAsync(change, Say, cancellationToken).ConfigureAwait(false);
+			var delivery = await pipeline.RunAsync(change, Say, cancellationToken).ConfigureAwait(false);
+			NoteDeliveryOutcome(item, row, delivery);
 
 			await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
 			cache.UpsertRow(row);
@@ -2764,7 +2767,7 @@ public sealed partial class WorkExecutors(
 
 			if (resolved)
 			{
-				pushed = await DeliverUnstuckChangesAsync(row, changed, baseline ?? new HashSet<string>(), cancellationToken)
+				pushed = await DeliverUnstuckChangesAsync(item, row, changed, baseline ?? new HashSet<string>(), cancellationToken)
 					.ConfigureAwait(false);
 			}
 
@@ -2968,6 +2971,7 @@ public sealed partial class WorkExecutors(
 	/// <summary>
 	/// Delivers changes that built and passed through the AI change pipeline: a branch, a pull request, CI and a merge.
 	/// </summary>
+	/// <param name="item">The work item, which keeps a copy of the change for the Changes tab.</param>
 	/// <param name="row">The repository.</param>
 	/// <param name="changed">The <c>git status --porcelain</c> lines of what is uncommitted.</param>
 	/// <param name="knownFailures">Tests that already failed on the last commit, which do not count against the changes.</param>
@@ -2981,6 +2985,7 @@ public sealed partial class WorkExecutors(
 	/// untouched — and the entry is only dropped once they are safely merged.
 	/// </remarks>
 	private async Task<bool> DeliverUnstuckChangesAsync(
+		WorkItem item,
 		RepositoryDashboardRow row,
 		IReadOnlyList<string> changed,
 		IReadOnlySet<string> knownFailures,
@@ -3009,6 +3014,7 @@ public sealed partial class WorkExecutors(
 			.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
 		var outcome = await DeliverAiChangeAsync(
+			item,
 			row,
 			AiChangeKind.RuleFix,
 			"unstick",

@@ -96,6 +96,13 @@ public sealed class AiChangeOptions
 	/// </summary>
 	public TimeSpan NoChecksGrace { get; init; } = TimeSpan.FromMinutes(2);
 
+	/// <summary>
+	/// Called once the edits exist in the clone and before anything is committed or the clone is reset, so the
+	/// caller can keep a copy of them: afterwards the clone is back on <c>main</c> and holds nothing.
+	/// </summary>
+	/// <remarks>A failure here is reported and otherwise ignored: a copy is a convenience.</remarks>
+	public Func<CancellationToken, Task>? ChangesReady { get; init; }
+
 	/// <summary>Waits between polls; replaced in tests so they do not sleep.</summary>
 	public Func<TimeSpan, CancellationToken, Task> Delay { get; init; } = Task.Delay;
 }
