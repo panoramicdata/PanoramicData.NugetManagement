@@ -94,11 +94,27 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 	/// <param name="clonePath">The clone's directory.</param>
 	/// <param name="selected">The path the user has selected, if any.</param>
 	/// <param name="preExisting">Path to fingerprint, captured when the session started.</param>
-	public void Refresh(int generation, string clonePath, string? selected, IReadOnlyDictionary<string, string> preExisting)
+	/// <param name="delivered">
+	/// A change the pipeline delivered and then reset the clone over. Shown only when the clone itself has
+	/// no changes left; while there are live changes, they are what the tab shows.
+	/// </param>
+	public void Refresh(
+		int generation,
+		string clonePath,
+		string? selected,
+		IReadOnlyDictionary<string, string> preExisting,
+		DeliveredChange? delivered = null)
 	{
 		try
 		{
 			var changes = reader.ReadChanges(clonePath);
+
+			if (changes.Count == 0 && delivered is { Files.Count: > 0 })
+			{
+				Publish(generation, FromDelivered(delivered, selected));
+				return;
+			}
+
 			var labels = new Dictionary<string, string>(StringComparer.Ordinal);
 			foreach (var change in Listed(changes))
 			{
@@ -112,14 +128,7 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 			var path = ResolveSelection(selected, changes);
 			var file = changes.FirstOrDefault(c => c.Path == path);
 			var pair = file is null ? null : reader.ReadPair(clonePath, file);
-			var snapshot = new Snapshot(changes, labels, path, pair);
-			lock (_gate)
-			{
-				if (generation == _generation)
-				{
-					Volatile.Write(ref _current, snapshot);
-				}
-			}
+			Publish(generation, new Snapshot(changes, labels, path, pair));
 		}
 		catch (Exception)
 		{
@@ -137,16 +146,38 @@ internal sealed class ChangesTabModel(CloneChangeReader reader, TimeSpan minimum
 		}
 	}
 
+	private void Publish(int generation, Snapshot snapshot)
+	{
+		lock (_gate)
+		{
+			if (generation == _generation)
+			{
+				Volatile.Write(ref _current, snapshot);
+			}
+		}
+	}
+
+	private static Snapshot FromDelivered(DeliveredChange delivered, string? selected)
+	{
+		var changes = delivered.Files.Select(file => file.File).ToList();
+		var path = ResolveSelection(selected, changes);
+		var pair = delivered.Files.FirstOrDefault(file => file.File.Path == path)?.Pair;
+
+		return new Snapshot(changes, new Dictionary<string, string>(), path, pair, delivered);
+	}
+
 	/// <summary>One consistent result of reading the clone.</summary>
 	/// <param name="Changes">The changed files.</param>
 	/// <param name="Labels">Label per path, only for files that were already changed at session start.</param>
 	/// <param name="SelectedPath">The file whose diff is shown.</param>
 	/// <param name="Pair">The selected file's two sides.</param>
+	/// <param name="Delivery">Set when these changes are a delivered change kept on the item, not the live clone.</param>
 	public sealed record Snapshot(
 		IReadOnlyList<ChangedFile> Changes,
 		IReadOnlyDictionary<string, string> Labels,
 		string? SelectedPath,
-		FilePair? Pair)
+		FilePair? Pair,
+		DeliveredChange? Delivery = null)
 	{
 		/// <summary>Nothing read yet.</summary>
 		public static Snapshot Empty { get; } = new([], new Dictionary<string, string>(), null, null);
