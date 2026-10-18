@@ -477,28 +477,39 @@ public class DashboardService
 			organization,
 			published,
 			result,
-			async (fullName, ct) =>
-			{
-				var slash = fullName.IndexOf('/', StringComparison.Ordinal);
-
-				try
-				{
-					var repository = await github.Repository
-						.Get(fullName[..slash], fullName[(slash + 1)..])
-						.WaitAsync(ct)
-						.ConfigureAwait(false);
-
-					return new ResolvedRepository(repository.FullName, repository.Archived, repository.Fork);
-				}
-				catch (NotFoundException)
-				{
-					return null;
-				}
-			},
+			(fullName, ct) => LookUpRepositoryAsync(github, fullName, ct),
 			logger,
 			cancellationToken).ConfigureAwait(false);
 
 		return [.. result, .. moved];
+	}
+
+	/// <summary>
+	/// What GitHub says a repository is now, following a rename, or null when it does not exist.
+	/// </summary>
+	/// <param name="github">The GitHub client.</param>
+	/// <param name="fullName">The repository as <c>owner/name</c>, which may be a name it has since left.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	private static async Task<ResolvedRepository?> LookUpRepositoryAsync(
+		IGitHubClient github,
+		string fullName,
+		CancellationToken cancellationToken)
+	{
+		var slash = fullName.IndexOf('/', StringComparison.Ordinal);
+
+		try
+		{
+			var repository = await github.Repository
+				.Get(fullName[..slash], fullName[(slash + 1)..])
+				.WaitAsync(cancellationToken)
+				.ConfigureAwait(false);
+
+			return new ResolvedRepository(repository.FullName, repository.Archived, repository.Fork);
+		}
+		catch (NotFoundException)
+		{
+			return null;
+		}
 	}
 
 	/// <summary>

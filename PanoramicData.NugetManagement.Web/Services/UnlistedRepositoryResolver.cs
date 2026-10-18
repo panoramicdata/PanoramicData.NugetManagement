@@ -40,8 +40,9 @@ public static class UnlistedRepositoryResolver
 	/// <param name="logger">Where a repository that moved, or a lookup that failed, is reported.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>
-	/// One entry per repository found, named as the package records it. A repository that is gone, or whose
-	/// lookup failed, is left out: it stays as it was rather than being guessed about.
+	/// One entry per repository found, named as the package records it. A repository that is gone, that now
+	/// belongs to another owner, or whose lookup failed, is left out: it stays as it was rather than being
+	/// guessed about.
 	/// </returns>
 	public static async Task<IReadOnlyList<GitHubRepositoryInfo>> ResolveAsync(
 		string organization,
@@ -51,57 +52,95 @@ public static class UnlistedRepositoryResolver
 		ILogger logger,
 		CancellationToken cancellationToken)
 	{
-		var listedNames = new HashSet<string>(listed.Select(repository => repository.FullName), StringComparer.OrdinalIgnoreCase);
-
-		var unlisted = published
-			.Where(name => string.Equals(OwnerOf(name), organization, StringComparison.OrdinalIgnoreCase))
-			.Where(name => !listedNames.Contains(name))
-			.Order(StringComparer.OrdinalIgnoreCase)
-			.ToList();
-
 		var found = new ConcurrentBag<GitHubRepositoryInfo>();
 
 		await Parallel.ForEachAsync(
-			unlisted,
+			UnlistedNames(organization, published, listed),
 			new ParallelOptions { MaxDegreeOfParallelism = MaxConcurrentLookups, CancellationToken = cancellationToken },
 			async (recordedName, ct) =>
 			{
-				try
+				if (await DescribeAsync(organization, recordedName, lookup, logger, ct).ConfigureAwait(false) is { } info)
 				{
-					var resolved = await lookup(recordedName, ct).ConfigureAwait(false);
-
-					if (resolved is null)
-					{
-						return;
-					}
-
-					if (!string.Equals(resolved.FullName, recordedName, StringComparison.OrdinalIgnoreCase))
-					{
-						logger.LogInformation(
-							"{Recorded} has moved to {Current} (archived: {Archived}).",
-							recordedName,
-							resolved.FullName,
-							resolved.IsArchived);
-					}
-
-					found.Add(new GitHubRepositoryInfo(
-						recordedName,
-						$"https://github.com/{resolved.FullName}",
-						resolved.IsArchived,
-						resolved.IsFork));
-				}
-				catch (OperationCanceledException)
-				{
-					throw;
-				}
-				catch (Exception ex)
-				{
-					// Not knowing is not a reason to change what we believed: it stays governed, as before.
-					logger.LogWarning(ex, "Could not look up {Repository}, so whether it is archived is unknown.", recordedName);
+					found.Add(info);
 				}
 			}).ConfigureAwait(false);
 
 		return [.. found.OrderBy(repository => repository.FullName, StringComparer.OrdinalIgnoreCase)];
+	}
+
+	private static List<string> UnlistedNames(
+		string organization,
+		IReadOnlySet<string> published,
+		IReadOnlyCollection<GitHubRepositoryInfo> listed)
+	{
+		var listedNames = new HashSet<string>(listed.Select(repository => repository.FullName), StringComparer.OrdinalIgnoreCase);
+
+		return
+		[
+			.. published
+				.Where(name => string.Equals(OwnerOf(name), organization, StringComparison.OrdinalIgnoreCase))
+				.Where(name => !listedNames.Contains(name))
+				.Order(StringComparer.OrdinalIgnoreCase)
+		];
+	}
+
+	/// <summary>
+	/// What GitHub says about one repository, as an entry named the way the package names it, or null when
+	/// there is nothing trustworthy to report.
+	/// </summary>
+	private static async Task<GitHubRepositoryInfo?> DescribeAsync(
+		string organization,
+		string recordedName,
+		Func<string, CancellationToken, Task<ResolvedRepository?>> lookup,
+		ILogger logger,
+		CancellationToken cancellationToken)
+	{
+		ResolvedRepository? resolved;
+
+		try
+		{
+			resolved = await lookup(recordedName, cancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			// Not knowing is not a reason to change what we believed: it stays governed, as before.
+			logger.LogWarning(ex, "Could not look up {Repository}, so whether it is archived is unknown.", recordedName);
+			return null;
+		}
+
+		if (resolved is null)
+		{
+			return null;
+		}
+
+		// A rename keeps the owner. A transfer does not, and then the repository is not this organisation's to
+		// describe: its archived state belongs to somebody else's repository and must not be attached to a row
+		// governed here.
+		if (!string.Equals(OwnerOf(resolved.FullName), organization, StringComparison.OrdinalIgnoreCase))
+		{
+			logger.LogWarning(
+				"{Recorded} now belongs to {Current}, outside {Organization}, so it is left as it was.",
+				recordedName,
+				resolved.FullName,
+				organization);
+
+			return null;
+		}
+
+		if (!string.Equals(resolved.FullName, recordedName, StringComparison.OrdinalIgnoreCase))
+		{
+			logger.LogInformation(
+				"{Recorded} has moved to {Current} (archived: {Archived}).",
+				recordedName,
+				resolved.FullName,
+				resolved.IsArchived);
+		}
+
+		return new GitHubRepositoryInfo(
+			recordedName,
+			$"https://github.com/{resolved.FullName}",
+			resolved.IsArchived,
+			resolved.IsFork);
 	}
 
 	private static string OwnerOf(string fullName)

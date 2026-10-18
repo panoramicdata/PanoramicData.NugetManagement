@@ -123,6 +123,20 @@ public class UnlistedRepositoryResolverTests(ITestOutputHelper output) : TestWit
 	}
 
 	[Fact]
+	public async Task ARepositoryNowOwnedBySomeoneElse_IsNotDescribedAsThisOrganisations()
+	{
+		var resolved = await ResolveAsync(
+			"panoramicdata",
+			Published("panoramicdata/Moved.Api"),
+			Listed(),
+			(_, _) => Task.FromResult<ResolvedRepository?>(new ResolvedRepository("someone-else/Moved.Api", IsArchived: true, IsFork: false)));
+
+		resolved.Should().BeEmpty(
+			"a repository that now belongs to another owner is not this organisation's to describe, and reporting "
+				+ "it would attach another owner's archived state to a row governed here");
+	}
+
+	[Fact]
 	public async Task TheLookupIsGivenTheOwnerAndNameAsRecorded()
 	{
 		var asked = new List<string>();
