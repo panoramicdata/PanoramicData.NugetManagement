@@ -957,6 +957,22 @@ public sealed partial class WorkExecutors(
 		// request that would have undone the fix. Declined here, before any model time is spent.
 		var headSha = await localRepo.GetHeadShaAsync(row.RepositoryFullName, cancellationToken).ConfigureAwait(false);
 
+		// The cached assessment may be hours old, or older than the freshness facts it would need to be judged by, so a
+		// Codacy-graded rule is read again now. The session is then given what Codacy says today, and the gate below has
+		// something to compare. TST-10 is excluded: it is measured locally and never describes a commit.
+		if (IsRemotelyGraded(ruleId) && !string.Equals(ruleId, "TST-10", StringComparison.OrdinalIgnoreCase))
+		{
+			var current = await EvaluateRuleAsync(row, ruleId, cancellationToken).ConfigureAwait(false);
+
+			if (current.Passed)
+			{
+				Say($"⏭️ {ruleId} is no longer failing on {row.RepositoryFullName}: Codacy has caught up with a fix.");
+				return;
+			}
+
+			result = current;
+		}
+
 		if (CodacyAnalysisGate.Refusal(result.Advisory?.Data, headSha) is { } notCurrent)
 		{
 			Say($"⏭️ {ruleId}: {notCurrent}");
@@ -1824,15 +1840,26 @@ public sealed partial class WorkExecutors(
 		string ruleId,
 		CancellationToken cancellationToken)
 	{
+		var result = await EvaluateRuleAsync(row, ruleId, cancellationToken).ConfigureAwait(false);
+
+		return new AiRuleCheck(result.Passed, result.Message);
+	}
+
+	/// <summary>
+	/// Evaluates one rule against the repository as it now stands and returns everything it said, advisory included.
+	/// </summary>
+	private async Task<PanoramicData.NugetManagement.Models.RuleResult> EvaluateRuleAsync(
+		RepositoryDashboardRow row,
+		string ruleId,
+		CancellationToken cancellationToken)
+	{
 		var github = await CreateGitHubClientAsync().ConfigureAwait(false);
 		var context = await dashboard.BuildContextAsync(row, github, cancellationToken).ConfigureAwait(false);
 
 		var rule = PanoramicData.NugetManagement.Services.RuleRegistry.Rules
 			.First(r => string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
 
-		var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
-
-		return new AiRuleCheck(result.Passed, result.Message);
+		return await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
