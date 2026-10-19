@@ -23,9 +23,11 @@ public class DashboardService
 	private readonly AppSettings _settings;
 	private readonly ICodacyAnalysisStateService _codacyAnalysisState;
 	private readonly ILogger<DashboardService> _logger;
+	private readonly DeclaredPackageIdCache _packageIdCache;
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="DashboardService"/> class.
+	/// Initializes a new instance with a package id cache that remembers nothing between discoveries,
+	/// which is correct but spends GitHub calls on every repository each time.
 	/// </summary>
 	public DashboardService(
 		NuGetDiscoveryService nuget,
@@ -40,6 +42,41 @@ public class DashboardService
 		IOptions<AppSettings> settings,
 		ICodacyAnalysisStateService codacyAnalysisState,
 		ILogger<DashboardService> logger)
+		: this(
+			nuget,
+			publishedVersions,
+			cache,
+			localRepo,
+			remediationRegistry,
+			regressionGuard,
+			runtimeSettings,
+			owned,
+			waivers,
+			settings,
+			codacyAnalysisState,
+			logger,
+			new DeclaredPackageIdCache(null))
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="DashboardService"/> class. The package id cache
+	/// holds what earlier discoveries learned about which repositories declare one.
+	/// </summary>
+	public DashboardService(
+		NuGetDiscoveryService nuget,
+		PublishedVersionRefresher publishedVersions,
+		DashboardCacheService cache,
+		LocalRepoService localRepo,
+		RemediationRegistry remediationRegistry,
+		RegressionGuardService regressionGuard,
+		RuntimeSettingsService runtimeSettings,
+		NuGetOwnedPackageCatalog owned,
+		RuleWaiverCatalog waivers,
+		IOptions<AppSettings> settings,
+		ICodacyAnalysisStateService codacyAnalysisState,
+		ILogger<DashboardService> logger,
+		DeclaredPackageIdCache packageIdCache)
 	{
 		_nuget = nuget;
 		_publishedVersions = publishedVersions;
@@ -53,6 +90,7 @@ public class DashboardService
 		_settings = settings.Value;
 		_codacyAnalysisState = codacyAnalysisState;
 		_logger = logger;
+		_packageIdCache = packageIdCache;
 	}
 
 	/// <summary>
@@ -117,7 +155,7 @@ public class DashboardService
 
 		var gitHubRepositories = await ListGitHubRepositoriesAsync(
 			organizations,
-			github is null ? null : (owner, ct) => ListOrganizationRepositoriesAsync(github, owner, published, _logger, ct),
+			github is null ? null : (owner, ct) => ListOrganizationRepositoriesAsync(github, owner, published, _packageIdCache, _logger, ct),
 			_logger,
 			cancellationToken).ConfigureAwait(false);
 
@@ -413,17 +451,23 @@ public class DashboardService
 	/// Repositories that already publish packages: they are in the tree regardless, so their project
 	/// files are not read.
 	/// </param>
+	/// <param name="packageIdCache">
+	/// What was found last time, reused for a repository nobody has pushed to since, so a discovery
+	/// costs GitHub calls only for the repositories that changed.
+	/// </param>
 	/// <param name="logger">Where a repository whose project files could not be read is reported.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <remarks>
 	/// Archived repositories and forks are not read either: they publish nothing, and nothing would be
 	/// done to them if they did. A repository whose files cannot be read is listed with its ids unknown,
-	/// so <see cref="BuildRows"/> keeps what it knew rather than dropping it.
+	/// so <see cref="BuildRows"/> keeps what it knew rather than dropping it, and nothing is remembered
+	/// for it, so the next discovery tries again.
 	/// </remarks>
 	private static async Task<IReadOnlyList<GitHubRepositoryInfo>> ListOrganizationRepositoriesAsync(
 		IGitHubClient github,
 		string organization,
 		IReadOnlySet<string> published,
+		DeclaredPackageIdCache packageIdCache,
 		ILogger logger,
 		CancellationToken cancellationToken)
 	{
@@ -446,19 +490,34 @@ public class DashboardService
 					&& !repository.Fork
 					&& !published.Contains(repository.FullName))
 				{
-					try
+					if (repository.PushedAt is { } pushedAt
+						&& packageIdCache.TryGet(repository.FullName, pushedAt, out var remembered))
 					{
-						declared = await DeclaredPackageIds
-							.ReadAsync(github, repository.Owner.Login, repository.Name, repository.DefaultBranch ?? "HEAD", ct)
-							.ConfigureAwait(false);
+						declared = remembered;
 					}
-					catch (OperationCanceledException)
+					else
 					{
-						throw;
-					}
-					catch (Exception ex)
-					{
-						logger.LogWarning(ex, "Could not read the declared package ids of {Repository}.", repository.FullName);
+						try
+						{
+							declared = await DeclaredPackageIds
+								.ReadAsync(github, repository.Owner.Login, repository.Name, repository.DefaultBranch ?? "HEAD", ct)
+								.ConfigureAwait(false);
+
+							// A repository with no push time (nothing in it yet) is read each time: there is
+							// nothing to tell a changed answer from an unchanged one.
+							if (repository.PushedAt is { } readAt)
+							{
+								packageIdCache.Set(repository.FullName, readAt, declared);
+							}
+						}
+						catch (OperationCanceledException)
+						{
+							throw;
+						}
+						catch (Exception ex)
+						{
+							logger.LogWarning(ex, "Could not read the declared package ids of {Repository}.", repository.FullName);
+						}
 					}
 				}
 
@@ -469,6 +528,8 @@ public class DashboardService
 					repository.Fork,
 					declared);
 			}).ConfigureAwait(false);
+
+		packageIdCache.Save();
 
 		// Repositories that packages point at but that the list does not show under that name: renamed, and
 		// in this organisation's habit archived by being renamed. Asked for by the old name, GitHub says what
@@ -1947,7 +2008,8 @@ public class DashboardService
 
 	/// <summary>
 	/// The single gate every write to a local clone passes through: it is the repository we think it is,
-	/// and it has nothing uncommitted in it. Returns false — having said why — if either does not hold.
+	/// it has nothing uncommitted in it, and it is not behind origin. Returns false — having said why — if
+	/// any of those does not hold.
 	/// </summary>
 	private async Task<bool> VerifyWritableCloneAsync(
 		RepositoryDashboardRow row,
@@ -1962,7 +2024,43 @@ public class DashboardService
 		}
 
 		return await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false) is null
-			&& await VerifyCleanWorkingTreeAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+			&& await VerifyCleanWorkingTreeAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false)
+			&& await CatchUpWithOriginAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Fast-forwards a clean clone that is behind origin, so a fix is applied to the tree it will be
+	/// pushed onto. Returns false, having said why, when the clone has diverged and cannot be.
+	/// </summary>
+	/// <remarks>
+	/// Without this a fix applied to a stale clone could never be pushed: <see cref="VerifyNotBehindOriginAsync"/>
+	/// refuses the push and discards the fix, and applying it again repeats the same cycle, because
+	/// nothing in between brings the clone up to date. When origin cannot be reached the fix goes ahead
+	/// against what the clone has — it is local and undoable — and the push gate fails closed as before.
+	/// </remarks>
+	private async Task<bool> CatchUpWithOriginAsync(
+		RepositoryDashboardRow row,
+		string repoIdentity,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var (caughtUp, behind) = await _localRepo.FastForwardToOriginAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+
+		if (behind is null or 0)
+		{
+			return true;
+		}
+
+		if (!caughtUp)
+		{
+			onOutput?.Invoke(
+				$"❌ {row.RepositoryFullName}: origin has {behind} commit(s) this clone does not, and the clone has commits of its own, so it cannot simply be brought up to date. Sync it, then apply the fix again.");
+			return false;
+		}
+
+		onOutput?.Invoke($"↻ {row.RepositoryFullName}: brought the clone up to date with origin ({behind} new commit(s)) before applying.");
+		await RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+		return true;
 	}
 
 	// ── Issue-centric ("dimensional flip") view + bulk apply across repositories ──

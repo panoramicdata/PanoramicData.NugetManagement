@@ -495,6 +495,40 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
+	/// Brings a clone level with <c>origin</c> when it is only behind, fetching first. Returns how many
+	/// commits it was behind, or null when that cannot be established.
+	/// </summary>
+	/// <remarks>
+	/// Fast-forward only: a clone with commits of its own is left exactly as it was and reported as not
+	/// caught up, because combining histories is a decision, not a catch-up. The caller is expected to
+	/// have checked the working tree is clean.
+	/// </remarks>
+	/// <param name="repoIdentity">The repository, as "owner/name".</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	public async Task<(bool CaughtUp, int? Behind)> FastForwardToOriginAsync(
+		string repoIdentity,
+		CancellationToken cancellationToken = default)
+	{
+		var behind = await CountCommitsBehindOriginAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		if (behind is not > 0)
+		{
+			return (behind == 0, behind);
+		}
+
+		var path = GetLocalPath(repoIdentity);
+		var (branchExit, branchOutput) = await RunCommandAsync(path, "git", ["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken).ConfigureAwait(false);
+		if (branchExit != 0)
+		{
+			return (false, behind);
+		}
+
+		var (mergeExit, _) = await RunCommandAsync(
+			path, "git", ["merge", "--ff-only", $"origin/{branchOutput.Trim()}"], cancellationToken).ConfigureAwait(false);
+
+		return (mergeExit == 0, behind);
+	}
+
+	/// <summary>
 	/// Throws away everything uncommitted in a clone: modifications to tracked files, and untracked files
 	/// and directories. Returns the <c>git status</c> lines that were discarded.
 	/// </summary>

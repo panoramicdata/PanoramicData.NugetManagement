@@ -42,6 +42,8 @@ builder.Services.AddSingleton<LocalRepoService>();
 // Stateless and per-call, so a singleton: it constructs its own short-lived Codacy client.
 builder.Services.AddSingleton<ICodacyAnalysisStateService, CodacyAnalysisStateService>();
 builder.Services.AddSingleton<DashboardCacheService>();
+// Singleton, because DashboardService is scoped and a cache held in it would be forgotten after every item.
+builder.Services.AddSingleton(_ => new DeclaredPackageIdCache(DeclaredPackageIdCache.DefaultPath()));
 builder.Services.AddSingleton<RemediationRegistry>();
 // Singletons, because triage runs on many repository lanes at once and what stops one gap becoming
 // one issue per repository is state shared between them.
