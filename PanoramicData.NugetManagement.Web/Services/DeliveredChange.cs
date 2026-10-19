@@ -19,7 +19,16 @@ public sealed record DeliveredFile(ChangedFile File, FilePair Pair);
 public sealed record DeliveredChange(IReadOnlyList<DeliveredFile> Files, string Summary, string? PullRequestUrl)
 {
 	/// <summary>The most text kept across all files, so a finished item cannot hold a clone's worth of memory.</summary>
-	public const int DefaultMaxCharacters = 4_000_000;
+	public static int DefaultMaxCharacters { get; } = 4_000_000;
+
+	/// <summary>
+	/// Reads what is changed in the clone now, both sides of each file, keeping up to
+	/// <see cref="DefaultMaxCharacters"/> of text.
+	/// </summary>
+	/// <param name="reader">Reads the clone.</param>
+	/// <param name="clonePath">The clone's directory.</param>
+	public static DeliveredChange Capture(CloneChangeReader reader, string clonePath)
+		=> Capture(reader, clonePath, DefaultMaxCharacters);
 
 	/// <summary>
 	/// Reads what is changed in the clone now, both sides of each file.
@@ -27,7 +36,7 @@ public sealed record DeliveredChange(IReadOnlyList<DeliveredFile> Files, string 
 	/// <param name="reader">Reads the clone.</param>
 	/// <param name="clonePath">The clone's directory.</param>
 	/// <param name="maxCharacters">The most text to keep; a file that would exceed it is listed but not kept.</param>
-	public static DeliveredChange Capture(CloneChangeReader reader, string clonePath, int maxCharacters = DefaultMaxCharacters)
+	public static DeliveredChange Capture(CloneChangeReader reader, string clonePath, int maxCharacters)
 	{
 		var files = new List<DeliveredFile>();
 		var kept = 0;
