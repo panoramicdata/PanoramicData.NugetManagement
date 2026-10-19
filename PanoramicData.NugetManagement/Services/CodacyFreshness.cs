@@ -54,6 +54,42 @@ internal static class CodacyFreshness
 	}
 
 	/// <summary>
+	/// Records what Codacy said about its own analysis alongside a rule's data, so a reader of the advisory, human
+	/// or model, can tell which commit the findings describe.
+	/// </summary>
+	/// <param name="data">The advisory data to add to.</param>
+	/// <param name="state">What Codacy said, or null when that could not be established.</param>
+	/// <remarks>
+	/// The keys are absent rather than null when the state could not be established, because an absent key reads as
+	/// "not established" and a null <c>codacy_is_analysing</c> reads as "not analysing", which is the conflation the
+	/// freshness work exists to stop.
+	/// </remarks>
+	public static void AddData(Dictionary<string, object> data, CodacyAnalysisState? state)
+	{
+		if (state is null)
+		{
+			return;
+		}
+
+		data["codacy_is_analysing"] = state.IsAnalysing;
+		data["codacy_state_retrieved_at"] = state.RetrievedAtUtc;
+
+		if (state.AnalysedSha is { } sha)
+		{
+			data["codacy_analysed_sha"] = sha;
+		}
+
+		if (state.AnalysedAtUtc is { } analysedAt)
+		{
+			data["codacy_analysed_at"] = analysedAt;
+		}
+
+		if (state.ProgressPercent is { } percent)
+		{
+			data["codacy_analysis_progress_percent"] = percent;
+		}
+	}
+	/// <summary>
 	/// Which commit the current figures describe, whether or not that commit is stale.
 	/// </summary>
 	/// <returns>

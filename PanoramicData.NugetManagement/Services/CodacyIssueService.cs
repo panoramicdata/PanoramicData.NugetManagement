@@ -44,12 +44,22 @@ public sealed class CodacyIssueService : ICodacyIssueService
 	{
 		using var client = new CodacyClient(new CodacyClientOptions { ApiToken = apiToken });
 
+		// What the issues describe, asked once here for the same reason the file-grade service asks it: the two
+		// rules read one repository in one panel and must not disagree about how current it is.
+		Task<CodacyAnalysisState?> AnalysisStateAsync() => CodacyAnalysisStateLookup.ResolveAsync(
+			client,
+			organizationName,
+			repositoryName,
+			branch,
+			DateTimeOffset.UtcNow,
+			cancellationToken);
+
 		var issues = await SearchIssuesAsync(client, organizationName, repositoryName, branch, cancellationToken)
 			.ConfigureAwait(false);
 
 		if (issues is not null)
 		{
-			return new CodacyRepositoryReport { IsTracked = true, Issues = issues };
+			return new CodacyRepositoryReport { IsTracked = true, Issues = issues, AnalysisState = await AnalysisStateAsync().ConfigureAwait(false) };
 		}
 
 		// The same 404 the file listing answers for repositories Codacy holds, and it must not be read
@@ -71,8 +81,8 @@ public sealed class CodacyIssueService : ICodacyIssueService
 		return state switch
 		{
 			CodacyTrackingState.NotAdded => new CodacyRepositoryReport { IsTracked = false },
-			CodacyTrackingState.Listed => new CodacyRepositoryReport { IsTracked = true, Issues = issues ?? [] },
-			_ => new CodacyRepositoryReport { IsTracked = true, Issues = [] }
+			CodacyTrackingState.Listed => new CodacyRepositoryReport { IsTracked = true, Issues = issues ?? [], AnalysisState = await AnalysisStateAsync().ConfigureAwait(false) },
+			_ => new CodacyRepositoryReport { IsTracked = true, Issues = [], AnalysisState = await AnalysisStateAsync().ConfigureAwait(false) }
 		};
 	}
 

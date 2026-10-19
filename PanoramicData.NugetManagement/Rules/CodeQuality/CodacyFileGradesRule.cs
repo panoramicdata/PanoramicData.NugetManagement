@@ -170,7 +170,7 @@ public sealed class CodacyFileGradesRule : RuleBase, IRemotelyGraded
 				.ToList()
 		};
 
-		AddFreshnessData(data, report.AnalysisState);
+		CodacyFreshness.AddData(data, report.AnalysisState);
 
 		return Fail(message, new RuleAdvisory
 		{
@@ -189,39 +189,6 @@ public sealed class CodacyFileGradesRule : RuleBase, IRemotelyGraded
 		});
 	}
 
-	/// <summary>
-	/// Records what these figures describe, for whatever reads the advisory as data.
-	/// </summary>
-	/// <remarks>
-	/// The keys are absent rather than null when the state could not be established, because an
-	/// absent key reads as "not established" and a null <c>codacy_is_analysing</c> reads as "not
-	/// analysing" — which is the conflation this whole change exists to stop.
-	/// </remarks>
-	private static void AddFreshnessData(Dictionary<string, object> data, CodacyAnalysisState? state)
-	{
-		if (state is null)
-		{
-			return;
-		}
-
-		data["codacy_is_analysing"] = state.IsAnalysing;
-		data["codacy_state_retrieved_at"] = state.RetrievedAtUtc;
-
-		if (state.AnalysedSha is { } sha)
-		{
-			data["codacy_analysed_sha"] = sha;
-		}
-
-		if (state.AnalysedAtUtc is { } analysedAt)
-		{
-			data["codacy_analysed_at"] = analysedAt;
-		}
-
-		if (state.ProgressPercent is { } percent)
-		{
-			data["codacy_analysis_progress_percent"] = percent;
-		}
-	}
 
 	/// <summary>
 	/// The repository's open issues, grouped by the file they were found in.

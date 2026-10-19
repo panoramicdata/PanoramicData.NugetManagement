@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
@@ -951,6 +951,17 @@ public sealed partial class WorkExecutors(
 			return;
 		}
 
+		// Codacy's findings describe the commit it last analysed, and a clone that has moved on may already have
+		// fixed them. A model given a finding that is already fixed changes something else instead: AlienFx.Api's
+		// CQ-05 session renamed a parameter back to the name a merged commit had just replaced, and opened a pull
+		// request that would have undone the fix. Declined here, before any model time is spent.
+		var headSha = await localRepo.GetHeadShaAsync(row.RepositoryFullName, cancellationToken).ConfigureAwait(false);
+
+		if (CodacyAnalysisGate.Refusal(result.Advisory?.Data, headSha) is { } notCurrent)
+		{
+			Say($"⏭️ {ruleId}: {notCurrent}");
+			return;
+		}
 		var succeeded = false;
 		Func<int>? undoWrites = null;
 		Func<Task<string?>>? progressWorthKeeping = null;

@@ -14,4 +14,10 @@ public sealed class CodacyRepositoryReport
 
 	/// <summary>The open issues reported by Codacy. Empty when the repository is clean or untracked.</summary>
 	public IReadOnlyList<CodacyIssue> Issues { get; init; } = [];
+
+	/// <summary>
+	/// Where Codacy's analysis of the branch had got to, or null when that could not be established. The issues
+	/// describe the commit named here, which need not be the one checked out.
+	/// </summary>
+	public CodacyAnalysisState? AnalysisState { get; init; }
 }

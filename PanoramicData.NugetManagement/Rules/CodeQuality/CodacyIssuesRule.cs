@@ -92,6 +92,9 @@ public sealed class CodacyIssuesRule : RuleBase, IRemotelyGraded
 		var severity = breached ? AssessmentSeverity.Error : AssessmentSeverity.Warning;
 
 		data["max_issues"] = hardCap;
+
+		// Which commit these issues describe: a model acting on them has to know they may already be fixed.
+		CodacyFreshness.AddData(data, report.AnalysisState);
 		data["budget_breached"] = breached;
 
 		var message = breached

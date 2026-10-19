@@ -37,6 +37,38 @@ public class CodacyIssuesRuleTests(ITestOutputHelper output) : TestWithOutput(ou
 		})];
 
 	[Fact]
+	public async Task RecordsWhichCommitCodacyAnalysed_SoAFixerCanTellTheIssuesAreStale()
+	{
+		var analysed = new DateTimeOffset(2026, 10, 19, 9, 30, 0, TimeSpan.Zero);
+		var report = new CodacyRepositoryReport
+		{
+			IsTracked = true,
+			Issues = SampleIssues(2),
+			AnalysisState = new CodacyAnalysisState
+			{
+				IsAnalysing = false,
+				AnalysedSha = "aaaaaaa1111111",
+				AnalysedAtUtc = analysed,
+				RetrievedAtUtc = analysed.AddMinutes(5)
+			}
+		};
+
+		var result = await new CodacyIssuesRule(new FakeService(report))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Data["codacy_analysed_sha"].Should().Be("aaaaaaa1111111");
+		result.Advisory.Data["codacy_is_analysing"].Should().Be(false);
+	}
+
+	[Fact]
+	public async Task LeavesFreshnessOut_WhenCodacyDidNotSayWhatItAnalysed()
+	{
+		var result = await new CodacyIssuesRule(new FakeService(new CodacyRepositoryReport { IsTracked = true, Issues = SampleIssues(1) }))
+			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		result.Advisory!.Data.Should().NotContainKey("codacy_analysed_sha", "an absent key means not established, never current");
+	}
+	[Fact]
 	public async Task Passes_WhenCodacyNotConfigured()
 	{
 		var rule = new CodacyIssuesRule(new FakeService(new CodacyRepositoryReport { IsTracked = true, Issues = SampleIssues(5) }));
