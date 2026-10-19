@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using PanoramicData.NugetManagement.Web.Models;
@@ -123,27 +122,14 @@ public class LocalRepoServiceFastForwardTests(ITestOutputHelper output) : TestWi
 
 	private static string Git(string workingDirectory, params string[] arguments)
 	{
-		var startInfo = new ProcessStartInfo("git")
-		{
-			WorkingDirectory = workingDirectory,
-			RedirectStandardOutput = true,
-			RedirectStandardError = true,
-			UseShellExecute = false
-		};
+		var (exitCode, output) = LocalRepoService
+			.RunCommandAsync(workingDirectory, "git", arguments)
+			.GetAwaiter()
+			.GetResult();
 
-		foreach (var argument in arguments)
-		{
-			startInfo.ArgumentList.Add(argument);
-		}
-
-		using var process = Process.Start(startInfo)!;
-		var standardOutput = process.StandardOutput.ReadToEndAsync();
-		var standardError = process.StandardError.ReadToEndAsync();
-		process.WaitForExit();
-
-		return process.ExitCode == 0
-			? standardOutput.Result.Trim()
-			: throw new InvalidOperationException($"git {string.Join(' ', arguments)} failed: {standardError.Result}");
+		return exitCode == 0
+			? output.Trim()
+			: throw new InvalidOperationException($"git {string.Join(' ', arguments)} failed: {output}");
 	}
 
 	/// <inheritdoc />

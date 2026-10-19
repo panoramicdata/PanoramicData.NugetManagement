@@ -26,10 +26,42 @@ public class DashboardService
 	private readonly DeclaredPackageIdCache _packageIdCache;
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="DashboardService"/> class. The optional package id
-	/// cache holds what earlier discoveries learned about which repositories declare one; without it
-	/// nothing is remembered between discoveries, which is correct but spends GitHub calls on every
-	/// repository each time.
+	/// Initializes a new instance with a package id cache that remembers nothing between discoveries,
+	/// which is correct but spends GitHub calls on every repository each time.
+	/// </summary>
+	public DashboardService(
+		NuGetDiscoveryService nuget,
+		PublishedVersionRefresher publishedVersions,
+		DashboardCacheService cache,
+		LocalRepoService localRepo,
+		RemediationRegistry remediationRegistry,
+		RegressionGuardService regressionGuard,
+		RuntimeSettingsService runtimeSettings,
+		NuGetOwnedPackageCatalog owned,
+		RuleWaiverCatalog waivers,
+		IOptions<AppSettings> settings,
+		ICodacyAnalysisStateService codacyAnalysisState,
+		ILogger<DashboardService> logger)
+		: this(
+			nuget,
+			publishedVersions,
+			cache,
+			localRepo,
+			remediationRegistry,
+			regressionGuard,
+			runtimeSettings,
+			owned,
+			waivers,
+			settings,
+			codacyAnalysisState,
+			logger,
+			new DeclaredPackageIdCache(null))
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="DashboardService"/> class. The package id cache
+	/// holds what earlier discoveries learned about which repositories declare one.
 	/// </summary>
 	public DashboardService(
 		NuGetDiscoveryService nuget,
@@ -44,7 +76,7 @@ public class DashboardService
 		IOptions<AppSettings> settings,
 		ICodacyAnalysisStateService codacyAnalysisState,
 		ILogger<DashboardService> logger,
-		DeclaredPackageIdCache? packageIdCache = null)
+		DeclaredPackageIdCache packageIdCache)
 	{
 		_nuget = nuget;
 		_publishedVersions = publishedVersions;
@@ -58,7 +90,7 @@ public class DashboardService
 		_settings = settings.Value;
 		_codacyAnalysisState = codacyAnalysisState;
 		_logger = logger;
-		_packageIdCache = packageIdCache ?? new DeclaredPackageIdCache(null);
+		_packageIdCache = packageIdCache;
 	}
 
 	/// <summary>
