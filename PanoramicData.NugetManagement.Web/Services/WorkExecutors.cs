@@ -3307,16 +3307,21 @@ public sealed partial class WorkExecutors(
 	}
 
 	/// <summary>
-	/// A GitHub client carrying the signed-in user's token when one can be read.
+	/// A GitHub client carrying the GitHub App's installation token when an App is configured, otherwise
+	/// the signed-in user's token when one can be read.
 	/// </summary>
 	/// <remarks>
-	/// The token belongs to a sign-in, and work no longer belongs to the browser tab that started
+	/// With an App configured the client acts as the App and spends its rate limit, not the user's; a
+	/// broken App configuration throws here rather than falling back to the user's token.
+	/// <para>
+	/// Without an App, the token belongs to a sign-in, and work no longer belongs to the browser tab that started
 	/// it: by the time a lane reaches an item there is no request in flight at all. The runner's
 	/// asynchronous flow starts at the host rather than at a request, so
 	/// <c>IHttpContextAccessor.HttpContext</c> is null here always, not merely sometimes — which is
 	/// why the token is taken from <see cref="GitHubTokenProvider"/>, where a circuit published it
 	/// while it still had a request to read it from. The accessor is kept only as a fallback for a
 	/// caller that does happen to be on a request thread.
+	/// </para>
 	/// <para>
 	/// With neither, the client is anonymous: it cannot see private repositories at all, and shares
 	/// the 60-per-hour anonymous rate limit — which one fanned-out organisation re-assessment
@@ -3327,9 +3332,9 @@ public sealed partial class WorkExecutors(
 	{
 		var client = new GitHubClient(new ProductHeaderValue("PanoramicData.NugetManagement.Web"));
 
-		var accessToken = gitHubTokens.AccessToken;
+		var accessToken = await gitHubTokens.GetWorkTokenAsync(CancellationToken.None).ConfigureAwait(false);
 
-		if (string.IsNullOrWhiteSpace(accessToken) && httpContextAccessor.HttpContext is { } httpContext)
+		if (string.IsNullOrWhiteSpace(accessToken) && !gitHubTokens.UsesGitHubApp && httpContextAccessor.HttpContext is { } httpContext)
 		{
 			accessToken = await httpContext.GetTokenAsync("access_token").ConfigureAwait(false);
 		}
