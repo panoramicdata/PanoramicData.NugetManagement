@@ -73,6 +73,8 @@
   "PanoramicData.Maps",
   "PanoramicData.Maps.Abstractions",
   "PanoramicData.Maps.Blazor",
+  "PanoramicData.MusicGeneration",
+  "PanoramicData.MusicGeneration.SoundFonts",
   "PanoramicData.NCalcExtensions",
   "PanoramicData.NCalcExtensions.Benchmarks",
   "PanoramicData.NetFlowServer",
