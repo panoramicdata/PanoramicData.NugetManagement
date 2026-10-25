@@ -75,15 +75,22 @@ public sealed record DependabotTriage(
 public sealed class DependabotTriageService
 {
 	/// <summary>
-	/// How long a still-valid pull request may stay open before its bumps are adopted regardless of
-	/// whether any rule is failing for them.
+	/// How long a still-valid pull request may stay open before it is reported as
+	/// <see cref="DependabotVerdict.Adoptable"/> rather than <see cref="DependabotVerdict.NotYetDue"/>.
 	/// </summary>
 	/// <remarks>
+	/// Chooses a label, not a behaviour. Both verdicts are adopted by the runner, because triage is only
+	/// ever reached by pressing Fix and Fix is an instruction rather than a sweep. What this still
+	/// answers is the reader's question about a pull request sitting in the list — whether it is inside
+	/// a grace period that has yet to expire, or has outlasted every protection and should have been
+	/// dealt with already.
+	/// <para>
 	/// A backstop against a pull request rotting, and nothing more. It used to be positioned between
 	/// PKG-05's 30-day build grace and PKG-06's 90-day minor grace; both of those are now zero, so
 	/// build and minor bumps become failing rules on day one and reach a pull request through
 	/// <see cref="DependabotVerdict.ValidCovered"/> long before this fires. What is left for this to
 	/// catch is a major inside PKG-07's 365-day grace, which is the one level still permitted to wait.
+	/// </para>
 	/// <para>
 	/// A constant rather than a setting. One number nobody has asked to change is not worth a settings
 	/// row — and a new <c>RuntimeSettings</c> property has to be added to the hand-written
@@ -257,13 +264,18 @@ public sealed class DependabotTriageService
 			.Where((_, index) => covering[index] is null)
 			.ToList();
 
+		// Governed, seen, and nothing failing for it today. Reported as its own verdict rather than as a
+		// gap, and carrying what writing it would take: triage is only ever reached because somebody
+		// pressed Fix, and a grace period exists to stop the estate churning on a release published this
+		// morning — not to decline a bump that was asked for by name.
 		return new DependabotTriage(
 			issue,
 			proposal,
-			DependabotVerdict.ValidUncovered,
+			DependabotVerdict.NotYetDue,
 			$"Still outstanding, and {Describe(idle)} governed by a rule that is not failing for it at "
 				+ "the moment, so nothing is queued to move it right now.",
-			null);
+			null,
+			Adoption: Plan(outstanding, packages, actionUsages));
 	}
 
 	/// <summary>

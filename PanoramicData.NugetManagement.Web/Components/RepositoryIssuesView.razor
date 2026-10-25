@@ -98,15 +98,19 @@ else
 		DependabotVerdict.Adoptable => "Adoptable",
 		DependabotVerdict.Obsolete => "Not referenced",
 		DependabotVerdict.ValidUncovered => "No auto-fix",
+		DependabotVerdict.NotYetDue => "Not yet due",
 		_ => "Left alone"
 	};
 
 	/// <summary>
-	/// Uncovered is the only verdict nothing else will act on, so it is the only one coloured to ask
+	/// A rule-set gap is the only verdict nothing will act on, so it is the only one coloured to ask
 	/// for attention.
 	/// </summary>
 	/// <remarks>
 	/// Adoptable is coloured like covered rather than like uncovered: something is going to act on it.
+	/// So is not-yet-due, which Fix adopts exactly as it does an adoptable one — the label reports why
+	/// the pull request was sitting there, not a refusal to move it. Colouring it like a gap would put
+	/// a warning on every pull request inside a grace period, which is most of them.
 	/// <para>
 	/// Every label names the state triage found, never the act the runner performs. A verdict is now
 	/// stamped by the read-only preview too, so a row can carry one before anybody has pressed Fix, and
@@ -119,6 +123,7 @@ else
 		DependabotVerdict.ValidUncovered => "bg-warning text-dark",
 		DependabotVerdict.ValidCovered => "bg-info text-dark",
 		DependabotVerdict.Adoptable => "bg-info text-dark",
+		DependabotVerdict.NotYetDue => "bg-info text-dark",
 		DependabotVerdict.AlreadySatisfied => "bg-secondary",
 		DependabotVerdict.Obsolete => "bg-secondary",
 		_ => "bg-light text-dark"

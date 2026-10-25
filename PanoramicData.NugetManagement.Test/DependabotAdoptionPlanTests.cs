@@ -73,15 +73,15 @@ public class DependabotAdoptionPlanTests(ITestOutputHelper output) : TestWithOut
 					+ "still protecting anything");
 
 	[Fact]
-	public void OneDayShortOfTheThreshold_IsNotAdoptable()
+	public void OneDayShortOfTheThreshold_IsNotYetDue()
 		=> JudgeAt(
 				PullRequest(Moved("coverlet.collector", "8.0.1", "10.0.0")),
 				Ctx(Packages(("coverlet.collector", "8.0.1"))),
 				DependabotTriageService.AdoptAfter - TimeSpan.FromDays(1))
 			.Verdict.Should().Be(
-				DependabotVerdict.ValidUncovered,
-				"inside the threshold the grace periods are still doing their job, and adoption must not "
-					+ "pre-empt them");
+				DependabotVerdict.NotYetDue,
+				"inside the threshold no grace period has expired yet, which the row should say — and "
+					+ "which is a different statement from there being no fix for it");
 
 	[Fact]
 	public void ExactlyAtTheThreshold_IsAdoptable()
@@ -263,11 +263,37 @@ public class DependabotAdoptionPlanTests(ITestOutputHelper output) : TestWithOut
 		triage.GapBumps.Select(b => b.Dependency.Name).Should().BeEquivalentTo(["nbgv"]);
 	}
 
+	/// <summary>
+	/// Inside the threshold the verdict changes, but what Fix can do about it does not.
+	/// </summary>
+	/// <remarks>
+	/// This replaces a test asserting that only an adoptable verdict carries a plan. That invariant was
+	/// the reason pressing Fix on a pull request inside a grace period did nothing at all: the plan was
+	/// withheld by the same clock that chose the label, so the button had nothing to act on. The
+	/// threshold now picks a sentence for the row; the plan is built whenever it can be.
+	/// </remarks>
 	[Fact]
-	public void NotAdoptable_CarriesNoPlan()
+	public void ShortOfTheThreshold_StillCarriesWhatToWrite()
 		=> JudgeAt(
 				PullRequest(Moved("coverlet.collector", "8.0.1", "10.0.0")),
 				Ctx(Packages(("coverlet.collector", "8.0.1"))),
 				DependabotTriageService.AdoptAfter - TimeSpan.FromDays(1))
-			.Adoption.Should().BeNull("only an adoptable verdict carries what to write");
+			.Adoption.Should().NotBeNull(
+				"Fix is an instruction, and the grace period governs what happens unasked");
+
+	[Fact]
+	public void ARuleSetGap_CarriesNoPlan()
+		=> new DependabotTriageService(
+				[new NuGetMajorLevelUpdatesRule()],
+				new FakeTimeProvider(_raised + DependabotTriageService.AdoptAfter + TimeSpan.FromDays(1)))
+			.Triage(
+				[PullRequest(Moved("nbgv", "3.6.133", "3.7.115"))],
+				Ctx(
+					Packages(("coverlet.collector", "8.0.1")),
+					(".config/dotnet-tools.json", """{ "tools": { "nbgv": { "version": "3.6.133" } } }""")),
+				[],
+				_ => true)[0]
+			.Adoption.Should().BeNull(
+				"nothing reads where it is declared, so there is nothing for Fix to write — which is "
+					+ "what makes it somebody's work rather than something already handled");
 }

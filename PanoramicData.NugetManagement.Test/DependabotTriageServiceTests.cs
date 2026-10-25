@@ -266,13 +266,49 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 	}
 
 	[Fact]
-	public void PackageDeclaredBelowTarget_WithNoFailingRule_IsUncovered()
+	public void PackageDeclaredBelowTarget_WithNoFailingRule_IsNotYetDue()
 		=> TriageOne(
 				PullRequest(1, "Bump refit from 6.3.2 to 7.2.22"),
 				Ctx(Packages("refit", "6.3.2")),
 				ruleResults: [])
-			.Verdict.Should().Be(DependabotVerdict.ValidUncovered,
-				"a rule that is not failing will not be remediated, so it cannot cover this");
+			.Verdict.Should().Be(DependabotVerdict.NotYetDue,
+				"a rule that is not failing will not be remediated, so nothing is queued to move this "
+				+ "today — which is a different thing from nothing being able to move it at all");
+
+	/// <summary>
+	/// The plan is what separates a verdict Fix can act on from one it can only report.
+	/// </summary>
+	/// <remarks>
+	/// Triage only ever runs because somebody pressed Fix, and Fix is an instruction rather than a
+	/// sweep: a grace period exists so that nothing churns automatically on a release published this
+	/// morning, not to refuse a bump that was asked for by name. So the verdict that says "no rule is
+	/// failing for this yet" still has to arrive carrying what writing it would take.
+	/// </remarks>
+	[Fact]
+	public void ANotYetDuePullRequest_CarriesWhatAdoptingItWouldWrite()
+	{
+		var triage = TriageOne(
+			PullRequest(1, "Bump refit from 6.3.2 to 7.2.22"),
+			Ctx(Packages("refit", "6.3.2")),
+			ruleResults: []);
+
+		triage.Adoption.Should().NotBeNull(
+			"Fix has to be able to act on this without re-deriving where the package is declared");
+		triage.Adoption!.PackageUpdates.Should().ContainSingle()
+			.Which.Should().Contain("refit").And.Contain("7.2.22");
+	}
+
+	/// <summary>
+	/// Not everything idle is writable, and the verdict must not promise more than it can deliver.
+	/// </summary>
+	[Fact]
+	public void ANotYetDuePullRequestWithNothingWritable_CarriesNoPlan()
+		=> TriageOne(
+				PullRequest(1, "Bump refit from 6.3.2 to not-a-version"),
+				Ctx(Packages("refit", "6.3.2")),
+				ruleResults: [])
+			.Adoption.Should().BeNull(
+				"a target version nothing can parse is not something Fix can write");
 
 	[Fact]
 	public void PackageDeclaredBelowTarget_WithNoFailingRule_IsNotARuleSetGap()
@@ -292,7 +328,7 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 			Ctx(Packages("refit", "6.3.2")),
 			[FailingNamingPackages("PKG-07", "Newtonsoft.Json")]);
 
-		triage.Verdict.Should().Be(DependabotVerdict.ValidUncovered,
+		triage.Verdict.Should().Be(DependabotVerdict.NotYetDue,
 			"the failure will move Newtonsoft.Json and nothing else, so reporting this as covered "
 			+ "would leave it waiting for a fix that never touches it");
 		triage.CoveringRuleId.Should().BeNull();
@@ -431,13 +467,14 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 				"a version we could not read must never justify closing a pull request");
 
 	[Fact]
-	public void ActionNoRuleGoverns_IsUncovered()
+	public void ActionNoFailingRuleWillMove_IsNotYetDue()
 		=> TriageOne(
 				PullRequest(5, "Bump github/codeql-action from 2 to 4"),
 				Ctx(Workflow(_codeQlPath, "github/codeql-action@v2")),
 				[Failing("CI-05"), Failing("COM-04")])
-			.Verdict.Should().Be(DependabotVerdict.ValidUncovered,
-				"COM-04 only checks the workflow exists, and CI-05 governs a different action");
+			.Verdict.Should().Be(DependabotVerdict.NotYetDue,
+				"COM-04 only checks the workflow exists, and CI-05 governs a different action — but "
+				+ "CI-12 claims every action and can see this one, so nothing is missing here");
 
 	[Fact]
 	public void EcosystemWideRule_CoversTheActionItsFailureNames()
@@ -457,7 +494,7 @@ public class DependabotTriageServiceTests(ITestOutputHelper output) : TestWithOu
 				PullRequest(6, "Bump actions/cache from 3 to 4"),
 				Ctx(Workflow(_ciPath, "actions/cache@v3", "github/codeql-action/init@v2")),
 				[FailingNaming("CI-12", "github/codeql-action")])
-			.Verdict.Should().Be(DependabotVerdict.ValidUncovered,
+			.Verdict.Should().Be(DependabotVerdict.NotYetDue,
 				"the fix will rewrite codeql-action and nothing else, so calling this covered would "
 				+ "leave the pull request open forever waiting on a fix that never touches it");
 

@@ -145,6 +145,7 @@ public static class DependabotIssueSynthesizer
 		DependabotVerdict.Adoptable => " — adoptable locally",
 		DependabotVerdict.ValidCovered => " — an auto-fix covers it",
 		DependabotVerdict.ValidUncovered => " — valid, no auto-fix",
+		DependabotVerdict.NotYetDue => " — valid, not yet due, adoptable locally",
 		DependabotVerdict.Unrecognised => " — left alone",
 		_ => string.Empty
 	};

@@ -24,9 +24,14 @@ public enum DependabotVerdict
 	ValidCovered,
 
 	/// <summary>
-	/// Still worth doing, and nothing we have can do it automatically. Raises an issue against this
-	/// application's own repository, so the missing remediation becomes visible work.
+	/// Still worth doing, and nothing we have can ever do it automatically: no rule governs the
+	/// dependency, or the rule that claims it never reads where it is declared. Raises an issue against
+	/// this application's own repository, so the missing remediation becomes visible work.
 	/// </summary>
+	/// <remarks>
+	/// A gap, and only a gap. A dependency whose rule is merely passing today is <see cref="NotYetDue"/>
+	/// instead: both mean "no failure is queued for this", but only this one is somebody's work.
+	/// </remarks>
 	ValidUncovered,
 
 	/// <summary>
@@ -64,5 +69,33 @@ public enum DependabotVerdict
 	/// Appended last, and it must stay last, for the cache reason given on <see cref="Adoptable"/>.
 	/// </para>
 	/// </remarks>
-	Obsolete
+	Obsolete,
+
+	/// <summary>
+	/// Still worth doing, governed by a rule that has a remediation, but no failure of that rule is
+	/// queued to move it today — typically because the release is still inside the rule's grace period.
+	/// Adopted when Fix is pressed; no issue is raised.
+	/// </summary>
+	/// <remarks>
+	/// Informational, not a verdict that declines to act. Triage runs only because somebody pressed
+	/// Fix, and a grace period exists so that nothing churns automatically on a release published this
+	/// morning — not to refuse a bump asked for by name. So this reports <em>why</em> a pull request was
+	/// sitting there, while Fix goes ahead and adopts it exactly as it would an <see cref="Adoptable"/>
+	/// one.
+	/// <para>
+	/// What separates the two is only which sentence the row shows:
+	/// <see cref="Adoptable"/> means the <c>AdoptAfter</c> backstop has expired, this means it has not.
+	/// Neither changes what Fix does.
+	/// </para>
+	/// <para>
+	/// Split out of <see cref="ValidUncovered"/>, which had carried both meanings and rendered both as
+	/// "No auto-fix" — a label that read as "nobody will ever fix this" for a pull request a fix was
+	/// about to be applied to.
+	/// </para>
+	/// <para>
+	/// Appended last, and it must stay last, for the cache reason given on <see cref="Adoptable"/>.
+	/// Rows cached under the old meaning re-stamp themselves on the next pass.
+	/// </para>
+	/// </remarks>
+	NotYetDue
 }

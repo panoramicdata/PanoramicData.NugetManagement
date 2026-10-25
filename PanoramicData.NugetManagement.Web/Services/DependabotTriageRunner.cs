@@ -185,15 +185,20 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 
 					break;
 
-				// Old enough that no grace period is still protecting anything, and every outstanding
-				// bump can be written. Write first, and close only if the write actually landed.
-				case DependabotVerdict.Adoptable when triage.Adoption is { } plan:
+				// Every outstanding bump can be written, so write it. Two verdicts reach here and are
+				// treated identically on purpose: one is past the AdoptAfter backstop and one is merely
+				// inside a grace period, and that difference is worth reporting but is not worth acting
+				// on differently. Triage runs only because Fix was pressed, and Fix is an instruction —
+				// a grace period stops the estate churning on its own, it does not decline a bump asked
+				// for by name. Write first, and close only if the write actually landed.
+				case DependabotVerdict.Adoptable or DependabotVerdict.NotYetDue
+					when triage.Adoption is { } plan:
 					if (adopter is null)
 					{
 						idle++;
 						onOutput(
-							$"↺ #{triage.Issue.Number} left open: adoptable, but there is no local clone to "
-							+ "write the bump to.");
+							$"↺ #{triage.Issue.Number} left open: its bumps could be written, but there is "
+							+ "no local clone to write them to.");
 						break;
 					}
 
@@ -231,9 +236,10 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 
 					break;
 
-				// Governed, but no failure of that rule is queued to move it today. Said out loud and
-				// otherwise left alone: it is not a gap, and an issue for it would be noise.
-				case DependabotVerdict.ValidUncovered when !triage.IsRuleSetGap:
+				// Governed and not yet due, but nothing about it can be written — an unparseable target,
+				// or a declaration in a file no scanner reads. Said out loud and otherwise left alone: it
+				// is not a gap, so an issue for it would be noise.
+				case DependabotVerdict.NotYetDue:
 					idle++;
 					onOutput($"↺ #{triage.Issue.Number} left open: {triage.Reason}");
 					break;

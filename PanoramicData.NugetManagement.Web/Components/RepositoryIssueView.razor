@@ -99,11 +99,12 @@ else
 		DependabotVerdict.Adoptable => "Valid — Fix will adopt it locally",
 		DependabotVerdict.Obsolete => "Not referenced here any more — Fix will close it",
 		DependabotVerdict.ValidUncovered => "Valid — no auto-fix available",
+		DependabotVerdict.NotYetDue => "Valid — not yet due, but Fix will adopt it locally",
 		_ => "Not recognised — left alone"
 	};
 
 	/// <summary>
-	/// Uncovered is the one worth a human's attention: it is the only verdict nothing else will act
+	/// A rule-set gap is the one worth a human's attention: it is the only verdict nothing will act
 	/// on, so it is the only one coloured as a warning.
 	/// </summary>
 	private string TriageBadgeClass => Issue?.TriageVerdict switch
@@ -111,6 +112,7 @@ else
 		DependabotVerdict.ValidUncovered => "bg-warning text-dark",
 		DependabotVerdict.ValidCovered => "bg-info text-dark",
 		DependabotVerdict.Adoptable => "bg-info text-dark",
+		DependabotVerdict.NotYetDue => "bg-info text-dark",
 		DependabotVerdict.AlreadySatisfied => "bg-secondary",
 		DependabotVerdict.Obsolete => "bg-secondary",
 		_ => "bg-light text-dark"

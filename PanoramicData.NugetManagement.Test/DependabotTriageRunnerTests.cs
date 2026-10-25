@@ -228,6 +228,80 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 				[]));
 	}
 
+	/// <summary>
+	/// The same pull request, judged not yet due rather than adoptable: no rule is failing for it, and
+	/// it is not old enough for the backstop either.
+	/// </summary>
+	/// <param name="number">The pull request number.</param>
+	/// <param name="withPlan">
+	/// Whether anything about it can actually be written. A not-yet-due verdict carries a plan whenever
+	/// one can be built, and null when the bump is not writable at all.
+	/// </param>
+	private static DependabotTriage NotYetDue(int number, bool withPlan = true)
+		=> Adoptable(number) with
+		{
+			Verdict = DependabotVerdict.NotYetDue,
+			Reason = "governed by a rule that is not failing for it at the moment",
+			Adoption = withPlan ? Adoptable(number).Adoption : null
+		};
+
+	/// <summary>
+	/// Triage is only ever reached because somebody pressed Fix, so a verdict Fix can act on has to be
+	/// acted on. Leaving this open would make Fix a button that declines to fix a bump it can see, can
+	/// write, and was asked by name to apply.
+	/// </summary>
+	[Fact]
+	public async Task NotYetDue_IsAdoptedJustAsAnAdoptablePullRequestIs()
+	{
+		var adopter = new StubAdopter("Directory.Packages.props");
+		var subject = NewSubject(adopter: adopter);
+
+		var outcome = await subject.RunAsync(NotYetDue(6));
+
+		outcome.Adopted.Should().Be(1);
+		adopter.Plans.Should().ContainSingle();
+		subject.Write.Calls.Should().Equal(["comment:6", "close:6"]);
+	}
+
+	[Fact]
+	public async Task NotYetDueClosingComment_CarriesTheAdoptedMarker()
+	{
+		var subject = NewSubject(adopter: new StubAdopter("Directory.Packages.props"));
+
+		await subject.RunAsync(NotYetDue(6));
+
+		subject.Write.Comments.Should().ContainSingle().Subject
+			.Body.Should().Contain(
+				DependabotTriageRunner.AdoptedMarker,
+				"it was closed because its bumps were taken into the clone, which is what that marker "
+					+ "means — the reason the verdict was reached is a separate thing");
+	}
+
+	[Fact]
+	public async Task NotYetDueWithNothingWritable_IsLeftOpen()
+	{
+		var subject = NewSubject(adopter: new StubAdopter("Directory.Packages.props"));
+
+		var outcome = await subject.RunAsync(NotYetDue(6, withPlan: false));
+
+		outcome.Adopted.Should().Be(0);
+		outcome.Idle.Should().Be(1);
+		subject.Write.Calls.Should().BeEmpty(
+			"there is nothing to write, so there is nothing a close could be justified by");
+	}
+
+	[Fact]
+	public async Task NotYetDue_RaisesNoIssueAgainstOurOwnRepository()
+	{
+		var subject = NewSubject(adopter: new StubAdopter("Directory.Packages.props"));
+
+		await subject.RunAsync(NotYetDue(6));
+
+		subject.Log.Should().NotContain(
+			line => line.Contains("no fix", StringComparison.OrdinalIgnoreCase),
+			"a fix exists and has just been applied; this is not a gap in the rule set");
+	}
+
 	[Fact]
 	public async Task Adoptable_WritesThenCommentsThenCloses()
 	{
@@ -450,11 +524,11 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 	}
 
 	[Fact]
-	public async Task ValidUncovered_ThatIsNotARuleSetGap_RaisesNothing()
+	public async Task NotYetDue_RaisesNothing()
 	{
 		var subject = NewSubject();
 
-		await subject.RunAsync(Triage(5, DependabotVerdict.ValidUncovered, isRuleSetGap: false));
+		await subject.RunAsync(Triage(5, DependabotVerdict.NotYetDue, isRuleSetGap: false));
 
 		subject.Write.Created.Should().BeEmpty(
 			"a rule governs it and will fail when it should, so an issue for the interval in between "
@@ -507,7 +581,7 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 			Triage(3, DependabotVerdict.AlreadySatisfied),
 			Triage(4, DependabotVerdict.ValidCovered),
 			Triage(5, DependabotVerdict.ValidUncovered),
-			Triage(6, DependabotVerdict.ValidUncovered, "SomePackage", DependencyEcosystem.NuGet, isRuleSetGap: false));
+			Triage(6, DependabotVerdict.NotYetDue, "SomePackage", DependencyEcosystem.NuGet, isRuleSetGap: false));
 
 		outcome.Closed.Should().Be(1);
 		outcome.Covered.Should().Be(1);
