@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Rules;
 
 namespace PanoramicData.NugetManagement.Services;
 
@@ -256,6 +257,12 @@ public class LocalRepositoryContextBuilder
 		// rest so that every place a dependency can be declared has been read.
 		foreach (var path in filePaths.Where(p =>
 			_contentFileNames.Any(name => p.EndsWith(name, StringComparison.OrdinalIgnoreCase))))
+		{
+			toFetch.Add(path);
+		}
+
+		// The one C# file the rules read: the client options, for HTTP-02.
+		foreach (var path in filePaths.Where(p => p.EndsWith(ClientOptionsIsReadOnlyRule.OptionsFileSuffix, StringComparison.OrdinalIgnoreCase)))
 		{
 			toFetch.Add(path);
 		}
