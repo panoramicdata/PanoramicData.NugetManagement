@@ -1,13 +1,13 @@
 {
   "AngleSharp": {
-    "latestVersion": "1.8.5",
-    "published": "2026-10-15T14:57:07.497+01:00",
-    "refreshedAtUtc": "2026-10-15T15:11:19.3755304+00:00"
+    "latestVersion": "1.8.6",
+    "published": "2026-10-25T10:41:24.81+00:00",
+    "refreshedAtUtc": "2026-10-25T11:10:57.8633568+00:00"
   },
   "Aspire.Hosting.AppHost": {
-    "latestVersion": "13.6.3",
-    "published": "2026-10-21T23:28:22.263+01:00",
-    "refreshedAtUtc": "2026-10-22T03:49:47.6520519+00:00"
+    "latestVersion": "13.6.4",
+    "published": "2026-10-24T04:17:09.203+01:00",
+    "refreshedAtUtc": "2026-10-24T05:10:57.856264+00:00"
   },
   "AspNet.Security.OAuth.GitHub": {
     "latestVersion": "10.0.0",
@@ -590,9 +590,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "IPNetwork2": {
-    "latestVersion": "4.3.0",
-    "published": "2026-05-17T15:49:19.91+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "5.0.1",
+    "published": "2026-10-24T16:33:44.01+01:00",
+    "refreshedAtUtc": "2026-10-24T17:10:57.8576735+00:00"
   },
   "JetBrains.Annotations": {
     "latestVersion": "2026.2.0",
@@ -615,9 +615,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "JsonSchema.Net": {
-    "latestVersion": "9.4.1",
-    "published": "2026-10-12T00:02:26.127+01:00",
-    "refreshedAtUtc": "2026-10-12T09:24:12.1476519+00:00"
+    "latestVersion": "9.5.0",
+    "published": "2026-10-25T07:42:43.037+00:00",
+    "refreshedAtUtc": "2026-10-25T11:10:57.8633568+00:00"
   },
   "KokoroSharp.GPU": {
     "latestVersion": "0.8.4",
@@ -680,14 +680,14 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "MagicSuite.Api": {
-    "latestVersion": "4.7.944",
-    "published": "2026-10-23T02:22:22.033+01:00",
-    "refreshedAtUtc": "2026-10-23T05:10:57.8574533+00:00"
+    "latestVersion": "4.7.969",
+    "published": "2026-10-23T14:29:50.84+01:00",
+    "refreshedAtUtc": "2026-10-23T17:10:58.1798977+00:00"
   },
   "MailKit": {
-    "latestVersion": "4.18.1",
-    "published": "2026-09-27T16:31:00.32+01:00",
-    "refreshedAtUtc": "2026-09-29T08:32:53.5305178+00:00"
+    "latestVersion": "4.18.2",
+    "published": "2026-10-23T13:30:26.3+01:00",
+    "refreshedAtUtc": "2026-10-23T17:10:58.1798977+00:00"
   },
   "Mapbox.Api": {
     "latestVersion": "0.1.39",
@@ -695,9 +695,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Markdig": {
-    "latestVersion": "1.4.2",
-    "published": "2026-10-19T20:16:46.48+01:00",
-    "refreshedAtUtc": "2026-10-19T23:26:55.6582199+00:00"
+    "latestVersion": "1.5.0",
+    "published": "2026-10-24T06:10:40.467+01:00",
+    "refreshedAtUtc": "2026-10-24T11:10:57.8618978+00:00"
   },
   "MarkdownDeep.NET.Core": {
     "latestVersion": "1.5.0.4",
@@ -1595,9 +1595,9 @@
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
   "Ollama.Api": {
-    "latestVersion": "1.0.55",
-    "published": "2026-10-23T05:33:07.45+01:00",
-    "refreshedAtUtc": "2026-10-23T05:10:57.8574533+00:00"
+    "latestVersion": "1.0.57",
+    "published": "2026-10-23T06:59:06.627+01:00",
+    "refreshedAtUtc": "2026-10-23T11:10:57.8530782+00:00"
   },
   "OpenTelemetry.Exporter.OpenTelemetryProtocol": {
     "latestVersion": "1.20.1",
@@ -1625,9 +1625,9 @@
     "refreshedAtUtc": "2026-10-21T09:49:47.6625658+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.396",
-    "published": "2026-10-22T12:45:38.507+01:00",
-    "refreshedAtUtc": "2026-10-22T15:49:47.6640813+00:00"
+    "latestVersion": "10.0.398",
+    "published": "2026-10-24T10:04:17.793+01:00",
+    "refreshedAtUtc": "2026-10-24T11:10:57.8618978+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.3",
@@ -1905,9 +1905,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Scalar.AspNetCore": {
-    "latestVersion": "2.18.2",
-    "published": "2026-10-20T15:35:50.36+01:00",
-    "refreshedAtUtc": "2026-10-20T15:49:47.6648237+00:00"
+    "latestVersion": "2.18.3",
+    "published": "2026-10-23T11:19:07.117+01:00",
+    "refreshedAtUtc": "2026-10-23T11:10:57.8530782+00:00"
   },
   "ScienceLogic.Em7.Api": {
     "latestVersion": "1.0.6",
@@ -2150,9 +2150,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "StackExchange.Redis": {
-    "latestVersion": "3.4.5",
-    "published": "2026-10-13T15:15:17.177+01:00",
-    "refreshedAtUtc": "2026-10-13T15:39:23.0066097+00:00"
+    "latestVersion": "3.4.20",
+    "published": "2026-10-23T12:50:46.587+01:00",
+    "refreshedAtUtc": "2026-10-23T17:10:58.1798977+00:00"
   },
   "StreamJsonRpc": {
     "latestVersion": "2.26.150",
@@ -2405,9 +2405,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "WireMock.Net": {
-    "latestVersion": "2.19.0",
-    "published": "2026-10-07T17:35:00.177+01:00",
-    "refreshedAtUtc": "2026-10-07T17:49:35.1922248+00:00"
+    "latestVersion": "2.20.0",
+    "published": "2026-10-23T17:02:27.747+01:00",
+    "refreshedAtUtc": "2026-10-23T17:10:58.1798977+00:00"
   },
   "WixToolset.UI.wixext": {
     "latestVersion": "7.0.0",
