@@ -27,7 +27,7 @@ namespace PanoramicData.NugetManagement.Rules;
 public partial class ClientOptionsIsReadOnlyRule : RuleBase
 {
 	/// <summary>The suffix of the file that holds a client's options.</summary>
-	public const string OptionsFileSuffix = "ClientOptions.cs";
+	public static string OptionsFileSuffix => "ClientOptions.cs";
 
 	[GeneratedRegex(@"\bbool\s+IsReadOnly\b", RegexOptions.None, 2000)]
 	private static partial Regex IsReadOnlyProperty();
@@ -89,28 +89,30 @@ public partial class ClientOptionsIsReadOnlyRule : RuleBase
 			return Task.FromResult(Pass("Client options expose IsReadOnly."));
 		}
 
-		const string summary = "Give the client options an IsReadOnly property, enforced before any request is sent.";
 		return Task.FromResult(Fail(
 			"API client options need IsReadOnly: " + string.Join("; ", problems) + ".",
-			new RuleAdvisory
-			{
-				Summary = summary,
-				Detail = """
-					A caller must be able to stop the client changing the server. Add `public bool IsReadOnly { get; set; }`
-					to the client options, default false so existing callers are unaffected, and have the HTTP pipeline throw
-					`InvalidOperationException` for any request that is not a read, before it is sent (see Meraki.Api's
-					`AuthenticatedBackingOffHttpClientHandler`). Where the API uses POST for reads, allow those by name.
-					If the options already have a `ReadOnly` property, keep it as a read-write alias marked
-					`[Obsolete("Use IsReadOnly")]` so no caller breaks. If the API has no write operations at all,
-					waive this rule in rule-waivers.json instead.
-					""",
-				Data = new()
-				{
-					["options_files"] = read.Select(file => file.Path).ToArray(),
-					["problems"] = problems.ToArray()
-				}
-			}));
+			BuildAdvisory([.. read.Select(file => file.Path)], problems)));
 	}
+
+	private static RuleAdvisory BuildAdvisory(string[] optionsFiles, List<string> problems)
+		=> new()
+		{
+			Summary = "Give the client options an IsReadOnly property, enforced before any request is sent.",
+			Detail = """
+				A caller must be able to stop the client changing the server. Add `public bool IsReadOnly { get; set; }`
+				to the client options, default false so existing callers are unaffected, and have the HTTP pipeline throw
+				`InvalidOperationException` for any request that is not a read, before it is sent (see Meraki.Api's
+				`AuthenticatedBackingOffHttpClientHandler`). Where the API uses POST for reads, allow those by name.
+				If the options already have a `ReadOnly` property, keep it as a read-write alias marked
+				`[Obsolete("Use IsReadOnly")]` so no caller breaks. If the API has no write operations at all,
+				waive this rule in rule-waivers.json instead.
+				""",
+			Data = new()
+			{
+				["options_files"] = optionsFiles,
+				["problems"] = problems.ToArray()
+			}
+		};
 
 	private static bool IsTestPath(string path)
 		=> path.Split('/').Any(segment => segment.Contains("Test", StringComparison.OrdinalIgnoreCase));
