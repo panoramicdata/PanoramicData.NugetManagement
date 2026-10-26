@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Rules;
 
 namespace PanoramicData.NugetManagement.Services;
 
@@ -351,6 +352,12 @@ public class RepositoryContextBuilder : IDisposable
 
 		// Fetch all xunit.runner.json files (needed by the failSkips rule, which reads their content)
 		foreach (var path in filePaths.Where(p => p.EndsWith("xunit.runner.json", StringComparison.OrdinalIgnoreCase)))
+		{
+			toFetch.Add(path);
+		}
+
+		// The one C# file the rules read: the client options, for HTTP-02.
+		foreach (var path in filePaths.Where(p => p.EndsWith(ClientOptionsIsReadOnlyRule.OptionsFileSuffix, StringComparison.OrdinalIgnoreCase)))
 		{
 			toFetch.Add(path);
 		}
