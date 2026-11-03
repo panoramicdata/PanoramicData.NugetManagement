@@ -78,5 +78,61 @@
 			"waivedBy": "david.bond@panoramicdata.com",
 			"waivedOnUtc": "2026-11-02T00:00:00Z"
 		}
+	],
+	"panoramicdata/Cisco.Iq.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Read-only package: only Get operations; the one POST is the token exchange, which is authentication.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/Datadog.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "All 25 Refit operations are [Get]; no write verbs exist in non-test code.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/XWiki.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "17 [Get] operations and one POST to /rendering, which renders content and persists nothing; no Put, Patch or Delete.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/Dell.CloudIq.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "37 GET operations and one POST to metrics/query, which is a read query; no write operations.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/Logitech.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Its only operation is a GET; writes are already gated by IsWritePermitted, which defaults to false.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/MicrosoftAzure.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Every operation is a GET; the only POST is the internal OAuth token request.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/MicrosoftAzureSentinel.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Same code as MicrosoftAzure.Api: every operation is a GET; the only POST is the internal OAuth token request.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
 	]
 }
