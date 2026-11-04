@@ -1,2 +1,138 @@
 {
+	"panoramicdata/AlienFx.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Local USB HID driver for Alienware lighting (HidSharp); it makes no HTTP requests, so it has no server to mutate.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/Athonet.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Refit client whose 12 endpoint methods are all [Get]; no Post/Put/Patch/Delete or GraphQL mutation exists in non-test code.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/Mapbox.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Refit client whose only endpoint (geocoding) is a [Get]; no Post/Put/Patch/Delete exists in non-test code.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/MetOffice.DataPoint.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Refit client whose 4 endpoint methods are all [Get] weather reads; no Post/Put/Patch/Delete exists in non-test code.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/Uk.CompaniesHouse.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Refit client whose 26 endpoint methods are all [Get] against the read-only Companies House API; no write verbs in non-test code.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/Uk.Nhs.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Refit client whose 118 endpoint methods are all [Get]; no Post/Put/Patch/Delete or mutating GraphQL exists in non-test code.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/Uk.Nhs.CyberAlerts.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Refit client whose 118 endpoint methods are all [Get] (cyber alerts feed); no write verbs in non-test code.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/YardStickOne.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "USB transport (LibUsbDotNet) to a local radio dongle; it is not an HTTP server client, so IsReadOnly has no server request to guard.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/Maschine.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Local USB HID driver for a Maschine controller (HidSharp); it has no HTTP client in the package, so there is no server to mutate.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/Meraki.Reporting.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "All 18 Refit endpoints are [Get]; the only POSTs are the internal account.meraki.com login form submissions that obtain a session cookie, which change no server data.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-02T00:00:00Z"
+		}
+	],
+	"panoramicdata/Cisco.Iq.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Read-only package: only Get operations; the one POST is the token exchange, which is authentication.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/Datadog.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "All 25 Refit operations are [Get]; no write verbs exist in non-test code.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/XWiki.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "17 [Get] operations and one POST to /rendering, which renders content and persists nothing; no Put, Patch or Delete.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/Dell.CloudIq.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "37 GET operations and one POST to metrics/query, which is a read query; no write operations.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/Logitech.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Its only operation is a GET; writes are already gated by IsWritePermitted, which defaults to false.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/MicrosoftAzure.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Every operation is a GET; the only POST is the internal OAuth token request.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	],
+	"panoramicdata/MicrosoftAzureSentinel.Api": [
+		{
+			"ruleId": "HTTP-02",
+			"reason": "Same code as MicrosoftAzure.Api: every operation is a GET; the only POST is the internal OAuth token request.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-03T00:00:00Z"
+		}
+	]
 }
