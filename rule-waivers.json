@@ -71,14 +71,6 @@
 			"waivedOnUtc": "2026-11-02T00:00:00Z"
 		}
 	],
-	"panoramicdata/Meraki.Reporting.Api": [
-		{
-			"ruleId": "HTTP-02",
-			"reason": "All 18 Refit endpoints are [Get]; the only POSTs are the internal account.meraki.com login form submissions that obtain a session cookie, which change no server data.",
-			"waivedBy": "david.bond@panoramicdata.com",
-			"waivedOnUtc": "2026-11-02T00:00:00Z"
-		}
-	],
 	"panoramicdata/Cisco.Iq.Api": [
 		{
 			"ruleId": "HTTP-02",
