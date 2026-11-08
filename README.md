@@ -154,7 +154,7 @@ Actions-secret-name checks report "unknown" instead of a value.
 |---|---|
 | `AppSettings:GitHubPat` | A personal access token covering the same ground as the OAuth scopes above (`repo`, `read:org`). Without one, assessing more than a handful of repositories exhausts GitHub's unauthenticated rate limit. When `DevAuthBypass` is on, this is also used as the access token, so the dashboard can reach GitHub without signing in. |
 | `AppSettings:LocalReposRoot` | The folder your repositories are cloned into. Required before the dashboard can clone, build, test, auto-fix or publish anything — without it only read-only assessment works. This one can also be set from the dashboard's own settings page, which overrides the configured value. |
-| `AppSettings:CodacyApiToken` | Enables the Codacy rules: is the repository set up and analysed (CQ-03), its open issues (CQ-05), and its per-file grades (CQ-06, informational). Without it those rules report as not applicable. |
+| `AppSettings:CodacyApiToken` | Enables the Codacy rules: is the repository set up and analysed (CQ-03), its open issues (CQ-05), its per-file grades (CQ-06, informational), and its repository grade on the default branch (CQ-08, an error below `MinimumLevel`, A by default). Without it those rules report as not applicable. |
 
 Then run it:
 
