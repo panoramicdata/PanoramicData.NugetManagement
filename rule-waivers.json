@@ -1,4 +1,18 @@
 {
+	"panoramicdata/PanoramicData.EPPlus": [
+		{
+			"ruleId": "CQ-05",
+			"reason": "Fork of EPPlus 4.5.3.3 (LGPL-2.1-or-later): about 96k lines of upstream-derived code carrying 2,818 inherited Codacy findings (repository grade B, 74). Remediating them means rewriting the library, not maintaining it. Waived pending a decision to replace or retire the package; review by 2027-02-08.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-08T00:00:00Z"
+		},
+		{
+			"ruleId": "CQ-06",
+			"reason": "Fork of EPPlus 4.5.3.3 (LGPL-2.1-or-later): the low file grades are in upstream-derived code, not code Panoramic Data wrote, so they cannot reach A without rewriting the library. Waived pending a decision to replace or retire the package; review by 2027-02-08.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-08T00:00:00Z"
+		}
+	],
 	"panoramicdata/AlienFx.Api": [
 		{
 			"ruleId": "HTTP-02",
