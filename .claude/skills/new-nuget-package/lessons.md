@@ -37,6 +37,15 @@ Each item cost real debugging time in an earlier package (mostly Splunk.Api, 202
 - `gh` REST calls give spurious rate limits on this machine. Use `gh api graphql` for check-run status, and `gh auth token` (not `gh auth status`) for login checks.
 - Read-only guards must allow the vendor's read-only POSTs: login, creating searches, and post-process reads.
 
+## Packages that are not REST clients (Blink1.Api, USB HID, 2026-11-08)
+
+- **The skill still applies; Refit does not.** HTTP-01 is not applicable without an HTTP package. HTTP-02 still applies to any `*ClientOptions.cs`: make `IsReadOnly` refuse every state-changing command before it is sent.
+- **Put the hardware behind an internal interface** and keep the adapter thin enough to carry `[ExcludeFromCodeCoverage(Justification = ...)]`, with the live tests covering it. A public constructor that chains to a device-opening one can never be covered without a device; use a static `Open(options)` factory instead.
+- **Retrying after a send is right when every operation is idempotent** (device commands that set or read state), unlike HTTP. Say why in the code, and never repeat a command whose repetition has a cost (a flash write).
+- **Measure the device before writing tests from the vendor's docs.** Four documented behaviours were wrong for the real firmware. A small file-based probe (`#:project` the library) settles each one in minutes.
+- **COM-02 wants CONTRIBUTING.md verbatim,** Refit line included; do not adapt it.
+- **The codacy skill has an `add-repo` action** that its SKILL.md does not list.
+
 ## Bringing an existing package up to standard, and releasing it (Harvest.Api, 2026-10-15)
 
 - **The package's major version is the vendor API's major version, even for a breaking refactor.** Harvest.Api went 2.4.7-beta to 2.5, not 3.0: breaking changes ship in minor releases. The next version must exceed the highest on nuget.org (check `https://api.nuget.org/v3-flatcontainer/<id>/index.json`).
