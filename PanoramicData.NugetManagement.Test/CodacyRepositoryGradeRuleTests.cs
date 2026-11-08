@@ -124,7 +124,10 @@ public class CodacyRepositoryGradeRuleTests(ITestOutputHelper output) : TestWith
 	private sealed class FakeService(CodacyRepositoryGrade grade) : ICodacyRepositoryGradeService
 	{
 		public Task<CodacyRepositoryGrade> GetGradeAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> Task.FromResult(grade);
+		{
+			ArgumentException.ThrowIfNullOrWhiteSpace(repositoryName);
+			return Task.FromResult(grade);
+		}
 	}
 
 	private sealed class ThrowingService : ICodacyRepositoryGradeService

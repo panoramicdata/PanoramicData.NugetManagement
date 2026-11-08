@@ -70,6 +70,11 @@ public sealed class CodacyRepositoryGradeRule : RuleBase, IRemotelyGraded
 			return Pass($"Codacy grade could not be retrieved ({ex.Message}).");
 		}
 
+		return Judge(context, grade, codacy.MinimumLevel);
+	}
+
+	private RuleResult Judge(RepositoryContext context, CodacyRepositoryGrade grade, CodacyLevel minimum)
+	{
 		if (!grade.IsTracked)
 		{
 			return Pass("Repository is not tracked by Codacy yet (no grade to report); see CQ-03.");
@@ -87,9 +92,9 @@ public sealed class CodacyRepositoryGradeRule : RuleBase, IRemotelyGraded
 
 		var level = ParseLevel(grade.GradeLetter);
 		var description = $"{grade.GradeLetter} ({grade.Grade})";
-		return level >= codacy.MinimumLevel
-			? Pass($"Codacy grades {context.DefaultBranch} {description}, meeting the minimum of {codacy.MinimumLevel}.")
-			: BelowMinimum(context, grade, codacy.MinimumLevel, description);
+		return level >= minimum
+			? Pass($"Codacy grades {context.DefaultBranch} {description}, meeting the minimum of {minimum}.")
+			: BelowMinimum(context, grade, minimum, description);
 	}
 
 	private RuleResult BelowMinimum(RepositoryContext context, CodacyRepositoryGrade grade, CodacyLevel minimum, string description)

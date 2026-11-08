@@ -43,27 +43,43 @@ public sealed class CodacyRepositoryGradeService : ICodacyRepositoryGradeService
 		var analysis = await GetAnalysisAsync(client, organizationName, repositoryName, branch, cancellationToken)
 			.ConfigureAwait(false);
 
-		if (analysis is not null)
-		{
-			return new CodacyRepositoryGrade
-			{
-				IsTracked = true,
-				CodacyDefaultBranch = analysis.Repository?.DefaultBranch?.Name,
-				Grade = analysis.Grade,
-				GradeLetter = analysis.GradeLetter,
-				IssuesPercentage = analysis.IssuesPercentage,
-				ComplexFilesPercentage = analysis.ComplexFilesPercentage,
-				DuplicationPercentage = analysis.DuplicationPercentage,
-				AnalysisState = await CodacyAnalysisStateLookup.ResolveAsync(
-					client,
-					organizationName,
-					repositoryName,
-					branch,
-					DateTimeOffset.UtcNow,
-					cancellationToken).ConfigureAwait(false)
-			};
-		}
+		return analysis is not null
+			? await GradedAsync(client, organizationName, repositoryName, branch, analysis, cancellationToken).ConfigureAwait(false)
+			: await NotFoundAsync(client, organizationName, repositoryName, branch, cancellationToken).ConfigureAwait(false);
+	}
 
+	private static async Task<CodacyRepositoryGrade> GradedAsync(
+		CodacyClient client,
+		string organizationName,
+		string repositoryName,
+		string? branch,
+		RepositoryWithAnalysis analysis,
+		CancellationToken cancellationToken)
+		=> new()
+		{
+			IsTracked = true,
+			CodacyDefaultBranch = analysis.Repository?.DefaultBranch?.Name,
+			Grade = analysis.Grade,
+			GradeLetter = analysis.GradeLetter,
+			IssuesPercentage = analysis.IssuesPercentage,
+			ComplexFilesPercentage = analysis.ComplexFilesPercentage,
+			DuplicationPercentage = analysis.DuplicationPercentage,
+			AnalysisState = await CodacyAnalysisStateLookup.ResolveAsync(
+				client,
+				organizationName,
+				repositoryName,
+				branch,
+				DateTimeOffset.UtcNow,
+				cancellationToken).ConfigureAwait(false)
+		};
+
+	private static async Task<CodacyRepositoryGrade> NotFoundAsync(
+		CodacyClient client,
+		string organizationName,
+		string repositoryName,
+		string? branch,
+		CancellationToken cancellationToken)
+	{
 		if (!await CodacyRepositoryLookup.IsAddedAsync(client, organizationName, repositoryName, cancellationToken).ConfigureAwait(false))
 		{
 			return new CodacyRepositoryGrade { IsTracked = false };
