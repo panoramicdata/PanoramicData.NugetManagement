@@ -105,6 +105,9 @@ public static class AgentApi
 		["publish"] = WorkKind.Publish
 	};
 
+	/// <summary>The rule that fails on committed, unreleased work, which publishing clears.</summary>
+	private const string UnreleasedWorkRuleId = "VER-05";
+
 	/// <summary>
 	/// Kinds that leave the machine, and so are refused unless the repository is in the state that makes
 	/// them reasonable.
@@ -114,7 +117,7 @@ public static class AgentApi
 	/// a repository the person would never have chosen. Publishing to nuget.org cannot be undone — a
 	/// version, once published, can only be unlisted — so it additionally needs <c>confirm: true</c>.
 	/// </remarks>
-	private static string? Refusal(WorkKind kind, RepositoryDashboardRow row, bool confirm)
+	internal static string? Refusal(WorkKind kind, RepositoryDashboardRow row, bool confirm)
 	{
 		switch (kind)
 		{
@@ -127,9 +130,11 @@ public static class AgentApi
 					return "publishing is irreversible and needs confirm: true";
 				}
 
-				if (row.Assessment is null || row.TotalFailures != 0)
+				// VER-05 fails on any unreleased commit, so only publishing can clear it.
+				var blocking = row.TotalFailures - (row.Assessment?.RuleResults.Count(r => !r.Passed && r.RuleId == UnreleasedWorkRuleId) ?? 0);
+				if (row.Assessment is null || blocking != 0)
 				{
-					return $"the repository is not green ({row.TotalFailures} failing)";
+					return $"the repository is not green ({blocking} failing besides {UnreleasedWorkRuleId})";
 				}
 
 				if (row.IsWorkingTreeClean != true || row.HasUnpushedCommits == true || row.IsSyncedWithOrigin != true)
