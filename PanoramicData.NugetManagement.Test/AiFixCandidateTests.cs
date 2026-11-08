@@ -139,6 +139,11 @@ public class AiFixCandidateTests(ITestOutputHelper output) : TestWithOutput(outp
 			new AiFixTarget("CQ-06", "Publish.ps1")]);
 	}
 
+	[Fact]
+	public void TheRepositoryGrade_IsNeverACandidate()
+		=> AiFixCandidates.For(Row(Result("CQ-08", passed: false)), _remediations)
+			.Should().BeEmpty("CQ-08's work is CQ-05's issues and CQ-06's files, which are queued under those rules");
+
 	/// <summary>
 	/// Every candidate the real rule set can produce is one the AI path is genuinely responsible for —
 	/// the complement of what RemediationRegistry covers.

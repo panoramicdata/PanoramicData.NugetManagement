@@ -58,6 +58,7 @@ public static class AiFixCandidates
 				.Where(result => remediations.Get(result.RuleId) is null)
 				.Where(result => !IsFixedElsewhere(result.RuleId))
 				.Where(result => !HasNoCoverageFigure(result))
+				.Where(result => !IsTheRepositoryGrade(result))
 				.SelectMany(Expand)
 				.Distinct()
 				.OrderBy(target => target.RuleId, StringComparer.OrdinalIgnoreCase)
@@ -88,6 +89,12 @@ public static class AiFixCandidates
 	private static bool HasNoCoverageFigure(RuleResult result)
 		=> string.Equals(result.RuleId, "TST-10", StringComparison.OrdinalIgnoreCase)
 			&& result.Advisory?.Data.ContainsKey("measured_line") != true;
+
+	/// <summary>
+	/// Whether this is CQ-08, a verdict whose work is queued under CQ-05 and CQ-06 for the same files.
+	/// </summary>
+	private static bool IsTheRepositoryGrade(RuleResult result)
+		=> string.Equals(result.RuleId, "CQ-08", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// One failure, as the session or sessions that would address it.
