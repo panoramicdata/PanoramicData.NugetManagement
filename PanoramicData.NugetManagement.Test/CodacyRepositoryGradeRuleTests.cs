@@ -93,6 +93,16 @@ public class CodacyRepositoryGradeRuleTests(ITestOutputHelper output) : TestWith
 	}
 
 	[Fact]
+	public async Task AsksCodacyAboutTheGitHubDefaultBranch()
+	{
+		var service = new FakeService(Graded(97, "A"));
+
+		await new CodacyRepositoryGradeRule(service).EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
+
+		service.AskedAbout.Should().Be("panoramicdata/Sample.Api@main");
+	}
+
+	[Fact]
 	public void IsRegisteredAsAnErrorThatCodacyGradesRemotely()
 	{
 		var rule = RuleRegistry.Rules.Single(r => r.RuleId == "CQ-08");
@@ -123,9 +133,12 @@ public class CodacyRepositoryGradeRuleTests(ITestOutputHelper output) : TestWith
 
 	private sealed class FakeService(CodacyRepositoryGrade grade) : ICodacyRepositoryGradeService
 	{
+		public string? AskedAbout { get; private set; }
+
 		public Task<CodacyRepositoryGrade> GetGradeAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
 		{
-			ArgumentException.ThrowIfNullOrWhiteSpace(repositoryName);
+			ArgumentException.ThrowIfNullOrWhiteSpace(apiToken);
+			AskedAbout = $"{organizationName}/{repositoryName}@{branch}";
 			return Task.FromResult(grade);
 		}
 	}
