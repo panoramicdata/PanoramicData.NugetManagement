@@ -105,6 +105,9 @@ public static class AgentApi
 		["publish"] = WorkKind.Publish
 	};
 
+	/// <summary>The rule that fails on committed, unreleased work, which publishing clears.</summary>
+	private const string UnreleasedWorkRuleId = "VER-05";
+
 	/// <summary>
 	/// Kinds that leave the machine, and so are refused unless the repository is in the state that makes
 	/// them reasonable.
@@ -114,35 +117,36 @@ public static class AgentApi
 	/// a repository the person would never have chosen. Publishing to nuget.org cannot be undone — a
 	/// version, once published, can only be unlisted — so it additionally needs <c>confirm: true</c>.
 	/// </remarks>
-	private static string? Refusal(WorkKind kind, RepositoryDashboardRow row, bool confirm)
-	{
-		switch (kind)
+	internal static string? Refusal(WorkKind kind, RepositoryDashboardRow row, bool confirm)
+		=> kind switch
 		{
-			case WorkKind.CommitAndPush:
-				return row.IsClonedLocally ? null : "the repository is not cloned locally";
+			WorkKind.CommitAndPush => row.IsClonedLocally ? null : "the repository is not cloned locally",
+			WorkKind.Publish => PublishRefusal(row, confirm),
+			_ => null
+		};
 
-			case WorkKind.Publish:
-				if (!confirm)
-				{
-					return "publishing is irreversible and needs confirm: true";
-				}
-
-				if (row.Assessment is null || row.TotalFailures != 0)
-				{
-					return $"the repository is not green ({row.TotalFailures} failing)";
-				}
-
-				if (row.IsWorkingTreeClean != true || row.HasUnpushedCommits == true || row.IsSyncedWithOrigin != true)
-				{
-					return "the working tree is not clean and in step with origin";
-				}
-
-				return null;
-
-			default:
-				return null;
+	private static string? PublishRefusal(RepositoryDashboardRow row, bool confirm)
+	{
+		if (!confirm)
+		{
+			return "publishing is irreversible and needs confirm: true";
 		}
+
+		var blocking = BlockingFailures(row);
+		if (row.Assessment is null || blocking != 0)
+		{
+			return $"the repository is not green ({blocking} failing besides {UnreleasedWorkRuleId})";
+		}
+
+		return IsCleanAndInStep(row) ? null : "the working tree is not clean and in step with origin";
 	}
+
+	// VER-05 fails on any unreleased commit, so only publishing can clear it.
+	private static int BlockingFailures(RepositoryDashboardRow row)
+		=> row.TotalFailures - (row.Assessment?.RuleResults.Count(r => !r.Passed && r.RuleId == UnreleasedWorkRuleId) ?? 0);
+
+	private static bool IsCleanAndInStep(RepositoryDashboardRow row)
+		=> row.IsWorkingTreeClean == true && row.HasUnpushedCommits != true && row.IsSyncedWithOrigin == true;
 
 	/// <summary>Maps the endpoints, or maps nothing when no token is configured.</summary>
 	/// <param name="app">The application.</param>
