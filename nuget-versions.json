@@ -1595,9 +1595,9 @@
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
   "Ollama.Api": {
-    "latestVersion": "1.1.4",
-    "published": "2026-11-01T17:37:16.763+00:00",
-    "refreshedAtUtc": "2026-11-04T14:32:10.1068901+00:00"
+    "latestVersion": "1.1.8",
+    "published": "2026-11-08T18:59:23.27+00:00",
+    "refreshedAtUtc": "2026-11-08T22:35:19.3018513+00:00"
   },
   "OpenTelemetry.Exporter.OpenTelemetryProtocol": {
     "latestVersion": "1.20.1",
