@@ -146,6 +146,9 @@ public class CodacyRepositoryGradeRuleTests(ITestOutputHelper output) : TestWith
 	private sealed class ThrowingService : ICodacyRepositoryGradeService
 	{
 		public Task<CodacyRepositoryGrade> GetGradeAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> throw new InvalidOperationException("Codacy unreachable");
+		{
+			ArgumentException.ThrowIfNullOrWhiteSpace(apiToken);
+			throw new InvalidOperationException($"Codacy unreachable for {organizationName}/{repositoryName}@{branch}");
+		}
 	}
 }
