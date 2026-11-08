@@ -138,7 +138,8 @@ public class CodacyRepositoryGradeRuleTests(ITestOutputHelper output) : TestWith
 		public Task<CodacyRepositoryGrade> GetGradeAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
 		{
 			ArgumentException.ThrowIfNullOrWhiteSpace(apiToken);
-			AskedAbout = $"{organizationName}/{repositoryName}@{branch}";
+			cancellationToken.ThrowIfCancellationRequested();
+			AskedAbout =$"{organizationName}/{repositoryName}@{branch}";
 			return Task.FromResult(grade);
 		}
 	}
@@ -148,6 +149,7 @@ public class CodacyRepositoryGradeRuleTests(ITestOutputHelper output) : TestWith
 		public Task<CodacyRepositoryGrade> GetGradeAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
 		{
 			ArgumentException.ThrowIfNullOrWhiteSpace(apiToken);
+			cancellationToken.ThrowIfCancellationRequested();
 			throw new InvalidOperationException($"Codacy unreachable for {organizationName}/{repositoryName}@{branch}");
 		}
 	}
