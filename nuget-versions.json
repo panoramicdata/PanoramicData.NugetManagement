@@ -10,9 +10,9 @@
     "refreshedAtUtc": "2026-10-24T05:10:57.856264+00:00"
   },
   "AspNet.Security.OAuth.GitHub": {
-    "latestVersion": "10.0.0",
-    "published": "2025-11-11T13:37:56.71+00:00",
-    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+    "latestVersion": "10.1.0",
+    "published": "2026-11-08T15:12:01.587+00:00",
+    "refreshedAtUtc": "2026-11-08T18:52:18.1905201+00:00"
   },
   "AspNetCore.HealthChecks.Network": {
     "latestVersion": "9.0.0",
@@ -145,9 +145,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Blazor-ApexCharts": {
-    "latestVersion": "7.1.0",
-    "published": "2026-10-30T01:51:02.32+00:00",
-    "refreshedAtUtc": "2026-11-04T14:32:10.1068901+00:00"
+    "latestVersion": "8.0.0",
+    "published": "2026-11-08T17:04:06.5+00:00",
+    "refreshedAtUtc": "2026-11-08T18:52:18.1905201+00:00"
   },
   "BlazorFileSaver": {
     "latestVersion": "3.1.1",
@@ -540,9 +540,9 @@
     "refreshedAtUtc": "2026-10-26T11:10:57.8557815+00:00"
   },
   "HaloPsa.Api": {
-    "latestVersion": "2.196.138",
-    "published": "2026-11-03T22:31:56.74+00:00",
-    "refreshedAtUtc": "2026-11-04T14:32:10.1068901+00:00"
+    "latestVersion": "2.196.141",
+    "published": "2026-11-08T17:06:38.64+00:00",
+    "refreshedAtUtc": "2026-11-08T18:52:18.1905201+00:00"
   },
   "HidSharp": {
     "latestVersion": "2.6.4",
@@ -710,9 +710,9 @@
     "refreshedAtUtc": "2026-09-09T04:17:11.6132633+00:00"
   },
   "Meraki.Api": {
-    "latestVersion": "1.74.73",
-    "published": "2026-11-06T19:25:52.86+00:00",
-    "refreshedAtUtc": "2026-11-06T20:32:10.143686+00:00"
+    "latestVersion": "1.74.74",
+    "published": "2026-11-08T16:59:06.677+00:00",
+    "refreshedAtUtc": "2026-11-08T18:52:18.1905201+00:00"
   },
   "MessagePack": {
     "latestVersion": "3.1.12",
