@@ -49,6 +49,15 @@ public class AgentApiPublishGateTests(ITestOutputHelper output) : TestWithOutput
 			.Should().Be("the repository is not green (1 failing besides VER-05)");
 
 	[Fact]
+	public void ARepositoryWithUnpushedCommitsShouldBeRefused()
+	{
+		var row = Row();
+		row.HasUnpushedCommits = true;
+
+		AgentApi.Refusal(WorkKind.Publish, row, confirm: true).Should().Be("the working tree is not clean and in step with origin");
+	}
+
+	[Fact]
 	public void PublishingWithoutConfirmationShouldBeRefused()
 		=> AgentApi.Refusal(WorkKind.Publish, Row(), confirm: false).Should().NotBeNull();
 }
