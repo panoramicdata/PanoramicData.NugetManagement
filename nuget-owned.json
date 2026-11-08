@@ -49,6 +49,7 @@
   "PanoramicData.Blazor",
   "PanoramicData.Blazor.Demo",
   "PanoramicData.ChartMagic",
+  "PanoramicData.Chunker",
   "PanoramicData.ConsoleExtensions",
   "PanoramicData.ConsoleMagic",
   "PanoramicData.Datadog.Api",
