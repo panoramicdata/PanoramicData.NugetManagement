@@ -32,8 +32,11 @@ public class SnupkgGenerationRule : RuleBase
 			.Where(csproj =>
 			{
 				var content = context.GetFileContent(csproj);
-				return !HasMsBuildProperty(content, "IncludeSymbols", "true")
-					|| !HasMsBuildProperty(content, "SymbolPackageFormat", "snupkg");
+
+				// No build output (a template) means an empty .snupkg, which NuGet refuses (NU5017).
+				return !HasMsBuildProperty(content, "IncludeBuildOutput", "false")
+					&& (!HasMsBuildProperty(content, "IncludeSymbols", "true")
+						|| !HasMsBuildProperty(content, "SymbolPackageFormat", "snupkg"));
 			})
 			.ToList();
 

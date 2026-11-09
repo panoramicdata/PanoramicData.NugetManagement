@@ -87,6 +87,40 @@ public class PackagingRuleScopeTests(ITestOutputHelper output) : TestWithOutput(
 		result.Message.Should().NotContain("Sample", "a project that opts out is not published");
 	}
 
+	[Fact]
+	public async Task PKG01_ShouldNotAskForSymbols_FromAPackageWithNoBuildOutput()
+	{
+		// Meraki.Cli: a dotnet new template has no assemblies, so a requested .snupkg is empty and
+		// NuGet refuses to pack it (NU5017).
+		var context = CreateContext("Meraki.Cli", new Dictionary<string, string>
+		{
+			["package/Meraki.Cli.Template.csproj"] =
+				"<Project><PropertyGroup><PackageId>Meraki.Cli</PackageId><PackageType>Template</PackageType>"
+				+ "<IncludeBuildOutput>false</IncludeBuildOutput></PropertyGroup></Project>",
+			["Acme.Lib/Acme.Lib.csproj"] = _ordinaryPackage
+		});
+
+		var result = await GetRule("PKG-01").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeFalse("the ordinary package still lacks symbols");
+		result.Message.Should().Contain("Acme.Lib.csproj");
+		result.Message.Should().NotContain("Meraki.Cli.Template.csproj");
+	}
+
+	[Fact]
+	public async Task PKG01_ShouldPass_WhenOnlyAPackageWithNoBuildOutputIsPublished()
+	{
+		var context = CreateContext("Meraki.Cli", new Dictionary<string, string>
+		{
+			["package/Meraki.Cli.Template.csproj"] =
+				"<Project><PropertyGroup><PackageId>Meraki.Cli</PackageId><IncludeBuildOutput>false</IncludeBuildOutput></PropertyGroup></Project>"
+		});
+
+		var result = await GetRule("PKG-01").EvaluateAsync(context, CancellationToken.None);
+
+		result.Passed.Should().BeTrue();
+	}
+
 	[Theory]
 	[InlineData("META-01")]
 	[InlineData("META-02")]
