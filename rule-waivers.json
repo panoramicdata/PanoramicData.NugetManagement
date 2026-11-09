@@ -154,5 +154,13 @@
 			"waivedBy": "david.bond@panoramicdata.com",
 			"waivedOnUtc": "2026-11-03T00:00:00Z"
 		}
+	],
+	"panoramicdata/Meraki.Cli": [
+		{
+			"ruleId": "TST-01",
+			"reason": "A dotnet new template: its content is a sample worker for users to replace, and a test project would ship inside every generated project.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-09T00:00:00Z"
+		}
 	]
 }
