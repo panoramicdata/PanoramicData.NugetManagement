@@ -23,6 +23,9 @@ public sealed record CommitAndPushOutcome
 	/// <summary>Whether this attempt was stopped by a guard rather than by a failure.</summary>
 	public bool WasRefused => RefusalReason is not null;
 
+	/// <summary>Whether the guard also took the uncommitted changes out of the clone.</summary>
+	public bool ChangesReverted { get; init; }
+
 	/// <summary>The push happened.</summary>
 	public static CommitAndPushOutcome Pushed { get; } = new() { Success = true };
 
