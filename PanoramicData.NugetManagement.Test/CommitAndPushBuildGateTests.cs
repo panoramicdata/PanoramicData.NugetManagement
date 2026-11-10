@@ -208,13 +208,17 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 	/// <summary>Never called: nothing here talks to NuGet.</summary>
 	private sealed class NoopHttpClientFactory : IHttpClientFactory
 	{
-		public HttpClient CreateClient(string name) => new();
+		public HttpClient CreateClient(string name)
+			=> throw new InvalidOperationException($"No HTTP client was expected, but '{name}' was requested.");
 	}
 
 	/// <summary>Never called: nothing here reads published versions.</summary>
 	private sealed class NoopPublishedVersionSource : IPublishedVersionSource
 	{
 		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
-			=> Task.FromResult<string?>(null);
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			throw new InvalidOperationException($"No published-version lookup was expected, but '{packageId}' was asked for.");
+		}
 	}
 }
