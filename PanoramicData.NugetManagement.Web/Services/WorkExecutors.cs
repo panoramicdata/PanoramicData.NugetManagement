@@ -3213,7 +3213,7 @@ public sealed partial class WorkExecutors(
 	/// </remarks>
 	/// <param name="item">The item naming the repository to commit and push.</param>
 	/// <param name="progress">Unused: a commit and push reports no sub-steps.</param>
-	/// <param name="cancellationToken">Unused: the underlying git calls are not interruptible.</param>
+	/// <param name="cancellationToken">Stops the checks and the build before the commit; the push itself is not interruptible.</param>
 	private async Task CommitAndPushAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
@@ -3228,7 +3228,7 @@ public sealed partial class WorkExecutors(
 		try
 		{
 			var commitMessage = $"NuGet governance remediation for {row.RepositoryFullName}";
-			var push = await dashboard.CommitAndPushAsync(row, commitMessage, Say).ConfigureAwait(false);
+			var push = await dashboard.CommitAndPushAsync(row, commitMessage, Say, cancellationToken).ConfigureAwait(false);
 
 			// Whatever the outcome: a refused or failed push is as much part of the record as a good one.
 			if (governance is not null)
@@ -3259,6 +3259,18 @@ public sealed partial class WorkExecutors(
 						"Nothing was pushed for {Repository}: {Reason}",
 						row.RepositoryFullName,
 						push.RefusalReason);
+				}
+
+				if (push.ChangesReverted)
+				{
+					// The fix's re-assessment showed the rule passing; it is failing again now the fix is gone.
+					Say("▶ Re-assessing...");
+					await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+					await dashboard.AssessLocalRepositoryAsync(
+						row,
+						cancellationToken,
+						await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
+					cache.UpsertRow(row);
 				}
 			}
 		}

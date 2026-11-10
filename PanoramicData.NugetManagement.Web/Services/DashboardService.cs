@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using System.Globalization;
+using Microsoft.Extensions.Options;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
@@ -1736,6 +1737,10 @@ public class DashboardService
 	/// Commits all local changes, fetches, rebases on remote, and pushes.
 	/// Does not change the row status (preserves current workflow state).
 	/// </summary>
+	/// <remarks>
+	/// Refuses, and reverts the uncommitted changes, when the clone does not build with them. The token
+	/// stops the checks and the build only; the push itself is never cancelled.
+	/// </remarks>
 	public async Task<CommitAndPushOutcome> CommitAndPushAsync(
 		RepositoryDashboardRow row,
 		string commitMessage,
@@ -1765,7 +1770,14 @@ public class DashboardService
 			return CommitAndPushOutcome.Refused(staleRefusal);
 		}
 
-		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
+		var buildRefusal = await VerifyChangesBuildAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+		if (buildRefusal is not null)
+		{
+			return buildRefusal;
+		}
+
+		// Not cancellable: a push killed mid-ref-update cannot be tidied up afterwards.
+		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, onOutput, CancellationToken.None).ConfigureAwait(false);
 
 		if (success)
 		{
@@ -2007,6 +2019,59 @@ public class DashboardService
 	}
 
 	/// <summary>
+	/// Builds the clone before anything in it is committed or pushed, and refuses when it does not build.
+	/// Returns null when the push may go ahead.
+	/// </summary>
+	/// <remarks>
+	/// #196: a BLD-02 remediation committed to Rundeck.Cli's main without building and left it red for days.
+	/// Uncommitted changes that break the build are stashed, so the clone is restored and the rule stays
+	/// failing; unpushed commits are left alone and only refused.
+	/// </remarks>
+	private async Task<CommitAndPushOutcome?> VerifyChangesBuildAsync(
+		RepositoryDashboardRow row,
+		string repoIdentity,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var isClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		var isAhead = await _localRepo.HasUnpushedCommitsAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		if (isClean == true && isAhead == false)
+		{
+			return null;
+		}
+
+		onOutput?.Invoke($"🔎 Verifying {row.RepositoryFullName} builds before committing...");
+		var build = await _localRepo.BuildWithRestoreAsync(repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+		if (build.Success)
+		{
+			return null;
+		}
+
+		var changed = await _localRepo.GetWorkingTreeStatusPreviewAsync(repoIdentity, int.MaxValue, cancellationToken).ConfigureAwait(false);
+		var reason = $"Nothing was committed or pushed: {row.RepositoryFullName} does not build with these changes.";
+
+		if (changed.Count == 0)
+		{
+			return CommitAndPushOutcome.Refused(Refuse(reason + " Its unpushed commits were left in place for a person to look at.", onOutput));
+		}
+
+		var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+		var (stashed, stashOutput) = await _localRepo
+			.StashLocalChangesAsync(repoIdentity, $"build gate {stamp} UTC: changes that did not build", CancellationToken.None)
+			.ConfigureAwait(false);
+
+		reason += $"\nChanged: {string.Join(", ", changed.Select(line => line.Trim()))}";
+		if (!stashed)
+		{
+			return CommitAndPushOutcome.Refused(Refuse($"{reason}\nThe changes could not be set aside ({stashOutput.Trim()}), so clear the clone by hand.", onOutput));
+		}
+
+		row.IsWorkingTreeClean = true;
+		reason += $"\nThey were reverted and kept in `git stash list` in {_localRepo.GetLocalPath(repoIdentity)}.";
+		return CommitAndPushOutcome.Refused(Refuse(reason, onOutput)) with { ChangesReverted = true };
+	}
+
+	/// <summary>
 	/// The single gate every write to a local clone passes through: it is the repository we think it is,
 	/// it has nothing uncommitted in it, and it is not behind origin. Returns false — having said why — if
 	/// any of those does not hold.
@@ -2241,33 +2306,7 @@ public class DashboardService
 					continue;
 				}
 
-				// Verify before pushing. The regression guard can only revert *after* a push, which
-				// leaves a live branch broken in the meantime - and it cannot attribute the breakage
-				// at all when a remediation has broken the toolchain, because the control build fails
-				// too. Building here makes a bad remediation cost a skipped repository instead.
-				onOutput?.Invoke($"🔎 Verifying {name} builds before pushing...");
-				var preflight = await _localRepo.BuildWithRestoreAsync(name, onOutput, cancellationToken).ConfigureAwait(false);
-				if (!preflight.Success)
-				{
-					// Same principle as the cancellation path: work that never reached a commit is
-					// undone, so the clone is left as it was found rather than half-remediated.
-					await RevertUncommittedAsync(row, name, onOutput).ConfigureAwait(false);
-					phase = RepoApplyPhase.NotStarted;
-					outcome.Results.Add(new RepoApplyResult
-					{
-						RepositoryFullName = name,
-						// A refusal is a skip, not a failure: nothing was left behind.
-						Status = RepoApplyStatus.Skipped,
-						Message = "Not pushed: the repository does not build after applying the remediation. "
-							+ "The change was reverted locally. This is a bug in the remediation."
-					});
-					onOutput?.Invoke($"⛔ {name}: does not build after applying - not pushed, change reverted.");
-					continue;
-				}
-
-				// Deliberately not cancellable: a push killed mid-ref-update is the one outcome that
-				// cannot be tidied up afterwards. Once it starts, it is allowed to resolve, and the
-				// stop is honoured at the top of the next repository.
+				// CommitAndPushAsync builds first. Not cancellable: the stop is honoured at the next repository.
 				var push = await CommitAndPushAsync(row, commitMessage, onOutput, CancellationToken.None).ConfigureAwait(false);
 				phase = push.Success ? RepoApplyPhase.Pushed : RepoApplyPhase.Applied;
 				outcome.Results.Add(new RepoApplyResult
@@ -2293,6 +2332,13 @@ public class DashboardService
 					// Verify the build in the background; auto-revert if our change broke it.
 					_regressionGuard.Enqueue(row.RepositoryFullName);
 					onOutput?.Invoke($"🛡️ Queued {row.RepositoryFullName} for build verification.");
+				}
+
+				if (push.ChangesReverted)
+				{
+					// The build gate left nothing behind, so the next repository is still safe to try.
+					phase = RepoApplyPhase.NotStarted;
+					continue;
 				}
 
 				if (!push.Success)
