@@ -1407,7 +1407,6 @@ else
 			_lastFailedWorkflowStep = null;
 		}
 
-		StateHasChanged();
 	}
 
 	/// <summary>
@@ -2098,7 +2097,6 @@ else
 			_selectedOrganization = string.Empty;
 		}
 
-		StateHasChanged();
 	}
 
 	private async Task OnNavNodeExpanded(TreeNode<NavItem> node)
@@ -2453,7 +2451,6 @@ else
 		_rows = [.. _rows.Where(r => !string.Equals(r.Organization, organization, StringComparison.OrdinalIgnoreCase))];
 		Cache.SetRows(_rows);
 		await ReloadTreePreservingExpansionAsync();
-		StateHasChanged();
 	}
 
 	private List<RepositoryCloneCandidate> VisibleCloneCandidates
@@ -2694,7 +2691,6 @@ else
 		// Deselect the tree in place — clear the highlight without rebuilding, so
 		// expanded nodes stay open. PDTree has no public clear-selection API.
 		_navTree?.RootNode.Walk(n => { n.IsSelected = false; return true; });
-		StateHasChanged();
 	}
 
 	private async Task NavigateToOrgAsync() => await NavigateToOrgAsync(CurrentOrganization);
@@ -2747,7 +2743,6 @@ else
 		_currentView = NavView.PackageDetail;
 		_selectedCategory = null;
 		_selectedRuleId = null;
-		StateHasChanged();
 	}
 
 	private void NavigateToAppSettings()
@@ -2780,7 +2775,6 @@ else
 		});
 
 		_userMenuOpen = false;
-		StateHasChanged();
 	}
 
 	private async Task ToggleConsole()
@@ -2795,7 +2789,6 @@ else
 			// localStorage may not be available
 		}
 
-		StateHasChanged();
 	}
 
 	private void OnTreeFilterInput(ChangeEventArgs e)
@@ -2849,7 +2842,6 @@ else
 
 		await RefreshTreeStructureAsync();
 
-		StateHasChanged();
 	}
 
 	private async Task OnLocalOnlyChanged(ChangeEventArgs e)
@@ -2859,7 +2851,6 @@ else
 
 		await RefreshTreeStructureAsync();
 
-		StateHasChanged();
 	}
 
 	/// <summary>
@@ -3299,7 +3290,7 @@ else
 					 OnNavigate="@NavigateFromTableAsync" />
 	};
 
-	private void OnTableSelectionChanged() => StateHasChanged();
+	private void OnTableSelectionChanged() { } // the callback itself re-renders the page
 
 	private async Task NavigateFromTableAsync((string RepositoryFullName, AssessmentCategory? Category) target)
 	{
@@ -4387,7 +4378,6 @@ else
 		_selectedOrganization = row.Organization;
 		_selectedNodeKey = $"pkg:{row.Organization}:{row.RepositoryFullName}";
 		_currentView = NavView.PackageDetail;
-		StateHasChanged();
 	}
 
 	private void OnRowDoubleClick(RepositoryDashboardRow row)
@@ -5391,7 +5381,6 @@ else
 		AppendConsole("── AI Remediation Prompt (All) ──");
 		AppendConsole(prompt);
 		AppendConsole("── End Prompt ──");
-		StateHasChanged();
 		await CopyPromptToClipboardAsync();
 	}
 
@@ -6648,7 +6637,6 @@ else
 			StateHasChanged();
 			await Task.Delay(2000);
 			CurrentConsoleCopyFeedback = false;
-			StateHasChanged();
 		}
 		catch
 		{
@@ -6670,7 +6658,6 @@ else
 			StateHasChanged();
 			await Task.Delay(2000);
 			CurrentCopyFeedback = false;
-			StateHasChanged();
 		}
 		catch
 		{
@@ -7027,7 +7014,6 @@ else
 		var value = e.Value?.ToString();
 		_preferredIdeId = string.IsNullOrEmpty(value) ? null : value;
 		RuntimeSettings.SetPreferredIdeId(_preferredIdeId);
-		StateHasChanged();
 	}
 
 	// === IDE methods ===

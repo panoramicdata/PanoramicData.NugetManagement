@@ -147,6 +147,103 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 		fixedWorkflow.Should().Contain(Standards.LatestDotNetVersionSpecifier);
 	}
 
+	[Theory]
+	[InlineData("\n", "v6", "10.0.x")]
+	[InlineData("\r\n", "v6", "10.0.x")]
+	[InlineData("\r\n", "v6", "'10.0.x'")]
+	[InlineData("\n", "v5", "10.0.x")]
+	public async Task CI06_MovesEveryDotnetVersionWhateverTheLineEndings(string eol, string action, string version)
+	{
+		var workflow = string.Join(eol,
+		[
+			"jobs:",
+			"  build:",
+			"    steps:",
+			$"    - uses: actions/setup-dotnet@{action}",
+			"      with:",
+			$"        dotnet-version: {version}",
+			"  publish:",
+			"    steps:",
+			$"    - uses: actions/setup-dotnet@{action}",
+			"      with:",
+			$"        dotnet-version: {version}",
+			string.Empty
+		]);
+
+		var fixedWorkflow = await FixAsync("CI-06", workflow);
+
+		fixedWorkflow.Should().NotContain("10.0.x");
+		fixedWorkflow.Should().Contain(Standards.LatestDotNetVersionSpecifier);
+	}
+
+	[Fact]
+	public async Task DotNetUpgrade_MovesAProjectGlobalJsonAndCiInOneFix_WhateverTheLineEndings()
+	{
+		const string csprojPath = "Src/Widget/Widget.csproj";
+		var csproj = "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n\t<PropertyGroup>\r\n\t\t<TargetFramework>net10.0</TargetFramework>\r\n\t</PropertyGroup>\r\n</Project>\r\n";
+		var globalJson = "{\r\n\t\"sdk\": {\r\n\t\t\"version\": \"10.0.100\",\r\n\t\t\"rollForward\": \"latestMinor\"\r\n\t}\r\n}\r\n";
+		var workflow = "jobs:\r\n  build:\r\n    steps:\r\n    - uses: actions/setup-dotnet@v6\r\n      with:\r\n        dotnet-version: 10.0.x\r\n";
+
+		var files = new Dictionary<string, string>
+		{
+			[csprojPath] = csproj,
+			["global.json"] = globalJson,
+			[_ciPath] = workflow
+		};
+
+		foreach (var (path, content) in files)
+		{
+			WriteFile(path, content);
+		}
+
+		var staleContext = new RepositoryContext
+		{
+			FullName = "panoramicdata/Sample",
+			Name = "Sample",
+			DefaultBranch = "main",
+			CurrentBranch = "main",
+			Options = new RepoOptions(),
+			FilePaths = [.. files.Keys],
+			FileContents = files
+		};
+
+		var rules = new[] { "TFM-01", "VER-03", "CI-06" };
+		var registry = new RemediationRegistry();
+		foreach (var ruleId in rules)
+		{
+			var result = await Rule(ruleId).EvaluateAsync(staleContext, TestContext.Current.CancellationToken);
+			if (result.Passed)
+			{
+				continue;
+			}
+
+			registry.CanRemediate(result).Should().BeTrue($"{ruleId} must be fixable without the AI");
+			var applied = new List<string>();
+			registry.Get(ruleId)!.Apply(_root, result, applied, Output.WriteLine);
+			applied.Should().NotBeEmpty($"{ruleId} must change something");
+		}
+
+		var fixedFiles = files.Keys.ToDictionary(
+			path => path,
+			path => File.ReadAllText(Path.Combine(_root, path)));
+		var fixedContext = new RepositoryContext
+		{
+			FullName = "panoramicdata/Sample",
+			Name = "Sample",
+			DefaultBranch = "main",
+			CurrentBranch = "main",
+			Options = new RepoOptions(),
+			FilePaths = [.. fixedFiles.Keys],
+			FileContents = fixedFiles
+		};
+
+		foreach (var ruleId in rules)
+		{
+			var result = await Rule(ruleId).EvaluateAsync(fixedContext, TestContext.Current.CancellationToken);
+			result.Passed.Should().BeTrue($"{ruleId} should pass once the upgrade fix has run: {result.Message}");
+		}
+	}
+
 	[Fact]
 	public async Task CI06_IsAiOnlyWhenDotnetVersionIsAList()
 	{

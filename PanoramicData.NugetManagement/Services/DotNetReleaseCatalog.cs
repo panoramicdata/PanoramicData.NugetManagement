@@ -104,7 +104,7 @@ public sealed class DotNetReleaseCatalog
 	/// The standard used when the release index cannot be reached and nothing better has been
 	/// fetched. An assessment run offline still has to produce results.
 	/// </summary>
-	public static DotNetChannelStandard Fallback { get; } = new("10.0");
+	public static DotNetChannelStandard Fallback { get; } = new("11.0");
 
 	/// <summary>The base address of the release-metadata host.</summary>
 	public static Uri BaseAddress { get; } = new("https://builds.dotnet.microsoft.com");

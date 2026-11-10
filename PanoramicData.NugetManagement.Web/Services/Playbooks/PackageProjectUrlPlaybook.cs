@@ -38,14 +38,14 @@ public sealed class PackageProjectUrlPlaybook : IRuleAiPlaybook
 			Before:
 
 			  <PropertyGroup>
-			    <TargetFramework>net10.0</TargetFramework>
+			    <TargetFramework>net11.0</TargetFramework>
 			    <PackageId>Example.Api</PackageId>
 			  </PropertyGroup>
 
 			After:
 
 			  <PropertyGroup>
-			    <TargetFramework>net10.0</TargetFramework>
+			    <TargetFramework>net11.0</TargetFramework>
 			    <PackageId>Example.Api</PackageId>
 			    <PackageProjectUrl>https://github.com/panoramicdata/Example.Api</PackageProjectUrl>
 			  </PropertyGroup>

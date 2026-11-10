@@ -34,7 +34,7 @@ public class CiVersionRuleTests(ITestOutputHelper output) : TestWithOutput(outpu
 	private static string Checkout(string version) => $"jobs:\n  build:\n    steps:\n    - uses: actions/checkout@{version}\n";
 
 	private static string SetupDotnet(string version) =>
-		$"jobs:\n  build:\n    steps:\n    - uses: actions/setup-dotnet@{version}\n      with:\n        dotnet-version: 10.0.x\n";
+		$"jobs:\n  build:\n    steps:\n    - uses: actions/setup-dotnet@{version}\n      with:\n        dotnet-version: {Standards.LatestDotNetVersionSpecifier}\n";
 
 	[Theory]
 	[InlineData("v7")] // exactly the floor
@@ -63,7 +63,7 @@ public class CiVersionRuleTests(ITestOutputHelper output) : TestWithOutput(outpu
 	public async Task CI06_Passes_AtOrAboveFloor(string version)
 	{
 		var result = await Rule("CI-06").EvaluateAsync(Ctx(SetupDotnet(version)), TestContext.Current.CancellationToken);
-		result.Passed.Should().BeTrue($"setup-dotnet@{version} + 10.0.x is at or above the floor");
+		result.Passed.Should().BeTrue($"setup-dotnet@{version} + {Standards.LatestDotNetVersionSpecifier} is at or above the floor");
 	}
 
 	[Fact]

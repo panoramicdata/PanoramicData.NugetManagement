@@ -93,7 +93,7 @@ public partial class CiSetupDotnetVersionRule : RuleBase, IGovernsDependency
 	/// option is inline so the pattern carries it into the remediation payload.
 	/// </summary>
 	private const string _scalarDotnetVersionPattern =
-		@"(?m)^([ \t]*dotnet-version:[ \t]*)(['""]?)\d+\.[\dx*]+(\.[\dx*]+)?\2[ \t]*$";
+		@"(?m)^([ \t]*dotnet-version:[ \t]*)(['""]?)\d+\.[\dx*]+(\.[\dx*]+)?\2[ \t]*(?=\r?$)";
 
 	[GeneratedRegex(_scalarDotnetVersionPattern, RegexOptions.IgnoreCase)]
 	private static partial Regex ScalarDotnetVersionLine();

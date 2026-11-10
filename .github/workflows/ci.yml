@@ -33,7 +33,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: '10.0.x'
+        dotnet-version: '11.0.x'
 
     - name: Restore
       run: dotnet restore
@@ -65,7 +65,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: '10.0.x'
+        dotnet-version: '11.0.x'
 
     # The actions-runner image ships no pwsh, and installing it through the SDK needs neither root
     # nor apt. Run-Coverage.ps1 is deliberately the single invocation used both here and locally.
@@ -87,14 +87,14 @@ jobs:
       uses: codacy/codacy-coverage-reporter-action@v1
       with:
         project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
-        coverage-reports: PanoramicData.NugetManagement.Test/bin/Debug/net10.0/TestResults/coverage.cobertura.xml
+        coverage-reports: PanoramicData.NugetManagement.Test/bin/Debug/net11.0/TestResults/coverage.cobertura.xml
 
     - name: Upload coverage artifact
       if: always()
       uses: actions/upload-artifact@v7
       with:
         name: coverage
-        path: PanoramicData.NugetManagement.Test/bin/Debug/net10.0/TestResults/coverage.cobertura.xml
+        path: PanoramicData.NugetManagement.Test/bin/Debug/net11.0/TestResults/coverage.cobertura.xml
         retention-days: 7
 
   publish:
@@ -113,7 +113,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: '10.0.x'
+        dotnet-version: '11.0.x'
 
     - name: NuGet Login (Trusted Publishing)
       uses: NuGet/login@v1

@@ -407,7 +407,11 @@ public static class Standards
 	/// <summary>
 	/// The standard ci.yml workflow content for GitHub Actions.
 	/// </summary>
-	public const string CiWorkflowContent = """
+	public static string CiWorkflowContent => CiWorkflowTemplate.Replace(DotNetVersionToken, LatestDotNetVersionSpecifier, StringComparison.Ordinal);
+
+	private const string DotNetVersionToken = "{{DOTNET_VERSION}}";
+
+	private const string CiWorkflowTemplate = """
 		name: CI
 
 		on:
@@ -430,7 +434,7 @@ public static class Standards
 		    - name: Setup .NET
 		      uses: actions/setup-dotnet@v6
 		      with:
-		        dotnet-version: 10.0.x
+		        dotnet-version: {{DOTNET_VERSION}}
 
 		    - name: Restore
 		      run: dotnet restore
@@ -476,7 +480,7 @@ public static class Standards
 				"    - name: Setup .NET",
 				"      uses: actions/setup-dotnet@v6",
 				"      with:",
-				"        dotnet-version: 10.0.x",
+				$"        dotnet-version: {LatestDotNetVersionSpecifier}",
 				string.Empty,
 				"    - name: Restore",
 				"      run: dotnet restore",
@@ -509,7 +513,7 @@ public static class Standards
 				"    - name: Setup .NET",
 				"      uses: actions/setup-dotnet@v6",
 				"      with:",
-				"        dotnet-version: 10.0.x",
+				$"        dotnet-version: {LatestDotNetVersionSpecifier}",
 				string.Empty,
 				"    - name: Login to NuGet",
 				"      id: login",
