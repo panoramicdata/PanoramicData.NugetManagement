@@ -1736,11 +1736,20 @@ public class DashboardService
 	/// Commits all local changes, fetches, rebases on remote, and pushes.
 	/// Does not change the row status (preserves current workflow state).
 	/// </summary>
+	/// <param name="row">The repository to push.</param>
+	/// <param name="commitMessage">The commit message.</param>
+	/// <param name="onOutput">Where progress is reported.</param>
+	/// <param name="cancellationToken">Cancels the guards; a push already under way is not interrupted.</param>
+	/// <param name="verifyBuildFirst">
+	/// Whether to build before pushing. Only a caller that has just built the same tree itself may pass
+	/// false; every other push is verified here, because this is the one place all of them go through.
+	/// </param>
 	public async Task<CommitAndPushOutcome> CommitAndPushAsync(
 		RepositoryDashboardRow row,
 		string commitMessage,
 		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		bool verifyBuildFirst = true)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
@@ -1765,10 +1774,25 @@ public class DashboardService
 			return CommitAndPushOutcome.Refused(staleRefusal);
 		}
 
+		if (verifyBuildFirst)
+		{
+			var buildRefusal = await PushBuildGate.RefusalAsync(
+				row.RepositoryFullName,
+				() => _localRepo.BuildWithRestoreAsync(repoIdentity, onOutput, cancellationToken),
+				onOutput).ConfigureAwait(false);
+			if (buildRefusal is not null)
+			{
+				return CommitAndPushOutcome.Refused(buildRefusal);
+			}
+		}
+
 		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, onOutput, cancellationToken).ConfigureAwait(false);
 
 		if (success)
 		{
+			// Verified again in the background so a breakage the local build could not see is rolled back.
+			_regressionGuard.Enqueue(row.RepositoryFullName);
+
 			// Refresh git status after push. The push itself establishes that we match origin, so no
 			// fetch is needed to know it — but it is knowledge with an age, like any other.
 			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
@@ -2268,7 +2292,7 @@ public class DashboardService
 				// Deliberately not cancellable: a push killed mid-ref-update is the one outcome that
 				// cannot be tidied up afterwards. Once it starts, it is allowed to resolve, and the
 				// stop is honoured at the top of the next repository.
-				var push = await CommitAndPushAsync(row, commitMessage, onOutput, CancellationToken.None).ConfigureAwait(false);
+				var push = await CommitAndPushAsync(row, commitMessage, onOutput, CancellationToken.None, verifyBuildFirst: false).ConfigureAwait(false);
 				phase = push.Success ? RepoApplyPhase.Pushed : RepoApplyPhase.Applied;
 				outcome.Results.Add(new RepoApplyResult
 				{
@@ -2290,8 +2314,7 @@ public class DashboardService
 					await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
 					onRepositoryFixed?.Invoke(row);
 
-					// Verify the build in the background; auto-revert if our change broke it.
-					_regressionGuard.Enqueue(row.RepositoryFullName);
+					// CommitAndPushAsync has queued the background verification, which reverts if our change broke it.
 					onOutput?.Invoke($"🛡️ Queued {row.RepositoryFullName} for build verification.");
 				}
 
