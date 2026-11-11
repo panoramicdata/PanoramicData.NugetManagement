@@ -2635,7 +2635,8 @@ public sealed partial class WorkExecutors(
 					output.Add(line);
 					Say(line);
 				},
-				cancellationToken).ConfigureAwait(false);
+				cancellationToken,
+				sandbox: item.Descriptor.Parameter("sandbox") == "true").ConfigureAwait(false);
 
 			var passed = row.Status == PackageStatus.TestsPassed;
 

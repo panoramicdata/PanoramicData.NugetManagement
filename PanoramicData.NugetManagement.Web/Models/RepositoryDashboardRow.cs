@@ -115,7 +115,15 @@ public class RepositoryDashboardRow
 	/// </summary>
 	[JsonIgnore]
 	public string? AutoExclusionReason
-		=> IsArchived ? "archived" : IsFork ? "fork" : null;
+		=> IsArchived || NameMarksArchived(RepositoryFullName) ? "archived" : IsFork ? "fork" : null;
+
+	/// <summary>
+	/// Whether the repository's name says it is archived, for repositories renamed to say so whether or not GitHub was told.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public static bool NameMarksArchived(string? repositoryFullName)
+		=> repositoryFullName?[(repositoryFullName.IndexOf('/', StringComparison.Ordinal) + 1)..]
+			.Contains("archived", StringComparison.OrdinalIgnoreCase) == true;
 
 	/// <summary>
 	/// The GitHub repository URL.

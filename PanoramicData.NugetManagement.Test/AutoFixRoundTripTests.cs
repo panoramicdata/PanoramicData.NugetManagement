@@ -299,6 +299,89 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 		reassessed.Passed.Should().BeTrue(reassessed.Message);
 	}
 
+	private const string _coverageStep =
+		"    - run: ./Widget.Test/bin/Debug/{0}/Widget.Test --coverage --coverage-output coverage.cobertura.xml\r\n"
+		+ "    # reports to bin/Debug/{0}/TestResults/coverage.cobertura.xml\r\n";
+
+	private RepositoryContext WorkflowRepoFromDisk(Dictionary<string, string> files)
+	{
+		foreach (var (path, content) in files)
+		{
+			WriteFile(path, content);
+		}
+
+		return new RepositoryContext
+		{
+			FullName = "panoramicdata/Sample",
+			Name = "Sample",
+			DefaultBranch = "main",
+			CurrentBranch = "main",
+			Options = new RepoOptions(),
+			FilePaths = [.. files.Keys],
+			FileContents = files.Keys.ToDictionary(path => path, path => File.ReadAllText(Path.Combine(_root, path)))
+		};
+	}
+
+	private static string Csproj(string frameworks)
+		=> $"<Project Sdk=\"Microsoft.NET.Sdk\">\r\n\t<PropertyGroup>\r\n\t\t<TargetFrameworks>{frameworks}</TargetFrameworks>\r\n\t</PropertyGroup>\r\n</Project>\r\n";
+
+	[Fact]
+	public async Task CI17_MovesAStaleFrameworkInAWorkflowPathToTheLatest_AndLeavesTheRestAlone()
+	{
+		// The coverage step ran bin/Debug/net10.0/... after the project moved to the new framework, so the
+		// test host was not found (exit 127) and the release run failed.
+		var latest = Standards.LatestTargetFramework;
+		var stale = "net" + (int.Parse(latest[3..latest.IndexOf('.', StringComparison.Ordinal)], System.Globalization.CultureInfo.InvariantCulture) - 1) + ".0";
+		var workflow = "jobs:\r\n  build:\r\n    steps:\r\n    - uses: actions/checkout@v7\r\n" + string.Format(System.Globalization.CultureInfo.InvariantCulture, _coverageStep, stale);
+		var context = WorkflowRepoFromDisk(new()
+		{
+			["Widget/Widget.csproj"] = Csproj(latest),
+			[_ciPath] = workflow
+		});
+
+		var result = await Rule("CI-17").EvaluateAsync(context, TestContext.Current.CancellationToken);
+		result.Passed.Should().BeFalse();
+
+		Apply(result);
+
+		var after = File.ReadAllText(Path.Combine(_root, _ciPath));
+		after.Should().NotContain(stale).And.Contain($"bin/Debug/{latest}/Widget.Test").And.Contain($"bin/Debug/{latest}/TestResults");
+		after.Should().Contain("actions/checkout@v7", "only the framework folder changes");
+
+		var reassessed = await Rule("CI-17").EvaluateAsync(
+			WorkflowRepoFromDisk(new() { ["Widget/Widget.csproj"] = Csproj(latest), [_ciPath] = after }),
+			TestContext.Current.CancellationToken);
+		reassessed.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task CI17_PassesWhileTheRepositoryIsStillOnTheOlderFramework()
+	{
+		var context = WorkflowRepoFromDisk(new()
+		{
+			["Widget/Widget.csproj"] = Csproj("net10.0"),
+			[_ciPath] = "jobs:\r\n  build:\r\n    steps:\r\n" + string.Format(System.Globalization.CultureInfo.InvariantCulture, _coverageStep, "net10.0")
+		});
+
+		var result = await Rule("CI-17").EvaluateAsync(context, TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeTrue("the paths match what the projects target, and TFM-01 moves both");
+	}
+
+	[Fact]
+	public async Task CI17_LeavesAPathAloneWhenTheRepositoryStillTargetsThatFramework()
+	{
+		var context = WorkflowRepoFromDisk(new()
+		{
+			["Widget/Widget.csproj"] = Csproj($"net10.0;{Standards.LatestTargetFramework}"),
+			[_ciPath] = "jobs:\r\n  build:\r\n    steps:\r\n" + string.Format(System.Globalization.CultureInfo.InvariantCulture, _coverageStep, "net10.0")
+		});
+
+		var result = await Rule("CI-17").EvaluateAsync(context, TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeTrue("a multi-targeted repository may deliberately run its tests on the older framework");
+	}
+
 	[Fact]
 	public async Task DOC01_DocumentsOnlyTheNonTestProjectsNotTheWholeRepository()
 	{

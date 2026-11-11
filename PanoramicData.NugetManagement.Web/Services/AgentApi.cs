@@ -125,6 +125,29 @@ public static class AgentApi
 			_ => null
 		};
 
+	/// <summary>
+	/// Why a repository is outside governance, or null when it is governed. Archived and fork repositories are
+	/// excluded automatically, and anyone can exclude one by hand.
+	/// </summary>
+	/// <param name="row">The repository.</param>
+	/// <param name="userExcluded">Whether someone excluded it by hand.</param>
+	internal static string? ExclusionReason(RepositoryDashboardRow row, bool userExcluded)
+		=> row.AutoExclusionReason ?? (userExcluded ? "excluded by a person" : null);
+
+	/// <summary>
+	/// The parameters an agent-queued item carries. A test run is sandboxed: the developer's credentials would
+	/// make live vendor calls and print keys, and CI's environment is the one the tests must pass in.
+	/// </summary>
+	/// <param name="kind">The kind of work.</param>
+	/// <param name="ruleId">The rule, for a rule fix.</param>
+	internal static (string, string)[] QueueParameters(WorkKind kind, string? ruleId)
+		=> kind switch
+		{
+			WorkKind.FixRule => [("ruleId", ruleId!.ToUpperInvariant())],
+			WorkKind.Test => [("sandbox", "true")],
+			_ => []
+		};
+
 	private static string? PublishRefusal(RepositoryDashboardRow row, bool confirm)
 	{
 		if (!confirm)
@@ -187,7 +210,9 @@ public static class AgentApi
 			RuntimeSettingsService settings,
 			GitHubTokenProvider gitHub) =>
 		{
-			var rows = cache.GetCachedRows() ?? [];
+			var rows = (cache.GetCachedRows() ?? [])
+				.Where(r => ExclusionReason(r, settings.IsRepositoryExcluded(r.RepositoryFullName)) is null)
+				.ToList();
 			var items = lanes.Lanes.SelectMany(lane => lane.Items).ToList();
 
 			return Results.Json(new
@@ -205,12 +230,13 @@ public static class AgentApi
 			});
 		});
 
-		group.MapGet("/repos", (DashboardCacheService cache, string? q, bool? cloned, string? failing) =>
+		group.MapGet("/repos", (DashboardCacheService cache, RuntimeSettingsService settings, string? q, bool? cloned, string? failing, bool? includeExcluded) =>
 		{
 			var rows = (cache.GetCachedRows() ?? [])
 				.Where(r => string.IsNullOrWhiteSpace(q)
 					|| r.RepositoryFullName.Contains(q, StringComparison.OrdinalIgnoreCase))
 				.Where(r => cloned is null || r.IsClonedLocally == cloned)
+				.Where(r => includeExcluded == true || ExclusionReason(r, settings.IsRepositoryExcluded(r.RepositoryFullName)) is null)
 				.Where(r => string.IsNullOrWhiteSpace(failing)
 					|| r.Assessment?.RuleResults.Any(x => !x.Passed
 						&& string.Equals(x.RuleId, failing, StringComparison.OrdinalIgnoreCase)) == true)
@@ -218,6 +244,7 @@ public static class AgentApi
 				.Select(r => new
 				{
 					repository = r.RepositoryFullName,
+					excluded = ExclusionReason(r, settings.IsRepositoryExcluded(r.RepositoryFullName)),
 					cloned = r.IsClonedLocally,
 					status = r.Status.ToString(),
 					failing = FailingRuleIds(r),
@@ -334,6 +361,7 @@ public static class AgentApi
 			DashboardCacheService cache,
 			WorkLaneService lanes,
 			WorkFanOut fanOut,
+			RuntimeSettingsService settings,
 			Remediations.RemediationRegistry remediationRegistry) =>
 		{
 			// Everything queued here is the agent API's doing, and the ledger says so.
@@ -342,6 +370,13 @@ public static class AgentApi
 			if (string.IsNullOrWhiteSpace(request.Repository) || cache.GetRow(request.Repository) is not { } row)
 			{
 				return Results.Json(new { error = "no such repository" }, statusCode: StatusCodes.Status404NotFound);
+			}
+
+			if (ExclusionReason(row, settings.IsRepositoryExcluded(row.RepositoryFullName)) is { } excludedBecause)
+			{
+				return Results.Json(
+					new { error = $"refused: {row.RepositoryFullName} is excluded from governance ({excludedBecause})" },
+					statusCode: StatusCodes.Status409Conflict);
 			}
 
 			if (string.Equals(request.Kind, "ai-fix", StringComparison.OrdinalIgnoreCase))
@@ -414,9 +449,7 @@ public static class AgentApi
 				return Results.Json(new { error = "fix-rule needs ruleId" }, statusCode: StatusCodes.Status400BadRequest);
 			}
 
-			var parameters = kind == WorkKind.FixRule
-				? new[] { ("ruleId", request.RuleId!.ToUpperInvariant()) }
-				: [];
+			var parameters = QueueParameters(kind, request.RuleId);
 
 			var item = lanes.Enqueue(
 				$"{kind} {row.RepositoryFullName}",
