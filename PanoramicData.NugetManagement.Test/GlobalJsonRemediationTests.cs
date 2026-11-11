@@ -2,6 +2,8 @@
 using PanoramicData.NugetManagement.Rules;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Remediations.Versioning;
+using PanoramicData.NugetManagement.Web.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PanoramicData.NugetManagement.Test;
 
@@ -13,6 +15,9 @@ namespace PanoramicData.NugetManagement.Test;
 /// </summary>
 public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutput(output)
 {
+	// A pin one feature band above the floor, in whichever channel the standard currently follows.
+	private static readonly string _aboveFloor = Standards.DotNetSdkPinVersion.Replace(".100", ".400", StringComparison.Ordinal);
+
 	private const string _xunitV3 =
 		"<Project><ItemGroup><PackageReference Include=\"xunit.v3\" Version=\"4.0.0\" /></ItemGroup></Project>";
 
@@ -67,11 +72,11 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 		// one on the floor, and telling it to move down is nonsense — rollForward never rolls down.
 		var context = CreateContext(
 			testProject: _xunitV3,
-			globalJson: """{"sdk":{"version":"10.0.400","rollForward":"latestMinor"}}""");
+			globalJson: """{"sdk":{"version":"__FLOOR__","rollForward":"latestMinor"}}""".Replace("__FLOOR__", _aboveFloor));
 
 		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
 
-		result.Passed.Should().BeTrue("10.0.400 is above the 10.0.100 floor");
+		result.Passed.Should().BeTrue($"{_aboveFloor} is above the {Standards.DotNetSdkPinVersion} floor");
 	}
 
 	[Fact]
@@ -140,13 +145,13 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 		// is added. Rewriting the version would move it down a band for no reason.
 		var context = CreateContext(
 			testProject: _xunitV3,
-			globalJson: """{"sdk":{"version":"10.0.400"}}""");
+			globalJson: """{"sdk":{"version":"__FLOOR__"}}""".Replace("__FLOOR__", _aboveFloor));
 
 		var result = await Rule("VER-03").EvaluateAsync(context, CancellationToken.None);
 
 		result.Passed.Should().BeFalse();
 		Properties(result).Should().ContainKey("sdk.rollForward");
-		Properties(result).Should().NotContainKey("sdk.version", "10.0.400 is already above the floor");
+		Properties(result).Should().NotContainKey("sdk.version", $"{_aboveFloor} is already above the floor");
 	}
 
 	[Fact]
@@ -178,7 +183,7 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 		// The repositories a remediation has already broken: the key is present, the tests are v2.
 		var context = CreateContext(
 			testProject: _xunitV2,
-			globalJson: """{"sdk":{"version":"10.0.400"},"test":{"runner":"Microsoft.Testing.Platform"}}""");
+			globalJson: """{"sdk":{"version":"__FLOOR__"},"test":{"runner":"Microsoft.Testing.Platform"}}""".Replace("__FLOOR__", _aboveFloor));
 
 		var result = await Rule("TST-06").EvaluateAsync(context, CancellationToken.None);
 
@@ -190,7 +195,7 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public async Task TST06_ShouldStayQuietForAVsTestRepositoryWithNoOptIn()
 	{
-		var context = CreateContext(testProject: _xunitV2, globalJson: """{"sdk":{"version":"10.0.400"}}""");
+		var context = CreateContext(testProject: _xunitV2, globalJson: """{"sdk":{"version":"__FLOOR__"}}""".Replace("__FLOOR__", _aboveFloor));
 
 		var result = await Rule("TST-06").EvaluateAsync(context, CancellationToken.None);
 
@@ -226,7 +231,7 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 	{
 		// End-to-end: the advisory now carries more than one property, and applying it must leave the
 		// rest of the file — and a version already above the floor — exactly as it was.
-		const string globalJson = """{"sdk":{"version":"10.0.400"},"msbuild-sdks":{"Contoso.Build":"1.2.3"}}""";
+		var globalJson = """{"sdk":{"version":"__FLOOR__"},"msbuild-sdks":{"Contoso.Build":"1.2.3"}}""".Replace("__FLOOR__", _aboveFloor);
 		var directory = Path.Combine(Path.GetTempPath(), "ver03-" + Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 
@@ -243,8 +248,55 @@ public class GlobalJsonRemediationTests(ITestOutputHelper output) : TestWithOutp
 
 			var updated = File.ReadAllText(Path.Combine(directory, "global.json"));
 			updated.Should().Contain(Standards.SdkRollForward);
-			updated.Should().Contain("10.0.400", "a version above the floor must not be moved down");
+			updated.Should().Contain(_aboveFloor, "a version above the floor must not be moved down");
 			updated.Should().Contain("Contoso.Build", "the rule has no opinion on the rest of the file");
+		}
+		finally
+		{
+			Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	[Fact]
+	public async Task VER03_Remediation_ShouldStillApplyAfterTheResultIsRoundTrippedThroughTheCache()
+	{
+		const string globalJson = """{"sdk":{"version":"9.0.100","rollForward":"latestMinor"}}""";
+		var directory = Path.Combine(Path.GetTempPath(), "ver03-cache-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+
+		try
+		{
+			File.WriteAllText(Path.Combine(directory, "global.json"), globalJson);
+			var result = await Rule("VER-03").EvaluateAsync(
+				CreateContext(testProject: _xunitV3, globalJson: globalJson),
+				CancellationToken.None);
+			result.Passed.Should().BeFalse("the pin is below the current floor");
+
+			var cachePath = Path.Combine(directory, "dashboard-cache.json");
+			var writer = new DashboardCacheService(NullLogger<DashboardCacheService>.Instance, cachePath);
+			writer.Update([new()
+			{
+				RepositoryFullName = "panoramicdata/Sample",
+				Assessment = new RepoAssessment
+				{
+					RepositoryFullName = "panoramicdata/Sample",
+					DefaultBranch = "main",
+					AssessedAtUtc = DateTimeOffset.UtcNow,
+					RuleResults = [result]
+				}
+			}]);
+			writer.NotifyRowUpdated();
+
+			var reloaded = new DashboardCacheService(NullLogger<DashboardCacheService>.Instance, cachePath)
+				.GetCachedRows()!.Single().Assessment!.RuleResults.Single();
+
+			var remediation = new GlobalJsonRemediation();
+			remediation.CanRemediate(reloaded).Should().BeTrue();
+			var applied = new List<string>();
+			remediation.Apply(directory, reloaded, applied, null);
+
+			applied.Should().NotBeEmpty("a fix that applied nothing is not a fix");
+			File.ReadAllText(Path.Combine(directory, "global.json")).Should().Contain(Standards.DotNetSdkPinVersion);
 		}
 		finally
 		{

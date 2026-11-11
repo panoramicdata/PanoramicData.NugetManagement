@@ -223,7 +223,7 @@ public abstract class DataDrivenRemediation : IRemediation
 				// are actually wrong, leaving the rest of the file — and any already-conformant value —
 				// untouched.
 				if (data.TryGetValue("file", out var jpsFile) && jpsFile is string jpsf &&
-					data["properties"] is Dictionary<string, string> jpsProperties)
+					ReadStringMap(data["properties"]) is { Count: > 0 } jpsProperties)
 				{
 					foreach (var (jpsPath, jpsValue) in jpsProperties)
 					{
@@ -355,8 +355,10 @@ public abstract class DataDrivenRemediation : IRemediation
 	/// <param name="remediationType">The remediation type the advisory named.</param>
 	/// <returns>Whether the data is complete enough to act on.</returns>
 	protected virtual bool HasRequiredData(Dictionary<string, object> data, string remediationType)
-		=> !_requiredData.TryGetValue(remediationType, out var requirements)
-			|| requirements.All(alternatives => alternatives.Any(data.ContainsKey));
+		=> (!_requiredData.TryGetValue(remediationType, out var requirements)
+			|| requirements.All(alternatives => alternatives.Any(data.ContainsKey)))
+			&& (remediationType != "ensure_json_properties"
+				|| (data.TryGetValue("properties", out var properties) && ReadStringMap(properties).Count > 0));
 
 	/// <summary>
 	/// Reads the strings held under the first of <paramref name="keys"/> that is present, accepting a
@@ -404,4 +406,24 @@ public abstract class DataDrivenRemediation : IRemediation
 
 		return [];
 	}
+
+	/// <summary>
+	/// Reads a string-to-string map in any shape an advisory has been seen in: the rule's own
+	/// dictionary, the object dictionary the row cache reads it back as, or a <see cref="JsonElement"/>.
+	/// Anything else is empty, which the caller must treat as no work, never as success.
+	/// </summary>
+	/// <param name="value">The advisory value.</param>
+	/// <returns>The map, or an empty one.</returns>
+	protected static Dictionary<string, string> ReadStringMap(object? value) => value switch
+	{
+		Dictionary<string, string> map => map,
+		Dictionary<string, object> objects => objects
+			.Where(pair => pair.Value is string)
+			.ToDictionary(pair => pair.Key, pair => (string)pair.Value),
+		JsonElement { ValueKind: JsonValueKind.Object } element => element
+			.EnumerateObject()
+			.Where(property => property.Value.ValueKind == JsonValueKind.String)
+			.ToDictionary(property => property.Name, property => property.Value.GetString()!),
+		_ => []
+	};
 }

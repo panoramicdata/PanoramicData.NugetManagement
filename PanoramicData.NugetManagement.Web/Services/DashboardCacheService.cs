@@ -547,6 +547,15 @@ public class DashboardCacheService
 
 					writer.WriteEndObject();
 					break;
+				case Dictionary<string, string> strings:
+					writer.WriteStartObject();
+					foreach (var (k, v) in strings)
+					{
+						writer.WriteString(k, v);
+					}
+
+					writer.WriteEndObject();
+					break;
 				default:
 					writer.WriteStringValue(val.ToString());
 					break;
