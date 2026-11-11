@@ -131,5 +131,40 @@ public class CoverageSettingsPathEditorTests
 	public void ShouldReturnNull_WhenThereIsNothingToChange()
 		=> CoverageSettingsPathEditor.MakeAbsolute("jobs:\n  t:\n    steps:\n    - run: echo hi\n").Should().BeNull();
 
+	private const string _fromOutputDirectory = """
+		jobs:
+		  coverage:
+		    steps:
+		    - name: Run tests with coverage
+		      working-directory: Acme.Tests/bin/Debug/net11.0
+		      run: >-
+		        ./Acme.Tests
+		        --coverage
+		        --coverage-settings ../../../../coverage.config
+		""";
+
+	[Fact]
+	public void ShouldResolveARelativePathAgainstTheStepsWorkingDirectory()
+		=> CoverageSettingsPathEditor.MakeAbsolute(_fromOutputDirectory)!
+			.Should().Contain("--coverage-settings ${{ github.workspace }}/coverage.config");
+
+	[Fact]
+	public void ShouldRepairAPathAnEarlierRunPrefixedWithTheWorkspaceWithoutResolving()
+		=> CoverageSettingsPathEditor.MakeAbsolute(_fromOutputDirectory.Replace("../../../../coverage.config", "${{ github.workspace }}/../../../../coverage.config"))!
+			.Should().Contain("--coverage-settings ${{ github.workspace }}/coverage.config")
+			.And.NotContain("workspace }}/../");
+
+	[Fact]
+	public void ShouldLeaveAPathThatClimbsOutOfTheRepositoryAlone()
+		=> CoverageSettingsPathEditor.MakeAbsolute(_fromOutputDirectory.Replace("../../../../coverage.config", "../../../../../../coverage.config")).Should().BeNull();
+
+	[Fact]
+	public void ShouldNotMistakeAnotherStepsWorkingDirectoryForThisOnes()
+	{
+		var workflow = _fromOutputDirectory.Replace("    - name: Run tests", "    - name: Build\n      working-directory: elsewhere\n      run: dotnet build\n    - name: Cover\n      run: ./Acme.Tests --coverage-settings cov.config\n    - name: Run tests");
+
+		CoverageSettingsPathEditor.MakeAbsolute(workflow)!.Should().Contain("--coverage-settings ${{ github.workspace }}/cov.config");
+	}
+
 	private static string Normalise(string text) => text.Replace("\r\n", "\n");
 }

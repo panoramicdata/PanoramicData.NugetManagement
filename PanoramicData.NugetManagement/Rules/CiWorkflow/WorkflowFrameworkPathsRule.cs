@@ -29,7 +29,7 @@ public partial class WorkflowFrameworkPathsRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
-		var targeted = TargetedFrameworks(context);
+		var targeted = ProjectFrameworks.Targeted(context);
 		var latest = Standards.LatestTargetFramework;
 
 		// Until the repository is on the latest framework its paths are right as they are: TFM-01 moves the
@@ -81,23 +81,4 @@ public partial class WorkflowFrameworkPathsRule : RuleBase
 	private static bool IsWorkflow(string path)
 		=> path.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase)
 			&& (path.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase));
-
-	private static HashSet<string> TargetedFrameworks(RepositoryContext context)
-	{
-		var targeted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-		foreach (var csproj in context.FindFiles(".csproj"))
-		{
-			var content = context.GetFileContent(csproj);
-			foreach (var property in new[] { "TargetFramework", "TargetFrameworks" })
-			{
-				foreach (var value in MsBuildProperties.TryGetValues(content, property) ?? [])
-				{
-					targeted.UnionWith(value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-				}
-			}
-		}
-
-		return targeted;
-	}
 }

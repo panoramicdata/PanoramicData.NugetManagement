@@ -3628,7 +3628,7 @@ else
 																	title="Copy AI prompt for this rule"><i class="fas fa-magic"></i> AI only</button>
 													}
 												</div>
-												<div class="issue-message">@result.Message</div>
+												<div class="issue-message"><LinkifiedText Text="@result.Message" /></div>
 												@if (result.Advisory is not null)
 												{
 													<div class="issue-advisory">
@@ -3705,7 +3705,7 @@ else
 												disabled="@(!IsFixEnabled())" title="@GetFixSingleTooltip()"><i class="fas fa-wrench"></i></button>
 								}
 							</div>
-							<div class="issue-message">@result.Message</div>
+							<div class="issue-message"><LinkifiedText Text="@result.Message" /></div>
 							@if (result.Advisory is not null)
 							{
 								<div class="issue-advisory">
@@ -3818,7 +3818,7 @@ else
 						}
 					}
 				</div>
-				<div class="issue-message" style="margin-top: 0.75rem; font-size: 0.9rem;">@result.Message</div>
+				<div class="issue-message" style="margin-top: 0.75rem; font-size: 0.9rem;"><LinkifiedText Text="@result.Message" /></div>
 				@if (result.Advisory is not null)
 				{
 					<div class="issue-advisory" style="margin-top: 0.75rem;">

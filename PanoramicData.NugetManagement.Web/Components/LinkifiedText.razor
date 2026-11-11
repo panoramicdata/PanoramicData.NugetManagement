@@ -1,0 +1,11 @@
+@foreach (var part in Split(Text))
+{
+	if (part.IsLink)
+	{
+		<a href="@part.Text" target="_blank" rel="noopener noreferrer">@part.Text</a>
+	}
+	else
+	{
+		@part.Text
+	}
+}

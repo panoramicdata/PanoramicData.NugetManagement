@@ -28,6 +28,19 @@ public class ReleaseRunSucceededTests(ITestOutputHelper output) : TestWithOutput
 	}
 
 	[Fact]
+	public async Task ShouldLinkToTheFailingRunInTheMessage()
+	{
+		var context = CreateContext(
+			latestTag: "2.196.75",
+			releaseRun: Run(ReleaseRunStatus.Completed, ReleaseRunConclusion.Failure));
+
+		var result = await Rule().EvaluateAsync(context, CancellationToken.None);
+
+		result.Message.Should().EndWith("/actions/runs/33757069381", "the page turns the address into a link to the run");
+		result.Advisory!.Data["run_url"].Should().Be(result.Message[(result.Message.LastIndexOf(' ') + 1)..]);
+	}
+
+	[Fact]
 	public async Task ShouldFail_WhenTheRunWasCancelled()
 	{
 		var context = CreateContext(

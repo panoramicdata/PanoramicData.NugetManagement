@@ -60,9 +60,12 @@ public class ReleaseRunSucceededRule : RuleBase, IFixedOutsideTheWorkingTree
 			? Pass($"Run {run.RunId} for tag {context.LatestTag} succeeded.")
 			: Fail(
 				$"The release run for tag {context.LatestTag} did not succeed: run {run.RunId} ended as "
-				+ $"{Describe(run.Conclusion)}.",
+				+ $"{Describe(run.Conclusion)}. {RunUrl(context, run)}",
 				CreateAdvisory(context, context.LatestTag, run)));
 	}
+
+	private static string RunUrl(RepositoryContext context, ReleaseRun run)
+		=> run.HtmlUrl ?? $"https://github.com/{context.FullName}/actions/runs/{run.RunId}";
 
 	private static RuleAdvisory CreateAdvisory(RepositoryContext context, string tag, ReleaseRun run)
 		=> new()
@@ -102,7 +105,7 @@ public class ReleaseRunSucceededRule : RuleBase, IFixedOutsideTheWorkingTree
 				["latest_tag"] = tag,
 				["run_id"] = run.RunId.ToString(),
 				["run_conclusion"] = Describe(run.Conclusion),
-				["run_url"] = run.HtmlUrl ?? $"https://github.com/{context.FullName}/actions/runs/{run.RunId}",
+				["run_url"] = RunUrl(context, run),
 				["repository"] = context.FullName
 			}
 		};

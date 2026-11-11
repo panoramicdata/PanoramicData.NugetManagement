@@ -382,6 +382,107 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 		result.Passed.Should().BeTrue("a multi-targeted repository may deliberately run its tests on the older framework");
 	}
 
+	private const string _codeQlPath = ".github/workflows/codeql.yml";
+
+	private static string FlowStyleWorkflow(string version)
+		=> $"jobs:\n  build:\n    steps:\n      - uses: actions/setup-dotnet@v6\n        with: {{ dotnet-version: '{version}' }}\n      - run: dotnet build\n";
+
+	[Fact]
+	public async Task CI06_RewritesAFlowStyleDotnetVersion()
+	{
+		// with: { dotnet-version: '10.0.x' } is one line, so it can be rewritten like any other scalar.
+		var fixedWorkflow = await FixAsync("CI-06", FlowStyleWorkflow("10.0.x"));
+
+		fixedWorkflow.Should().Contain($"{{ dotnet-version: '{Standards.LatestDotNetVersionSpecifier}' }}", "the braces and spacing are kept");
+		fixedWorkflow.Should().NotContain("10.0.x");
+	}
+
+	[Fact]
+	public async Task CI06_AlsoMovesACodeQlWorkflowThatBuildsTheSameProjects()
+	{
+		var latest = Standards.LatestDotNetVersionSpecifier;
+		var context = WorkflowRepoFromDisk(new()
+		{
+			["Widget/Widget.csproj"] = Csproj(Standards.LatestTargetFramework),
+			[_ciPath] = FlowStyleWorkflow(latest),
+			[_codeQlPath] = FlowStyleWorkflow("10.0.x")
+		});
+
+		var result = await Rule("CI-06").EvaluateAsync(context, TestContext.Current.CancellationToken);
+		result.Passed.Should().BeFalse("CodeQL on an older SDK cannot build the latest framework");
+
+		Apply(result);
+
+		var codeQl = File.ReadAllText(Path.Combine(_root, _codeQlPath));
+		codeQl.Should().Contain($"'{latest}'").And.NotContain("10.0.x");
+
+		var reassessed = await Rule("CI-06").EvaluateAsync(
+			WorkflowRepoFromDisk(new()
+			{
+				["Widget/Widget.csproj"] = Csproj(Standards.LatestTargetFramework),
+				[_ciPath] = File.ReadAllText(Path.Combine(_root, _ciPath)),
+				[_codeQlPath] = codeQl
+			}),
+			TestContext.Current.CancellationToken);
+		reassessed.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task CI06_MovesAnSdkVersionHeldInAnEnvironmentVariable()
+	{
+		// env: DOTNET_VERSION: 6.0.x with dotnet-version: ${{ env.DOTNET_VERSION }}, so global.json's SDK was never installed.
+		var latest = Standards.LatestDotNetVersionSpecifier;
+		var codeQl = "env:\n  DOTNET_VERSION: 6.0.x\njobs:\n  analyze:\n    steps:\n      - uses: actions/setup-dotnet@v6\n        with:\n          dotnet-version: ${{ env.DOTNET_VERSION }}\n";
+		var context = WorkflowRepoFromDisk(new()
+		{
+			["Widget/Widget.csproj"] = Csproj(Standards.LatestTargetFramework),
+			[_ciPath] = FlowStyleWorkflow(latest),
+			[_codeQlPath] = codeQl
+		});
+
+		var result = await Rule("CI-06").EvaluateAsync(context, TestContext.Current.CancellationToken);
+		result.Passed.Should().BeFalse();
+
+		Apply(result);
+
+		var after = File.ReadAllText(Path.Combine(_root, _codeQlPath)).Replace("\r\n", "\n", StringComparison.Ordinal);
+		after.Should().Contain($"DOTNET_VERSION: {latest}").And.NotContain("6.0.x");
+		after.Should().Contain("dotnet-version: ${{ env.DOTNET_VERSION }}", "the reference to the variable is not a version and stays");
+	}
+
+	[Fact]
+	public async Task CI06_KeepsATrailingCommentWhenItMovesAnSdkVersion()
+	{
+		var latest = Standards.LatestDotNetVersionSpecifier;
+		var publish = "env:\n  DOTNET_VERSION: '9.0.x'  # pinned\njobs:\n  publish:\n    steps:\n      - uses: actions/setup-dotnet@v6\n";
+		var context = WorkflowRepoFromDisk(new()
+		{
+			["Widget/Widget.csproj"] = Csproj(Standards.LatestTargetFramework),
+			[_ciPath] = FlowStyleWorkflow(latest),
+			[".github/workflows/publish-nuget.yml"] = publish
+		});
+
+		var result = await Rule("CI-06").EvaluateAsync(context, TestContext.Current.CancellationToken);
+		Apply(result);
+
+		File.ReadAllText(Path.Combine(_root, ".github/workflows/publish-nuget.yml")).Should().Contain($"DOTNET_VERSION: '{latest}'  # pinned");
+	}
+
+	[Fact]
+	public async Task CI06_LeavesAnOlderSdkInAnotherWorkflowWhenAProjectStillTargetsIt()
+	{
+		var context = WorkflowRepoFromDisk(new()
+		{
+			["Widget/Widget.csproj"] = Csproj($"net10.0;{Standards.LatestTargetFramework}"),
+			[_ciPath] = FlowStyleWorkflow(Standards.LatestDotNetVersionSpecifier),
+			[_codeQlPath] = FlowStyleWorkflow("10.0.x")
+		});
+
+		var result = await Rule("CI-06").EvaluateAsync(context, TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeTrue("a multi-targeted repository may build the older framework in CodeQL on purpose");
+	}
+
 	[Fact]
 	public async Task DOC01_DocumentsOnlyTheNonTestProjectsNotTheWholeRepository()
 	{
