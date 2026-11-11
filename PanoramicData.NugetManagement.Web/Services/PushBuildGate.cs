@@ -12,6 +12,11 @@ internal static class PushBuildGate
 {
 	private const int MaxErrorLines = 3;
 
+	// Dozens of MSBuilds at once starve each other's out-of-process task hosts (MSB4216), which refuses pushes that build fine alone.
+	internal const int MaxConcurrentBuilds = 3;
+
+	private static readonly SemaphoreSlim _builds = new(MaxConcurrentBuilds);
+
 	/// <summary>
 	/// Builds, and returns why the push must not happen, or null when it may.
 	/// </summary>
@@ -27,7 +32,18 @@ internal static class PushBuildGate
 
 		onOutput?.Invoke($"🔎 Verifying {repository} builds before pushing...");
 
-		var (success, output) = await build().ConfigureAwait(false);
+		bool success;
+		string? output;
+		await _builds.WaitAsync().ConfigureAwait(false);
+		try
+		{
+			(success, output) = await build().ConfigureAwait(false);
+		}
+		finally
+		{
+			_builds.Release();
+		}
+
 		if (success)
 		{
 			return null;

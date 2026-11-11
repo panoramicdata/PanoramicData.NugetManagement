@@ -26,6 +26,21 @@ public class LocalRepoServiceProcessStartTests
 		startInfo.Arguments.Should().BeEmpty();
 	}
 
+	[Theory]
+	[InlineData("dotnet", true)]
+	[InlineData("dotnet.exe", true)]
+	[InlineData("git", false)]
+	public void BuildProcessStartInfo_TurnsOffMsBuildNodeReuseForDotnetOnly(string fileName, bool expected)
+	{
+		var startInfo = LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", fileName, ["build"]);
+
+		startInfo.Environment.ContainsKey("MSBUILDDISABLENODEREUSE").Should().Be(expected);
+		if (expected)
+		{
+			startInfo.Environment["MSBUILDDISABLENODEREUSE"].Should().Be("1");
+		}
+	}
+
 	[Fact]
 	public void BuildProcessStartInfo_KeepsAnArgumentWithEmbeddedSpacesAndQuotesAsOneElement()
 	{

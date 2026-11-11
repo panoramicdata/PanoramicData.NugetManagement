@@ -39,6 +39,7 @@ public abstract class DataDrivenRemediation : IRemediation
 		["update_package_versions"] = [["updates"]],
 		["remove_packagereference_versions"] = [["projects"]],
 		["remove_packagereference"] = [["package_name"], ["projects"]],
+		["remove_packagereferences"] = [["removals"]],
 		["add_json_array_items"] = [["file"], ["array_property"], ["items"]],
 		["delete_file"] = [["file"]]
 	};
@@ -87,6 +88,7 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "update_package_versions"
 						or "remove_packagereference_versions"
 						or "remove_packagereference"
+						or "remove_packagereferences"
 						or "add_json_array_items"
 						or "delete_file";
 		}
@@ -330,6 +332,20 @@ public abstract class DataDrivenRemediation : IRemediation
 				if (data["package_name"] is string rpPkg && rpProjects.Length > 0)
 				{
 					RemediationHelpers.RemovePackageReference(localPath, rpPkg, rpProjects, result, applied, onOutput);
+				}
+
+				break;
+
+			case "remove_packagereferences":
+				// Each entry is "project|package": the pairs the rule proved are pruned, never a whole
+				// package across every project that mentions it.
+				foreach (var removal in ReadStrings(data, "removals"))
+				{
+					var parts = removal.Split('|', 2);
+					if (parts.Length == 2)
+					{
+						RemediationHelpers.RemovePackageReference(localPath, parts[1], [parts[0]], result, applied, onOutput);
+					}
 				}
 
 				break;

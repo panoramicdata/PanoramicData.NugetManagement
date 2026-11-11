@@ -1822,6 +1822,13 @@ public partial class LocalRepoService
 			startInfo.ArgumentList.Add(argument);
 		}
 
+		// Reused MSBuild nodes outlive each build for minutes, pile up by the hundreds across concurrent clones, and hand .NET 11's out-of-process task host to the wrong build (MSB4216).
+		if (string.Equals(Path.GetFileNameWithoutExtension(fileName), "dotnet", StringComparison.OrdinalIgnoreCase))
+		{
+			startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+			startInfo.Environment["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
+		}
+
 		// A null value removes the variable rather than blanking it: a credential set to the empty string
 		// is still a variable a test can find and choose to use.
 		foreach (var (name, value) in environment ?? new Dictionary<string, string?>())

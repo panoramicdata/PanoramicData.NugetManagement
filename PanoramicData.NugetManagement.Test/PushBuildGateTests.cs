@@ -43,6 +43,37 @@ public class PushBuildGateTests
 	}
 
 	[Fact]
+	public async Task RefusalAsync_NeverRunsMoreThanTheCapOfBuildsAtOnce()
+	{
+		var running = 0;
+		var peak = 0;
+
+		async Task<(bool, string)> Build()
+		{
+			var now = Interlocked.Increment(ref running);
+			InterlockedMax(ref peak, now);
+			await Task.Delay(50).ConfigureAwait(false);
+			Interlocked.Decrement(ref running);
+			return (true, string.Empty);
+		}
+
+		await Task.WhenAll(Enumerable.Range(0, 20).Select(i => PushBuildGate.RefusalAsync($"panoramicdata/Repo{i}", Build)));
+
+		peak.Should().BeLessThanOrEqualTo(PushBuildGate.MaxConcurrentBuilds);
+		peak.Should().BeGreaterThan(1, "the cap limits builds, it must not serialise them");
+	}
+
+	private static void InterlockedMax(ref int target, int value)
+	{
+		int seen;
+		do
+		{
+			seen = Volatile.Read(ref target);
+		}
+		while (value > seen && Interlocked.CompareExchange(ref target, value, seen) != seen);
+	}
+
+	[Fact]
 	public async Task RefusalAsync_ReportsProgress()
 	{
 		var lines = new List<string>();

@@ -180,9 +180,9 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "BootstrapBlazor": {
-    "latestVersion": "11.0.2",
-    "published": "2026-11-01T09:28:12.553+00:00",
-    "refreshedAtUtc": "2026-11-04T14:32:10.1068901+00:00"
+    "latestVersion": "11.1.0",
+    "published": "2026-11-11T00:39:06.897+00:00",
+    "refreshedAtUtc": "2026-11-11T01:00:53.846759+00:00"
   },
   "BootstrapBlazor.FontAwesome": {
     "latestVersion": "10.0.3",
@@ -1065,9 +1065,9 @@
     "refreshedAtUtc": "2026-11-10T17:07:36.7792766+00:00"
   },
   "Microsoft.Extensions.AI.OpenAI": {
-    "latestVersion": "10.11.0",
-    "published": "2026-10-14T05:55:52.67+01:00",
-    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
+    "latestVersion": "11.0.0",
+    "published": "2026-11-10T23:48:31.02+00:00",
+    "refreshedAtUtc": "2026-11-11T00:20:58.0195333+00:00"
   },
   "Microsoft.Extensions.Caching.Abstractions": {
     "latestVersion": "11.0.0",
@@ -1135,9 +1135,9 @@
     "refreshedAtUtc": "2026-11-10T17:07:36.7792766+00:00"
   },
   "Microsoft.Extensions.Diagnostics.Testing": {
-    "latestVersion": "10.11.0",
-    "published": "2026-10-14T06:00:32.35+01:00",
-    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
+    "latestVersion": "11.0.0",
+    "published": "2026-11-10T23:49:38.55+00:00",
+    "refreshedAtUtc": "2026-11-11T00:20:58.0195333+00:00"
   },
   "Microsoft.Extensions.FileProviders.Embedded": {
     "latestVersion": "11.0.0",
@@ -1175,9 +1175,9 @@
     "refreshedAtUtc": "2026-11-10T14:57:47.9582536+00:00"
   },
   "Microsoft.Extensions.Http.Resilience": {
-    "latestVersion": "10.11.0",
-    "published": "2026-10-14T06:01:06.6+01:00",
-    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
+    "latestVersion": "11.0.0",
+    "published": "2026-11-10T23:50:37.697+00:00",
+    "refreshedAtUtc": "2026-11-11T00:20:58.0195333+00:00"
   },
   "Microsoft.Extensions.Logging": {
     "latestVersion": "11.0.0",
@@ -1230,14 +1230,14 @@
     "refreshedAtUtc": "2026-11-10T14:57:47.9582536+00:00"
   },
   "Microsoft.Extensions.ServiceDiscovery": {
-    "latestVersion": "10.11.0",
-    "published": "2026-10-14T06:01:59.533+01:00",
-    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
+    "latestVersion": "11.0.0",
+    "published": "2026-11-10T23:48:53.143+00:00",
+    "refreshedAtUtc": "2026-11-11T00:20:58.0195333+00:00"
   },
   "Microsoft.Extensions.TimeProvider.Testing": {
-    "latestVersion": "10.11.0",
-    "published": "2026-10-14T06:03:25.907+01:00",
-    "refreshedAtUtc": "2026-10-14T10:26:24.6397989+00:00"
+    "latestVersion": "11.0.0",
+    "published": "2026-11-10T23:48:18.817+00:00",
+    "refreshedAtUtc": "2026-11-11T00:20:58.0195333+00:00"
   },
   "Microsoft.Extensions.WebEncoders": {
     "latestVersion": "11.0.0",
@@ -1585,19 +1585,19 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "NuGet.Common": {
-    "latestVersion": "7.9.0",
-    "published": "2026-08-11T17:55:02.267+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "8.0.0",
+    "published": "2026-11-10T22:43:43.3+00:00",
+    "refreshedAtUtc": "2026-11-11T00:20:58.0195333+00:00"
   },
   "NuGet.Packaging": {
-    "latestVersion": "7.9.0",
-    "published": "2026-08-11T17:55:18.723+01:00",
-    "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
+    "latestVersion": "8.0.0",
+    "published": "2026-11-10T22:43:59.503+00:00",
+    "refreshedAtUtc": "2026-11-11T00:20:58.0195333+00:00"
   },
   "NuGet.Protocol": {
-    "latestVersion": "7.9.0",
-    "published": "2026-08-11T17:55:22.85+01:00",
-    "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
+    "latestVersion": "8.0.0",
+    "published": "2026-11-10T22:44:03.277+00:00",
+    "refreshedAtUtc": "2026-11-11T00:20:58.0195333+00:00"
   },
   "NUnit": {
     "latestVersion": "5.0.0",
