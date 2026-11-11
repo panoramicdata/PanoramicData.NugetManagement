@@ -16,7 +16,7 @@ internal sealed class ProcessJob : IDisposable
 	private const int JobObjectExtendedLimitInformation = 9;
 	private const uint JobObjectLimitKillOnJobClose = 0x2000;
 
-	private readonly nint _handle;
+	private nint _handle;
 
 	private ProcessJob(nint handle) => _handle = handle;
 
@@ -50,7 +50,18 @@ internal sealed class ProcessJob : IDisposable
 	}
 
 	/// <inheritdoc />
-	public void Dispose() => CloseHandle(_handle);
+	/// <remarks>
+	/// Safe to call twice. Windows reuses handle numbers, so a second CloseHandle can close an unrelated live
+	/// handle and crash the process.
+	/// </remarks>
+	public void Dispose()
+	{
+		var handle = Interlocked.Exchange(ref _handle, nint.Zero);
+		if (handle != nint.Zero)
+		{
+			CloseHandle(handle);
+		}
+	}
 
 	[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 	[DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

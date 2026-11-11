@@ -185,9 +185,9 @@
     "refreshedAtUtc": "2026-11-11T01:00:53.846759+00:00"
   },
   "BootstrapBlazor.FontAwesome": {
-    "latestVersion": "10.0.3",
-    "published": "2026-07-22T09:17:34.7+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "11.0.0",
+    "published": "2026-11-11T01:31:35.4+00:00",
+    "refreshedAtUtc": "2026-11-11T02:14:14.2752861+00:00"
   },
   "BouncyCastle.Cryptography": {
     "latestVersion": "2.7.0",

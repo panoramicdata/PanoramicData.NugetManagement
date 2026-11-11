@@ -10,6 +10,28 @@ namespace PanoramicData.NugetManagement.Test;
 public class ProcessJobTests
 {
 	[Fact]
+	public void DisposingTwiceClosesTheHandleOnlyOnce()
+	{
+		if (!OperatingSystem.IsWindows())
+		{
+			return;
+		}
+
+		using var process = Process.Start(new ProcessStartInfo("cmd.exe", ["/c", "ping -n 4 127.0.0.1 >nul"]) { CreateNoWindow = true, UseShellExecute = false })!;
+		var job = ProcessJob.TryAssign(process);
+		job.Should().NotBeNull();
+
+		job!.Dispose();
+
+		// A reused handle number is what a second CloseHandle would hit; the probe below takes one.
+		using var probe = new ManualResetEvent(false);
+		job.Dispose();
+
+		probe.SafeWaitHandle.IsClosed.Should().BeFalse("a second dispose must not close another live handle");
+		process.WaitForExit();
+	}
+
+	[Fact]
 	public async Task ACommandThatExitsLeavingAGrandchildRunningHasItReaped()
 	{
 		// The grandchild is only tracked on Windows, where the job object exists.
