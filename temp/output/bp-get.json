@@ -1,0 +1,23 @@
+SUCCESS: Using Passbolt credentials for: systems
+Getting page: Development.Development Best Practices/WebHome
+SUCCESS: Page retrieved (version 4.1, syntax xwiki/2.1)
+{
+  "wiki": "xwiki",
+  "space": "Development.Development Best Practices",
+  "pageName": "WebHome",
+  "fullName": "Development.Development Best Practices.WebHome",
+  "title": "Development Best Practices",
+  "syntax": "xwiki/2.1",
+  "version": "4.1",
+  "majorVersion": 4,
+  "minorVersion": 1,
+  "author": "XWiki.elizabeth_whyman",
+  "modifier": "XWiki.elizabeth_whyman",
+  "modified": "2023-11-16T07:01:14.0000000Z",
+  "creator": "XWiki.david_bond",
+  "created": "2023-11-15T18:02:55.0000000Z",
+  "parent": "Development.WebHome",
+  "language": "",
+  "hidden": false,
+  "content": "{{box cssClass=\"floatinginfobox\" title=\"**On This Page**\"}}\n{{toc/}}\n\n**See Also:**\n\n* [[Coding with Visual Studio and C#>>doc:Staff Training.Office systems.Coding with Visual Studio and C#.WebHome]]\n{{/box}}\n\n= Summary =\n\n(% class=\"wikigeneratedid\" %)\nOur standards for development are:\n\n* Visual Studio Pro 17.8\n* .NET 8\n* C# 12\n\n= Visual Studio Pro =\n\nEmployee developers will be provided with a Visual Studio Pro licence, if you don't already have one.  Contractors should discuss with Dan which Visual Studio licence they need. Everyone should upgrade to 17.8 immediately and should generally be using this supported release for development work.\n\n= .NET 8 =\n\nAll projects currently on .NET 7 or below should generally be upgraded to .NET 8 for the **NEXT **build.\n\nExceptions:\n\n* not .NET Standard 2 libraries\n* not for ReportMagic 3.10, as it's too close to release\n* for CAE - not until Dan says so\n* when doing so for libraries (e.g. Blazor UI), this should be accompanied with a SEMVER major version update, as it can cause dependency issues\n\n= C# 12 =\n\nHaving updated the above, the default static code analysis will start encouraging you to use primary constructors and collection expressions etc.  No doubt this will cause you some anxiety.  My feelings so far:\n\n* Please use these new features for new code as appropriate\n* There is no requirement to refactor existing code to use these\n\n= Blazor enhancements =\n\nThere are lots of new enhancements to Blazor.  After updating to .NET 8, please don't change anything further until Dan has had a chance to formulate a strategy.\n\n= New projects =\n\n.NET 8 should be used for all new projects with the new Blazor Web App template where applicable.  Please discuss with Dan when doing so."
+}

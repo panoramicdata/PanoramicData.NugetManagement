@@ -1480,7 +1480,45 @@ public class DashboardService
 			return applied;
 		}
 
-		var failures = row.Assessment.RuleResults.Where(r => !r.Passed && r.Advisory is not null).ToList();
+		ApplyFailures(row, applied, onOutput, cancellationToken);
+
+		// A fix can change what else fails: moving a project to net11.0 makes the packages that framework
+		// supplies fail PKG-15. Those could only be applied by a second run, which the clean-tree gate
+		// refuses because the first run's edits are uncommitted. Follow on inside this one gate instead.
+		for (var pass = 1; pass <= MaxFollowOnPasses && applied.Count > 0; pass++)
+		{
+			var before = applied.Count;
+			onOutput?.Invoke("▶ Re-assessing the working tree for fixes the last change unlocked...");
+			await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+			ApplyFailures(row, applied, onOutput, cancellationToken);
+
+			if (applied.Count == before)
+			{
+				break;
+			}
+		}
+
+		if (applied.Count == 0)
+		{
+			onOutput?.Invoke("ℹ️ No auto-remediable issues found.");
+		}
+		else
+		{
+			onOutput?.Invoke($"✅ Applied {applied.Count} remediation(s).");
+		}
+
+		return applied;
+	}
+
+	private const int MaxFollowOnPasses = 3;
+
+	private void ApplyFailures(
+		RepositoryDashboardRow row,
+		List<string> applied,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		var failures = row.Assessment?.RuleResults.Where(r => !r.Passed && r.Advisory is not null).ToList() ?? [];
 
 		// Ensure REPO-06 (default branch) runs first and REPO-05 (Solution Items) runs last.
 		var ordered = failures
@@ -1495,19 +1533,8 @@ public class DashboardService
 		foreach (var failure in ordered)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			ApplySingleRemediation(row.LocalPath, failure, applied, onOutput);
+			ApplySingleRemediation(row.LocalPath!, failure, applied, onOutput);
 		}
-
-		if (applied.Count == 0)
-		{
-			onOutput?.Invoke("ℹ️ No auto-remediable issues found.");
-		}
-		else
-		{
-			onOutput?.Invoke($"✅ Applied {applied.Count} remediation(s).");
-		}
-
-		return applied;
 	}
 
 	/// <summary>

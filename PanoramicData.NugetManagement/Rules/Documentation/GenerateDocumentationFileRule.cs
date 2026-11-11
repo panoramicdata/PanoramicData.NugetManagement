@@ -53,13 +53,14 @@ public class GenerateDocumentationFileRule : RuleBase
 				$"The following projects do not have GenerateDocumentationFile enabled: {string.Join(", ", missing)}",
 				new RuleAdvisory
 				{
-					Summary = "Add `<GenerateDocumentationFile>true</GenerateDocumentationFile>` to Directory.Build.props or each non-test .csproj",
-					Detail = "Add `<GenerateDocumentationFile>true</GenerateDocumentationFile>` to a `<PropertyGroup>` in `Directory.Build.props` (preferred) or each listed project file.",
+					Summary = "Add `<GenerateDocumentationFile>true</GenerateDocumentationFile>` to each non-test .csproj listed",
+					Detail = "Add `<GenerateDocumentationFile>true</GenerateDocumentationFile>` to a `<PropertyGroup>` in each listed project file. Do not put it in `Directory.Build.props` unless the test projects are documented too, because it would apply to them and their missing doc comments fail the build under TreatWarningsAsErrors.",
 					Data = new()
 					{
 						["projects_missing"] = missing.ToArray(),
-						["remediation_type"] = "ensure_xml_property",
-						["file"] = "Directory.Build.props",
+						// Only the projects this rule inspects: Directory.Build.props would also reach test projects, whose missing doc comments then fail the build under TreatWarningsAsErrors.
+						["remediation_type"] = "ensure_csproj_property",
+						["projects"] = missing.ToArray(),
 						["property_name"] = "GenerateDocumentationFile",
 						["property_value"] = "true"
 					}

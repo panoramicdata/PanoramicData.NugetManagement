@@ -154,7 +154,14 @@ public abstract class DataDrivenRemediation : IRemediation
 				{
 					foreach (var proj in ReadStrings(data, "file", "projects"))
 					{
-						RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
+						if (cpn == "TargetFramework")
+						{
+							RemediationHelpers.EnsureTargetFramework(localPath, proj, cpv, result, applied, onOutput);
+						}
+						else
+						{
+							RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
+						}
 					}
 				}
 

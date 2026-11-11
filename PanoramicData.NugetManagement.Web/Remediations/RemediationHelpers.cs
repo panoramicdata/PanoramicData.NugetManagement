@@ -60,6 +60,82 @@ internal static partial class RemediationHelpers
 	}
 
 	/// <summary>
+	/// Moves a project to the target framework. A project that lists TargetFrameworks has that list rewritten,
+	/// because MSBuild ignores a singular TargetFramework beside it; any other project gets the singular property.
+	/// </summary>
+	public static void EnsureTargetFramework(
+		string localPath,
+		string relativePath,
+		string latest,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, relativePath);
+		XDocument? doc = null;
+		if (File.Exists(fullPath))
+		{
+			try
+			{
+				doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+			}
+			catch (Exception ex)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {relativePath}: {ex.Message}");
+				return;
+			}
+		}
+
+		var lists = doc?.Descendants("TargetFrameworks").ToList() ?? [];
+		if (doc is null || lists.Count == 0)
+		{
+			EnsureXmlProperty(localPath, relativePath, "TargetFramework", latest, result, applied, onOutput);
+			return;
+		}
+
+		var latestMajor = 0;
+		var isMajorMoniker = latest.StartsWith("net", StringComparison.Ordinal) && latest.EndsWith(".0", StringComparison.Ordinal)
+			&& int.TryParse(latest[3..^2], System.Globalization.CultureInfo.InvariantCulture, out latestMajor);
+		var previous = isMajorMoniker ? $"net{latestMajor - 1}.0" : null;
+		var changed = false;
+
+		foreach (var list in lists)
+		{
+			var entries = list.Value
+				.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.Select(entry => previous is not null && string.Equals(entry, previous, StringComparison.OrdinalIgnoreCase) ? latest : entry)
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			if (!entries.Contains(latest, StringComparer.OrdinalIgnoreCase))
+			{
+				entries.Add(latest);
+			}
+
+			var joined = string.Join(';', entries);
+			if (joined != list.Value)
+			{
+				list.Value = joined;
+				changed = true;
+			}
+		}
+
+		foreach (var single in doc.Descendants("TargetFramework").Where(e => previous is not null && string.Equals(e.Value.Trim(), previous, StringComparison.OrdinalIgnoreCase)))
+		{
+			single.Value = latest;
+			changed = true;
+		}
+
+		if (!changed)
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already targets {latest} — skipping.");
+			return;
+		}
+
+		doc.Save(fullPath);
+		applied.Add(relativePath);
+		onOutput?.Invoke($"✅ [{result.RuleId}] Updated <TargetFrameworks> to include {latest} in {relativePath}");
+	}
+	/// <summary>
 	/// Ensures an XML property exists in a .props or .csproj file.
 	/// Creates the file if it doesn't exist.
 	/// </summary>

@@ -805,9 +805,9 @@
     "refreshedAtUtc": "2026-11-10T17:07:36.7792766+00:00"
   },
   "Microsoft.AspNetCore.Components.WebView.WindowsForms": {
-    "latestVersion": "11.0.0",
-    "published": "2026-11-10T17:57:33.82+00:00",
-    "refreshedAtUtc": "2026-11-10T22:43:02.4168854+00:00"
+    "latestVersion": "11.0.10",
+    "published": "2026-11-11T12:00:09.683+00:00",
+    "refreshedAtUtc": "2026-11-11T12:23:08.2171704+00:00"
   },
   "Microsoft.AspNetCore.DataProtection": {
     "latestVersion": "11.0.0",
@@ -970,14 +970,14 @@
     "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
   },
   "Microsoft.Build.Framework": {
-    "latestVersion": "18.11.0",
-    "published": "2026-10-13T16:59:46.227+01:00",
-    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
+    "latestVersion": "18.12.2",
+    "published": "2026-11-11T10:53:10.08+00:00",
+    "refreshedAtUtc": "2026-11-11T11:49:23.3866819+00:00"
   },
   "Microsoft.Build.Utilities.Core": {
-    "latestVersion": "18.11.0",
-    "published": "2026-10-13T17:00:40.177+01:00",
-    "refreshedAtUtc": "2026-10-13T21:39:23.0156352+00:00"
+    "latestVersion": "18.12.2",
+    "published": "2026-11-11T10:53:16.233+00:00",
+    "refreshedAtUtc": "2026-11-11T11:49:23.3866819+00:00"
   },
   "Microsoft.CodeAnalysis.Analyzers": {
     "latestVersion": "5.9.0",
@@ -1280,9 +1280,9 @@
     "refreshedAtUtc": "2026-11-04T14:32:10.1068901+00:00"
   },
   "Microsoft.ML": {
-    "latestVersion": "5.0.1",
-    "published": "2026-10-15T09:05:00.377+01:00",
-    "refreshedAtUtc": "2026-10-15T10:47:38.8465109+00:00"
+    "latestVersion": "6.0.0",
+    "published": "2026-11-11T10:58:12.24+00:00",
+    "refreshedAtUtc": "2026-11-11T11:49:23.3866819+00:00"
   },
   "Microsoft.Net.Compilers.Toolset": {
     "latestVersion": "5.9.0",
@@ -1625,14 +1625,14 @@
     "refreshedAtUtc": "2026-11-08T22:35:19.3018513+00:00"
   },
   "OpenTelemetry.Exporter.OpenTelemetryProtocol": {
-    "latestVersion": "1.20.1",
-    "published": "2026-10-20T12:41:08.563+01:00",
-    "refreshedAtUtc": "2026-10-20T15:49:47.6648237+00:00"
+    "latestVersion": "1.21.0",
+    "published": "2026-11-11T11:29:03.323+00:00",
+    "refreshedAtUtc": "2026-11-11T11:49:23.3866819+00:00"
   },
   "OpenTelemetry.Extensions.Hosting": {
-    "latestVersion": "1.20.1",
-    "published": "2026-10-20T12:41:09.073+01:00",
-    "refreshedAtUtc": "2026-10-20T15:49:47.6648237+00:00"
+    "latestVersion": "1.21.0",
+    "published": "2026-11-11T11:29:04.76+00:00",
+    "refreshedAtUtc": "2026-11-11T11:49:23.3866819+00:00"
   },
   "OpenTelemetry.Instrumentation.AspNetCore": {
     "latestVersion": "1.20.2",
@@ -1650,9 +1650,9 @@
     "refreshedAtUtc": "2026-10-21T09:49:47.6625658+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.567",
-    "published": "2026-11-10T06:59:53.487+00:00",
-    "refreshedAtUtc": "2026-11-10T08:57:47.9682022+00:00"
+    "latestVersion": "10.0.580",
+    "published": "2026-11-11T09:42:11.977+00:00",
+    "refreshedAtUtc": "2026-11-11T11:49:23.3866819+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.42",

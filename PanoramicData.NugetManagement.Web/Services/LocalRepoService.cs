@@ -1245,10 +1245,12 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
-	/// Whether a build failed only because no restore had run (NETSDK1004: no project.assets.json).
+	/// Whether a build failed only because the restore is absent (NETSDK1004) or for another framework
+	/// (NETSDK1005, what a retarget leaves behind).
 	/// </summary>
-	private static bool IsMissingRestoreFailure(string output)
-		=> output.Contains("NETSDK1004", StringComparison.Ordinal);
+	internal static bool IsMissingRestoreFailure(string output)
+		=> output.Contains("NETSDK1004", StringComparison.Ordinal)
+			|| output.Contains("NETSDK1005", StringComparison.Ordinal);
 
 	/// <summary>
 	/// Runs a full dotnet build (with restore) on the repository. Used by the regression guard so a
@@ -1800,6 +1802,17 @@ public partial class LocalRepoService
 	/// "-" that would otherwise be re-split into extra arguments or mistaken for a flag by the child
 	/// process; ArgumentList passes each token through untouched (Codacy SEC-01: CommandInjection).
 	/// </remarks>
+	private static readonly string[] _inheritedSdkVariables =
+	[
+		"MSBUILD_EXE_PATH",
+		"MSBuildExtensionsPath",
+		"MSBuildSDKsPath",
+		"DOTNET_HOST_PATH",
+		"DOTNET_MSBUILD_SDK_RESOLVER_CLI_DIR",
+		"DOTNET_MSBUILD_SDK_RESOLVER_SDKS_DIR",
+		"DOTNET_MSBUILD_SDK_RESOLVER_SDKS_VER"
+	];
+
 	internal static ProcessStartInfo BuildProcessStartInfo(
 		string workingDirectory,
 		string fileName,
@@ -1827,6 +1840,13 @@ public partial class LocalRepoService
 		{
 			startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 			startInfo.Environment["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
+
+			// `dotnet run` exports its own SDK's MSBuild paths. A repo whose global.json selects a different SDK
+			// then runs a mix of two, and fails with MSB4216/MSB4242 on a repo that builds fine from a shell.
+			foreach (var inherited in _inheritedSdkVariables)
+			{
+				startInfo.Environment.Remove(inherited);
+			}
 		}
 
 		// A null value removes the variable rather than blanking it: a credential set to the empty string

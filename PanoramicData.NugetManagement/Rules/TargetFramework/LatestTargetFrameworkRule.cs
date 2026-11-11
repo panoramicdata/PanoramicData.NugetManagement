@@ -45,7 +45,7 @@ public class LatestTargetFrameworkRule : RuleBase
 				continue;
 			}
 
-			if (!HasMsBuildProperty(content, "TargetFramework", Standards.LatestTargetFramework))
+			if (!TargetsLatest(content))
 			{
 				outdated.Add(csproj);
 			}
@@ -72,5 +72,18 @@ public class LatestTargetFrameworkRule : RuleBase
 						["property_value"] = Standards.LatestTargetFramework
 					}
 				}));
+	}
+
+	/// <summary>
+	/// A project that declares TargetFrameworks is judged by that list, because MSBuild ignores a singular
+	/// TargetFramework beside it: counting the singular one passed projects that were still on the old framework.
+	/// </summary>
+	private static bool TargetsLatest(string content)
+	{
+		var lists = MsBuildProperties.TryGetValues(content, "TargetFrameworks");
+		return lists is { Count: > 0 }
+			? lists.All(list => list.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.Contains(Standards.LatestTargetFramework, StringComparer.OrdinalIgnoreCase))
+			: HasMsBuildProperty(content, "TargetFramework", Standards.LatestTargetFramework);
 	}
 }

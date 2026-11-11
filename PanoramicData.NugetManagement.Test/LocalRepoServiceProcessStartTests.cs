@@ -42,6 +42,33 @@ public class LocalRepoServiceProcessStartTests
 	}
 
 	[Fact]
+	public void BuildProcessStartInfo_DropsTheSdkPathsDotnetRunExportsSoTheRepositoryPicksItsOwnSdk()
+	{
+		const string name = "MSBUILD_EXE_PATH";
+		var original = Environment.GetEnvironmentVariable(name);
+		Environment.SetEnvironmentVariable(name, @"C:\sdk\11.0.100\MSBuild.dll");
+
+		try
+		{
+			LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", "dotnet", ["build"])
+				.Environment.ContainsKey(name).Should().BeFalse("an inherited SDK path mixes two SDKs in one build");
+			LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", "git", ["status"])
+				.Environment.ContainsKey(name).Should().BeTrue("only dotnet children are cleaned; git is left alone");
+		}
+		finally
+		{
+			Environment.SetEnvironmentVariable(name, original);
+		}
+	}
+
+	[Theory]
+	[InlineData("error NETSDK1004: Assets file 'obj/project.assets.json' not found.", true)]
+	[InlineData("error NETSDK1005: Assets file 'obj/project.assets.json' doesn't have a target for 'net11.0'.", true)]
+	[InlineData("error CS0103: The name 'x' does not exist in the current context", false)]
+	public void IsMissingRestoreFailure_RecognisesAMissingOrWrongFrameworkRestore(string output, bool expected)
+		=> LocalRepoService.IsMissingRestoreFailure(output).Should().Be(expected);
+
+	[Fact]
 	public void BuildProcessStartInfo_KeepsAnArgumentWithEmbeddedSpacesAndQuotesAsOneElement()
 	{
 		var startInfo = LocalRepoService.BuildProcessStartInfo(

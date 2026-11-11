@@ -180,7 +180,7 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 	public async Task DotNetUpgrade_MovesAProjectGlobalJsonAndCiInOneFix_WhateverTheLineEndings()
 	{
 		const string csprojPath = "Src/Widget/Widget.csproj";
-		var csproj = "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n\t<PropertyGroup>\r\n\t\t<TargetFramework>net10.0</TargetFramework>\r\n\t</PropertyGroup>\r\n</Project>\r\n";
+		var csproj = "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n\t<PropertyGroup>\r\n\t\t<TargetFramework>net10.0</TargetFramework>\r\n\t</PropertyGroup>\r\n\t<ItemGroup>\r\n\t\t<PackageReference Include=\"Microsoft.Extensions.Logging.Abstractions\" Version=\"11.0.0\" />\r\n\t\t<PackageReference Include=\"Refit\" Version=\"16.4.0\" />\r\n\t</ItemGroup>\r\n</Project>\r\n";
 		var globalJson = "{\r\n\t\"sdk\": {\r\n\t\t\"version\": \"10.0.100\",\r\n\t\t\"rollForward\": \"latestMinor\"\r\n\t}\r\n}\r\n";
 		var workflow = "jobs:\r\n  build:\r\n    steps:\r\n    - uses: actions/setup-dotnet@v6\r\n      with:\r\n        dotnet-version: 10.0.x\r\n";
 
@@ -196,7 +196,7 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 			WriteFile(path, content);
 		}
 
-		var staleContext = new RepositoryContext
+		RepositoryContext FromDisk() => new()
 		{
 			FullName = "panoramicdata/Sample",
 			Name = "Sample",
@@ -204,44 +204,141 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 			CurrentBranch = "main",
 			Options = new RepoOptions(),
 			FilePaths = [.. files.Keys],
-			FileContents = files
+			FileContents = files.Keys.ToDictionary(path => path, path => File.ReadAllText(Path.Combine(_root, path)))
 		};
 
-		var rules = new[] { "TFM-01", "VER-03", "CI-06" };
+		// PKG-15 only fails once the retarget has landed, so the upgrade is passes of assess-then-apply over the
+		// uncommitted working tree, the way DashboardService.ApplyRemediationsAsync follows on.
+		var rules = new[] { "TFM-01", "VER-03", "CI-06", "PKG-15" };
 		var registry = new RemediationRegistry();
-		foreach (var ruleId in rules)
+		var passes = 0;
+		for (; passes < 3; passes++)
 		{
-			var result = await Rule(ruleId).EvaluateAsync(staleContext, TestContext.Current.CancellationToken);
-			if (result.Passed)
+			var context = FromDisk();
+			var appliedThisPass = 0;
+			foreach (var ruleId in rules)
 			{
-				continue;
+				var result = await Rule(ruleId).EvaluateAsync(context, TestContext.Current.CancellationToken);
+				if (result.Passed)
+				{
+					continue;
+				}
+
+				registry.CanRemediate(result).Should().BeTrue($"{ruleId} must be fixable without the AI");
+				var applied = new List<string>();
+				registry.Get(ruleId)!.Apply(_root, result, applied, Output.WriteLine);
+				applied.Should().NotBeEmpty($"{ruleId} must change something");
+				appliedThisPass += applied.Count;
 			}
 
-			registry.CanRemediate(result).Should().BeTrue($"{ruleId} must be fixable without the AI");
-			var applied = new List<string>();
-			registry.Get(ruleId)!.Apply(_root, result, applied, Output.WriteLine);
-			applied.Should().NotBeEmpty($"{ruleId} must change something");
+			if (appliedThisPass == 0)
+			{
+				break;
+			}
 		}
 
-		var fixedFiles = files.Keys.ToDictionary(
-			path => path,
-			path => File.ReadAllText(Path.Combine(_root, path)));
-		var fixedContext = new RepositoryContext
+		passes.Should().BeLessThan(3, "the upgrade must settle, not keep finding work");
+
+		var fixedContext = FromDisk();
+		foreach (var ruleId in rules)
+		{
+			var result = await Rule(ruleId).EvaluateAsync(fixedContext, TestContext.Current.CancellationToken);
+			result.Passed.Should().BeTrue($"{ruleId} should pass once the upgrade fix has run: {result.Message}");
+		}
+
+		fixedContext.FileContents![csprojPath].Should().NotContain("Logging.Abstractions").And.Contain("Refit");
+	}
+
+	[Fact]
+	public async Task TFM01_MovesATargetFrameworksListInsteadOfAddingAnIgnoredSingularProperty()
+	{
+		// MSBuild ignores a singular TargetFramework beside TargetFrameworks, so adding one left these projects
+		// on the old framework with a restore that had no target for the new one (NETSDK1005).
+		var previous = "net" + (int.Parse(Standards.LatestTargetFramework[3..Standards.LatestTargetFramework.IndexOf('.', StringComparison.Ordinal)], System.Globalization.CultureInfo.InvariantCulture) - 1) + ".0";
+		string Project(string body) => $"<Project Sdk=\"Microsoft.NET.Sdk\">\r\n\t<PropertyGroup>\r\n{body}\t</PropertyGroup>\r\n</Project>\r\n";
+
+		var files = new Dictionary<string, string>
+		{
+			["Single/Single.csproj"] = Project($"\t\t<TargetFrameworks>{previous}</TargetFrameworks>\r\n"),
+			["Duplicated/Duplicated.csproj"] = Project($"\t\t<TargetFrameworks>{previous};{previous}</TargetFrameworks>\r\n"),
+			["Mixed/Mixed.csproj"] = Project($"\t\t<TargetFrameworks>netstandard2.0;{previous}</TargetFrameworks>\r\n"),
+			["Both/Both.csproj"] = Project($"\t\t<TargetFrameworks>{previous}</TargetFrameworks>\r\n\t\t<TargetFramework>{previous}</TargetFramework>\r\n"),
+			["Plain/Plain.csproj"] = Project($"\t\t<TargetFramework>{previous}</TargetFramework>\r\n")
+		};
+
+		foreach (var (path, content) in files)
+		{
+			WriteFile(path, content);
+		}
+
+		RepositoryContext FromDisk() => new()
 		{
 			FullName = "panoramicdata/Sample",
 			Name = "Sample",
 			DefaultBranch = "main",
 			CurrentBranch = "main",
 			Options = new RepoOptions(),
-			FilePaths = [.. fixedFiles.Keys],
-			FileContents = fixedFiles
+			FilePaths = [.. files.Keys],
+			FileContents = files.Keys.ToDictionary(path => path, path => File.ReadAllText(Path.Combine(_root, path)))
 		};
 
-		foreach (var ruleId in rules)
+		var result = await Rule("TFM-01").EvaluateAsync(FromDisk(), TestContext.Current.CancellationToken);
+		result.Passed.Should().BeFalse();
+
+		Apply(result);
+
+		var after = FromDisk().FileContents!;
+		var latest = Standards.LatestTargetFramework;
+		after["Single/Single.csproj"].Should().Contain($"<TargetFrameworks>{latest}</TargetFrameworks>").And.NotContain("<TargetFramework>");
+		after["Duplicated/Duplicated.csproj"].Should().Contain($"<TargetFrameworks>{latest}</TargetFrameworks>");
+		after["Mixed/Mixed.csproj"].Should().Contain($"<TargetFrameworks>netstandard2.0;{latest}</TargetFrameworks>");
+		after["Both/Both.csproj"].Should().Contain($"<TargetFrameworks>{latest}</TargetFrameworks>").And.Contain($"<TargetFramework>{latest}</TargetFramework>");
+		after["Plain/Plain.csproj"].Should().Contain($"<TargetFramework>{latest}</TargetFramework>");
+
+		var reassessed = await Rule("TFM-01").EvaluateAsync(FromDisk(), TestContext.Current.CancellationToken);
+		reassessed.Passed.Should().BeTrue(reassessed.Message);
+	}
+
+	[Fact]
+	public async Task DOC01_DocumentsOnlyTheNonTestProjectsNotTheWholeRepository()
+	{
+		// Directory.Build.props reaches test projects too, whose undocumented members then fail the build
+		// under TreatWarningsAsErrors (CS1591), so the fix must name the projects instead.
+		var files = new Dictionary<string, string>
 		{
-			var result = await Rule(ruleId).EvaluateAsync(fixedContext, TestContext.Current.CancellationToken);
-			result.Passed.Should().BeTrue($"{ruleId} should pass once the upgrade fix has run: {result.Message}");
+			["Directory.Build.props"] = "<Project>\r\n\t<PropertyGroup>\r\n\t\t<TreatWarningsAsErrors>true</TreatWarningsAsErrors>\r\n\t</PropertyGroup>\r\n</Project>\r\n",
+			["Widget/Widget.csproj"] = "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n\t<PropertyGroup>\r\n\t\t<TargetFramework>net11.0</TargetFramework>\r\n\t</PropertyGroup>\r\n</Project>\r\n",
+			["Widget.Test/Widget.Test.csproj"] = "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n\t<PropertyGroup>\r\n\t\t<TargetFramework>net11.0</TargetFramework>\r\n\t</PropertyGroup>\r\n\t<ItemGroup>\r\n\t\t<PackageReference Include=\"xunit.v3\" />\r\n\t</ItemGroup>\r\n</Project>\r\n"
+		};
+
+		foreach (var (path, content) in files)
+		{
+			WriteFile(path, content);
 		}
+
+		RepositoryContext FromDisk() => new()
+		{
+			FullName = "panoramicdata/Sample",
+			Name = "Sample",
+			DefaultBranch = "main",
+			CurrentBranch = "main",
+			Options = new RepoOptions(),
+			FilePaths = [.. files.Keys],
+			FileContents = files.Keys.ToDictionary(path => path, path => File.ReadAllText(Path.Combine(_root, path)))
+		};
+
+		var result = await Rule("DOC-01").EvaluateAsync(FromDisk(), TestContext.Current.CancellationToken);
+		result.Passed.Should().BeFalse();
+
+		Apply(result);
+
+		var after = FromDisk().FileContents!;
+		after["Widget/Widget.csproj"].Should().Contain("GenerateDocumentationFile");
+		after["Widget.Test/Widget.Test.csproj"].Should().NotContain("GenerateDocumentationFile", "tests are not documented");
+		after["Directory.Build.props"].Should().NotContain("GenerateDocumentationFile", "that file reaches the test projects");
+
+		var reassessed = await Rule("DOC-01").EvaluateAsync(FromDisk(), TestContext.Current.CancellationToken);
+		reassessed.Passed.Should().BeTrue();
 	}
 
 	[Fact]

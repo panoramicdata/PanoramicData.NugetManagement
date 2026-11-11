@@ -1,0 +1,46 @@
+{{box cssClass="floatinginfobox" title="**On This Page**"}}
+{{toc/}}
+
+**See Also:**
+
+* [[Coding with Visual Studio and C#>>doc:Staff Training.Office systems.Coding with Visual Studio and C#.WebHome]]
+{{/box}}
+
+= Summary =
+
+(% class="wikigeneratedid" %)
+Our standards for development are:
+
+* Visual Studio Pro 17.8
+* .NET 8
+* C# 12
+
+= Visual Studio Pro =
+
+Employee developers will be provided with a Visual Studio Pro licence, if you don't already have one.  Contractors should discuss with Dan which Visual Studio licence they need. Everyone should upgrade to 17.8 immediately and should generally be using this supported release for development work.
+
+= .NET 8 =
+
+All projects currently on .NET 7 or below should generally be upgraded to .NET 8 for the **NEXT **build.
+
+Exceptions:
+
+* not .NET Standard 2 libraries
+* not for ReportMagic 3.10, as it's too close to release
+* for CAE - not until Dan says so
+* when doing so for libraries (e.g. Blazor UI), this should be accompanied with a SEMVER major version update, as it can cause dependency issues
+
+= C# 12 =
+
+Having updated the above, the default static code analysis will start encouraging you to use primary constructors and collection expressions etc.  No doubt this will cause you some anxiety.  My feelings so far:
+
+* Please use these new features for new code as appropriate
+* There is no requirement to refactor existing code to use these
+
+= Blazor enhancements =
+
+There are lots of new enhancements to Blazor.  After updating to .NET 8, please don't change anything further until Dan has had a chance to formulate a strategy.
+
+= New projects =
+
+.NET 8 should be used for all new projects with the new Blazor Web App template where applicable.  Please discuss with Dan when doing so.
