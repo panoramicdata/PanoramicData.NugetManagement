@@ -331,7 +331,7 @@
   "NUnit.Analyzers": "4.7.0",
   "NUnit3TestAdapter": "6.3.0",
   "Octokit": "14.0.0",
-  "Ollama.Api": "1.1.8",
+  "Ollama.Api": "1.1.12",
   "OpenTelemetry.Exporter.OpenTelemetryProtocol": "1.16.0",
   "OpenTelemetry.Extensions.Hosting": "1.16.0",
   "OpenTelemetry.Instrumentation.AspNetCore": "1.16.0",
