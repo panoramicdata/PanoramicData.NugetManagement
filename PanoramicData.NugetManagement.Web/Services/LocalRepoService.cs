@@ -1919,12 +1919,36 @@ public partial class LocalRepoService
 		};
 
 		process.Start();
+		using var job = ProcessJob.TryAssign(process);
 		process.BeginOutputReadLine();
 		process.BeginErrorReadLine();
 
 		try
 		{
-			await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+			// A bounded WaitForExit does not wait for the output pipes. WaitForExitAsync does, and a worker the
+			// command left running holds those pipes open, so the call would not return until it died.
+			await Task.Run(
+				() =>
+				{
+					while (!process.WaitForExit(250))
+					{
+						cancellationToken.ThrowIfCancellationRequested();
+					}
+				},
+				cancellationToken).ConfigureAwait(false);
+
+			job?.Dispose();
+
+			using var flush = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			flush.CancelAfter(TimeSpan.FromSeconds(30));
+			try
+			{
+				await process.WaitForExitAsync(flush.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+			{
+				// Something outside the job still holds the pipes; what was read so far is the output.
+			}
 		}
 		catch (OperationCanceledException)
 		{
