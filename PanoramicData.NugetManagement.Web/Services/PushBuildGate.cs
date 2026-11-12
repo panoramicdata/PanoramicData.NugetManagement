@@ -18,6 +18,25 @@ internal static class PushBuildGate
 	private static readonly SemaphoreSlim _builds = new(MaxConcurrentBuilds);
 
 	/// <summary>
+	/// Runs a build once a slot is free, so no more than <see cref="MaxConcurrentBuilds"/> run at the same time.
+	/// </summary>
+	/// <param name="build">Builds the repository.</param>
+	public static async Task<(bool Success, string Output)> BuildAsync(Func<Task<(bool Success, string Output)>> build)
+	{
+		ArgumentNullException.ThrowIfNull(build);
+
+		await _builds.WaitAsync().ConfigureAwait(false);
+		try
+		{
+			return await build().ConfigureAwait(false);
+		}
+		finally
+		{
+			_builds.Release();
+		}
+	}
+
+	/// <summary>
 	/// Builds, and returns why the push must not happen, or null when it may.
 	/// </summary>
 	/// <param name="repository">The repository's full name, for the message.</param>
@@ -32,17 +51,7 @@ internal static class PushBuildGate
 
 		onOutput?.Invoke($"🔎 Verifying {repository} builds before pushing...");
 
-		bool success;
-		string? output;
-		await _builds.WaitAsync().ConfigureAwait(false);
-		try
-		{
-			(success, output) = await build().ConfigureAwait(false);
-		}
-		finally
-		{
-			_builds.Release();
-		}
+		var (success, output) = await BuildAsync(build).ConfigureAwait(false);
 
 		if (success)
 		{

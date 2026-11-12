@@ -87,8 +87,7 @@ public class PushBuildGateTests
 
 	/// <summary>
 	/// The gate protects nothing if one push path can skip it. Every push goes through
-	/// DashboardService.CommitAndPushAsync, which builds before pushing; only the bulk loop, which has
-	/// just built the same tree itself, may opt out.
+	/// DashboardService.CommitAndPushAsync, which builds before pushing, and none may opt out.
 	/// </summary>
 	[Fact]
 	public void EveryPushIsBuiltFirst()
@@ -107,13 +106,13 @@ public class PushBuildGateTests
 		var start = dashboard.IndexOf("public async Task<CommitAndPushOutcome> CommitAndPushAsync(", StringComparison.Ordinal);
 		start.Should().BeGreaterThan(0);
 
-		var gate = dashboard.IndexOf("PushBuildGate.RefusalAsync(", start, StringComparison.Ordinal);
+		var gate = dashboard.IndexOf("VerifyChangesBuildAsync(", start, StringComparison.Ordinal);
 		var push = dashboard.IndexOf("_localRepo.CommitAndPushAsync(", start, StringComparison.Ordinal);
 		gate.Should().BeGreaterThan(0, "the push path must build first");
 		gate.Should().BeLessThan(push, "the build must come before the push");
 
 		sources.Values.Sum(text => CountOf(text, "verifyBuildFirst: false"))
-			.Should().Be(1, "only the bulk apply loop, which has just built the tree, may skip the build");
+			.Should().Be(0, "no push path may opt out of the build");
 	}
 
 	private static int CountOf(string text, string value)
