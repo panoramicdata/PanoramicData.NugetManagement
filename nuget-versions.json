@@ -60,9 +60,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "AutoMapper": {
-    "latestVersion": "16.3.0",
-    "published": "2026-11-05T15:06:59.477+00:00",
-    "refreshedAtUtc": "2026-11-05T20:32:10.1040343+00:00"
+    "latestVersion": "17.0.0",
+    "published": "2026-11-12T13:15:52.94+00:00",
+    "refreshedAtUtc": "2026-11-12T13:31:07.6751399+00:00"
   },
   "AutoMapper.Extensions.Microsoft.DependencyInjection": {
     "latestVersion": "12.0.1",
@@ -1745,9 +1745,9 @@
     "refreshedAtUtc": "2026-10-13T15:39:23.0066097+00:00"
   },
   "PanoramicData.SheetMagic": {
-    "latestVersion": "3.1.169",
-    "published": "2026-11-09T08:55:02.15+00:00",
-    "refreshedAtUtc": "2026-11-09T14:08:10.2701617+00:00"
+    "latestVersion": "3.1.176",
+    "published": "2026-11-12T12:10:03.69+00:00",
+    "refreshedAtUtc": "2026-11-12T13:31:07.6751399+00:00"
   },
   "PanoramicData.Slack.Webhooks": {
     "latestVersion": "1.0.3",
@@ -1935,9 +1935,9 @@
     "refreshedAtUtc": "2026-11-10T14:57:47.9582536+00:00"
   },
   "Scalar.AspNetCore": {
-    "latestVersion": "2.20.0",
-    "published": "2026-11-10T14:51:41.1+00:00",
-    "refreshedAtUtc": "2026-11-10T17:07:36.7792766+00:00"
+    "latestVersion": "2.21.0",
+    "published": "2026-11-12T14:04:06.903+00:00",
+    "refreshedAtUtc": "2026-11-12T16:07:45.9193059+00:00"
   },
   "ScienceLogic.Em7.Api": {
     "latestVersion": "1.0.6",
@@ -1960,9 +1960,9 @@
     "refreshedAtUtc": "2026-11-04T14:32:10.1068901+00:00"
   },
   "Selenium.WebDriver.ChromeDriver": {
-    "latestVersion": "157.0.8103.5000",
-    "published": "2026-11-09T23:42:02.01+00:00",
-    "refreshedAtUtc": "2026-11-10T02:57:47.9679706+00:00"
+    "latestVersion": "157.0.8103.7800",
+    "published": "2026-11-12T12:25:45.107+00:00",
+    "refreshedAtUtc": "2026-11-12T13:31:07.6751399+00:00"
   },
   "Serilog": {
     "latestVersion": "4.4.0",
@@ -2180,9 +2180,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "StackExchange.Redis": {
-    "latestVersion": "3.4.31",
-    "published": "2026-11-02T16:05:03.867+00:00",
-    "refreshedAtUtc": "2026-11-04T14:32:10.1068901+00:00"
+    "latestVersion": "3.4.35",
+    "published": "2026-11-12T14:13:00.3+00:00",
+    "refreshedAtUtc": "2026-11-12T16:07:45.9193059+00:00"
   },
   "StreamJsonRpc": {
     "latestVersion": "2.26.150",
@@ -2210,14 +2210,14 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "Swashbuckle.AspNetCore": {
-    "latestVersion": "11.0.0",
-    "published": "2026-11-10T17:56:11.773+00:00",
-    "refreshedAtUtc": "2026-11-10T22:43:02.4168854+00:00"
+    "latestVersion": "11.0.1",
+    "published": "2026-11-12T12:19:18.077+00:00",
+    "refreshedAtUtc": "2026-11-12T13:31:07.6751399+00:00"
   },
   "Swashbuckle.AspNetCore.SwaggerUI": {
-    "latestVersion": "11.0.0",
-    "published": "2026-11-10T17:56:12.07+00:00",
-    "refreshedAtUtc": "2026-11-10T22:43:02.4168854+00:00"
+    "latestVersion": "11.0.1",
+    "published": "2026-11-12T12:19:17.33+00:00",
+    "refreshedAtUtc": "2026-11-12T13:31:07.6751399+00:00"
   },
   "SymphonyAi.Summit.Api": {
     "latestVersion": "1.1.68",

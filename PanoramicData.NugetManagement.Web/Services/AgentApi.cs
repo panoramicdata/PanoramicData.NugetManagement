@@ -169,7 +169,7 @@ public static class AgentApi
 
 	// VER-05 fails on any unreleased commit, so only publishing can clear it.
 	private static int BlockingFailures(RepositoryDashboardRow row)
-		=> row.TotalFailures - (row.Assessment?.RuleResults.Count(r => !r.Passed && _releaseStateRuleIds.Contains(r.RuleId)) ?? 0);
+		=> row.TotalFailures - row.StaleIssues.Count() - (row.Assessment?.RuleResults.Count(r => !r.Passed && _releaseStateRuleIds.Contains(r.RuleId)) ?? 0);
 
 	private static bool IsCleanAndInStep(RepositoryDashboardRow row)
 		=> row.IsWorkingTreeClean == true && row.HasUnpushedCommits != true && row.IsSyncedWithOrigin == true;

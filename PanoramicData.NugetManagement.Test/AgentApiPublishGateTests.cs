@@ -55,6 +55,26 @@ public class AgentApiPublishGateTests(ITestOutputHelper output) : TestWithOutput
 		=> AgentApi.Refusal(WorkKind.Publish, Row(Failing(ruleId)), confirm: true).Should().BeNull("a new release is what clears it");
 
 	[Fact]
+	public void AnOpenGitHubIssueShouldNotStopARepositoryFromBeingPublished()
+	{
+		var row = Row(Failing("VER-05"));
+		row.OpenIssues =
+		[
+			new RepositoryIssue
+			{
+				Number = 22,
+				Title = "A real bug a release can fix",
+				HtmlUrl = "https://github.com/panoramicdata/Sample/issues/22",
+				AuthorLogin = "someone",
+				CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-40)
+			}
+		];
+
+		row.StaleIssues.Should().ContainSingle("the issue has gone unanswered for forty days");
+		AgentApi.Refusal(WorkKind.Publish, row, confirm: true).Should().BeNull("an unanswered issue says nothing about whether the package is safe to ship");
+	}
+
+	[Fact]
 	public void ARepositoryWithUnpushedCommitsShouldBeRefused()
 	{
 		var row = Row();

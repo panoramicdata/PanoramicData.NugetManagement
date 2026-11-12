@@ -337,7 +337,7 @@
   "OpenTelemetry.Instrumentation.AspNetCore": "1.16.0",
   "OpenTelemetry.Instrumentation.Http": "1.16.0",
   "OpenTelemetry.Instrumentation.Runtime": "1.16.0",
-  "PanoramicData.Blazor": "10.0.580",
+  "PanoramicData.Blazor": "10.0.589",
   "PanoramicData.ChartMagic": "9.2.3",
   "PanoramicData.ConsoleExtensions": "1.0.12",
   "PanoramicData.DeepCloner": "1.0.8",
