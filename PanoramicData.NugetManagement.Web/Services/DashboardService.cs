@@ -706,6 +706,34 @@ public class DashboardService
 		return repoOptions;
 	}
 
+	private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _privateRepositories = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>Whether a repository is private, or null when GitHub cannot say; asked once per repository per run.</summary>
+	private static async Task<bool?> ResolveIsPrivateAsync(IGitHubClient? github, string repositoryFullName)
+	{
+		if (_privateRepositories.TryGetValue(repositoryFullName, out var known))
+		{
+			return known;
+		}
+
+		var parts = repositoryFullName.Split('/');
+		if (github is null || parts.Length != 2)
+		{
+			return null;
+		}
+
+		try
+		{
+			var repository = await github.Repository.Get(parts[0], parts[1]).ConfigureAwait(false);
+			_privateRepositories[repositoryFullName] = repository.Private;
+			return repository.Private;
+		}
+		catch (Exception ex) when (ex is ApiException or HttpRequestException)
+		{
+			return null;
+		}
+	}
+
 	/// <summary>Whether private vulnerability reporting is on for a repository, or null when unknown.</summary>
 	private static async Task<bool?> ResolvePrivateVulnerabilityReportingAsync(IGitHubClient? github, string repositoryFullName)
 	{
@@ -772,7 +800,8 @@ public class DashboardService
 					row.NextVersion,
 					RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
 					await ResolveLineCoverageAsync(row.RepositoryFullName, repoOptions, "main", cancellationToken).ConfigureAwait(false),
-				await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false));
+				await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false),
+				await ResolveIsPrivateAsync(github, row.RepositoryFullName).ConfigureAwait(false));
 		}
 
 		var parts = row.RepositoryFullName.Split('/');
@@ -1131,7 +1160,8 @@ public class DashboardService
 				row.NextVersion,
 				RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
 				await ResolveLineCoverageAsync(row.RepositoryFullName, repoOptions, defaultBranch, cancellationToken).ConfigureAwait(false),
-				await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false));
+				await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false),
+				await ResolveIsPrivateAsync(github, row.RepositoryFullName).ConfigureAwait(false));
 
 			var rules = RuleRegistry.Rules;
 			var results = new List<RuleResult>();

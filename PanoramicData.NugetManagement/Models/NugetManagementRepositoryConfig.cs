@@ -26,6 +26,26 @@ public sealed class NugetManagementRepositoryConfig
 	public Dictionary<string, NugetManagementProjectConfig> Projects { get; set; } = [];
 
 	/// <summary>
+	/// Packages held at their current version, each with the reason, which the package update rules
+	/// (PKG-05, PKG-06, PKG-07) leave alone.
+	/// </summary>
+	/// <remarks>
+	/// For a version another dependency's constraint forbids moving past, such as an EF Core provider
+	/// that supports only the previous major. The reason is required so the hold is a recorded decision
+	/// rather than a silent exemption.
+	/// </remarks>
+	public Dictionary<string, string> HeldPackages { get; set; } = [];
+
+	/// <summary>
+	/// The reason a package is held, or null when it is not.
+	/// </summary>
+	/// <param name="packageId">The package id.</param>
+	public string? HeldReason(string packageId)
+		=> HeldPackages?.FirstOrDefault(entry => string.Equals(entry.Key, packageId, StringComparison.OrdinalIgnoreCase)) is { Key: not null } held
+			? (string.IsNullOrWhiteSpace(held.Value) ? "held" : held.Value)
+			: null;
+
+	/// <summary>
 	/// Returns the matching project configuration for a relative path.
 	/// </summary>
 	public NugetManagementProjectConfig? GetProjectConfig(string relativePath)

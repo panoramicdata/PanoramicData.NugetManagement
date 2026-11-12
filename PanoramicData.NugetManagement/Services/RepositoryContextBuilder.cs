@@ -144,7 +144,8 @@ public class RepositoryContextBuilder : IDisposable
 			RepositoryConfig = repositoryConfig,
 			ActionsSecretNames = actionsSecretNames,
 			LineCoveragePercent = lineCoveragePercent,
-			PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(_github, owner, repoName).ConfigureAwait(false)
+			PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(_github, owner, repoName).ConfigureAwait(false),
+			IsPrivateRepository = repository.Private
 		};
 	}
 

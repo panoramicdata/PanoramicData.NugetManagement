@@ -46,7 +46,13 @@ public class AgentApiPublishGateTests(ITestOutputHelper output) : TestWithOutput
 	[Fact]
 	public void ARepositoryFailingAnyOtherRuleShouldBeRefused()
 		=> AgentApi.Refusal(WorkKind.Publish, Row(Failing("VER-05"), Failing("CQ-06")), confirm: true)
-			.Should().Be("the repository is not green (1 failing besides VER-05)");
+			.Should().Be("the repository is not green (1 failing besides VER-05, CI-11, CI-13)");
+
+	[Theory]
+	[InlineData("CI-11")]
+	[InlineData("CI-13")]
+	public void ARepositoryWhoseOnlyFailureIsItsReleaseStateShouldBePublishable(string ruleId)
+		=> AgentApi.Refusal(WorkKind.Publish, Row(Failing(ruleId)), confirm: true).Should().BeNull("a new release is what clears it");
 
 	[Fact]
 	public void ARepositoryWithUnpushedCommitsShouldBeRefused()

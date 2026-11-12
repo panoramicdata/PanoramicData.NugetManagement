@@ -52,6 +52,12 @@ public class FailSkipsRule : RuleBase
 			}
 
 			var declared = TryReadFailSkips(content, out var failSkips);
+
+			// The advisory's own exception: an integration suite that skips when its service is absent.
+			if (declared && !failSkips && System.IO.Path.GetFileNameWithoutExtension(projectFile).Contains("Integration", StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
 			if (declared && failSkips)
 			{
 				continue;

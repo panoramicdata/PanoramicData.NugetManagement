@@ -110,6 +110,7 @@ public class LocalRepositoryContextBuilder
 	/// The line coverage Codacy holds for the repository, resolved by the caller because the clone
 	/// cannot know it. Null leaves TST-10 reporting RED, so the local path must supply it.
 	/// </param>
+	/// <param name="isPrivateRepository">Whether the repository is private, or null when GitHub could not be asked.</param>
 	/// <param name="privateVulnerabilityReportingEnabled">
 	/// Whether GitHub private vulnerability reporting is on, resolved by the caller; null when unknown.
 	/// </param>
@@ -126,7 +127,8 @@ public class LocalRepositoryContextBuilder
 		string? nextVersion = null,
 		bool isConfirmedInSyncWithOrigin = false,
 		double? lineCoveragePercent = null,
-		bool? privateVulnerabilityReportingEnabled = null)
+		bool? privateVulnerabilityReportingEnabled = null,
+		bool? isPrivateRepository = null)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]
@@ -156,7 +158,8 @@ public class LocalRepositoryContextBuilder
 			NextVersion = nextVersion,
 			IsConfirmedInSyncWithOrigin = isConfirmedInSyncWithOrigin,
 			LineCoveragePercent = lineCoveragePercent,
-			PrivateVulnerabilityReportingEnabled = privateVulnerabilityReportingEnabled
+			PrivateVulnerabilityReportingEnabled = privateVulnerabilityReportingEnabled,
+			IsPrivateRepository = isPrivateRepository
 		};
 	}
 

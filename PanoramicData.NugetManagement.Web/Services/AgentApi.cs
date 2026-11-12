@@ -108,6 +108,9 @@ public static class AgentApi
 	/// <summary>The rule that fails on committed, unreleased work, which publishing clears.</summary>
 	private const string UnreleasedWorkRuleId = "VER-05";
 
+	/// <summary>Rules that report release state: unreleased work, an unpublished tag, a failed release run. A new release clears each.</summary>
+	private static readonly string[] _releaseStateRuleIds = [UnreleasedWorkRuleId, "CI-11", "CI-13"];
+
 	/// <summary>
 	/// Kinds that leave the machine, and so are refused unless the repository is in the state that makes
 	/// them reasonable.
@@ -158,7 +161,7 @@ public static class AgentApi
 		var blocking = BlockingFailures(row);
 		if (row.Assessment is null || blocking != 0)
 		{
-			return $"the repository is not green ({blocking} failing besides {UnreleasedWorkRuleId})";
+			return $"the repository is not green ({blocking} failing besides {string.Join(", ", _releaseStateRuleIds)})";
 		}
 
 		return IsCleanAndInStep(row) ? null : "the working tree is not clean and in step with origin";
@@ -166,7 +169,7 @@ public static class AgentApi
 
 	// VER-05 fails on any unreleased commit, so only publishing can clear it.
 	private static int BlockingFailures(RepositoryDashboardRow row)
-		=> row.TotalFailures - (row.Assessment?.RuleResults.Count(r => !r.Passed && r.RuleId == UnreleasedWorkRuleId) ?? 0);
+		=> row.TotalFailures - (row.Assessment?.RuleResults.Count(r => !r.Passed && _releaseStateRuleIds.Contains(r.RuleId)) ?? 0);
 
 	private static bool IsCleanAndInStep(RepositoryDashboardRow row)
 		=> row.IsWorkingTreeClean == true && row.HasUnpushedCommits != true && row.IsSyncedWithOrigin == true;

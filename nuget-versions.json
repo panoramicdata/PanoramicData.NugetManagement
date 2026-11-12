@@ -1,8 +1,8 @@
 {
   "AngleSharp": {
-    "latestVersion": "1.10.1",
-    "published": "2026-11-09T07:22:14.737+00:00",
-    "refreshedAtUtc": "2026-11-09T08:08:10.2649875+00:00"
+    "latestVersion": "1.10.2",
+    "published": "2026-11-11T23:00:47.427+00:00",
+    "refreshedAtUtc": "2026-11-12T01:31:07.6867265+00:00"
   },
   "Aspire.Hosting.AppHost": {
     "latestVersion": "13.6.5",
@@ -90,9 +90,9 @@
     "refreshedAtUtc": "2026-08-30T14:42:35.2834453+00:00"
   },
   "AWSSDK.S3": {
-    "latestVersion": "4.0.104.12",
-    "published": "2026-11-10T19:51:52.013+00:00",
-    "refreshedAtUtc": "2026-11-10T22:43:02.4168854+00:00"
+    "latestVersion": "4.1.0",
+    "published": "2026-11-12T00:14:24.42+00:00",
+    "refreshedAtUtc": "2026-11-12T01:31:07.6867265+00:00"
   },
   "Azure.AI.OpenAI": {
     "latestVersion": "2.1.0",
@@ -175,9 +175,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "bootstrap": {
-    "latestVersion": "5.3.8",
-    "published": "2025-08-26T03:05:16.483+01:00",
-    "refreshedAtUtc": "2026-10-07T05:49:35.1867319+00:00"
+    "latestVersion": "5.3.9",
+    "published": "2026-11-11T21:22:04.817+00:00",
+    "refreshedAtUtc": "2026-11-12T01:31:07.6867265+00:00"
   },
   "BootstrapBlazor": {
     "latestVersion": "11.1.0",
@@ -695,9 +695,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "MagicSuite.Api": {
-    "latestVersion": "4.7.1264",
-    "published": "2026-11-10T12:40:30.913+00:00",
-    "refreshedAtUtc": "2026-11-10T14:57:47.9582536+00:00"
+    "latestVersion": "4.7.1279",
+    "published": "2026-11-11T19:43:18.85+00:00",
+    "refreshedAtUtc": "2026-11-12T01:31:07.6867265+00:00"
   },
   "MailKit": {
     "latestVersion": "5.0.0",
@@ -1405,9 +1405,9 @@
     "refreshedAtUtc": "2026-09-13T18:52:00.3935398+00:00"
   },
   "MicrosoftDynamics.Api": {
-    "latestVersion": "10.0.74",
-    "published": "2026-11-09T08:56:05.407+00:00",
-    "refreshedAtUtc": "2026-11-09T14:08:10.2701617+00:00"
+    "latestVersion": "10.0.78",
+    "published": "2026-11-11T19:12:33.3+00:00",
+    "refreshedAtUtc": "2026-11-12T01:31:07.6867265+00:00"
   },
   "MicrosoftExtensions.Logging.Xunit": {
     "latestVersion": "1.2.1",
@@ -1640,19 +1640,19 @@
     "refreshedAtUtc": "2026-11-11T16:49:24.5320255+00:00"
   },
   "OpenTelemetry.Instrumentation.Http": {
-    "latestVersion": "1.20.2",
-    "published": "2026-11-05T19:53:08.293+00:00",
-    "refreshedAtUtc": "2026-11-05T20:32:10.1040343+00:00"
+    "latestVersion": "1.21.0",
+    "published": "2026-11-11T17:29:06.173+00:00",
+    "refreshedAtUtc": "2026-11-11T18:22:21.8079061+00:00"
   },
   "OpenTelemetry.Instrumentation.Runtime": {
-    "latestVersion": "1.20.1",
-    "published": "2026-10-21T10:28:57.563+01:00",
-    "refreshedAtUtc": "2026-10-21T09:49:47.6625658+00:00"
+    "latestVersion": "1.21.0",
+    "published": "2026-11-11T17:35:57.177+00:00",
+    "refreshedAtUtc": "2026-11-11T18:22:21.8079061+00:00"
   },
   "PanoramicData.Blazor": {
-    "latestVersion": "10.0.580",
-    "published": "2026-11-11T09:42:11.977+00:00",
-    "refreshedAtUtc": "2026-11-11T11:49:23.3866819+00:00"
+    "latestVersion": "10.0.589",
+    "published": "2026-11-12T05:50:37.143+00:00",
+    "refreshedAtUtc": "2026-11-12T07:31:07.6811722+00:00"
   },
   "PanoramicData.ChartMagic": {
     "latestVersion": "9.2.42",
@@ -1675,9 +1675,9 @@
     "refreshedAtUtc": "2026-11-04T14:32:10.1068901+00:00"
   },
   "PanoramicData.Encryption": {
-    "latestVersion": "1.0.67",
-    "published": "2026-11-09T08:56:18.32+00:00",
-    "refreshedAtUtc": "2026-11-09T14:08:10.2701617+00:00"
+    "latestVersion": "1.0.72",
+    "published": "2026-11-11T18:11:08.62+00:00",
+    "refreshedAtUtc": "2026-11-11T18:44:03.6268668+00:00"
   },
   "PanoramicData.Engines": {
     "latestVersion": "1.0.43",
@@ -1690,19 +1690,19 @@
     "refreshedAtUtc": "2026-11-10T14:57:47.9582536+00:00"
   },
   "PanoramicData.HealthChecks.BasicAuthentication": {
-    "latestVersion": "10.0.84",
-    "published": "2026-11-09T00:45:08.09+00:00",
-    "refreshedAtUtc": "2026-11-09T02:08:10.2668373+00:00"
+    "latestVersion": "10.0.89",
+    "published": "2026-11-11T19:30:01.607+00:00",
+    "refreshedAtUtc": "2026-11-12T01:31:07.6867265+00:00"
   },
   "PanoramicData.HealthChecks.Core": {
-    "latestVersion": "10.0.84",
-    "published": "2026-11-09T00:45:08.917+00:00",
-    "refreshedAtUtc": "2026-11-09T02:08:10.2668373+00:00"
+    "latestVersion": "10.0.89",
+    "published": "2026-11-11T19:30:02.4+00:00",
+    "refreshedAtUtc": "2026-11-12T01:31:07.6867265+00:00"
   },
   "PanoramicData.HealthChecks.Versions": {
-    "latestVersion": "10.0.84",
-    "published": "2026-11-09T00:45:09.257+00:00",
-    "refreshedAtUtc": "2026-11-09T02:08:10.2668373+00:00"
+    "latestVersion": "10.0.89",
+    "published": "2026-11-11T19:30:02.817+00:00",
+    "refreshedAtUtc": "2026-11-12T01:31:07.6867265+00:00"
   },
   "PanoramicData.IssueAssessment": {
     "latestVersion": "1.2.21",
@@ -1725,9 +1725,9 @@
     "refreshedAtUtc": "2026-09-29T20:32:53.5383391+00:00"
   },
   "PanoramicData.NetFlowServer": {
-    "latestVersion": "1.0.53",
-    "published": "2026-11-09T08:55:30.39+00:00",
-    "refreshedAtUtc": "2026-11-09T14:08:10.2701617+00:00"
+    "latestVersion": "1.0.56",
+    "published": "2026-11-11T17:08:43.02+00:00",
+    "refreshedAtUtc": "2026-11-11T18:22:21.8079061+00:00"
   },
   "PanoramicData.NugetManagement": {
     "latestVersion": "1.0.160",
@@ -1770,9 +1770,9 @@
     "refreshedAtUtc": "2026-08-30T20:15:48.6275128+00:00"
   },
   "PanoramicData.Vtl": {
-    "latestVersion": "10.0.52",
-    "published": "2026-11-09T08:55:38.76+00:00",
-    "refreshedAtUtc": "2026-11-09T14:08:10.2701617+00:00"
+    "latestVersion": "10.0.55",
+    "published": "2026-11-11T18:11:18.817+00:00",
+    "refreshedAtUtc": "2026-11-11T18:44:03.6268668+00:00"
   },
   "PanoramicData.WhoIs": {
     "latestVersion": "1.0.13",

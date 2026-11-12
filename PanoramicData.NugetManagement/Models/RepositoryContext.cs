@@ -124,6 +124,12 @@ public class RepositoryContext
 	public bool? PrivateVulnerabilityReportingEnabled { get; init; }
 
 	/// <summary>
+	/// Whether the repository is private, or null when GitHub could not be asked. Null is an unanswered
+	/// question, never "public".
+	/// </summary>
+	public bool? IsPrivateRepository { get; init; }
+
+	/// <summary>
 	/// Measured line coverage as a percentage, or null when this repository's tests have not been run
 	/// with coverage collection.
 	/// </summary>

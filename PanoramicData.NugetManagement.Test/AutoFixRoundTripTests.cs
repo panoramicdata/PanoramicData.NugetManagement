@@ -676,6 +676,20 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 	}
 
 	[Fact]
+	public async Task TST05_AcceptsAnIntegrationProjectThatDeliberatelyTurnedFailSkipsOff()
+	{
+		var context = TestProjectContext(runnerConfigs: new()
+		{
+			["Acme.Widget.Test/xunit.runner.json"] = """{"failSkips": true}""",
+			["Acme.Widget.Integration.Tests/xunit.runner.json"] = """{"failSkips": false}"""
+		});
+
+		var result = await Rule("TST-05").EvaluateAsync(context, TestContext.Current.CancellationToken);
+
+		result.Passed.Should().BeTrue("the advisory permits an explicit false in an integration project");
+	}
+
+	[Fact]
 	public async Task TST05_IsAiOnlyWhenAProjectHasDeliberatelyTurnedFailSkipsOff()
 	{
 		var context = TestProjectContext(runnerConfigs: new()

@@ -143,6 +143,9 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 		? "adopted as soon as they are published"
 		: $"adopted within {GraceDays} days";
 
+	private static string HeldNote(List<string> held)
+		=> held.Count == 0 ? string.Empty : $" Held back deliberately: {string.Join("; ", held)}.";
+
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
@@ -156,6 +159,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 		var behindUpstream = new List<string>();
 		var updates = new List<string>();
 		var pending = new List<string>();
+		var held = new List<string>();
 		var governed = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
 		var now = _timeProvider.GetUtcNow();
 
@@ -165,6 +169,12 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 
 			// Raises the floor for subsequent runs only; this run's floor was frozen at load.
 			_floors.Observe(reference.PackageId, reference.CurrentVersion, context.FullName);
+
+			if (context.RepositoryConfig?.HeldReason(reference.PackageId) is { } heldReason)
+			{
+				held.Add($"{reference.PackageId} ({heldReason})");
+				continue;
+			}
 
 			if (!NuGetVersion.TryParse(reference.CurrentVersion, out var current))
 			{
@@ -220,8 +230,8 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 			// Drift inside the grace period is always reported, so it is visible before it is a failure.
 			// At a zero grace the only thing that can land here is a release dated ahead of this clock.
 			return Task.FromResult(pending.Count == 0
-				? Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue.")
-				: Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue. {(GraceDays == 0 ? "Published ahead of this clock" : $"Available within the {GraceDays}-day grace period")}: {string.Join("; ", pending)}"));
+				? Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue.{HeldNote(held)}")
+				: Pass($"No {UpdateLevelDisplayName} NuGet package updates are overdue. {(GraceDays == 0 ? "Published ahead of this clock" : $"Available within the {GraceDays}-day grace period")}: {string.Join("; ", pending)}{HeldNote(held)}"));
 		}
 
 		var messages = new List<string>();
