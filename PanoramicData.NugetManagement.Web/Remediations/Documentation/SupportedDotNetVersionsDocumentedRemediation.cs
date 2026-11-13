@@ -35,7 +35,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 			return;
 		}
 
-		if (InsertPhrase(Path.Combine(localPath, "README.md"), phrase))
+		if (InsertPhrase(localPath, "README.md", phrase))
 		{
 			applied.Add("README.md");
 			onOutput?.Invoke($"✅ README.md: added \"{phrase}.\"");
@@ -50,7 +50,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 
 		foreach (var file in Strings(result, "unsupported_mentions").Select(SourceFile).Distinct(StringComparer.OrdinalIgnoreCase))
 		{
-			if (ContainedPath(localPath, file) is { } full && RewriteMentions(full, current))
+			if (RewriteMentions(localPath, file, current))
 			{
 				if (!applied.Contains(file, StringComparer.OrdinalIgnoreCase))
 				{
@@ -90,9 +90,9 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 	/// Adds the sentence after the title and any badge lines that follow it. False when it is already
 	/// there or there is no README.
 	/// </summary>
-	private static bool InsertPhrase(string path, string phrase)
+	private static bool InsertPhrase(string root, string relative, string phrase)
 	{
-		if (!File.Exists(path))
+		if (ContainedPath(root, relative) is not { } path || !File.Exists(path))
 		{
 			return false;
 		}
@@ -147,16 +147,16 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 	/// <summary>
 	/// Replaces every plain modern version in the file that is not <paramref name="current"/>.
 	/// </summary>
-	private static bool RewriteMentions(string path, string current)
+	private static bool RewriteMentions(string root, string relative, string current)
 	{
-		if (!File.Exists(path))
+		if (ContainedPath(root, relative) is not { } path || !File.Exists(path))
 		{
 			return false;
 		}
 
 		var (text, encoding) = Read(path);
 		var updated = IsProjectFile(path)
-			? DescriptionElementRegex().Replace(text, match => match.Groups["open"].Value + Update(match.Groups["body"].Value, current) + match.Groups["close"].Value)
+			? DescriptionElementRegex().Replace(text, match => match.Groups["open"].Value + UpdateLine(match.Groups["body"].Value, current) + match.Groups["close"].Value)
 			: UpdateProse(text, current);
 
 		if (updated == text)
@@ -186,14 +186,17 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 				continue;
 			}
 
-			if (!inFence && !HistoricalRegex().IsMatch(lines[i]))
+			if (!inFence)
 			{
-				lines[i] = Update(lines[i], current);
+				lines[i] = UpdateLine(lines[i], current);
 			}
 		}
 
 		return string.Join('\n', lines);
 	}
+
+	private static string UpdateLine(string line, string current)
+		=> HistoricalRegex().IsMatch(line) ? line : Update(line, current);
 
 	private static string Update(string text, string current)
 	{
@@ -254,7 +257,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 	[GeneratedRegex(@"\s<[^>]+>$")]
 	private static partial Regex PropertySuffixRegex();
 
-	[GeneratedRegex(@"\.NET\s+(?:(?<kind>Framework|Standard|Core)\s+)?(?<version>\d+(?:\.\d+)?)(?!\.\d)")]
+	[GeneratedRegex(@"\.NET\s+(?:(?<kind>Framework|Standard|Core)\s+)?(?<version>\d+(?:\.\d+)?)(?!\d|\.\d)")]
 	private static partial Regex ProseRegex();
 
 	[GeneratedRegex(@"(?<![\w.-])net(?<version>\d{1,2}\.\d)(?![\w-]|\.\d)")]

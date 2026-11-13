@@ -203,6 +203,20 @@ public sealed class SupportedDotNetVersionsDocumentedRemediationTests : IDisposa
 	}
 
 	[Fact]
+	public void PatchVersionsAndHistoricalDescriptionsAreNotPartiallyRewritten()
+	{
+		const string readme = "# Acme\n\nSupports .NET 11.0.\n\nNeeds .NET 10.0.1 or later.\n";
+		Write("README.md", readme);
+		const string project = "<Project><PropertyGroup><Description>Dropped .NET 8 support.</Description></PropertyGroup></Project>";
+		Write("Acme/Acme.csproj", project);
+
+		Apply(Failing([".NET 11.0"], ["README.md: .NET 10.0.1","Acme/Acme.csproj <Description>: .NET 8"]));
+
+		Read("README.md").Should().Be(readme);
+		Read("Acme/Acme.csproj").Should().Be(project);
+	}
+
+	[Fact]
 	public void AMissingReadmeIsNotAnError()
 		=> Apply(Failing([".NET 11.0"], [])).Should().BeEmpty();
 
