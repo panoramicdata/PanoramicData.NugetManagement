@@ -6,6 +6,8 @@
 
 Opinionated assessment of NuGet packages in a GitHub organization for best practices compliance.
 
+Supports .NET 11.0.
+
 ## Overview
 
 PanoramicData.NugetManagement connects to a GitHub organization, examines each repository, and evaluates it against a comprehensive set of opinionated best practice rules covering:
