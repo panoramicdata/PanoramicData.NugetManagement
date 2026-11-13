@@ -4,6 +4,8 @@
 [![NuGet](https://img.shields.io/nuget/v/PanoramicData.NugetManagement)](https://www.nuget.org/packages/PanoramicData.NugetManagement)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> **Need help with APIs or .NET?** Panoramic Data are experts in APIs and .NET, and we can help with your development. [Contact us](https://www.panoramicdata.com/contact-us) or see our [software services](https://www.panoramicdata.com/services/software).
+
 Opinionated assessment of NuGet packages in a GitHub organization for best practices compliance.
 
 Supports .NET 11.0.

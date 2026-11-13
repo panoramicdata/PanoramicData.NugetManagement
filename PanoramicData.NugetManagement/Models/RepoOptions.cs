@@ -59,6 +59,12 @@ public class RepoOptions
 	public string ExpectedCopyrightHolder { get; set; } = Standards.CopyrightHolder;
 
 	/// <summary>
+	/// The Markdown line README-05 requires at the top of README.md; <c>{PackageName}</c> is replaced
+	/// with the repository name. Defaults to <see cref="Standards.ExpertiseBannerTemplate"/>.
+	/// </summary>
+	public string ExpertiseBannerTemplate { get; set; } = Standards.ExpertiseBannerTemplate;
+
+	/// <summary>
 	/// The expected HTTP client package name (e.g. "Refit").
 	/// Defaults to <see cref="Standards.ExpectedHttpClientPackage"/>.
 	/// </summary>

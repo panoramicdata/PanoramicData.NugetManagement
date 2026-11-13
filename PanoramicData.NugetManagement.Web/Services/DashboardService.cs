@@ -692,6 +692,9 @@ public class DashboardService
 		{
 			ExpectedLicense = _settings.ExpectedLicense,
 			ExpectedCopyrightHolder = _settings.CopyrightHolder,
+			ExpertiseBannerTemplate = string.IsNullOrWhiteSpace(_settings.ExpertiseBannerTemplate)
+				? Standards.ExpertiseBannerTemplate
+				: _settings.ExpertiseBannerTemplate,
 			NuGetUser = _settings.NuGetUser,
 			Waivers = [.. _waivers.For(repositoryFullName)],
 		};

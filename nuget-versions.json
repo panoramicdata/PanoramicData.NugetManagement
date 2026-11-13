@@ -570,9 +570,9 @@
     "refreshedAtUtc": "2026-10-13T08:50:20.1416023+00:00"
   },
   "HubSpot.Api": {
-    "latestVersion": "9.0.32",
-    "published": "2026-11-08T16:55:13.423+00:00",
-    "refreshedAtUtc": "2026-11-09T20:57:47.9597404+00:00"
+    "latestVersion": "9.0.36",
+    "published": "2026-11-13T11:13:32.407+00:00",
+    "refreshedAtUtc": "2026-11-13T12:18:01.2651075+00:00"
   },
   "Humanizer.Core": {
     "latestVersion": "3.0.10",
@@ -1710,9 +1710,9 @@
     "refreshedAtUtc": "2026-11-10T14:57:47.9582536+00:00"
   },
   "PanoramicData.Mapper": {
-    "latestVersion": "10.0.52",
-    "published": "2026-09-14T13:17:35.577+01:00",
-    "refreshedAtUtc": "2026-09-14T13:24:46.4741027+00:00"
+    "latestVersion": "10.0.83",
+    "published": "2026-11-13T11:13:39.863+00:00",
+    "refreshedAtUtc": "2026-11-13T12:18:01.2651075+00:00"
   },
   "PanoramicData.MusicGeneration": {
     "latestVersion": "0.1.33",
