@@ -94,7 +94,7 @@ Pin the SDK and roll-forward behavior:
 ```
 
 The `test.runner` key is required, not optional: `xunit.v3` 4.x runs on Microsoft.Testing.Platform,
-which has no VSTest bridge on the .NET 10 SDK, so `dotnet test` fails outright without it. Neither
+which has no VSTest bridge on the .NET 11.0 SDK, so `dotnet test` fails outright without it. Neither
 `dotnet.config` nor the `TestingPlatformDotnetTestSupport` MSBuild property works — the SDK reads
 `global.json` alone. The value must be spelled exactly `Microsoft.Testing.Platform`.
 
@@ -169,7 +169,7 @@ Minimum baseline:
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFramework>net10.0</TargetFramework>
+		<TargetFramework>net11.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<NeutralResourcesLanguage>en</NeutralResourcesLanguage>
 
@@ -251,7 +251,7 @@ This repo's script is a good baseline.
 
 Must include:
 - `actions/checkout@v4` with `fetch-depth: 0`
-- setup .NET 10
+- setup .NET 11.0
 - restore + build + pack
 - upload `.nupkg` and `.snupkg` artifacts
 - publish job triggered only for tags
@@ -377,7 +377,7 @@ A new package repo is done when all are true:
 
 ## Quick Compliance Checklist
 
-- [ ] `TargetFramework` is `net10.0`
+- [ ] `TargetFramework` is `net11.0`
 - [ ] `TreatWarningsAsErrors` is true
 - [ ] `Nullable` is enabled
 - [ ] XML docs generated
