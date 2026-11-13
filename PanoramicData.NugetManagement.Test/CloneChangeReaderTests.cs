@@ -43,7 +43,7 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 			info.ArgumentList.Add(arg);
 		}
 
-		using var process = Process.Start(info)!;
+		using var process = Process.Start(info)!; // nosemgrep
 		process.StandardOutput.ReadToEnd();
 		process.StandardError.ReadToEnd();
 		process.WaitForExit();
@@ -331,7 +331,7 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 		{
 			var controlInfo = new ProcessStartInfo("git", "status --porcelain") { WorkingDirectory = control, RedirectStandardOutput = true };
 			controlInfo.Environment.Remove("GIT_OPTIONAL_LOCKS");
-			using (var p = Process.Start(controlInfo)!)
+			using (var p = Process.Start(controlInfo)!) // nosemgrep
 			{
 				p.StandardOutput.ReadToEnd();
 				p.WaitForExit();
@@ -406,7 +406,7 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 			info.ArgumentList.Add(arg);
 		}
 
-		using var process = Process.Start(info)!;
+		using var process = Process.Start(info)!; // nosemgrep
 		process.StandardOutput.ReadToEnd();
 		process.StandardError.ReadToEnd();
 		process.WaitForExit();

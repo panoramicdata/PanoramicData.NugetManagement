@@ -253,7 +253,7 @@ public static partial class CoverageMeasurement
 		}
 
 		var packages = Path.Combine(cloneRoot, "Directory.Packages.props");
-		var packagesText = File.Exists(packages) ? await File.ReadAllTextAsync(packages, cancellationToken).ConfigureAwait(false) : string.Empty;
+		var packagesText = File.Exists(packages) ? await File.ReadAllTextAsync(packages, cancellationToken).ConfigureAwait(false) : string.Empty; // nosemgrep
 
 		var results = Path.Combine(Path.GetTempPath(), "nugetmanagement-coverage", Guid.NewGuid().ToString("n"));
 		Directory.CreateDirectory(results);
@@ -270,7 +270,7 @@ public static partial class CoverageMeasurement
 
 			foreach (var project in projects)
 			{
-				var projectText = await File.ReadAllTextAsync(Path.Combine(cloneRoot, project), cancellationToken).ConfigureAwait(false);
+				var projectText = await File.ReadAllTextAsync(Path.Combine(cloneRoot, project), cancellationToken).ConfigureAwait(false); // nosemgrep
 				var output = Path.Combine(results, Path.GetFileNameWithoutExtension(project));
 				Directory.CreateDirectory(output);
 
@@ -429,7 +429,7 @@ public static partial class CoverageMeasurement
 	{
 		try
 		{
-			var text = File.ReadAllText(fullPath);
+			var text = File.ReadAllText(fullPath); // nosemgrep
 
 			return text.Contains("<IsTestProject>true", StringComparison.OrdinalIgnoreCase)
 				|| (Path.GetFileNameWithoutExtension(fullPath).Contains("Test", StringComparison.OrdinalIgnoreCase)

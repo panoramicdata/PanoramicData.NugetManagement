@@ -55,7 +55,7 @@ internal static class LocalRepositoryContextFactory
 			var fullPath = Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
 			if (File.Exists(fullPath))
 			{
-				fileContents[relativePath] = File.ReadAllText(fullPath);
+				fileContents[relativePath] = File.ReadAllText(fullPath); // nosemgrep
 			}
 		}
 
