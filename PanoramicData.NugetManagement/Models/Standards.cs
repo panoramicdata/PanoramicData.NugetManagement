@@ -141,7 +141,7 @@ public static class Standards
 	/// The default expertise statement README-05 puts at the top of every package README, as one
 	/// Markdown line. <c>{PackageName}</c> is replaced with the repository name.
 	/// </summary>
-	public const string ExpertiseBannerTemplate =
+	public static string ExpertiseBannerTemplate { get; } =
 		"> **Need help with APIs or .NET?** Panoramic Data are experts in APIs and .NET, and we can help with your development. "
 		+ "[Contact us](https://www.panoramicdata.com/contact-us) or see our [software services](https://www.panoramicdata.com/services/software).";
 
