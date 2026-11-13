@@ -28,8 +28,9 @@ public class ReviewPacketTests(ITestOutputHelper output) : TestWithOutput(output
 	[InlineData("Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789", "abcdefghijklmnop")]
 	[InlineData("password = hunter2hunter2", "hunter2hunter2")]
 	[InlineData("\"token\": \"ghp_abcdefghijklmnopqrstuvwxyz0123456789\"", "ghp_abcdef")]
-	[InlineData("key AKIAABCDEFGHIJKLMNOP here", "AKIAABCDEFGHIJKLMNOP")]
-	[InlineData("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r", "eyJhbGciOiJIUzI1NiJ9")]
+	// Fake credentials are split so secret scanners do not report the test data itself.
+	[InlineData("key AKIA" + "ABCDEFGHIJKLMNOP here", "AKIA" + "ABCDEFGHIJKLMNOP")]
+	[InlineData("eyJhbGciOiJIUzI1NiJ9" + "." + "eyJzdWIiOiIxMjM0NTY3ODkwIn0" + "." + "dBjftJeZ4CVPmB92K27uhbUJU1p1r", "eyJhbGciOiJIUzI1NiJ9")]
 	[InlineData("-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----", "MIIEowIBAAKCAQEA")]
 	public void Scrub_RemovesWhatLooksLikeACredential(string text, string secret)
 	{

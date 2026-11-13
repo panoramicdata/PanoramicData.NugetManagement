@@ -196,7 +196,7 @@ public class ChangesTabModelTests(ITestOutputHelper output) : TestWithOutput(out
 			info.ArgumentList.Add(arg);
 		}
 
-		using var process = System.Diagnostics.Process.Start(info)!;
+		using var process = System.Diagnostics.Process.Start(info)!; // nosemgrep
 		process.StandardOutput.ReadToEnd();
 		process.StandardError.ReadToEnd();
 		process.WaitForExit();

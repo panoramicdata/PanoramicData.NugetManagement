@@ -92,6 +92,26 @@ public class WorkflowYamlRemediationTests(ITestOutputHelper output) : TestWithOu
 		}
 	}
 
+	[Fact]
+	public async Task ShouldRefuseASiblingFolderWhoseNameStartsWithTheClone()
+	{
+		var clone = Path.Combine(_root, "repo");
+		var sibling = Path.Combine(_root, "repo-evil");
+		Directory.CreateDirectory(clone);
+		Directory.CreateDirectory(sibling);
+		var victim = Path.Combine(sibling, "ci.yml");
+		File.WriteAllText(victim, _tabbed);
+
+		var failing = await EvaluateAsync(".github/workflows/ci.yml", _tabbed).ConfigureAwait(true);
+		failing.Advisory!.Data["broken_files"] = new List<string> { "../repo-evil/ci.yml" };
+		var applied = new List<string>();
+
+		new WorkflowYamlRemediation().Apply(clone, failing, applied, null);
+
+		applied.Should().BeEmpty();
+		File.ReadAllText(victim).Should().Be(_tabbed);
+	}
+
 	private string Write(string relativePath, string content)
 	{
 		var path = Path.Combine(_root, relativePath);
