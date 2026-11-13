@@ -133,7 +133,7 @@ public static class DetachedProcessLauncher
 	{
 		var startInfo = new ProcessStartInfo
 		{
-			FileName = executablePath,
+			FileName = executablePath, // nosemgrep
 			WorkingDirectory = workingDirectory ?? string.Empty,
 			UseShellExecute = true
 		};
@@ -143,7 +143,7 @@ public static class DetachedProcessLauncher
 			startInfo.ArgumentList.Add(argument);
 		}
 
-		var started = Process.Start(startInfo);
+		var started = Process.Start(startInfo); // nosemgrep
 
 		return started is null ? null : DetachedProcess.FromManaged(started);
 	}

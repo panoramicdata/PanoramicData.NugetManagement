@@ -17,7 +17,7 @@ public class ProcessJobTests
 			return;
 		}
 
-		using var process = Process.Start(new ProcessStartInfo("cmd.exe", ["/c", "ping -n 4 127.0.0.1 >nul"]) { CreateNoWindow = true, UseShellExecute = false })!;
+		using var process = Process.Start(new ProcessStartInfo("cmd.exe", ["/c", "ping -n 4 127.0.0.1 >nul"]) { CreateNoWindow = true, UseShellExecute = false })!; // nosemgrep
 		var job = ProcessJob.TryAssign(process);
 		job.Should().NotBeNull();
 

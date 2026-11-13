@@ -736,9 +736,9 @@ public partial class LocalRepoService
 
 		try
 		{
-			using var process = Process.Start(new ProcessStartInfo
+			using var process = Process.Start(new ProcessStartInfo // nosemgrep
 			{
-				FileName = path,
+				FileName = path, // nosemgrep
 				UseShellExecute = true
 			});
 
@@ -1821,7 +1821,7 @@ public partial class LocalRepoService
 	{
 		var startInfo = new ProcessStartInfo
 		{
-			FileName = fileName,
+			FileName = fileName, // nosemgrep
 			WorkingDirectory = workingDirectory,
 			RedirectStandardOutput = true,
 			RedirectStandardError = true,

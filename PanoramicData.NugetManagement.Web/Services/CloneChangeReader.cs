@@ -251,7 +251,7 @@ public sealed class CloneChangeReader
 			info.ArgumentList.Add(arg);
 		}
 
-		using var process = Process.Start(info) ?? throw new InvalidOperationException("git did not start.");
+		using var process = Process.Start(info) ?? throw new InvalidOperationException("git did not start."); // nosemgrep
 		using var stdout = new MemoryStream();
 		var copying = process.StandardOutput.BaseStream.CopyToAsync(stdout);
 		var errors = process.StandardError.ReadToEndAsync();

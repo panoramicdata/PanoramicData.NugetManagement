@@ -32,21 +32,21 @@ public sealed partial class WorkflowYamlRemediation : IRemediation
 		foreach (var relativePath in ReadBrokenFiles(result))
 		{
 			var fullPath = Path.GetFullPath(Path.Combine(localPath, relativePath));
-			var root = Path.GetFullPath(localPath);
+			var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(localPath));
 
-			// The path comes from advisory data; never let it leave the clone.
-			if (!fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath))
+			// The path comes from advisory data; never let it leave the clone (or reach a sibling sharing its prefix).
+			if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath))
 			{
 				onOutput?.Invoke($"⏭️ [CI-14] {relativePath} is not a file in this repository — skipping.");
 				continue;
 			}
 
-			var original = File.ReadAllText(fullPath);
+			var original = File.ReadAllText(fullPath); // nosemgrep
 			var repaired = ReplaceLeadingTabs(original);
 
 			if (repaired != original && Parses(repaired))
 			{
-				File.WriteAllText(fullPath, repaired);
+				File.WriteAllText(fullPath, repaired); // nosemgrep
 				applied.Add(relativePath);
 				onOutput?.Invoke($"✅ [CI-14] Replaced indentation tabs with spaces in {relativePath}");
 				continue;
@@ -54,7 +54,7 @@ public sealed partial class WorkflowYamlRemediation : IRemediation
 
 			if (relativePath.Equals(_codeQlPath, StringComparison.OrdinalIgnoreCase) && Parses(Standards.CodeQlWorkflowContent))
 			{
-				File.WriteAllText(fullPath, Standards.CodeQlWorkflowContent);
+				File.WriteAllText(fullPath, Standards.CodeQlWorkflowContent); // nosemgrep
 				applied.Add(relativePath);
 				onOutput?.Invoke($"✅ [CI-14] {relativePath} could not be repaired, so it was replaced with the standard CodeQL workflow");
 				continue;

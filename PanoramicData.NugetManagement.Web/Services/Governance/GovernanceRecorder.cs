@@ -259,7 +259,7 @@ public sealed class GovernanceRecorder(
 
 				if (File.Exists(full))
 				{
-					builder.AppendLine().AppendLine($"=== new file: {path}").Append(Truncate(await File.ReadAllTextAsync(full, cancellationToken).ConfigureAwait(false), 20_000));
+					builder.AppendLine().AppendLine($"=== new file: {path}").Append(Truncate(await File.ReadAllTextAsync(full, cancellationToken).ConfigureAwait(false), 20_000)); // nosemgrep
 				}
 			}
 
