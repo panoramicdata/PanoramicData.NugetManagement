@@ -71,7 +71,8 @@ jobs:
     # nor apt. Run-Coverage.ps1 is deliberately the single invocation used both here and locally.
     - name: Install PowerShell
       run: |
-        dotnet tool install --global PowerShell
+        # 7.7.0 is published as a tool but its linux-x64 runtime package is not, so an unpinned install fails.
+        dotnet tool install --global PowerShell --version 7.6.10
         # dotnet puts global tools in $HOME/.dotnet/tools, which is not on PATH on this image, so
         # the next step would fail with "pwsh: command not found" despite the install succeeding.
         echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
