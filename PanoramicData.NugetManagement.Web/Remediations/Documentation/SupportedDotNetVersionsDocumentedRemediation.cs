@@ -50,7 +50,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 
 		foreach (var file in Strings(result, "unsupported_mentions").Select(SourceFile).Distinct(StringComparer.OrdinalIgnoreCase))
 		{
-			if (RewriteMentions(Path.Combine(localPath, file), current))
+			if (ContainedPath(localPath, file) is { } full && RewriteMentions(full, current))
 			{
 				if (!applied.Contains(file, StringComparer.OrdinalIgnoreCase))
 				{
@@ -155,13 +155,9 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 		}
 
 		var (text, encoding) = Read(path);
-		var updated = ProseRegex().Replace(text, match =>
-			match.Groups["kind"].Success || Normalise(match.Groups["version"].Value) == current
-				? match.Value
-				: ".NET " + current);
-
-		updated = MonikerRegex().Replace(updated, match =>
-			match.Groups["version"].Value == current ? match.Value : "net" + current);
+		var updated = IsProjectFile(path)
+			? DescriptionElementRegex().Replace(text, match => match.Groups["open"].Value + Update(match.Groups["body"].Value, current) + match.Groups["close"].Value)
+			: UpdateProse(text, current);
 
 		if (updated == text)
 		{
@@ -171,6 +167,65 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 		Write(path, updated, encoding);
 		return true;
 	}
+
+	private static bool IsProjectFile(string path)
+		=> Path.GetExtension(path).ToLowerInvariant() is ".csproj" or ".props" or ".targets" or ".fsproj" or ".vbproj";
+
+	/// <summary>
+	/// Updates line by line, skipping fenced code blocks and lines that describe history.
+	/// </summary>
+	private static string UpdateProse(string text, string current)
+	{
+		var inFence = false;
+		var lines = text.Split('\n');
+		for (var i = 0; i < lines.Length; i++)
+		{
+			if (lines[i].TrimStart().StartsWith("```", StringComparison.Ordinal))
+			{
+				inFence = !inFence;
+				continue;
+			}
+
+			if (!inFence && !HistoricalRegex().IsMatch(lines[i]))
+			{
+				lines[i] = Update(lines[i], current);
+			}
+		}
+
+		return string.Join('\n', lines);
+	}
+
+	private static string Update(string text, string current)
+	{
+		var updated = ProseRegex().Replace(text, match =>
+			match.Groups["kind"].Success || Normalise(match.Groups["version"].Value) == current
+				? match.Value
+				: ".NET " + current);
+
+		return MonikerRegex().Replace(updated, match =>
+			match.Groups["version"].Value == current ? match.Value : "net" + current);
+	}
+
+	/// <summary>
+	/// The path under <paramref name="root"/>, or null when it is rooted or escapes it.
+	/// </summary>
+	private static string? ContainedPath(string root, string relative)
+	{
+		if (Path.IsPathRooted(relative))
+		{
+			return null;
+		}
+
+		var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+		var full = Path.GetFullPath(Path.Combine(fullRoot, relative));
+		return full.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase) ? full : null;
+	}
+
+	[GeneratedRegex(@"(?<open><(?:Package)?Description>)(?<body>[^<]*)(?<close></(?:Package)?Description>)")]
+	private static partial Regex DescriptionElementRegex();
+
+	[GeneratedRegex(@"\b(previously|formerly|dropped|removed|no longer|deprecated|end of life|was supported|until|since|migrat\w*|upgrad\w*|changelog)\b", RegexOptions.IgnoreCase)]
+	private static partial Regex HistoricalRegex();
 
 	private static string Normalise(string version) => version.Contains('.', StringComparison.Ordinal) ? version : version + ".0";
 

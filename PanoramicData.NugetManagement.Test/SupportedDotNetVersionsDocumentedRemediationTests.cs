@@ -172,6 +172,37 @@ public sealed class SupportedDotNetVersionsDocumentedRemediationTests : IDisposa
 	}
 
 	[Fact]
+	public void PathsOutsideTheRepositoryAreNeverTouched()
+	{
+		var outside = Path.Combine(Path.GetDirectoryName(_root)!, "outside-" + Guid.NewGuid().ToString("n") + ".md");
+		File.WriteAllText(outside, "Built for .NET 10.\n");
+		try
+		{
+			Write("README.md", "# Acme\n");
+			Apply(Failing([".NET 11.0"], ["../" + Path.GetFileName(outside) + ": .NET 10", outside + ": .NET 10"]));
+			File.ReadAllText(outside).Should().Be("Built for .NET 10.\n");
+		}
+		finally
+		{
+			File.Delete(outside);
+		}
+	}
+
+	[Fact]
+	public void HistoryCodeBlocksAndNonDescriptionProjectTextAreLeftAlone()
+	{
+		const string readme = "# Acme\n\nSupports .NET 11.0.\n\nDropped .NET 8 support.\n\n```\ndotnet new --framework net10.0\n```\n";
+		Write("README.md", readme);
+		const string project = "<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><Description>For .NET 10.</Description></PropertyGroup></Project>";
+		Write("Acme/Acme.csproj", project);
+
+		Apply(Failing([".NET 11.0"], ["README.md: .NET 8", "README.md: net10.0", "Acme/Acme.csproj <Description>: .NET 10"]));
+
+		Read("README.md").Should().Be(readme);
+		Read("Acme/Acme.csproj").Should().Contain("<TargetFramework>net10.0</TargetFramework>").And.Contain("For .NET 11.0.");
+	}
+
+	[Fact]
 	public void AMissingReadmeIsNotAnError()
 		=> Apply(Failing([".NET 11.0"], [])).Should().BeEmpty();
 
