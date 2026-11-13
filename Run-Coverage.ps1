@@ -19,9 +19,6 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $testProject = Join-Path $PSScriptRoot 'PanoramicData.NugetManagement.Test'
-$outputDirectory = Join-Path $testProject 'bin/Debug/net10.0/TestResults'
-$coverageFile = Join-Path $outputDirectory 'coverage.cobertura.xml'
-
 dotnet build (Join-Path $testProject 'PanoramicData.NugetManagement.Test.csproj') --configuration Debug --nologo
 if ($LASTEXITCODE -ne 0) {
 	Write-Error 'Build failed.'
@@ -31,7 +28,22 @@ if ($LASTEXITCODE -ne 0) {
 # The Microsoft.Testing.Platform host is a native executable, so its name is platform-dependent:
 # ".exe" on Windows, no extension anywhere else. $IsWindows is an automatic variable in PowerShell 7.
 $executableName = if ($IsWindows) { 'PanoramicData.NugetManagement.Test.exe' } else { 'PanoramicData.NugetManagement.Test' }
-$testExecutable = Join-Path $testProject "bin/Debug/net10.0/$executableName"
+
+# The framework folder follows the project's TargetFramework, so find the newest one holding the
+# host instead of naming it: a hardcoded folder broke every run when the repository moved to net11.0.
+$frameworkDirectory = Get-ChildItem (Join-Path $testProject 'bin/Debug') -Directory |
+	Where-Object { $_.Name -match '^net\d+\.\d+$' -and (Test-Path (Join-Path $_.FullName $executableName)) } |
+	Sort-Object { [version]($_.Name -replace '^net', '') } -Descending |
+	Select-Object -First 1
+
+if (-not $frameworkDirectory) {
+	Write-Error "No built test host named $executableName was found under $testProject/bin/Debug."
+	exit 1
+}
+
+$testExecutable = Join-Path $frameworkDirectory.FullName $executableName
+$outputDirectory = Join-Path $frameworkDirectory.FullName 'TestResults'
+$coverageFile = Join-Path $outputDirectory 'coverage.cobertura.xml'
 
 $testArguments = @(
 	'--coverage'
