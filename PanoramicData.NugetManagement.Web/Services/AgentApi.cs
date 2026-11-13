@@ -81,7 +81,7 @@ public sealed class AgentWorkObserver
 /// Exists so an agent can see what the tree shows and start the same work the buttons start, without a
 /// person relaying either. It is deliberately narrower than the UI. It reads state and transcripts, and
 /// queues only work that changes nothing outside the local clone — AI fix, re-assess, build, test,
-/// clone. Commit and push, publish and every other outward-facing action are not reachable from here,
+/// clone, and a refresh of the repository list (<c>POST /agent/refresh</c>). Commit and push, publish and every other outward-facing action are not reachable from here,
 /// and adding one should be a decision made in this file rather than a side effect of a new
 /// <see cref="WorkKind"/>.
 /// <para>
@@ -127,6 +127,24 @@ public static class AgentApi
 			WorkKind.Publish => PublishRefusal(row, confirm),
 			_ => null
 		};
+
+	/// <summary>
+	/// Queues the same refresh the dashboard's Refresh button does: discover every organisation's repositories,
+	/// then re-assess them. This is how a repository created after the app started becomes visible.
+	/// </summary>
+	/// <param name="lanes">The work lanes.</param>
+	/// <returns>The queued item, or null when a refresh is already waiting and folds this request into itself.</returns>
+	/// <remarks>
+	/// A refresh that is already running does not fold the request, because it may have listed the organisation before
+	/// the repository existed; asking again earns a fresh pass behind it. It spends the same GitHub API budget as the button.
+	/// </remarks>
+	internal static WorkItem? EnqueueRefresh(WorkLaneService lanes)
+		=> lanes.Enqueue(
+			"Refresh every organisation",
+			WorkDescriptor.ForOrganization(WorkKind.RefreshAll, null),
+			"refresh:*",
+			step: null,
+			consoleNodeKey: null);
 
 	/// <summary>
 	/// Why a repository is outside governance, or null when it is governed. Archived and fork repositories are
@@ -462,6 +480,20 @@ public static class AgentApi
 				consoleNodeKey: null);
 
 			return Results.Json(new { queued = item is null ? 0 : 1, id = item?.Id });
+		});
+
+		group.MapPost("/refresh", (WorkLaneService lanes) =>
+		{
+			using var origin = Governance.QueueOrigin.Use("agent-api");
+
+			var item = EnqueueRefresh(lanes);
+
+			return Results.Json(new
+			{
+				queued = item is null ? 0 : 1,
+				id = item?.Id,
+				note = item is null ? "A refresh is already waiting its turn and will pick up what exists now." : null
+			});
 		});
 
 		MapGovernance(group);
