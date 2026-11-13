@@ -97,7 +97,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 			return false;
 		}
 
-		var (text, bom) = Read(path);
+		var (text, encoding) = Read(path);
 		if (text.Contains(phrase, StringComparison.Ordinal))
 		{
 			return false;
@@ -130,7 +130,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 		}
 
 		lines.InsertRange(insertAt, block);
-		Write(path, string.Join(newline, lines), bom);
+		Write(path, string.Join(newline, lines), encoding);
 		return true;
 	}
 
@@ -154,7 +154,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 			return false;
 		}
 
-		var (text, bom) = Read(path);
+		var (text, encoding) = Read(path);
 		var updated = ProseRegex().Replace(text, match =>
 			match.Groups["kind"].Success || Normalise(match.Groups["version"].Value) == current
 				? match.Value
@@ -168,21 +168,30 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 			return false;
 		}
 
-		Write(path, updated, bom);
+		Write(path, updated, encoding);
 		return true;
 	}
 
 	private static string Normalise(string version) => version.Contains('.', StringComparison.Ordinal) ? version : version + ".0";
 
-	private static (string Text, bool Bom) Read(string path)
+	private static (string Text, Encoding Encoding) Read(string path)
 	{
 		var bytes = File.ReadAllBytes(path);
 		var bom = bytes is [0xEF, 0xBB, 0xBF, ..];
-		return (Encoding.UTF8.GetString(bytes, bom ? 3 : 0, bytes.Length - (bom ? 3 : 0)), bom);
+		try
+		{
+			var strict = new UTF8Encoding(bom, throwOnInvalidBytes: true);
+			return (strict.GetString(bytes, bom ? 3 : 0, bytes.Length - (bom ? 3 : 0)), strict);
+		}
+		catch (DecoderFallbackException)
+		{
+			// Latin-1 maps every byte to one char, so untouched bytes round-trip unchanged.
+			return (Encoding.Latin1.GetString(bytes), Encoding.Latin1);
+		}
 	}
 
-	private static void Write(string path, string text, bool bom)
-		=> File.WriteAllText(path, text, new UTF8Encoding(bom));
+	private static void Write(string path, string text, Encoding encoding)
+		=> File.WriteAllText(path, text, encoding);
 
 	[GeneratedRegex(@"^\.NET (?<version>\d+\.\d+)$")]
 	private static partial Regex CurrentVersionRegex();

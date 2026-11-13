@@ -158,6 +158,20 @@ public sealed class SupportedDotNetVersionsDocumentedRemediationTests : IDisposa
 	}
 
 	[Fact]
+	public void ANonUtf8ReadmeKeepsItsOtherBytes()
+	{
+		var path = Path_("README.md");
+		var original = new byte[] { (byte)'#', (byte)' ', (byte)'A', (byte)'\n', (byte)'\n', 0xA9, (byte)' ', (byte)'2', (byte)'0', (byte)'2', (byte)'6', (byte)'\n' };
+		File.WriteAllBytes(path, original);
+
+		Apply(Failing([".NET 11.0"], [])).Should().Equal("README.md");
+
+		var bytes = File.ReadAllBytes(path);
+		bytes.Should().Contain(0xA9).And.NotContain(0xEF, "no U+FFFD replacement was written");
+		System.Text.Encoding.Latin1.GetString(bytes).Should().Contain("Supports .NET 11.0.").And.Contain("© 2026");
+	}
+
+	[Fact]
 	public void AMissingReadmeIsNotAnError()
 		=> Apply(Failing([".NET 11.0"], [])).Should().BeEmpty();
 
