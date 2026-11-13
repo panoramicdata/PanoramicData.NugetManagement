@@ -92,12 +92,11 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 	/// </summary>
 	private static bool InsertPhrase(string root, string relative, string phrase)
 	{
-		if (ContainedPath(root, relative) is not { } path || !File.Exists(path))
+		if (Read(root, relative) is not var (text, encoding))
 		{
 			return false;
 		}
 
-		var (text, encoding) = Read(path);
 		if (text.Contains(phrase, StringComparison.Ordinal))
 		{
 			return false;
@@ -130,7 +129,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 		}
 
 		lines.InsertRange(insertAt, block);
-		Write(path, string.Join(newline, lines), encoding);
+		Write(root, relative, string.Join(newline, lines), encoding);
 		return true;
 	}
 
@@ -149,13 +148,12 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 	/// </summary>
 	private static bool RewriteMentions(string root, string relative, string current)
 	{
-		if (ContainedPath(root, relative) is not { } path || !File.Exists(path))
+		if (Read(root, relative) is not var (text, encoding))
 		{
 			return false;
 		}
 
-		var (text, encoding) = Read(path);
-		var updated = IsProjectFile(path)
+		var updated = IsProjectFile(relative)
 			? DescriptionElementRegex().Replace(text, match => match.Groups["open"].Value + UpdateLine(match.Groups["body"].Value, current) + match.Groups["close"].Value)
 			: UpdateProse(text, current);
 
@@ -164,7 +162,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 			return false;
 		}
 
-		Write(path, updated, encoding);
+		Write(root, relative, updated, encoding);
 		return true;
 	}
 
@@ -232,8 +230,13 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 
 	private static string Normalise(string version) => version.Contains('.', StringComparison.Ordinal) ? version : version + ".0";
 
-	private static (string Text, Encoding Encoding) Read(string path)
+	private static (string Text, Encoding Encoding)? Read(string root, string relative)
 	{
+		if (ContainedPath(root, relative) is not { } path || !File.Exists(path))
+		{
+			return null;
+		}
+
 		var bytes = File.ReadAllBytes(path);
 		var bom = bytes is [0xEF, 0xBB, 0xBF, ..];
 		try
@@ -248,8 +251,8 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 		}
 	}
 
-	private static void Write(string path, string text, Encoding encoding)
-		=> File.WriteAllText(path, text, encoding);
+	private static void Write(string root, string relative, string text, Encoding encoding)
+		=> File.WriteAllText(ContainedPath(root, relative) ?? throw new InvalidOperationException($"{relative} is outside the repository"), text, encoding);
 
 	[GeneratedRegex(@"^\.NET (?<version>\d+\.\d+)$")]
 	private static partial Regex CurrentVersionRegex();
