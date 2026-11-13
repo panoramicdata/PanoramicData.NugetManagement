@@ -257,6 +257,8 @@ public partial class SupportedDotNetVersionsDocumentedRule : RuleBase
 					return new(1, number);
 				case "Core":
 					return new(2, number.Contains('.') ? number : number + ".0");
+				default:
+					break;
 			}
 
 			var normalised = number.Contains('.') ? number : number + ".0";
