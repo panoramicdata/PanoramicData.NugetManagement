@@ -406,7 +406,7 @@ public class CloneChangeReaderTests : TestWithOutput, IDisposable
 			info.ArgumentList.Add(arg);
 		}
 
-		using var process = Process.Start(info)!;
+		using var process = Process.Start(info)!; // nosemgrep
 		process.StandardOutput.ReadToEnd();
 		process.StandardError.ReadToEnd();
 		process.WaitForExit();
