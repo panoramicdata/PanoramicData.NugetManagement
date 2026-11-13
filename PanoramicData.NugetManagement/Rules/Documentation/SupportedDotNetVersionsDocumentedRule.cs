@@ -249,21 +249,16 @@ public partial class SupportedDotNetVersionsDocumentedRule : RuleBase
 		{
 			var number = match.Groups["version"].Value;
 			var kind = match.Groups["kind"].Value;
-			switch (kind)
-			{
-				case "Standard":
-					return new(0, number.Contains('.') ? number : number + ".0");
-				case "Framework":
-					return new(1, number);
-				case "Core":
-					return new(2, number.Contains('.') ? number : number + ".0");
-				default:
-					break;
-			}
-
 			var normalised = number.Contains('.') ? number : number + ".0";
-			var major = int.Parse(normalised.Split('.')[0], System.Globalization.CultureInfo.InvariantCulture);
-			return major >= 5 ? new(3, normalised) : null;
+			return kind switch
+			{
+				"Standard" => new(0, normalised),
+				"Framework" => new(1, number),
+				"Core" => new(2, normalised),
+				_ => int.Parse(normalised.Split('.')[0], System.Globalization.CultureInfo.InvariantCulture) >= 5
+					? new(3, normalised)
+					: null
+			};
 		}
 	}
 }
