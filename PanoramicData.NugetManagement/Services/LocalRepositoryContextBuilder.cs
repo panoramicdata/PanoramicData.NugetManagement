@@ -58,6 +58,8 @@ public class LocalRepositoryContextBuilder
 		".github/workflows/ci.yml",
 		"AGENTS.md",
 		"CLAUDE.md",
+		"copilot-instructions.md",
+		".github/copilot-instructions.md",
 		"CONTRIBUTING.md",
 		"Directory.Build.props",
 		"Directory.Packages.props",

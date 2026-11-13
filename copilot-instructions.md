@@ -14,7 +14,7 @@
 
 ## Target Framework
 
-All projects target **.NET 10** (`net10.0`).
+All projects target **.NET 11.0** (`net11.0`).
 
 ## Key Architecture Patterns
 

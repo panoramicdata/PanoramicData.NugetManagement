@@ -43,6 +43,12 @@ public class AppSettings
 	public string CopyrightHolder { get; set; } = "Panoramic Data Limited";
 
 	/// <summary>
+	/// The Markdown line README-05 requires at the top of every package README. <c>{PackageName}</c>
+	/// is replaced with the repository name.
+	/// </summary>
+	public string ExpertiseBannerTemplate { get; set; } = Standards.ExpertiseBannerTemplate;
+
+	/// <summary>
 	/// Optional Codacy API token for code quality checks.
 	/// </summary>
 	public string? CodacyApiToken { get; set; }
