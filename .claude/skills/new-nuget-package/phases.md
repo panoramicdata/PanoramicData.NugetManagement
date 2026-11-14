@@ -90,7 +90,7 @@ Do the generation with a PowerShell script, and check the total row count agains
 
 ## 9. README and docs
 
-The README has badges (NuGet, MIT, .NET 10, CI, and Codacy grade and coverage, with URLs from the Codacy API `badges` field), an independence and trademark disclaimer, installation, quick start, authentication, scoping, examples per major area, read-only mode, errors and retries, a coverage table and a quality section.
+The README has badges (NuGet, MIT, .NET 10, CI, and Codacy grade and coverage, with URLs from the Codacy API `badges` field), then directly under them the expertise statement README-05 requires (`Standards.ExpertiseBannerTemplate`, with the repository name for `{PackageName}`; copy it from this repository's README), an independence and trademark disclaimer, installation, quick start, authentication, scoping, examples per major area, read-only mode, errors and retries, a coverage table and a quality section.
 
 **Compile-check every example:** a file-based app under `temp/` with `#:project`. Fix the missing `using` directives it finds.
 
