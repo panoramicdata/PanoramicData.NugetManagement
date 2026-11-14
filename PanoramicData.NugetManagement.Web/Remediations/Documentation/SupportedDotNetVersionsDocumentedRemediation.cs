@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.RegularExpressions;
 using PanoramicData.NugetManagement.Models;
 
@@ -92,7 +91,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 	/// </summary>
 	private static bool InsertPhrase(string root, string relative, string phrase)
 	{
-		if (Read(root, relative) is not var (text, encoding))
+		if (RepositoryFileText.Read(root, relative) is not var (text, encoding))
 		{
 			return false;
 		}
@@ -129,7 +128,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 		}
 
 		lines.InsertRange(insertAt, block);
-		Write(root, relative, string.Join(newline, lines), encoding);
+		RepositoryFileText.Write(root, relative, string.Join(newline, lines), encoding);
 		return true;
 	}
 
@@ -148,7 +147,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 	/// </summary>
 	private static bool RewriteMentions(string root, string relative, string current)
 	{
-		if (Read(root, relative) is not var (text, encoding))
+		if (RepositoryFileText.Read(root, relative) is not var (text, encoding))
 		{
 			return false;
 		}
@@ -162,7 +161,7 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 			return false;
 		}
 
-		Write(root, relative, updated, encoding);
+		RepositoryFileText.Write(root, relative, updated, encoding);
 		return true;
 	}
 
@@ -207,21 +206,6 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 			match.Groups["version"].Value == current ? match.Value : "net" + current);
 	}
 
-	/// <summary>
-	/// The path under <paramref name="root"/>, or null when it is rooted or escapes it.
-	/// </summary>
-	private static string? ContainedPath(string root, string relative)
-	{
-		if (Path.IsPathRooted(relative))
-		{
-			return null;
-		}
-
-		var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-		var full = Path.GetFullPath(Path.Combine(fullRoot, relative));
-		return full.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase) ? full : null;
-	}
-
 	[GeneratedRegex(@"(?<open><(?:Package)?Description>)(?<body>[^<]*)(?<close></(?:Package)?Description>)")]
 	private static partial Regex DescriptionElementRegex();
 
@@ -229,30 +213,6 @@ public sealed partial class SupportedDotNetVersionsDocumentedRemediation : DataD
 	private static partial Regex HistoricalRegex();
 
 	private static string Normalise(string version) => version.Contains('.', StringComparison.Ordinal) ? version : version + ".0";
-
-	private static (string Text, Encoding Encoding)? Read(string root, string relative)
-	{
-		if (ContainedPath(root, relative) is not { } path || !File.Exists(path))
-		{
-			return null;
-		}
-
-		var bytes = File.ReadAllBytes(path);
-		var bom = bytes is [0xEF, 0xBB, 0xBF, ..];
-		try
-		{
-			var strict = new UTF8Encoding(bom, throwOnInvalidBytes: true);
-			return (strict.GetString(bytes, bom ? 3 : 0, bytes.Length - (bom ? 3 : 0)), strict);
-		}
-		catch (DecoderFallbackException)
-		{
-			// Latin-1 maps every byte to one char, so untouched bytes round-trip unchanged.
-			return (Encoding.Latin1.GetString(bytes), Encoding.Latin1);
-		}
-	}
-
-	private static void Write(string root, string relative, string text, Encoding encoding)
-		=> File.WriteAllText(ContainedPath(root, relative) ?? throw new InvalidOperationException($"{relative} is outside the repository"), text, encoding);
 
 	[GeneratedRegex(@"^\.NET (?<version>\d+\.\d+)$")]
 	private static partial Regex CurrentVersionRegex();
