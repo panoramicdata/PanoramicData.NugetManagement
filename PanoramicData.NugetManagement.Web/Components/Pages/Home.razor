@@ -1667,7 +1667,7 @@ else
 			// The same lane key shape QueueForSelectedRepository uses, so an estate-wide press folds
 			// into whatever a single-repository press already queued rather than doubling it.
 			Lanes.Enqueue(
-				$"{stepName} {row.RepositoryFullName}",
+				$"{stepName} {row.RepositoryName}",
 				WorkDescriptor.ForRepository(kind, row.Organization, row.RepositoryFullName),
 				$"{kind}:{row.RepositoryFullName}:",
 				step,
@@ -5272,7 +5272,7 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
-		QueueForSelectedRepository(WorkKind.Build, $"Build {_selectedRow.RepositoryFullName}", WorkflowStep.Build);
+		QueueForSelectedRepository(WorkKind.Build, $"Build {_selectedRow.RepositoryName}", WorkflowStep.Build);
 		return Task.CompletedTask;
 	}
 
@@ -5291,7 +5291,7 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
-		QueueForSelectedRepository(WorkKind.Test, $"Test {_selectedRow.RepositoryFullName}", WorkflowStep.Test);
+		QueueForSelectedRepository(WorkKind.Test, $"Test {_selectedRow.RepositoryName}", WorkflowStep.Test);
 		return Task.CompletedTask;
 	}
 
@@ -5344,7 +5344,7 @@ else
 
 		EnsureSelectedRowIsCurrent();
 
-		QueueForSelectedRepository(WorkKind.Publish, $"Publish {_selectedRow.RepositoryFullName}", WorkflowStep.Publish);
+		QueueForSelectedRepository(WorkKind.Publish, $"Publish {_selectedRow.RepositoryName}", WorkflowStep.Publish);
 		return Task.CompletedTask;
 	}
 
