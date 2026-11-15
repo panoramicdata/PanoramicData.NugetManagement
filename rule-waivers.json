@@ -142,5 +142,13 @@
 			"waivedBy": "david.bond@panoramicdata.com",
 			"waivedOnUtc": "2026-11-09T00:00:00Z"
 		}
+	],
+	"panoramicdata/Rundeck.Cli": [
+		{
+			"ruleId": "PKG-10",
+			"reason": "A dotnet new template package published from its nuspec, not through this pipeline: its only project is the template content, which must not declare PackageId or GeneratePackageOnBuild.",
+			"waivedBy": "david.bond@panoramicdata.com",
+			"waivedOnUtc": "2026-11-15T00:00:00Z"
+		}
 	]
 }
