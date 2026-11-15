@@ -180,7 +180,7 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 	private static void AssertTheProjectFileWasEditedNotReplaced(FailArmyWorkingCopy copy, string transcript)
 	{
 		var projectPath = Directory
-			.EnumerateFiles(copy.Root, "*.csproj", SearchOption.AllDirectories)
+			.EnumerateFiles(copy.Root, "PanoramicData.NugetFailArmy.csproj", SearchOption.AllDirectories)
 			.Single();
 
 		var project = File.ReadAllText(projectPath);
