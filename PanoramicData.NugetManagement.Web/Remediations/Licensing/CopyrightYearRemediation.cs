@@ -37,23 +37,32 @@ public sealed class CopyrightYearRemediation : DataDrivenRemediation
 
 		foreach (var file in ReadStrings(data, "files"))
 		{
-			if (RepositoryFileText.Read(localPath, file) is not var (text, encoding))
+			if (SetYear(localPath, file, holder, year, result.RuleId, onOutput))
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {file} is missing or outside the repository — skipping.");
-				continue;
+				applied.Add(file);
 			}
-
-			var updated = CopyrightNotices.Correct(text, holder, year);
-			if (updated == text)
-			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {file} already carries {year} — skipping.");
-				continue;
-			}
-
-			RepositoryFileText.Write(localPath, file, updated, encoding);
-			applied.Add(file);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Set the copyright year in {file} to {year}");
 		}
+	}
+
+	/// <summary>Rewrites one file; false when it is missing, outside the repository or already current.</summary>
+	private static bool SetYear(string root, string file, string holder, int year, string ruleId, Action<string>? onOutput)
+	{
+		if (RepositoryFileText.Read(root, file) is not var (text, encoding))
+		{
+			onOutput?.Invoke($"⏭️ [{ruleId}] {file} is missing or outside the repository — skipping.");
+			return false;
+		}
+
+		var updated = CopyrightNotices.Correct(text, holder, year);
+		if (updated == text)
+		{
+			onOutput?.Invoke($"⏭️ [{ruleId}] {file} already carries {year} — skipping.");
+			return false;
+		}
+
+		RepositoryFileText.Write(root, file, updated, encoding);
+		onOutput?.Invoke($"✅ [{ruleId}] Set the copyright year in {file} to {year}");
+		return true;
 	}
 
 	private static int? ReadYear(Dictionary<string, object> data)
