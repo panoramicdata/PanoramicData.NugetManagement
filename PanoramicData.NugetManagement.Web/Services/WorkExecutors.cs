@@ -187,21 +187,21 @@ public sealed partial class WorkExecutors(
 		=> item.Descriptor.Kind switch
 		{
 			WorkKind.Clone => CloneAsync(item, progress, cancellationToken),
-			WorkKind.Reassess => ReassessAsync(item, progress, cancellationToken),
+			WorkKind.Reassess => ReassessAsync(item, cancellationToken),
 			WorkKind.FixAll => FixAllAsync(item, progress, cancellationToken),
-			WorkKind.FixCategory => FixCategoryAsync(item, progress, cancellationToken),
+			WorkKind.FixCategory => FixCategoryAsync(item, cancellationToken),
 			WorkKind.FixRule => FixRuleAsync(item, progress, cancellationToken),
 			WorkKind.FixWithAiRule => FixWithAiRuleAsync(item, progress, cancellationToken),
-			WorkKind.AnalyseIssue => AnalyseIssueAsync(item, progress, cancellationToken),
+			WorkKind.AnalyseIssue => AnalyseIssueAsync(item, cancellationToken),
 			WorkKind.FixWithAiIssue => FixWithAiIssueAsync(item, progress, cancellationToken),
 			WorkKind.UnstickWithAi => UnstickWithAiAsync(item, progress, cancellationToken),
 			WorkKind.TriageDependabot => TriageDependabotAsync(item, progress, cancellationToken),
 			WorkKind.Build => BuildAsync(item, progress, cancellationToken),
-			WorkKind.Test => TestAsync(item, progress, cancellationToken),
-			WorkKind.GitSync => GitSyncAsync(item, progress, cancellationToken),
+			WorkKind.Test => TestAsync(item, cancellationToken),
+			WorkKind.GitSync => GitSyncAsync(item, cancellationToken),
 			WorkKind.CommitAndPush => CommitAndPushAsync(item, progress, cancellationToken),
 			WorkKind.Publish => PublishAsync(item, progress, cancellationToken),
-			WorkKind.RediscoverOrganization => RediscoverOrganizationAsync(item, progress, cancellationToken),
+			WorkKind.RediscoverOrganization => RediscoverOrganizationAsync(item, cancellationToken),
 			WorkKind.DiscoverReassessTargets => DiscoverReassessTargetsAsync(item, progress, cancellationToken),
 			WorkKind.DiscoverCloneTargets => DiscoverCloneTargetsAsync(item, progress, cancellationToken),
 			WorkKind.RefreshAll => RefreshAllAsync(item, progress, cancellationToken),
@@ -456,9 +456,8 @@ public sealed partial class WorkExecutors(
 	/// for repositories that are unchanged, and fans out re-assessment across the rest.
 	/// </summary>
 	/// <param name="item">The item naming the organisation to rediscover.</param>
-	/// <param name="progress">Unused: this step reports no sub-steps of its own.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task RediscoverOrganizationAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task RediscoverOrganizationAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var organization = item.Organization;
 		if (organization is null)
@@ -661,9 +660,8 @@ public sealed partial class WorkExecutors(
 	/// it because one of several was unlisted would take the still-listed ones with it.
 	/// </remarks>
 	/// <param name="item">The item naming the repository to re-assess.</param>
-	/// <param name="progress">Unused: a re-assessment reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task ReassessAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task ReassessAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)
@@ -678,29 +676,9 @@ public sealed partial class WorkExecutors(
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 
-			var listed = new List<string>();
-			foreach (var package in row.Packages)
+			if (await RemoveIfRetiredAsync(row).ConfigureAwait(false))
 			{
-				if (await dashboard.IsPackageListedAsync(package.PackageId).ConfigureAwait(false))
-				{
-					listed.Add(package.PackageId);
-				}
-			}
-
-			if (HasRetiredEveryPackage(row.Packages.Count, listed.Count))
-			{
-				Say($"⚠️ {row.RepositoryFullName} publishes nothing still listed on NuGet — removing from cache.");
-				cache.RemoveRow(row.RepositoryFullName);
 				return;
-			}
-
-			if (listed.Count < row.Packages.Count)
-			{
-				var retired = row.Packages
-					.Select(package => package.PackageId)
-					.Except(listed, StringComparer.OrdinalIgnoreCase);
-
-				Say($"ℹ️ {row.RepositoryFullName}: {string.Join(", ", retired)} no longer listed on NuGet.");
 			}
 
 			cancellationToken.ThrowIfCancellationRequested();
@@ -733,6 +711,42 @@ public sealed partial class WorkExecutors(
 		{
 			Say($"❌ Assessment failed: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Checks which of a repository's packages are still listed on NuGet, and drops the repository
+	/// from the cache when none are.
+	/// </summary>
+	/// <param name="row">The repository being re-assessed.</param>
+	/// <returns>True when the repository was removed and there is nothing left to assess.</returns>
+	private async Task<bool> RemoveIfRetiredAsync(RepositoryDashboardRow row)
+	{
+		var listed = new List<string>();
+		foreach (var package in row.Packages)
+		{
+			if (await dashboard.IsPackageListedAsync(package.PackageId).ConfigureAwait(false))
+			{
+				listed.Add(package.PackageId);
+			}
+		}
+
+		if (HasRetiredEveryPackage(row.Packages.Count, listed.Count))
+		{
+			Say($"⚠️ {row.RepositoryFullName} publishes nothing still listed on NuGet — removing from cache.");
+			cache.RemoveRow(row.RepositoryFullName);
+			return true;
+		}
+
+		if (listed.Count < row.Packages.Count)
+		{
+			var retired = row.Packages
+				.Select(package => package.PackageId)
+				.Except(listed, StringComparer.OrdinalIgnoreCase);
+
+			Say($"ℹ️ {row.RepositoryFullName}: {string.Join(", ", retired)} no longer listed on NuGet.");
+		}
+
+		return false;
 	}
 
 	/// <summary>
@@ -821,9 +835,8 @@ public sealed partial class WorkExecutors(
 	/// Applies the auto-remediations of one assessment category to a repository, then re-assesses it.
 	/// </summary>
 	/// <param name="item">The item naming the repository and, via <c>category</c>, which category to fix.</param>
-	/// <param name="progress">Unused: a category fix reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task FixCategoryAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task FixCategoryAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)
@@ -2026,7 +2039,6 @@ public sealed partial class WorkExecutors(
 	/// </remarks>
 	private async Task AnalyseIssueAsync(
 		WorkItem item,
-		IProgress<string> progress,
 		CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
@@ -2612,9 +2624,8 @@ public sealed partial class WorkExecutors(
 	/// lines this run produced.
 	/// </remarks>
 	/// <param name="item">The item naming the repository to test.</param>
-	/// <param name="progress">Unused: a test run reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task TestAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task TestAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)
@@ -3119,9 +3130,8 @@ public sealed partial class WorkExecutors(
 	/// Pulls and pushes one repository, then reports where its working tree stands.
 	/// </summary>
 	/// <param name="item">The item naming the repository to sync.</param>
-	/// <param name="progress">Unused: a sync reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task GitSyncAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task GitSyncAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)

@@ -51,7 +51,7 @@ public class OrganizationAssessor : IDisposable
 	{
 		_logger.LogInformation("Starting assessment of organization '{Organization}'...", options.OrganizationName);
 
-		var repositories = await GetRepositoriesAsync(options, cancellationToken).ConfigureAwait(false);
+		var repositories = await GetRepositoriesAsync(options).ConfigureAwait(false);
 		_logger.LogInformation("Found {Count} repositories to assess.", repositories.Count);
 
 		var semaphore = new SemaphoreSlim(options.MaxConcurrency);
@@ -126,9 +126,7 @@ public class OrganizationAssessor : IDisposable
 		}
 	}
 
-	private async Task<IReadOnlyList<Repository>> GetRepositoriesAsync(
-		AssessmentOptions options,
-		CancellationToken _)
+	private async Task<IReadOnlyList<Repository>> GetRepositoriesAsync(AssessmentOptions options)
 	{
 		var allRepos = await _github.Repository.GetAllForOrg(options.OrganizationName).ConfigureAwait(false);
 

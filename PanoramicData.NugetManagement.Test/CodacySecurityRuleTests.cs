@@ -344,6 +344,7 @@ public class CodacySecurityRuleTests(ITestOutputHelper output) : TestWithOutput(
 			string repositoryName,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(apiToken, cancellationToken);
 			Organization = organizationName;
 			Repository = repositoryName;
 			return Task.FromResult(report);
@@ -357,6 +358,9 @@ public class CodacySecurityRuleTests(ITestOutputHelper output) : TestWithOutput(
 			string organizationName,
 			string repositoryName,
 			CancellationToken cancellationToken)
-			=> throw new InvalidOperationException("Codacy unreachable");
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, cancellationToken);
+			throw new InvalidOperationException("Codacy unreachable");
+		}
 	}
 }

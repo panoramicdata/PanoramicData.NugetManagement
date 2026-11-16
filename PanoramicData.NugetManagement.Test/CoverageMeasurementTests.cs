@@ -308,6 +308,7 @@ public class CoverageMeasurementTests(ITestOutputHelper output) : TestWithOutput
 			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(systemPrompt, conversation, tools, onDelta);
 			Turns++;
 			await Task.Delay(60, cancellationToken).ConfigureAwait(false);
 

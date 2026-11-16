@@ -234,16 +234,22 @@ public class DeprecatedPackageRuleTests(ITestOutputHelper output) : TestWithOutp
 	}
 
 	private static Task<PackageDeprecationStatus?> DeprecatesFxCop(string packageId, string? version, CancellationToken cancellationToken)
-		=> Task.FromResult(packageId == "Microsoft.CodeAnalysis.FxCopAnalyzers"
-			? new PackageDeprecationStatus(
-				packageId,
-				["Legacy"],
-				"Use Microsoft.CodeAnalysis.NetAnalyzers instead.",
-				"Microsoft.CodeAnalysis.NetAnalyzers")
-			: null);
+	{
+		FakeArguments.Accept(version, cancellationToken);
+		return Task.FromResult(packageId == "Microsoft.CodeAnalysis.FxCopAnalyzers"
+				? new PackageDeprecationStatus(
+					packageId,
+					["Legacy"],
+					"Use Microsoft.CodeAnalysis.NetAnalyzers instead.",
+					"Microsoft.CodeAnalysis.NetAnalyzers")
+				: null);
+	}
 
 	private static Task<PackageDeprecationStatus?> NotDeprecated(string packageId, string? version, CancellationToken cancellationToken)
-		=> Task.FromResult<PackageDeprecationStatus?>(null);
+	{
+		FakeArguments.Accept(packageId, version, cancellationToken);
+		return Task.FromResult<PackageDeprecationStatus?>(null);
+	}
 
 	private static RepositoryContext CreateContext(
 		string name,

@@ -328,7 +328,10 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 	private sealed class NoopPublishedVersionSource : IPublishedVersionSource
 	{
 		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
-			=> Task.FromResult<string?>(null);
+		{
+			FakeArguments.Accept(packageId, cancellationToken);
+			return Task.FromResult<string?>(null);
+		}
 	}
 }
 

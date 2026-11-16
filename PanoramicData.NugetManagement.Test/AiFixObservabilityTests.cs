@@ -448,6 +448,7 @@ public class AiFixObservabilityTests(ITestOutputHelper output) : TestWithOutput(
 			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(systemPrompt, tools, onDelta, cancellationToken);
 			Conversations.Add([.. conversation]);
 
 			return Task.FromResult(_index < turns.Length
@@ -506,6 +507,7 @@ public class AiFixObservabilityTests(ITestOutputHelper output) : TestWithOutput(
 			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(systemPrompt, tools, onDelta, cancellationToken);
 			Conversations.Add([.. conversation]);
 
 			return _calls++ == 0
