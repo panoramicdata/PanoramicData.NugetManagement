@@ -26,7 +26,7 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 	/// the remaining items one at a time. Bounds the cost of a repository with thousands of comments
 	/// on long-closed issues, without making any single answer less exact.
 	/// </summary>
-	public const int MaxSweepPages = 5;
+	public static int MaxSweepPages { get; } = 5;
 
 	private readonly IGitHubIssueApi _api = api;
 

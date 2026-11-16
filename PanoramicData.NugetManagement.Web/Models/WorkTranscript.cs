@@ -57,7 +57,7 @@ public sealed record WorkLine(WorkLineKind Kind, string Text, DateTimeOffset AtU
 public sealed class WorkTranscript
 {
 	/// <summary>How many lines are kept before the oldest are dropped.</summary>
-	public const int DefaultCapacity = 500;
+	public static int DefaultCapacity { get; } = 500;
 
 	private readonly Lock _gate = new();
 	private readonly Queue<WorkLine> _committed = new();
@@ -67,11 +67,17 @@ public sealed class WorkTranscript
 	private StringBuilder? _streaming;
 	private DateTimeOffset _streamingStartedUtc;
 
+	/// <summary>Initializes a new instance holding <see cref="DefaultCapacity"/> lines.</summary>
+	public WorkTranscript()
+		: this(DefaultCapacity)
+	{
+	}
+
 	/// <summary>
 	/// Initializes a new instance holding at most <paramref name="capacity"/> lines.
 	/// </summary>
-	/// <param name="capacity">The cap; defaults to <see cref="DefaultCapacity"/>.</param>
-	public WorkTranscript(int capacity = DefaultCapacity)
+	/// <param name="capacity">The cap.</param>
+	public WorkTranscript(int capacity)
 		=> _capacity = capacity > 0
 			? capacity
 			: throw new ArgumentOutOfRangeException(nameof(capacity), "A transcript must hold at least one line.");

@@ -66,7 +66,7 @@ public sealed class UiConsoleLogSink
 public sealed class UiConsoleLoggerProvider(UiConsoleLogSink sink) : ILoggerProvider
 {
 	/// <summary>The category prefix whose log lines are mirrored into the in-app console.</summary>
-	public const string CategoryPrefix = "PanoramicData.NugetManagement";
+	public static string CategoryPrefix { get; } = "PanoramicData.NugetManagement";
 
 	/// <summary>Creates the logger for one category.</summary>
 	/// <param name="categoryName">The category being logged to.</param>

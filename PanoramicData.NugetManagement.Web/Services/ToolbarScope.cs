@@ -22,7 +22,7 @@ public static class ToolbarScope
 	/// A bulk step that would act on more repositories than this asks first. One threshold for every
 	/// guarded step, so the guards cannot disagree about what counts as "many".
 	/// </summary>
-	public const int ConfirmAboveRepositoryCount = 1;
+	public static int ConfirmAboveRepositoryCount { get; } = 1;
 
 	/// <summary>
 	/// Whether this selection acts on many repositories rather than on the one that is selected.

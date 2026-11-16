@@ -55,7 +55,7 @@ public static class AiFixPrompt
 	/// changes meaning, so a change in how sessions go can be traced to the change that caused it rather
 	/// than guessed at. A log that cannot say which prompt produced it cannot be compared with another.
 	/// </remarks>
-	public const string Version = "3";
+	public static string Version { get; } = "3";
 
 	/// <summary>
 	/// The task message for one rule in one repository.
