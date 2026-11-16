@@ -409,26 +409,25 @@ public abstract class DataDrivenRemediation : IRemediation
 				continue;
 			}
 
-			switch (value)
+			string[]? found = value switch
 			{
-				case string single:
-					return [single];
-				case string[] strings:
-					return strings;
-				case JsonElement { ValueKind: JsonValueKind.String } single:
-					return [single.GetString()!];
-				case JsonElement { ValueKind: JsonValueKind.Array } array:
-					return
-					[
+				string single => [single],
+				string[] strings => strings,
+				JsonElement { ValueKind: JsonValueKind.String } element => [element.GetString()!],
+				JsonElement { ValueKind: JsonValueKind.Array } array =>
+				[
 						.. array
 							.EnumerateArray()
 							.Where(item => item.ValueKind == JsonValueKind.String)
 							.Select(item => item.GetString()!)
-					];
-				case IEnumerable<object> objects:
-					return [.. objects.OfType<string>()];
-				default:
-					break;
+				],
+				IEnumerable<object> objects => [.. objects.OfType<string>()],
+				_ => null
+			};
+
+			if (found is not null)
+			{
+				return found;
 			}
 		}
 
