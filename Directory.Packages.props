@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
@@ -10,12 +10,12 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- Main project dependencies -->
-    <PackageVersion Include="Codacy.Api" Version="4.0.38" />
+    <PackageVersion Include="Codacy.Api" Version="4.0.39" />
     <PackageVersion Include="Nerdbank.GitVersioning" Version="3.10.94" />
     <PackageVersion Include="NuGet.Protocol" Version="8.0.0" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
-    <PackageVersion Include="Ollama.Api" Version="1.1.12" />
-    <PackageVersion Include="PanoramicData.Blazor" Version="10.0.592" />
+    <PackageVersion Include="Ollama.Api" Version="1.1.15" />
+    <PackageVersion Include="PanoramicData.Blazor" Version="10.0.596" />
     <PackageVersion Include="Refit" Version="16.4.0" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <!-- Pinned transitively (see CentralPackageTransitivePinningEnabled above), not referenced
