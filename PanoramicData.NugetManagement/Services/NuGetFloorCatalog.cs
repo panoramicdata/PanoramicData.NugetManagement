@@ -36,7 +36,7 @@ public sealed record NuGetFloorBump(string PackageId, string? From, string To, s
 public sealed class NuGetFloorCatalog
 {
 	/// <summary>The file this catalogue is persisted to, at the scanner repository root.</summary>
-	public const string FileName = "nuget-floors.json";
+	public static string FileName { get; } = "nuget-floors.json";
 
 	private readonly string? _filePath;
 	private readonly Dictionary<string, NuGetVersion> _frozenBaseline;

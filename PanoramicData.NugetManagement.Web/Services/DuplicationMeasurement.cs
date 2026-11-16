@@ -45,7 +45,7 @@ public sealed record DuplicationReport(double Percent, int DuplicatedLines, int 
 public static class DuplicationMeasurement
 {
 	/// <summary>The shortest run that counts as a repeat.</summary>
-	public const int DefaultMinTokens = 50;
+	public static int DefaultMinTokens { get; } = 50;
 
 	private static readonly Regex _token = new(
 		"""//[^\n]*|/\*.*?\*/|@"(?:[^"]|"")*"|\$?"(?:[^"\\\n]|\\.)*"|'(?:[^'\\]|\\.)*'|[A-Za-z_]\w*|\d[\w.]*|\S""",
@@ -67,6 +67,13 @@ public static class DuplicationMeasurement
 	public static bool IsMeaningfulImprovement(DuplicationReport before, DuplicationReport after)
 		=> after.Percent < 10 || after.Percent <= before.Percent * 0.75;
 
+	/// <summary>Measures one file with the default minimum run length.</summary>
+	/// <param name="cloneRoot">The clone's root folder.</param>
+	/// <param name="targetRelativePath">The file to measure, relative to the root.</param>
+	/// <returns>The report, or null when the file does not exist or is not C#.</returns>
+	public static DuplicationReport? Measure(string cloneRoot, string targetRelativePath)
+		=> Measure(cloneRoot, targetRelativePath, DefaultMinTokens);
+
 	/// <summary>
 	/// Measures one file against every C# file in the clone.
 	/// </summary>
@@ -74,7 +81,7 @@ public static class DuplicationMeasurement
 	/// <param name="targetRelativePath">The file to measure, relative to the root.</param>
 	/// <param name="minTokens">The shortest run that counts as a repeat.</param>
 	/// <returns>The report, or null when the file does not exist or is not C#.</returns>
-	public static DuplicationReport? Measure(string cloneRoot, string targetRelativePath, int minTokens = DefaultMinTokens)
+	public static DuplicationReport? Measure(string cloneRoot, string targetRelativePath, int minTokens)
 	{
 		var root = Path.GetFullPath(cloneRoot);
 		var target = targetRelativePath.Replace('\\', '/');

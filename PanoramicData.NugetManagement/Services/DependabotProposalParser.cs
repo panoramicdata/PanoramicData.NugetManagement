@@ -25,7 +25,7 @@ namespace PanoramicData.NugetManagement.Services;
 public static partial class DependabotProposalParser
 {
 	/// <summary>The only author whose pull requests are eligible for triage.</summary>
-	public const string DependabotLogin = "dependabot[bot]";
+	public static string DependabotLogin { get; } = "dependabot[bot]";
 
 	/// <summary>
 	/// What a pull request proposes, or null when it is not a readable Dependabot version bump.

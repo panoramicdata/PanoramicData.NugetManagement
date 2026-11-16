@@ -51,7 +51,7 @@ public static class IssueAutonomyGate
 	/// Always. This is what replaced "the existing tests still pass", which could not say whether the
 	/// reported problem was solved.
 	/// </remarks>
-	public const bool RequiresRedTest = true;
+	public static bool RequiresRedTest { get; } = true;
 
 	/// <summary>
 	/// Whether a fix may be queued against the clone without a human reading the verdict.

@@ -54,7 +54,7 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	/// <summary>
 	/// The hidden marker on a closing comment, identifying it as this application's.
 	/// </summary>
-	public const string ClosedMarker = "<!-- nugetmgmt:closed:already-satisfied -->";
+	public static string ClosedMarker { get; } = "<!-- nugetmgmt:closed:already-satisfied -->";
 
 	/// <summary>
 	/// The hidden marker on a comment closing a pull request whose bumps this application has adopted
@@ -77,7 +77,7 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	/// something. Kept distinct from the other two so that a close made in error — the one failure mode
 	/// this verdict has — can be found by searching for its marker rather than read out of prose.
 	/// </remarks>
-	public const string ObsoleteMarker = "<!-- nugetmgmt:closed:no-longer-referenced -->";
+	public static string ObsoleteMarker { get; } = "<!-- nugetmgmt:closed:no-longer-referenced -->";
 
 	/// <summary>
 	/// The pull requests this process has already commented on, as "owner/name#number".
@@ -453,7 +453,7 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 				+ "versions into the repository directly rather than merging this pull request. If this "
 				+ "is wrong, reopen it — and the mistake is worth reporting.",
 
-		ObsoleteMarker =>
+		_ when marker == ObsoleteMarker =>
 			"Raised by PanoramicData.NugetManagement's Dependabot triage, which found no reference to "
 				+ "this dependency in any project file, props or targets file, packages.config, tool "
 				+ "manifest or workflow in the repository. If it is declared somewhere that list misses, "

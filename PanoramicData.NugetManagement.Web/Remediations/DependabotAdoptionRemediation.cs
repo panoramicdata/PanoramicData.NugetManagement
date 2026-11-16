@@ -32,7 +32,7 @@ public sealed class DependabotAdoptionRemediation : DataDrivenRemediation
 	/// what this is rather than imitating a rule id, so anything that did try to key on it fails to
 	/// match a real rule rather than shadowing one.
 	/// </remarks>
-	public const string AdoptionId = "dependabot-adoption";
+	public static string AdoptionId { get; } = "dependabot-adoption";
 
 	/// <inheritdoc />
 	public override string RuleId => AdoptionId;

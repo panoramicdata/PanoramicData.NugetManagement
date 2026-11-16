@@ -26,7 +26,7 @@ public class NuspecRepositoryResolver(
 	private const int MaxAttempts = 3;
 
 	/// <summary>The name of the configured client this resolver asks for.</summary>
-	public const string HttpClientName = "nuspec";
+	public static string HttpClientName { get; } = "nuspec";
 
 	/// <summary>
 	/// The base delay between attempts, multiplied by the attempt number. Settable so tests need not

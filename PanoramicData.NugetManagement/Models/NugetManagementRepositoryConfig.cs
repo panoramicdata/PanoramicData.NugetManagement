@@ -8,7 +8,7 @@ public sealed class NugetManagementRepositoryConfig
 	/// <summary>
 	/// Config file name expected at repository root.
 	/// </summary>
-	public const string FileName = "PanoramicData.NugetManagement.config.json";
+	public static string FileName { get; } = "PanoramicData.NugetManagement.config.json";
 
 	/// <summary>
 	/// Optional JSON schema URI.

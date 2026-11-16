@@ -33,7 +33,7 @@ public sealed record ChangedLineCoverageResult(bool Passed, int Executable, int 
 public static class ChangedLineCoverage
 {
 	/// <summary>The fraction of changed executable lines that must have run.</summary>
-	public const double Threshold = 0.60;
+	public static double Threshold { get; } = 0.60;
 
 	/// <summary>
 	/// Checks the changed lines against a Cobertura report.

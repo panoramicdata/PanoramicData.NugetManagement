@@ -23,7 +23,7 @@ namespace PanoramicData.NugetManagement.Web.Services.Governance;
 public static partial class PacketScrubber
 {
 	/// <summary>The text that stands in for a removed secret.</summary>
-	public const string Redaction = "[redacted]";
+	public static string Redaction { get; } = "[redacted]";
 
 	/// <summary>
 	/// The text with every recognisable credential replaced.
