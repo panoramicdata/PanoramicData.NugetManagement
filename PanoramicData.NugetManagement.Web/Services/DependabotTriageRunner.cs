@@ -66,7 +66,7 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	/// written what the pull request proposed. Somebody reading the history needs to tell them apart —
 	/// and the second is the one that leaves an uncommitted change behind.
 	/// </remarks>
-	public const string AdoptedMarker = "<!-- nugetmgmt:closed:adopted -->";
+	public static string AdoptedMarker { get; } = "<!-- nugetmgmt:closed:adopted -->";
 
 	/// <summary>
 	/// The hidden marker on a comment closing a pull request for a dependency the repository no longer
@@ -448,7 +448,7 @@ public sealed class DependabotTriageRunner(UncoveredDependencyIssueService uncov
 	/// </summary>
 	private static string Provenance(string marker) => marker switch
 	{
-		AdoptedMarker =>
+		_ when marker == AdoptedMarker =>
 			"Raised by PanoramicData.NugetManagement's Dependabot triage, which has written these "
 				+ "versions into the repository directly rather than merging this pull request. If this "
 				+ "is wrong, reopen it — and the mistake is worth reporting.",

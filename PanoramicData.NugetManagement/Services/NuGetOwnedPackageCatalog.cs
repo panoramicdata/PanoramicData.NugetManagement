@@ -28,7 +28,7 @@ namespace PanoramicData.NugetManagement.Services;
 public sealed class NuGetOwnedPackageCatalog
 {
 	/// <summary>The file this catalogue is persisted to, at the scanner repository root.</summary>
-	public const string FileName = "nuget-owned.json";
+	public static string FileName { get; } = "nuget-owned.json";
 
 	private readonly string? _filePath;
 	private readonly ConcurrentDictionary<string, byte> _owned;

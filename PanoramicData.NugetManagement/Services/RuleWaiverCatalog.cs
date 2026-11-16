@@ -23,7 +23,7 @@ namespace PanoramicData.NugetManagement.Services;
 public sealed class RuleWaiverCatalog
 {
 	/// <summary>The file this catalogue is read from, at the scanner repository root.</summary>
-	public const string FileName = "rule-waivers.json";
+	public static string FileName { get; } = "rule-waivers.json";
 
 	private static readonly JsonSerializerOptions _jsonOptions = new()
 	{

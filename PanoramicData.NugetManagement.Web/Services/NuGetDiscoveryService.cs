@@ -173,7 +173,7 @@ public class NuGetDiscoveryService
 	/// How many listing checks run at once. nuget.org is a shared resource, and a hundred simultaneous
 	/// connections is not a reasonable way to ask it a hundred questions.
 	/// </summary>
-	public const int MaxConcurrentListingChecks = 8;
+	public static int MaxConcurrentListingChecks { get; } = 8;
 
 	/// <summary>
 	/// Keeps only the packages still listed on NuGet, in the order they arrived.

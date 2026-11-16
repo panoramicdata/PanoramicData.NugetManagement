@@ -30,7 +30,7 @@ public static class DependabotIssueSynthesizer
 	/// <summary>
 	/// The prefix marking a rule id as one of these synthesised findings rather than a real rule.
 	/// </summary>
-	public const string RuleIdPrefix = "DEPBOT:";
+	public static string RuleIdPrefix { get; } = "DEPBOT:";
 
 	/// <summary>
 	/// Whether a rule id is one of these findings, and so whether Fix means triage rather than

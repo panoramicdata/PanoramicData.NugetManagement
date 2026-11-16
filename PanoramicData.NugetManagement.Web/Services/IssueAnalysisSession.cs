@@ -245,5 +245,5 @@ public sealed class IssueAnalysisSession(
 	/// itself, and the count is said aloud so a model that cannot find a named file knows the list was
 	/// cut rather than concluding the file does not exist.
 	/// </remarks>
-	public const int MaxFilesListed = 400;
+	public static int MaxFilesListed { get; } = 400;
 }

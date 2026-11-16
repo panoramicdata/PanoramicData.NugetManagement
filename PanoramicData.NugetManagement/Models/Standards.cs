@@ -42,14 +42,14 @@ public static class Standards
 	/// The <c>rollForward</c> value the standard global.json uses. Band-crossing, so the pinned
 	/// version acts as a floor meaning "a .NET N SDK" rather than tying the build to one feature band.
 	/// </summary>
-	public const string SdkRollForward = "latestMinor";
+	public static string SdkRollForward { get; } = "latestMinor";
 
 	/// <summary>
 	/// The <c>test.runner</c> value that opts <c>dotnet test</c> into the Microsoft.Testing.Platform
 	/// experience. Must be spelled exactly like this: the internal identifier
 	/// <c>MicrosoftTestingPlatform</c> parses but is rejected at runtime.
 	/// </summary>
-	public const string MtpTestRunnerName = "Microsoft.Testing.Platform";
+	public static string MtpTestRunnerName { get; } = "Microsoft.Testing.Platform";
 
 	/// <summary>
 	/// The expected xunit.v3 package version.
@@ -59,13 +59,13 @@ public static class Standards
 	/// <summary>
 	/// The expected Microsoft.NET.Test.Sdk package version.
 	/// </summary>
-	public const string MicrosoftNetTestSdkVersion = "18.9.0";
+	public static string MicrosoftNetTestSdkVersion { get; } = "18.9.0";
 
 	/// <summary>
 	/// The expected code coverage collector package. The Microsoft.Testing.Platform replacement for
 	/// coverlet, which only functions as a VSTest data collector.
 	/// </summary>
-	public const string CodeCoveragePackage = "Microsoft.Testing.Extensions.CodeCoverage";
+	public static string CodeCoveragePackage { get; } = "Microsoft.Testing.Extensions.CodeCoverage";
 
 	/// <summary>
 	/// The expected <see cref="CodeCoveragePackage"/> version. Shares a version line with
@@ -78,7 +78,7 @@ public static class Standards
 	/// <see cref="CodeCoveragePackage"/> cannot be used at all: it depends on
 	/// Microsoft.Testing.Platform, so referencing it selects a platform xunit v2 cannot serve.
 	/// </summary>
-	public const string VsTestCodeCoveragePackage = "coverlet.collector";
+	public static string VsTestCodeCoveragePackage { get; } = "coverlet.collector";
 
 	/// <summary>
 	/// The expected <see cref="VsTestCodeCoveragePackage"/> version, matching its nuget-floors.json
@@ -109,7 +109,7 @@ public static class Standards
 	/// <summary>
 	/// The expected AwesomeAssertions.Analyzers version.
 	/// </summary>
-	public const string AwesomeAssertionsAnalyzersVersion = "9.0.8";
+	public static string AwesomeAssertionsAnalyzersVersion { get; } = "9.0.8";
 
 	/// <summary>
 	/// The minimum acceptable actions/checkout major version. Repositories at or above this pass;
@@ -125,17 +125,17 @@ public static class Standards
 	/// <summary>
 	/// The minimum acceptable actions/upload-artifact major version.
 	/// </summary>
-	public const string LatestActionsUploadArtifactVersion = "v7";
+	public static string LatestActionsUploadArtifactVersion { get; } = "v7";
 
 	/// <summary>
 	/// The minimum acceptable actions/download-artifact major version.
 	/// </summary>
-	public const string LatestActionsDownloadArtifactVersion = "v8";
+	public static string LatestActionsDownloadArtifactVersion { get; } = "v8";
 
 	/// <summary>
 	/// The expected copyright holder name.
 	/// </summary>
-	public const string CopyrightHolder = "Panoramic Data Limited";
+	public static string CopyrightHolder { get; } = "Panoramic Data Limited";
 
 	/// <summary>
 	/// The default expertise statement README-05 puts at the top of every package README, as one
@@ -148,23 +148,23 @@ public static class Standards
 	/// <summary>
 	/// The expected license type.
 	/// </summary>
-	public const string LicenseType = "MIT";
+	public static string LicenseType { get; } = "MIT";
 
 	/// <summary>
 	/// The expected HTTP client package name.
 	/// </summary>
-	public const string ExpectedHttpClientPackage = "Refit";
+	public static string ExpectedHttpClientPackage { get; } = "Refit";
 
 	/// <summary>
 	/// The standard NuGet user for Trusted Publishing login.
 	/// </summary>
-	public const string NuGetUser = "david_n_m_bond";
+	public static string NuGetUser { get; } = "david_n_m_bond";
 
 	/// <summary>
 	/// The SECURITY.md this tool wrote while it still published a mailbox address. Replaceable when a
 	/// file holds exactly this, because it was generated; Codacy flags the address as PII.
 	/// </summary>
-	public const string LegacySecurityMdContent = """
+	public static string LegacySecurityMdContent { get; } = """
 		# Security Policy
 
 		## Supported Versions
@@ -282,7 +282,7 @@ public static class Standards
 	/// <summary>
 	/// The standard dependabot.yml content for all repositories.
 	/// </summary>
-	public const string DependabotYmlContent = """
+	public static string DependabotYmlContent { get; } = """
 		version: 2
 		updates:
 		  - package-ecosystem: "nuget"
@@ -344,7 +344,7 @@ public static class Standards
 	/// <summary>
 	/// The standard CodeQL workflow content for GitHub Actions.
 	/// </summary>
-	public const string CodeQlWorkflowContent = """
+	public static string CodeQlWorkflowContent { get; } = """
 		name: "CodeQL"
 
 		on:
@@ -536,7 +536,7 @@ public static class Standards
 	/// <summary>
 	/// The standard .gitignore content for .NET repositories.
 	/// </summary>
-	public const string GitignoreContent = """
+	public static string GitignoreContent { get; } = """
 		## Ignore Visual Studio temporary files, build results, and
 		## files generated by popular Visual Studio add-ons.
 
@@ -588,7 +588,7 @@ public static class Standards
 	/// <summary>
 	/// The standard MIT LICENSE text.
 	/// </summary>
-	public const string MitLicenseContent = """
+	public static string MitLicenseContent { get; } = """
 		MIT License
 
 		Copyright (c) Panoramic Data Limited
@@ -616,13 +616,13 @@ public static class Standards
 	/// The relative path, from a repository root, to the shared Panoramic Data skills instructions
 	/// maintained in the private <c>PanoramicData.Skills</c> sibling repository.
 	/// </summary>
-	public const string SharedSkillsCopilotInstructionsPath = "../PanoramicData.Skills/.github/skills/copilot-instructions.md";
+	public static string SharedSkillsCopilotInstructionsPath { get; } = "../PanoramicData.Skills/.github/skills/copilot-instructions.md";
 
 	/// <summary>
 	/// The heading of the section that says who Panoramic Data is and how the repository is governed.
 	/// AI-03 looks for the tool's name, which only this section carries.
 	/// </summary>
-	public const string AboutSectionHeading = "## About Panoramic Data";
+	public static string AboutSectionHeading { get; } = "## About Panoramic Data";
 
 	/// <summary>
 	/// The marker AI-03 requires: the governance tool's name, present only where the About section is.
@@ -633,7 +633,7 @@ public static class Standards
 	/// A short, deliberately unrevealing statement of who publishes the repository and how it is
 	/// managed. Written for any agent or contributor, so it names no people, systems or customers.
 	/// </summary>
-	public const string AboutSectionContent = """
+	public static string AboutSectionContent { get; } = """
 		## About Panoramic Data
 
 		Panoramic Data Limited is a software company. This repository is a NuGet package that it
@@ -654,7 +654,7 @@ public static class Standards
 	/// The instruction AI-06 requires in CLAUDE.md and AGENTS.md. Agents add a co-author trailer to
 	/// every commit unless told not to, and Panoramic Data does not want them in its history.
 	/// </summary>
-	public const string NoAiAttributionInstruction = "Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
+	public static string NoAiAttributionInstruction { get; } = "Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
 
 	/// <summary>
 	/// The standard CLAUDE.md content: local Copilot instructions plus an <c>@import</c> of the shared

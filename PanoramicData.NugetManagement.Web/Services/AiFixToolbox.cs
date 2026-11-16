@@ -158,7 +158,7 @@ public sealed class AiFixToolbox(
 	/// A guard on the context window, not on disk. One 2 MB generated file would fill a 131k window and
 	/// leave no room for the instructions, so it is cut and said to be cut.
 	/// </remarks>
-	public const int MaxReadBytes = 60_000;
+	public static int MaxReadBytes { get; } = 60_000;
 
 	/// <summary>Every tool this toolbox executes, which is also every tool described to the model.</summary>
 	public static IReadOnlySet<string> ToolNames { get; } = new HashSet<string>(StringComparer.Ordinal)

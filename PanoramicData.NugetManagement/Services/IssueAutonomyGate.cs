@@ -42,7 +42,7 @@ public static class IssueAutonomyGate
 	/// it, and it is also what makes a wrong fix expensive to unpick. A wider change is not refused,
 	/// only handed to a human.
 	/// </remarks>
-	public const int MaxUnattendedPaths = 3;
+	public static int MaxUnattendedPaths { get; } = 3;
 
 	/// <summary>
 	/// Whether an unattended issue fix must be reproduced by a test that fails first.

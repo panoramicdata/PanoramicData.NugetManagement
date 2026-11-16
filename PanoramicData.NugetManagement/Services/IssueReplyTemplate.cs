@@ -28,10 +28,10 @@ public sealed record IssueReplyResult(bool Accepted, string? Reply, string Refus
 public static class IssueReplyTemplate
 {
 	/// <summary>The most a classification slot may run to.</summary>
-	public const int MaxClassificationLength = 80;
+	public static int MaxClassificationLength { get; } = 80;
 
 	/// <summary>The most the one-line reason may run to.</summary>
-	public const int MaxReasonLength = 300;
+	public static int MaxReasonLength { get; } = 300;
 
 	/// <summary>The most the "what would help" slot may run to.</summary>
 	public const int MaxWhatWouldHelpLength = 300;

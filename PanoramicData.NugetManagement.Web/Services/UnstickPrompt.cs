@@ -15,7 +15,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public static class UnstickPrompt
 {
 	/// <summary>The most changed files named in the task: past that the list stops helping and starts filling the window.</summary>
-	public const int MaxFilesListed = 40;
+	public static int MaxFilesListed { get; } = 40;
 
 	private static readonly Regex _porcelainLine = new(
 		@"^\s*[MADRCU?!]{1,2}\s+(?<path>.+)$",

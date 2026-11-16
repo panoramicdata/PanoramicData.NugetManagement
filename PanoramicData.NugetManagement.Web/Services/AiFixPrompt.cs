@@ -29,7 +29,7 @@ public static class AiFixPrompt
 	/// attention is the scarce resource — a long preamble crowds out the task.
 	/// </para>
 	/// </remarks>
-	public const string SystemPrompt = """
+	public static string SystemPrompt { get; } = """
 		You are fixing one specific problem in one code repository. You work only through the tools.
 
 		Rules:
