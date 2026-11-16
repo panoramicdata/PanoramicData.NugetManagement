@@ -410,13 +410,19 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 	private sealed class ThrowingService : ICodacyFileGradeService
 	{
 		public Task<CodacyFileGradeReport> GetGradesAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> throw new InvalidOperationException("Codacy unreachable");
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, branch, cancellationToken);
+			throw new InvalidOperationException("Codacy unreachable");
+		}
 	}
 
 	private sealed class FakeIssueService(params CodacyIssue[] issues) : ICodacyIssueService
 	{
 		public Task<CodacyRepositoryReport> GetReportAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> Task.FromResult(new CodacyRepositoryReport { IsTracked = true, Issues = issues });
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, branch, cancellationToken);
+			return Task.FromResult(new CodacyRepositoryReport { IsTracked = true, Issues = issues });
+		}
 	}
 
 	private sealed class ThrowingIssueService : ICodacyIssueService

@@ -102,6 +102,7 @@ public class PublishedVersionRefresherTests(ITestOutputHelper output) : TestWith
 
 		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(cancellationToken);
 			Requests.Add(packageId);
 			return Task.FromResult(published.GetValueOrDefault(packageId));
 		}

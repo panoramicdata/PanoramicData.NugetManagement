@@ -177,9 +177,12 @@ public class DotNetReleaseCatalogTests(ITestOutputHelper output) : TestWithOutpu
 	private sealed class StubIndexApi(DotNetReleaseIndex? index) : IDotNetReleaseIndexApi
 	{
 		public Task<DotNetReleaseIndex> GetReleasesIndexAsync(CancellationToken cancellationToken)
-			=> index is null
-				? Task.FromException<DotNetReleaseIndex>(new HttpRequestException("no network"))
-				: Task.FromResult(index);
+		{
+			FakeArguments.Accept(cancellationToken);
+			return index is null
+					? Task.FromException<DotNetReleaseIndex>(new HttpRequestException("no network"))
+					: Task.FromResult(index);
+		}
 	}
 
 	[Fact]

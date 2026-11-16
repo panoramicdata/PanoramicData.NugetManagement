@@ -24,7 +24,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 	{
 		public Task<IReadOnlyList<GitHubOpenItem>> GetOpenItemsAsync(
 			string owner, string name, CancellationToken cancellationToken)
-			=> Task.FromResult<IReadOnlyList<GitHubOpenItem>>(openItems);
+		{
+			FakeArguments.Accept(owner, name, cancellationToken);
+			return Task.FromResult<IReadOnlyList<GitHubOpenItem>>(openItems);
+		}
 
 		public Task<IReadOnlyList<GitHubIssueComment>> GetRepositoryCommentsPageAsync(
 			string owner, string name, int pageNumber, CancellationToken cancellationToken)
@@ -72,7 +75,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 
 		public Task CommentAsync(
 			string owner, string name, int number, string body, CancellationToken cancellationToken)
-			=> Task.CompletedTask;
+		{
+			FakeArguments.Accept(owner, name, number, body, cancellationToken);
+			return Task.CompletedTask;
+		}
 
 		public Task ClosePullRequestAsync(
 			string owner, string name, int number, CancellationToken cancellationToken)
@@ -80,7 +86,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 
 		public Task<int> CreatePullRequestAsync(
 			string owner, string name, string head, string baseBranch, string title, string body, CancellationToken cancellationToken)
-			=> throw new NotSupportedException();
+		{
+			FakeArguments.Accept(owner, name, head, baseBranch, title, body, cancellationToken);
+			throw new NotSupportedException();
+		}
 
 		public Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(
 			string owner, string name, string sha, CancellationToken cancellationToken)
@@ -88,7 +97,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 
 		public Task MergePullRequestAsync(
 			string owner, string name, int number, string expectedHeadSha, CancellationToken cancellationToken)
-			=> throw new NotSupportedException();
+		{
+			FakeArguments.Accept(owner, name, number, expectedHeadSha, cancellationToken);
+			throw new NotSupportedException();
+		}
 
 		public Task CloseIssueAsync(
 			string owner, string name, int number, CancellationToken cancellationToken)

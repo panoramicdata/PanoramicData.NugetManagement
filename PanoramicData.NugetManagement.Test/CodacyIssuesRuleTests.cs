@@ -154,6 +154,9 @@ public class CodacyIssuesRuleTests(ITestOutputHelper output) : TestWithOutput(ou
 	private sealed class ThrowingService : ICodacyIssueService
 	{
 		public Task<CodacyRepositoryReport> GetReportAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> throw new InvalidOperationException("Codacy unreachable");
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, branch, cancellationToken);
+			throw new InvalidOperationException("Codacy unreachable");
+		}
 	}
 }

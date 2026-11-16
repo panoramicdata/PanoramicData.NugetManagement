@@ -32,7 +32,10 @@ public class RepositoryContextCoverageTests
 			string repositoryName,
 			string? branch,
 			CancellationToken cancellationToken)
-			=> Task.FromException<double?>(new HttpRequestException("Codacy is down"));
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, branch, cancellationToken);
+			return Task.FromException<double?>(new HttpRequestException("Codacy is down"));
+		}
 	}
 
 	[Fact]
