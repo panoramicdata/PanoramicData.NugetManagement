@@ -68,7 +68,7 @@ public sealed class ActionVersionCatalog
 	/// Records the version an action was observed at. If it exceeds the current floor, the floor is
 	/// raised and persisted (self-update), and a bump is recorded for surfacing in the UI.
 	/// </summary>
-	public void Observe(string action, int observedMajor, string hardcodedDefault, string? repository = null)
+	public void Observe(string action, int observedMajor, string hardcodedDefault, string? repository)
 	{
 		var defaultMajor = GitHubActionVersion.ParseMajor(hardcodedDefault);
 

@@ -253,7 +253,7 @@ public static class AiFixPrompt
 	/// <c>System.Collections.Generic.Dictionary`2[...]</c> — every per-file grade the rule had gathered,
 	/// thrown away at the last step.
 	/// </remarks>
-	public static string RenderFact(string key, object? value, string indent = "", bool markdown = false)
+	public static string RenderFact(string key, object? value, string indent, bool markdown)
 	{
 		var builder = new StringBuilder();
 

@@ -326,7 +326,7 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 		return new NavTreeDataProvider(
 			cache,
 			settings,
-			Options.Create(new AppSettings { NuGetOrganization = "panoramicdata" })).BuildNavItems();
+			Options.Create(new AppSettings { NuGetOrganization = "panoramicdata" }), null).BuildNavItems();
 	}
 
 	/// <inheritdoc />

@@ -440,7 +440,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 			cache,
 			new RuntimeSettingsService(settings, NullLogger<RuntimeSettingsService>.Instance),
 			settings,
-			workLanes: lanes);
+			null, lanes);
 	}
 
 	/// <inheritdoc />

@@ -30,7 +30,7 @@ public class SystemTextJsonPreferredRule : RuleBase
 		// chose, and flagging that as a violation punishes good practice.
 		foreach (var csproj in context.FindFiles(".csproj"))
 		{
-			if (ReferencesPackageDirectly(context.GetFileContent(csproj), _package))
+			if (ReferencesPackageDirectly(context.GetFileContent(csproj), _package, false))
 			{
 				return Task.FromResult(Fail(
 					$"{_package} is referenced by {csproj}.",
@@ -46,7 +46,7 @@ public class SystemTextJsonPreferredRule : RuleBase
 		// No project asks for it. If it is pinned centrally it can only be reaching the build as a
 		// transitive dependency of something else, which this repository cannot simply remove.
 		var dirPackages = context.GetFileContent("Directory.Packages.props");
-		return Task.FromResult(ReferencesPackage(dirPackages, _package)
+		return Task.FromResult(ReferencesPackage(dirPackages, _package, false)
 			? NotApplicable(
 				$"{_package} is pinned in Directory.Packages.props but not referenced by any project, "
 				+ "so it is a transitive dependency rather than a choice made by this repository.")

@@ -119,7 +119,7 @@ public class ExcludedRepositoryRollupTests(ITestOutputHelper output) : TestWithO
 			runtimeSettings.SetRepositoryExcluded(_excluded, true);
 		}
 
-		return new NavTreeDataProvider(cache, runtimeSettings, settings).BuildNavItems();
+		return new NavTreeDataProvider(cache, runtimeSettings, settings, null).BuildNavItems();
 	}
 
 	/// <inheritdoc />

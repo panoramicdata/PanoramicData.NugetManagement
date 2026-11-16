@@ -301,7 +301,7 @@ public abstract class RuleBase : IRule
 	/// of "Refit" matches "Refit.HttpClientFactory", and "Flurl" matches "Flurl.Http".
 	/// </param>
 	/// <returns>True if the package is referenced.</returns>
-	protected static bool ReferencesPackage(string? xml, string packageId, bool includeVariants = false)
+	protected static bool ReferencesPackage(string? xml, string packageId, bool includeVariants)
 		=> ReferencesPackageCore(xml, packageId, includeVariants, _packageElementNames);
 
 	/// <summary>
@@ -314,7 +314,7 @@ public abstract class RuleBase : IRule
 	/// <param name="packageId">The package identifier to look for.</param>
 	/// <param name="includeVariants">Whether to also match sub-packages of the same family.</param>
 	/// <returns>True if the package is referenced directly.</returns>
-	protected static bool ReferencesPackageDirectly(string? xml, string packageId, bool includeVariants = false)
+	protected static bool ReferencesPackageDirectly(string? xml, string packageId, bool includeVariants)
 		=> ReferencesPackageCore(xml, packageId, includeVariants, _directReferenceElementNames);
 
 	/// <summary>
@@ -325,7 +325,7 @@ public abstract class RuleBase : IRule
 	/// <param name="packageId">The package identifier to look for.</param>
 	/// <param name="includeVariants">Whether to also match sub-packages of the same family.</param>
 	/// <returns>True if a version is pinned for the package.</returns>
-	protected static bool PinsPackageVersion(string? xml, string packageId, bool includeVariants = false)
+	protected static bool PinsPackageVersion(string? xml, string packageId, bool includeVariants)
 		=> ReferencesPackageCore(xml, packageId, includeVariants, _versionPinElementNames);
 
 	private static bool ReferencesPackageCore(string? xml, string packageId, bool includeVariants, string[] elementNames)

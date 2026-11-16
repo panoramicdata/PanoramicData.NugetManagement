@@ -95,7 +95,7 @@ public class PackageNodeHealthTests(ITestOutputHelper output) : TestWithOutput(o
 				settings,
 				NullLogger<RuntimeSettingsService>.Instance,
 				Path.Combine(_temporaryDirectory, "runtime-settings.json")),
-			settings).BuildNavItems();
+			settings, null).BuildNavItems();
 	}
 
 	/// <inheritdoc />

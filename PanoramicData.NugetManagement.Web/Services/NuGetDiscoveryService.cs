@@ -37,9 +37,9 @@ public class NuGetDiscoveryService
 	/// Returns package IDs with their latest versions and repository URLs.
 	/// </summary>
 	public async Task<List<NuGetPackageInfo>> DiscoverOrganizationPackagesAsync(
-		string? organization = null,
-		CancellationToken cancellationToken = default,
-		ICanonicalRepositoryLookup? canonicalNames = null)
+		string? organization,
+		CancellationToken cancellationToken,
+		ICanonicalRepositoryLookup? canonicalNames)
 	{
 		var owner = string.IsNullOrWhiteSpace(organization) ? _settings.NuGetOrganization : organization.Trim();
 		_logger.LogInformation("Discovering NuGet packages for owner '{Owner}'...", owner);

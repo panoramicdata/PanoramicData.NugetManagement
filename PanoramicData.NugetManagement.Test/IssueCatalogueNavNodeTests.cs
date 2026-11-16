@@ -88,7 +88,7 @@ public class IssueCatalogueNavNodeTests(ITestOutputHelper output) : TestWithOutp
 		return new NavTreeDataProvider(
 			cache,
 			new RuntimeSettingsService(settings, NullLogger<RuntimeSettingsService>.Instance),
-			settings).BuildNavItems();
+			settings, null).BuildNavItems();
 	}
 
 	private static List<NavItem> RuleNodes(List<NavItem> tree)

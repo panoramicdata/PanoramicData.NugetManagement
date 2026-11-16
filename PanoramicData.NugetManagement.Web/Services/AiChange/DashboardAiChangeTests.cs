@@ -41,7 +41,7 @@ public sealed class DashboardAiChangeTests(
 	public async Task<IssueFixCheckStep> BuildAsync(CancellationToken cancellationToken)
 	{
 		var lines = new List<string>();
-		await dashboard.BuildAsync(row, lines.Add, cancellationToken).ConfigureAwait(false);
+		await dashboard.BuildAsync(row, lines.Add, cancellationToken, false).ConfigureAwait(false);
 
 		return new IssueFixCheckStep(row.Status == PackageStatus.BuildSucceeded, string.Join('\n', lines));
 	}
@@ -50,7 +50,7 @@ public sealed class DashboardAiChangeTests(
 	public async Task<TestRun> RunAllAsync(CancellationToken cancellationToken)
 	{
 		var lines = new List<string>();
-		await dashboard.RunTestsAsync(row, lines.Add, cancellationToken, sandbox: true).ConfigureAwait(false);
+		await dashboard.RunTestsAsync(row, lines.Add, cancellationToken, sandbox: true, null).ConfigureAwait(false);
 
 		var output = string.Join('\n', lines);
 		var passed = PassedGivenBaseline(
@@ -65,7 +65,7 @@ public sealed class DashboardAiChangeTests(
 	public async Task<TestRun> RunOnlyAsync(string testFilter, CancellationToken cancellationToken)
 	{
 		var path = repos.GetLocalPath(repoIdentity);
-		var environment = TestSandbox.Overrides();
+		var environment = TestSandbox.Overrides(null);
 		var passed = true;
 		var output = new List<string>();
 

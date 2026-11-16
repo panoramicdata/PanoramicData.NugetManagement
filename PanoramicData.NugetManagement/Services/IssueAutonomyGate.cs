@@ -64,7 +64,7 @@ public static class IssueAutonomyGate
 		IssueVerdict verdict,
 		string authorAssociation,
 		string cloneRoot,
-		IReadOnlyCollection<string>? remediationOwned = null)
+		IReadOnlyCollection<string>? remediationOwned)
 	{
 		if (verdict.Action is not IssueAction.Fix)
 		{

@@ -200,7 +200,7 @@ public static class DuplicationMeasurement
 	/// </summary>
 	/// <param name="report">The measurement.</param>
 	/// <param name="maxBlocks">How many runs to name before saying how many were left out.</param>
-	public static string Describe(DuplicationReport report, int maxBlocks = 8)
+	public static string Describe(DuplicationReport report, int maxBlocks)
 	{
 		var builder = new StringBuilder();
 

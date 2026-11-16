@@ -921,7 +921,7 @@ public partial class LocalRepoService
 	/// Returns the latest git tag reachable from HEAD (e.g. "1.0.55").
 	/// Returns null if the repo has no tags or the command fails.
 	/// </summary>
-	public async Task<string?> GetLatestTagAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<string?> GetLatestTagAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -951,7 +951,7 @@ public partial class LocalRepoService
 	/// disagrees is worse than no number in an informational finding. Every failure is null for the
 	/// same reason: no nbgv on the machine, no version.json, a repository it will not read.
 	/// </remarks>
-	public async Task<string?> GetNextVersionAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<string?> GetNextVersionAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -994,7 +994,7 @@ public partial class LocalRepoService
 	/// checkout changes it. That makes it cheap enough to re-read on a few-second cycle, which is what
 	/// lets Commit &amp; Push grey itself out the moment there is nothing left to send.
 	/// </remarks>
-	public async Task<bool?> HasUnpushedCommitsAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<bool?> HasUnpushedCommitsAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -1126,7 +1126,7 @@ public partial class LocalRepoService
 	public async Task<(bool Success, string Output)> CloneAsync(
 		string cloneUrl,
 		string repoIdentity,
-		Action<string>? onOutput = null,
+		Action<string>? onOutput,
 		CancellationToken cancellationToken = default)
 	{
 		var targetPath = GetLocalPath(repoIdentity);
@@ -1220,9 +1220,9 @@ public partial class LocalRepoService
 	/// </summary>
 	public async Task<(bool Success, string Output)> BuildAsync(
 		string repoIdentity,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default,
-		bool restore = false)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken,
+		bool restore)
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Building in {Path}", path);
@@ -1505,16 +1505,16 @@ public partial class LocalRepoService
 	/// </summary>
 	public async Task<(bool Success, string Output)> RunTestsAsync(
 		string repoIdentity,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default,
-		bool sandbox = false,
-		IReadOnlyList<string>? testClasses = null)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken,
+		bool sandbox,
+		IReadOnlyList<string>? testClasses)
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Running tests in {Path}", path);
 
 		// See TestSandbox: a model-driven run sees CI's environment, not this machine's credentials.
-		var environment = sandbox ? TestSandbox.Overrides() : null;
+		var environment = sandbox ? TestSandbox.Overrides(null) : null;
 
 		var testProjects = GetConfiguredTestProjects(path);
 		if (testProjects.Count == 0)
@@ -1598,10 +1598,10 @@ public partial class LocalRepoService
 	/// Always sandboxed (see <see cref="TestSandbox"/>): this runs tests a model wrote, so they see CI's
 	/// environment rather than this machine's credentials.
 	/// </remarks>
-	public async Task<string?> RunTestsWithCoverageAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<string?> RunTestsWithCoverageAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
-		var environment = TestSandbox.Overrides();
+		var environment = TestSandbox.Overrides(null);
 		var reports = new List<string>();
 
 		foreach (var (projectPath, _) in GetConfiguredTestProjects(path))

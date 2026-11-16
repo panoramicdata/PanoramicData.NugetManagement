@@ -1154,7 +1154,7 @@ else
 			// The cache records what was cloned when it was written; the disk is the authority now.
 			// SetRows rather than Update: correcting a stale fact is not a refresh, and must not reset
 			// the staleness clock. The rows are reconciled on every load, so the disk copy keeps up.
-			if (await Dashboard.ReconcileLocalStateAsync(_rows) > 0)
+			if (await Dashboard.ReconcileLocalStateAsync(_rows, CancellationToken.None) > 0)
 			{
 				Cache.SetRows(_rows);
 			}
@@ -5123,7 +5123,7 @@ else
 			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
 			{
 				await Dashboard.AssessLocalRepositoryAsync(_selectedRow, CancellationToken.None, github);
-				await Dashboard.RefreshGitStatusAsync(_selectedRow);
+				await Dashboard.RefreshGitStatusAsync(_selectedRow, CancellationToken.None);
 				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
@@ -6993,7 +6993,7 @@ else
 		}
 
 		// Every row's LocalPath was built from the old root.
-		await Dashboard.ReconcileLocalStateAsync(_rows);
+		await Dashboard.ReconcileLocalStateAsync(_rows, CancellationToken.None);
 		Cache.SetRows(_rows);
 		await ReloadTreePreservingExpansionAsync();
 		ConfirmSettingSaved();

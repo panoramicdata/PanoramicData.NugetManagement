@@ -122,7 +122,7 @@ public class NuGetPackageUpdateRemediationTests(ITestOutputHelper output) : Test
 		Directory.CreateDirectory(path);
 		var file = Path.Combine(path, NuGetFloorCatalog.FileName);
 
-		new NuGetFloorCatalog(file).Observe(packageId, version);
+		new NuGetFloorCatalog(file).Observe(packageId, version, null);
 		return new NuGetFloorCatalog(file);
 	}
 }

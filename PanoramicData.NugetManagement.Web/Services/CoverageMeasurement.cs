@@ -307,7 +307,7 @@ public static partial class CoverageMeasurement
 				try
 				{
 					(ok, text) = await LocalRepoService
-						.RunCommandWithStreamingAsync(cloneRoot, "dotnet", arguments, onOutput, timeout.Token, TestSandbox.Overrides())
+						.RunCommandWithStreamingAsync(cloneRoot, "dotnet", arguments, onOutput, timeout.Token, TestSandbox.Overrides(null))
 						.ConfigureAwait(false);
 				}
 				catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

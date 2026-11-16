@@ -45,7 +45,7 @@ public class UserSecretsIdRule : RuleBase
 		// another's, so a repository with two test projects needs two declarations.
 		var usingUserSecrets = context
 			.FindTestProjectFiles()
-			.Where(testProject => ReferencesPackageDirectly(context.GetFileContent(testProject), _userSecretsPackage))
+			.Where(testProject => ReferencesPackageDirectly(context.GetFileContent(testProject), _userSecretsPackage, false))
 			.ToList();
 
 		if (usingUserSecrets.Count == 0)
