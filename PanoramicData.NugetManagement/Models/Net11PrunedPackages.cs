@@ -1,4 +1,4 @@
-﻿namespace PanoramicData.NugetManagement.Models;
+namespace PanoramicData.NugetManagement.Models;
 
 /// <summary>
 /// The packages the net11.0 targeting pack supplies itself, with the newest version it carries.
@@ -11,7 +11,7 @@
 public static class Net11PrunedPackages
 {
 	/// <summary>The target framework this list describes.</summary>
-	public const string TargetFramework = "net11.0";
+	public static string TargetFramework { get; } = "net11.0";
 
 	/// <summary>Package id to the newest version the framework supplies.</summary>
 	public static IReadOnlyDictionary<string, string> Versions { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

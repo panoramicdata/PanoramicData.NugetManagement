@@ -37,7 +37,7 @@ public sealed record NuGetVersionSnapshot(
 public sealed class NuGetVersionCache
 {
 	/// <summary>The file this cache is persisted to, at the scanner repository root.</summary>
-	public const string FileName = "nuget-versions.json";
+	public static string FileName { get; } = "nuget-versions.json";
 
 	private readonly string? _filePath;
 	private readonly ConcurrentDictionary<string, NuGetVersionSnapshot> _snapshots;

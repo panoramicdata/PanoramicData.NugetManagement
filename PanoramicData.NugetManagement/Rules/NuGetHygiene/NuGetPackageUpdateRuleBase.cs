@@ -30,7 +30,7 @@ public abstract class NuGetPackageUpdateRuleBase : RuleBase, IGovernsDependency
 	/// per finding for a human to read. Triage needs the bare identifiers, and parsing them back out of
 	/// prose is the kind of coupling that breaks the moment the wording improves.
 	/// </remarks>
-	public const string GovernedPackagesKey = "governed_packages";
+	public static string GovernedPackagesKey { get; } = "governed_packages";
 
 	/// <inheritdoc />
 	/// <remarks>

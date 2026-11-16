@@ -27,7 +27,7 @@ public sealed class DevBypassAuthenticationHandler : AuthenticationHandler<Authe
 	/// <summary>
 	/// The name of the development bypass authentication scheme.
 	/// </summary>
-	public const string SchemeName = "DevBypass";
+	public static string SchemeName { get; } = "DevBypass";
 
 	private readonly AppSettings _appSettings;
 

@@ -10,7 +10,7 @@ namespace PanoramicData.NugetManagement.Web.Services.AiChange;
 public static class AiTestGuide
 {
 	/// <summary>The guide, as it appears in a prompt.</summary>
-	public const string Text = """
+	public static string Text { get; } = """
 		Testing conventions for this repository (these are graded by automated rules):
 
 		- Use xunit v3. The test project sets <OutputType>Exe</OutputType>, because xunit v3 builds its own runner executable.

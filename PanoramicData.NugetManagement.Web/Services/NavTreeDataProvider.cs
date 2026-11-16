@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using PanoramicData.Blazor;
 using PanoramicData.Blazor.Models;
@@ -137,7 +137,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 	/// The key of the always-expanded top-level container. Unlike the other container nodes it is
 	/// selectable, because selecting it shows the estate overview.
 	/// </summary>
-	public const string OrganisationsKey = "organisations";
+	public static string OrganisationsKey { get; } = "organisations";
 
 	/// <summary>
 	/// Whether a node stands for a repository itself, rather than for something inside one.
