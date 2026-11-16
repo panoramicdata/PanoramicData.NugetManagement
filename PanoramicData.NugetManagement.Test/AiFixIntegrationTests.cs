@@ -31,18 +31,29 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 			Timeout = TimeSpan.FromMinutes(10)
 		});
 
-	private static IChatModel CreateModel(OllamaClient client)
+	// Thinking off and the direct route, as the app runs it, so what is tested is what ships.
+	private static IChatModel CreateModel(OllamaClient client, string model)
 		=> new OllamaChatModel(
 			client,
-			OllamaIntegrationSettings.Model,
-			OllamaIntegrationSettings.ContextWindow);
+			model,
+			OllamaIntegrationSettings.ContextWindow,
+			new OllamaDirectOptions(
+				new Uri(OllamaIntegrationSettings.BaseUrl),
+				OllamaIntegrationSettings.ApiKey,
+				TimeSpan.FromMinutes(10),
+				Think: false));
+
+	/// <summary>The models every test below runs against, one case each, serially so the host loads one at a time.</summary>
+	public static TheoryData<string> SupportedModels => [.. OllamaIntegrationSettings.Models];
 
 	/// <summary>
-	/// The configured model answers at all. If this fails, the URL, the key or the model name is wrong
+	/// The model answers at all. If this fails, the URL, the key or the model name is wrong
 	/// and nothing below it is worth reading.
 	/// </summary>
-	[Fact]
-	public async Task TheModelIsReachable()
+	/// <param name="model">The model to exercise.</param>
+	[Theory]
+	[MemberData(nameof(SupportedModels))]
+	public async Task TheModelIsReachable(string model)
 	{
 		using var client = CreateClient();
 
@@ -51,7 +62,7 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 		// nowhere to hang a stub handler.
 		var streamed = new List<AiStreamDelta>();
 
-		var turn = await CreateModel(client)
+		var turn = await CreateModel(client, model)
 			.NextAsync(
 				"Answer in one word.",
 				[new AiMessage("user", "Say the word ready.")],
@@ -75,13 +86,15 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 	/// The model can call one of our tools. If this fails, the model does not do tool calling usefully
 	/// and no prompt will save it — try a different one.
 	/// </summary>
-	[Fact]
-	public async Task TheModelCanCallATool()
+	/// <param name="model">The model to exercise.</param>
+	[Theory]
+	[MemberData(nameof(SupportedModels))]
+	public async Task TheModelCanCallATool(string model)
 	{
 		using var copy = FailArmyWorkingCopy.Create();
 		using var client = CreateClient();
 
-		var turn = await CreateModel(client)
+		var turn = await CreateModel(client, model)
 			.NextAsync(
 				AiFixPrompt.SystemPrompt,
 				[new AiMessage("user", "List the files in this repository. Use the list_files tool.")],
@@ -94,23 +107,26 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 		Output.WriteLine($"Tool calls: {string.Join(", ", turn.ToolCalls.Select(c => c.Name))}");
 
 		turn.ToolCalls.Should().NotBeEmpty(
-			$"{OllamaIntegrationSettings.Model} must be able to call a tool for any of this to work");
+			$"{model} must be able to call a tool for any of this to work");
 	}
 
 	/// <summary>
 	/// META-04 fails against a fresh copy of the fixture, the model fixes it, and the rule then passes.
 	/// This is the test that says whether the prompt works.
 	/// </summary>
-	[Fact]
-	public async Task ItFixesTheMissingPackageProjectUrl()
-		=> await AssertFixesRuleAsync("META-04").ConfigureAwait(true);
+	/// <param name="model">The model to exercise.</param>
+	[Theory]
+	[MemberData(nameof(SupportedModels))]
+	public async Task ItFixesTheMissingPackageProjectUrl(string model)
+		=> await AssertFixesRuleAsync(model, "META-04").ConfigureAwait(true);
 
 	/// <summary>
 	/// Runs a real AI fix for one rule against a throwaway copy of the fixture, and asserts the rule
 	/// goes from failing to passing.
 	/// </summary>
+	/// <param name="model">The model to exercise.</param>
 	/// <param name="ruleId">The rule to fix.</param>
-	private async Task AssertFixesRuleAsync(string ruleId)
+	private async Task AssertFixesRuleAsync(string model, string ruleId)
 	{
 		var cancellationToken = TestContext.Current.CancellationToken;
 
@@ -129,7 +145,7 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 		var options = new AiFixOptions { MaxTurnsPerAttempt = 12, MaxAttempts = 3 };
 
 		var session = new AiFixSession(
-			CreateModel(client),
+			CreateModel(client, model),
 			new AiFixToolbox(copy.Root),
 			options,
 			line =>
@@ -162,7 +178,7 @@ public class AiFixIntegrationTests(ITestOutputHelper output) : TestWithOutput(ou
 		Output.WriteLine($"After: {after.Message}");
 
 		after.Passed.Should().BeTrue(
-			$"{OllamaIntegrationSettings.Model} did not satisfy {ruleId} in {options.MaxAttempts} attempt(s). "
+			$"{model} did not satisfy {ruleId} in {options.MaxAttempts} attempt(s). "
 			+ $"That is a fact about the prompt or the model, not about the harness. Transcript:\n{transcript}");
 
 		// A satisfied rule is not the same as a sane edit. Both of these rules are fixed by adding a

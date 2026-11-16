@@ -1,6 +1,6 @@
 name: Ollama integration (manual)
 
-# Manual only: these tests call a real model on pdl-rune-01 and must never run in CI on push or pull request.
+# Manual only: these tests call every supported model on pdl-rune-02 and must never run in CI on push or pull request.
 on:
   workflow_dispatch:
 
@@ -14,9 +14,9 @@ jobs:
   ai-integration:
     runs-on: [pdl-public]
 
-    # One at a time across the whole repository, whatever the branch. pdl-rune-01 serves one model
-    # on one GPU, shared with everything else that uses it; two of these running at once serialise
-    # there and each takes several times longer than it would alone. Not cancel-in-progress: a
+    # One at a time across the whole repository, whatever the branch. pdl-rune-02 holds one large
+    # model in memory at a time and is shared with the live AI fixes; two of these running at once
+    # reload models against each other and each takes several times longer than it would alone. Not cancel-in-progress: a
     # half-run model test tells you nothing, so let the one in flight finish.
     concurrency:
       group: ollama-integration-${{ github.repository }}
@@ -25,8 +25,7 @@ jobs:
     env:
       # Neither the host nor the model name is a secret, and holding them inline keeps a failing run
       # readable - a masked URL in a log is a debugging tax for nothing.
-      Ollama__BaseUrl: http://pdl-rune-01.panoramicdata.com:11434
-      Ollama__Model: qwen3.8:27b-mtp-q4_K_M
+      Ollama__BaseUrl: http://pdl-rune-02.panoramicdata.com:11434
 
     steps:
     - uses: actions/checkout@v7
