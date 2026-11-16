@@ -130,245 +130,249 @@ public abstract class DataDrivenRemediation : IRemediation
 		List<string> applied,
 		Action<string>? onOutput)
 	{
-		switch (remediationType)
+		if (_handlers.TryGetValue(remediationType, out var handler))
 		{
-			case "create_file":
-				if (data["expected_path"] is string path && data["template_content"] is string content)
-				{
-					RemediationHelpers.CreateFile(localPath, path, content, result, applied, onOutput);
-				}
-
-				break;
-
-			case "ensure_xml_property":
-				if (data["property_name"] is string xpn && data["property_value"] is string xpv)
-				{
-					var file = data.TryGetValue("file", out var fObj) && fObj is string f ? f : "Directory.Build.props";
-					RemediationHelpers.EnsureXmlProperty(localPath, file, xpn, xpv, result, applied, onOutput);
-				}
-
-				break;
-
-			case "ensure_csproj_property":
-				if (data["property_name"] is string cpn && data["property_value"] is string cpv)
-				{
-					foreach (var proj in ReadStrings(data, "file", "projects"))
-					{
-						if (cpn == "TargetFramework")
-						{
-							RemediationHelpers.EnsureTargetFramework(localPath, proj, cpv, result, applied, onOutput);
-						}
-						else
-						{
-							RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
-						}
-					}
-				}
-
-				break;
-
-			case "replace_regex_in_files":
-				var rrGlobs = ReadStrings(data, "globs");
-				var rrPatterns = ReadStrings(data, "patterns");
-				var rrReplacements = ReadStrings(data, "replacements");
-				if (rrGlobs.Length > 0 && rrPatterns.Length > 0 && rrReplacements.Length > 0)
-				{
-					RemediationHelpers.ReplaceRegexInFiles(
-						localPath, rrGlobs, rrPatterns, rrReplacements, result, applied, onOutput);
-				}
-
-				break;
-
-			case "remove_json_property":
-				if (data.TryGetValue("file", out var rjFile) && rjFile is string rjf &&
-					data["property_path"] is string rjPath)
-				{
-					RemediationHelpers.RemoveJsonProperty(localPath, rjf, rjPath, result, applied, onOutput);
-				}
-
-				break;
-
-			case "ensure_json_property":
-				if (data.TryGetValue("property_path", out var jpPathObj) && jpPathObj is string jpPath &&
-					data.TryGetValue("property_value", out var jpValueObj) && jpValueObj is string jpValue)
-				{
-					var createContent = data.TryGetValue("create_content", out var ccObj) && ccObj is string cc ? cc : null;
-					var valueKind = data.TryGetValue("value_kind", out var vkObj) && vkObj is string vk ? vk : "string";
-
-					foreach (var jsonPath in ReadStrings(data, "file", "files"))
-					{
-						RemediationHelpers.EnsureJsonProperty(
-							localPath, jsonPath, jpPath, jpValue, result, applied, onOutput, createContent, valueKind);
-					}
-				}
-
-				break;
-
-			case "ensure_checkout_fetch_depth":
-				if (data.TryGetValue("file", out var fdFile) && fdFile is string fdf)
-				{
-					RemediationHelpers.EnsureCheckoutFetchDepth(localPath, fdf, result, applied, onOutput);
-				}
-
-				break;
-
-			case "replace_regex_in_file":
-				if (data.TryGetValue("file", out var rrFile) && rrFile is string rrf)
-				{
-					RemediationHelpers.ReplaceRegexInFile(
-						localPath,
-						rrf,
-						ReadStrings(data, "patterns"),
-						ReadStrings(data, "replacements"),
-						result,
-						applied,
-						onOutput);
-				}
-
-				break;
-
-			case "ensure_json_properties":
-				// The plural form: a rule that can fail on more than one property sets only the ones that
-				// are actually wrong, leaving the rest of the file — and any already-conformant value —
-				// untouched.
-				if (data.TryGetValue("file", out var jpsFile) && jpsFile is string jpsf &&
-					ReadStringMap(data["properties"]) is { Count: > 0 } jpsProperties)
-				{
-					foreach (var (jpsPath, jpsValue) in jpsProperties)
-					{
-						RemediationHelpers.EnsureJsonProperty(localPath, jpsf, jpsPath, jpsValue, result, applied, onOutput);
-					}
-				}
-
-				break;
-
-			case "append_line":
-				if (data["line_content"] is string alc && data.TryGetValue("file", out var alFile) && alFile is string alf)
-				{
-					RemediationHelpers.AppendLine(localPath, alf, alc, result, applied, onOutput);
-				}
-
-				break;
-
-			case "prepend_line":
-				if (data["line_content"] is string plc && data.TryGetValue("file", out var plFile) && plFile is string plf)
-				{
-					RemediationHelpers.PrependLine(localPath, plf, plc, result, applied, onOutput);
-				}
-
-				break;
-
-			case "add_slnx_file_entries":
-				var missingFiles = ReadStrings(data, "missing_files");
-				if (data.TryGetValue("file", out var slnxFile) && slnxFile is string sf && missingFiles.Length > 0)
-				{
-					RemediationHelpers.AddSlnxFileEntries(localPath, sf, missingFiles, result, applied, onOutput);
-				}
-
-				break;
-
-			case "replace_file_content":
-				if (data.TryGetValue("file", out var rfFile) && rfFile is string rff &&
-					data["new_content"] is string newContent)
-				{
-					RemediationHelpers.ReplaceFileContent(localPath, rff, newContent, result, applied, onOutput);
-				}
-
-				break;
-
-			case "replace_in_file":
-				if (data.TryGetValue("file", out var riFile) && riFile is string rif &&
-					data["old_text"] is string oldText &&
-					data["new_text"] is string newText)
-				{
-					RemediationHelpers.ReplaceInFile(localPath, rif, oldText, newText, result, applied, onOutput);
-				}
-
-				break;
-
-			case "append_lines":
-				if (data.TryGetValue("file", out var alsFile) && alsFile is string alsf)
-				{
-					foreach (var line in ReadStrings(data, "lines"))
-					{
-						RemediationHelpers.AppendLine(localPath, alsf, line, result, applied, onOutput);
-					}
-				}
-
-				break;
-
-			case "add_package_version":
-				if (data["package_name"] is string pkgName &&
-					data.TryGetValue("package_version", out var pvObj) && pvObj is string pkgVersion)
-				{
-					RemediationHelpers.AddPackageVersion(localPath, pkgName, pkgVersion, result, applied, onOutput);
-				}
-
-				break;
-
-			case "update_package_versions":
-				var updates = ReadStrings(data, "updates");
-				if (updates.Length > 0)
-				{
-					RemediationHelpers.UpdatePackageVersions(localPath, updates, result, applied, onOutput);
-				}
-
-				break;
-
-			case "remove_packagereference_versions":
-				var violatingProjects = ReadStrings(data, "projects");
-				if (violatingProjects.Length > 0)
-				{
-					RemediationHelpers.RemovePackageReferenceVersions(localPath, violatingProjects, result, applied, onOutput);
-				}
-
-				break;
-
-			case "add_json_array_items":
-				var items = ReadStrings(data, "items");
-				if (data.TryGetValue("file", out var jFile) && jFile is string jsonFile &&
-					data["array_property"] is string arrayProp && items.Length > 0)
-				{
-					RemediationHelpers.AddJsonArrayItems(localPath, jsonFile, arrayProp, items, result, applied, onOutput);
-				}
-
-				break;
-
-			case "remove_packagereference":
-				var rpProjects = ReadStrings(data, "projects");
-				if (data["package_name"] is string rpPkg && rpProjects.Length > 0)
-				{
-					RemediationHelpers.RemovePackageReference(localPath, rpPkg, rpProjects, result, applied, onOutput);
-				}
-
-				break;
-
-			case "remove_packagereferences":
-				// Each entry is "project|package": the pairs the rule proved are pruned, never a whole
-				// package across every project that mentions it.
-				foreach (var removal in ReadStrings(data, "removals"))
-				{
-					var parts = removal.Split('|', 2);
-					if (parts.Length == 2)
-					{
-						RemediationHelpers.RemovePackageReference(localPath, parts[1], [parts[0]], result, applied, onOutput);
-					}
-				}
-
-				break;
-
-			case "delete_file":
-				if (data.TryGetValue("file", out var dfFile) && dfFile is string deleteFile)
-				{
-					RemediationHelpers.DeleteFile(localPath, deleteFile, result, applied, onOutput);
-				}
-
-				break;
-
-			default:
-				break;
+			handler(localPath, result, data, applied, onOutput);
 		}
 	}
+
+	private delegate void Handler(string localPath, RuleResult result, Dictionary<string, object> data, List<string> applied, Action<string>? onOutput);
+
+	private static readonly Dictionary<string, Handler> _handlers = new()
+	{
+		["create_file"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data["expected_path"] is string path && data["template_content"] is string content)
+			{
+				RemediationHelpers.CreateFile(localPath, path, content, result, applied, onOutput);
+			}
+		},
+
+		["ensure_xml_property"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data["property_name"] is string xpn && data["property_value"] is string xpv)
+			{
+				var file = data.TryGetValue("file", out var fObj) && fObj is string f ? f : "Directory.Build.props";
+				RemediationHelpers.EnsureXmlProperty(localPath, file, xpn, xpv, result, applied, onOutput);
+			}
+		},
+
+		["ensure_csproj_property"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data["property_name"] is string cpn && data["property_value"] is string cpv)
+			{
+				foreach (var proj in ReadStrings(data, "file", "projects"))
+				{
+					if (cpn == "TargetFramework")
+					{
+						RemediationHelpers.EnsureTargetFramework(localPath, proj, cpv, result, applied, onOutput);
+					}
+					else
+					{
+						RemediationHelpers.EnsureXmlProperty(localPath, proj, cpn, cpv, result, applied, onOutput);
+					}
+				}
+			}
+		},
+
+		["replace_regex_in_files"] = (localPath, result, data, applied, onOutput) =>
+		{
+			var rrGlobs = ReadStrings(data, "globs");
+			var rrPatterns = ReadStrings(data, "patterns");
+			var rrReplacements = ReadStrings(data, "replacements");
+			if (rrGlobs.Length > 0 && rrPatterns.Length > 0 && rrReplacements.Length > 0)
+			{
+				RemediationHelpers.ReplaceRegexInFiles(
+					localPath, rrGlobs, rrPatterns, rrReplacements, result, applied, onOutput);
+			}
+		},
+
+		["remove_json_property"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data.TryGetValue("file", out var rjFile) && rjFile is string rjf &&
+				data["property_path"] is string rjPath)
+			{
+				RemediationHelpers.RemoveJsonProperty(localPath, rjf, rjPath, result, applied, onOutput);
+			}
+		},
+
+		["ensure_json_property"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data.TryGetValue("property_path", out var jpPathObj) && jpPathObj is string jpPath &&
+				data.TryGetValue("property_value", out var jpValueObj) && jpValueObj is string jpValue)
+			{
+				var createContent = data.TryGetValue("create_content", out var ccObj) && ccObj is string cc ? cc : null;
+				var valueKind = data.TryGetValue("value_kind", out var vkObj) && vkObj is string vk ? vk : "string";
+
+				foreach (var jsonPath in ReadStrings(data, "file", "files"))
+				{
+					RemediationHelpers.EnsureJsonProperty(
+						localPath, jsonPath, jpPath, jpValue, result, applied, onOutput, createContent, valueKind);
+				}
+			}
+		},
+
+		["ensure_checkout_fetch_depth"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data.TryGetValue("file", out var fdFile) && fdFile is string fdf)
+			{
+				RemediationHelpers.EnsureCheckoutFetchDepth(localPath, fdf, result, applied, onOutput);
+			}
+		},
+
+		["replace_regex_in_file"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data.TryGetValue("file", out var rrFile) && rrFile is string rrf)
+			{
+				RemediationHelpers.ReplaceRegexInFile(
+					localPath,
+					rrf,
+					ReadStrings(data, "patterns"),
+					ReadStrings(data, "replacements"),
+					result,
+					applied,
+					onOutput);
+			}
+		},
+
+		["ensure_json_properties"] = (localPath, result, data, applied, onOutput) =>
+		{
+			// The plural form: a rule that can fail on more than one property sets only the ones that
+			// are actually wrong, leaving the rest of the file — and any already-conformant value —
+			// untouched.
+			if (data.TryGetValue("file", out var jpsFile) && jpsFile is string jpsf &&
+				ReadStringMap(data["properties"]) is { Count: > 0 } jpsProperties)
+			{
+				foreach (var (jpsPath, jpsValue) in jpsProperties)
+				{
+					RemediationHelpers.EnsureJsonProperty(localPath, jpsf, jpsPath, jpsValue, result, applied, onOutput);
+				}
+			}
+		},
+
+		["append_line"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data["line_content"] is string alc && data.TryGetValue("file", out var alFile) && alFile is string alf)
+			{
+				RemediationHelpers.AppendLine(localPath, alf, alc, result, applied, onOutput);
+			}
+		},
+
+		["prepend_line"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data["line_content"] is string plc && data.TryGetValue("file", out var plFile) && plFile is string plf)
+			{
+				RemediationHelpers.PrependLine(localPath, plf, plc, result, applied, onOutput);
+			}
+		},
+
+		["add_slnx_file_entries"] = (localPath, result, data, applied, onOutput) =>
+		{
+			var missingFiles = ReadStrings(data, "missing_files");
+			if (data.TryGetValue("file", out var slnxFile) && slnxFile is string sf && missingFiles.Length > 0)
+			{
+				RemediationHelpers.AddSlnxFileEntries(localPath, sf, missingFiles, result, applied, onOutput);
+			}
+		},
+
+		["replace_file_content"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data.TryGetValue("file", out var rfFile) && rfFile is string rff &&
+				data["new_content"] is string newContent)
+			{
+				RemediationHelpers.ReplaceFileContent(localPath, rff, newContent, result, applied, onOutput);
+			}
+		},
+
+		["replace_in_file"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data.TryGetValue("file", out var riFile) && riFile is string rif &&
+				data["old_text"] is string oldText &&
+				data["new_text"] is string newText)
+			{
+				RemediationHelpers.ReplaceInFile(localPath, rif, oldText, newText, result, applied, onOutput);
+			}
+		},
+
+		["append_lines"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data.TryGetValue("file", out var alsFile) && alsFile is string alsf)
+			{
+				foreach (var line in ReadStrings(data, "lines"))
+				{
+					RemediationHelpers.AppendLine(localPath, alsf, line, result, applied, onOutput);
+				}
+			}
+		},
+
+		["add_package_version"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data["package_name"] is string pkgName &&
+				data.TryGetValue("package_version", out var pvObj) && pvObj is string pkgVersion)
+			{
+				RemediationHelpers.AddPackageVersion(localPath, pkgName, pkgVersion, result, applied, onOutput);
+			}
+		},
+
+		["update_package_versions"] = (localPath, result, data, applied, onOutput) =>
+		{
+			var updates = ReadStrings(data, "updates");
+			if (updates.Length > 0)
+			{
+				RemediationHelpers.UpdatePackageVersions(localPath, updates, result, applied, onOutput);
+			}
+		},
+
+		["remove_packagereference_versions"] = (localPath, result, data, applied, onOutput) =>
+		{
+			var violatingProjects = ReadStrings(data, "projects");
+			if (violatingProjects.Length > 0)
+			{
+				RemediationHelpers.RemovePackageReferenceVersions(localPath, violatingProjects, result, applied, onOutput);
+			}
+		},
+
+		["add_json_array_items"] = (localPath, result, data, applied, onOutput) =>
+		{
+			var items = ReadStrings(data, "items");
+			if (data.TryGetValue("file", out var jFile) && jFile is string jsonFile &&
+				data["array_property"] is string arrayProp && items.Length > 0)
+			{
+				RemediationHelpers.AddJsonArrayItems(localPath, jsonFile, arrayProp, items, result, applied, onOutput);
+			}
+		},
+
+		["remove_packagereference"] = (localPath, result, data, applied, onOutput) =>
+		{
+			var rpProjects = ReadStrings(data, "projects");
+			if (data["package_name"] is string rpPkg && rpProjects.Length > 0)
+			{
+				RemediationHelpers.RemovePackageReference(localPath, rpPkg, rpProjects, result, applied, onOutput);
+			}
+		},
+
+		["remove_packagereferences"] = (localPath, result, data, applied, onOutput) =>
+		{
+			// Each entry is "project|package": the pairs the rule proved are pruned, never a whole
+			// package across every project that mentions it.
+			foreach (var removal in ReadStrings(data, "removals"))
+			{
+				var parts = removal.Split('|', 2);
+				if (parts.Length == 2)
+				{
+					RemediationHelpers.RemovePackageReference(localPath, parts[1], [parts[0]], result, applied, onOutput);
+				}
+			}
+		},
+
+		["delete_file"] = (localPath, result, data, applied, onOutput) =>
+		{
+			if (data.TryGetValue("file", out var dfFile) && dfFile is string deleteFile)
+			{
+				RemediationHelpers.DeleteFile(localPath, deleteFile, result, applied, onOutput);
+			}
+		},
+	};
 
 	/// <summary>
 	/// Checks that the advisory carries everything the remediation type will read.
