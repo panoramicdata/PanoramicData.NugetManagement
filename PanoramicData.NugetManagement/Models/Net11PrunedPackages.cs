@@ -1,4 +1,4 @@
-namespace PanoramicData.NugetManagement.Models;
+﻿namespace PanoramicData.NugetManagement.Models;
 
 /// <summary>
 /// The packages the net11.0 targeting pack supplies itself, with the newest version it carries.

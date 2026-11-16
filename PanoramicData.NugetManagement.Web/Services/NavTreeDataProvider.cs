@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using PanoramicData.Blazor;
 using PanoramicData.Blazor.Models;

@@ -1,4 +1,4 @@
-using PanoramicData.NugetManagement.Services;
+﻿using PanoramicData.NugetManagement.Services;
 
 namespace PanoramicData.NugetManagement.Models;
 
