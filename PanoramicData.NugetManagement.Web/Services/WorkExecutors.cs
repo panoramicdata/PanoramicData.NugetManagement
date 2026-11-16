@@ -676,29 +676,9 @@ public sealed partial class WorkExecutors(
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 
-			var listed = new List<string>();
-			foreach (var package in row.Packages)
+			if (await RemoveIfRetiredAsync(row).ConfigureAwait(false))
 			{
-				if (await dashboard.IsPackageListedAsync(package.PackageId).ConfigureAwait(false))
-				{
-					listed.Add(package.PackageId);
-				}
-			}
-
-			if (HasRetiredEveryPackage(row.Packages.Count, listed.Count))
-			{
-				Say($"⚠️ {row.RepositoryFullName} publishes nothing still listed on NuGet — removing from cache.");
-				cache.RemoveRow(row.RepositoryFullName);
 				return;
-			}
-
-			if (listed.Count < row.Packages.Count)
-			{
-				var retired = row.Packages
-					.Select(package => package.PackageId)
-					.Except(listed, StringComparer.OrdinalIgnoreCase);
-
-				Say($"ℹ️ {row.RepositoryFullName}: {string.Join(", ", retired)} no longer listed on NuGet.");
 			}
 
 			cancellationToken.ThrowIfCancellationRequested();
@@ -731,6 +711,42 @@ public sealed partial class WorkExecutors(
 		{
 			Say($"❌ Assessment failed: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Checks which of a repository's packages are still listed on NuGet, and drops the repository
+	/// from the cache when none are.
+	/// </summary>
+	/// <param name="row">The repository being re-assessed.</param>
+	/// <returns>True when the repository was removed and there is nothing left to assess.</returns>
+	private async Task<bool> RemoveIfRetiredAsync(RepositoryDashboardRow row)
+	{
+		var listed = new List<string>();
+		foreach (var package in row.Packages)
+		{
+			if (await dashboard.IsPackageListedAsync(package.PackageId).ConfigureAwait(false))
+			{
+				listed.Add(package.PackageId);
+			}
+		}
+
+		if (HasRetiredEveryPackage(row.Packages.Count, listed.Count))
+		{
+			Say($"⚠️ {row.RepositoryFullName} publishes nothing still listed on NuGet — removing from cache.");
+			cache.RemoveRow(row.RepositoryFullName);
+			return true;
+		}
+
+		if (listed.Count < row.Packages.Count)
+		{
+			var retired = row.Packages
+				.Select(package => package.PackageId)
+				.Except(listed, StringComparer.OrdinalIgnoreCase);
+
+			Say($"ℹ️ {row.RepositoryFullName}: {string.Join(", ", retired)} no longer listed on NuGet.");
+		}
+
+		return false;
 	}
 
 	/// <summary>
