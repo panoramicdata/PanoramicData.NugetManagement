@@ -306,7 +306,8 @@ public sealed class AiFixToolbox(
 	{
 		var builder = new StringBuilder(glob.Contains('/', StringComparison.Ordinal) ? "^" : "^(.*/)?");
 
-		for (var i = 0; i < glob.Length; i++)
+		var i = 0;
+		while (i < glob.Length)
 		{
 			switch (glob[i])
 			{
@@ -334,6 +335,8 @@ public sealed class AiFixToolbox(
 					builder.Append(Regex.Escape(glob[i].ToString()));
 					break;
 			}
+
+			i++;
 		}
 
 		return new Regex(builder.Append('$').ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(2));

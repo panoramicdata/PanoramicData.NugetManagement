@@ -74,9 +74,7 @@ public class NuGetDiscoveryService
 				break;
 			}
 
-			// One small request per package. Sequentially that is a hundred-odd round trips in series;
-			// throttled at eight it is a few seconds, and the throttle is what keeps a burst from
-			// looking like an attack to the source.
+			// Throttled so a burst of per-package requests does not look like an attack.
 			var resolved = new NuGetPackageInfo[batch.Count];
 
 			await Parallel.ForEachAsync(

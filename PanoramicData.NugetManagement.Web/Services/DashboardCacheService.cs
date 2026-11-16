@@ -45,7 +45,7 @@ public class DashboardCacheService
 	/// 3: the row is the repository, not the package, and ungoverned packages are held separately.
 	/// 4: rows carry their repository's open issues and pull requests.
 	/// </remarks>
-	public const int DiscoveryVersion = 4;
+	public const int CurrentDiscoveryVersion = 4;
 
 	/// <summary>
 	/// Initializes the cache service and loads any persisted state from disk.
@@ -305,7 +305,7 @@ public class DashboardCacheService
 
 			var envelope = new CacheEnvelope
 			{
-				DiscoveryVersion = DiscoveryVersion,
+				DiscoveryVersion = CurrentDiscoveryVersion,
 				LastRefreshUtc = ts,
 				Rows = rows,
 				UngovernedPackages = ungoverned
@@ -344,12 +344,12 @@ public class DashboardCacheService
 				return;
 			}
 
-			if (envelope.DiscoveryVersion != DiscoveryVersion)
+			if (envelope.DiscoveryVersion != CurrentDiscoveryVersion)
 			{
 				_logger.LogInformation(
 					"Discarding the dashboard cache: it was written by discovery version {Found}, and this is version {Current}. Rediscovery will rebuild it.",
 					envelope.DiscoveryVersion,
-					DiscoveryVersion);
+					CurrentDiscoveryVersion);
 				return;
 			}
 
@@ -377,7 +377,7 @@ public class DashboardCacheService
 	private sealed class CacheEnvelope
 	{
 		/// <summary>
-		/// Which <see cref="DashboardCacheService.DiscoveryVersion"/> wrote this file. Absent in files
+		/// Which <see cref="DashboardCacheService.CurrentDiscoveryVersion"/> wrote this file. Absent in files
 		/// written before versioning existed, which deserialize as zero and are therefore discarded.
 		/// </summary>
 		public int DiscoveryVersion { get; set; }

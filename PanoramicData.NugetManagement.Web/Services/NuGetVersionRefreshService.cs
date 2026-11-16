@@ -137,11 +137,7 @@ public sealed class NuGetVersionRefreshService : BackgroundService
 			var changed = await RunSweepAsync(cancellationToken).ConfigureAwait(false);
 			_logger.LogInformation("NuGet version sweep complete; {Changed} package version(s) changed.", changed);
 		}
-		catch (OperationCanceledException)
-		{
-			throw;
-		}
-		catch (Exception ex)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			// A failed sweep must never take the service down with it: the next interval is a free
 			// retry, and the last good snapshot is still on disk and still gating.

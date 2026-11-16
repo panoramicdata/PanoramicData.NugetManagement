@@ -77,6 +77,7 @@ public sealed class UiConsoleLoggerProvider(UiConsoleLogSink sink) : ILoggerProv
 	/// <summary>Does nothing: the sink this provider writes to is owned by the container.</summary>
 	public void Dispose()
 	{
+		// The container owns the sink this provider writes to.
 	}
 
 	private sealed class UiConsoleLogger(string categoryName, UiConsoleLogSink sink) : ILogger

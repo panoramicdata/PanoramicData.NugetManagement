@@ -428,11 +428,7 @@ public class DashboardService
 			{
 				result[organization] = await list(organization, cancellationToken).ConfigureAwait(false);
 			}
-			catch (OperationCanceledException)
-			{
-				throw;
-			}
-			catch (Exception ex)
+			catch (Exception ex) when (ex is not OperationCanceledException)
 			{
 				logger.LogWarning(ex, "Could not list GitHub repositories for {Organization}; showing package-derived repositories only.", organization);
 				result[organization] = null;
@@ -511,11 +507,7 @@ public class DashboardService
 								packageIdCache.Set(repository.FullName, readAt, declared);
 							}
 						}
-						catch (OperationCanceledException)
-						{
-							throw;
-						}
-						catch (Exception ex)
+						catch (Exception ex) when (ex is not OperationCanceledException)
 						{
 							logger.LogWarning(ex, "Could not read the declared package ids of {Repository}.", repository.FullName);
 						}

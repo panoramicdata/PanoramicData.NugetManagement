@@ -196,9 +196,10 @@ public sealed class CloneChangeReader
 	{
 		var tokens = porcelainZ.Split('\0', StringSplitOptions.RemoveEmptyEntries);
 		var changes = new List<ChangedFile>();
-		for (var i = 0; i < tokens.Length; i++)
+		var i = 0;
+		while (i < tokens.Length)
 		{
-			var token = tokens[i];
+			var token = tokens[i++];
 			if (token.Length < 4)
 			{
 				continue;
@@ -208,7 +209,7 @@ public sealed class CloneChangeReader
 			var path = token[3..];
 			if (status.Contains('R', StringComparison.Ordinal) || status.Contains('C', StringComparison.Ordinal))
 			{
-				var oldPath = i + 1 < tokens.Length ? tokens[++i] : null;
+				var oldPath = i < tokens.Length ? tokens[i++] : null;
 				changes.Add(new ChangedFile(path, ChangeKind.Modified, oldPath));
 				continue;
 			}

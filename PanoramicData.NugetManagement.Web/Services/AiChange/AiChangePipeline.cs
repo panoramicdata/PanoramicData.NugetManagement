@@ -373,6 +373,9 @@ public sealed class AiChangePipeline(
 				case CheckGateResult.NoChecks when waited >= options.NoChecksGrace:
 					say("The repository has no CI checks, so the local gate alone decides the merge.");
 					return null;
+
+				default:
+					break;
 			}
 
 			if (waited >= options.CiTimeout)

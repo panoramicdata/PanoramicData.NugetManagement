@@ -364,6 +364,9 @@ public abstract class DataDrivenRemediation : IRemediation
 				}
 
 				break;
+
+			default:
+				break;
 		}
 	}
 
@@ -424,6 +427,8 @@ public abstract class DataDrivenRemediation : IRemediation
 					];
 				case IEnumerable<object> objects:
 					return [.. objects.OfType<string>()];
+				default:
+					break;
 			}
 		}
 

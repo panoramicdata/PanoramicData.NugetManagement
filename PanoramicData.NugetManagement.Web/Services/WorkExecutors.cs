@@ -289,14 +289,8 @@ public sealed partial class WorkExecutors(
 
 			RememberBuildResult(row, succeeded ? RepositoryBuildState.Succeeded : RepositoryBuildState.Failed);
 		}
-		catch (OperationCanceledException)
-		{
-			// Stopping is not failing. Rethrown so the runner marks the item Cancelled and logs
-			// the stop, and so the step badge is left alone rather than painted red for work the
-			// user chose to end.
-			throw;
-		}
-		catch (Exception ex)
+		// Stopping is not failing: cancellation propagates so the item is marked Cancelled.
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			Say($"❌ Error: {ex.Message}");
 			item.Succeeded = false;

@@ -20,12 +20,11 @@ public class AiFixToolboxAllowlistTests(ITestOutputHelper output) : TestWithOutp
 {
 	private readonly string _root = Directory.CreateTempSubdirectory("toolbox-allowlist-").FullName;
 
-	private string GivenFile(string relativePath, string content = "// before")
+	private void GivenFile(string relativePath, string content = "// before")
 	{
 		var full = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
 		Directory.CreateDirectory(Path.GetDirectoryName(full)!);
 		File.WriteAllText(full, content);
-		return full;
 	}
 
 	public void Dispose()

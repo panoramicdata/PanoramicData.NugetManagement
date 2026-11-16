@@ -225,7 +225,7 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 // Authentication endpoints
-app.MapGet("/login", (HttpContext context) =>
+app.MapGet("/login", () =>
 {
 	if (!gitHubAuthConfigured)
 	{

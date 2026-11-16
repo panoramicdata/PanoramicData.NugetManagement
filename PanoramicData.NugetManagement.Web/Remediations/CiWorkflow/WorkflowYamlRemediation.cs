@@ -86,11 +86,7 @@ public sealed partial class WorkflowYamlRemediation : IRemediation
 
 	private static string[] ReadBrokenFiles(RuleResult result)
 		=> result.Advisory?.Data.TryGetValue("broken_files", out var value) == true
-			? value switch
-			{
-				IEnumerable<string> strings => [.. strings],
-				_ => []
-			}
+			? (value is IEnumerable<string> strings ? [.. strings] : [])
 			: [];
 
 	[GeneratedRegex(@"^[ \t]+", RegexOptions.Multiline)]

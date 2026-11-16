@@ -21,7 +21,7 @@ public class CodacyAnalysisStateTests(ITestOutputHelper output) : TestWithOutput
 	public void IsAnalysing_WhenCodacyReportsAnAnalysisInProgress()
 	{
 		var state = CodacyAnalysisStateMapper.From(
-			Progress(isAnalyzing: true, progress: 60, startedAt: _now.AddMinutes(-4)),
+			Progress(isAnalyzing: true, percent: 60, startedAt: _now.AddMinutes(-4)),
 			lastAnalysedCommit: null,
 			now: _now);
 
@@ -120,13 +120,13 @@ public class CodacyAnalysisStateTests(ITestOutputHelper output) : TestWithOutput
 
 	private static FirstAnalysisOverview Progress(
 		bool isAnalyzing,
-		int? progress = null,
+		int? percent = null,
 		DateTimeOffset? startedAt = null)
 		=> new()
 		{
 			IsFirstAnalysis = false,
 			IsAnalyzing = isAnalyzing,
-			Progress = progress,
+			Progress = percent,
 			StartedAt = startedAt
 		};
 

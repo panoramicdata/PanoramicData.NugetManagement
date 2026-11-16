@@ -18,10 +18,6 @@ public static class AiTranscriptSink
 	/// <param name="transcript">The transcript to write to.</param>
 	public static Action<AiStreamDelta> For(WorkTranscript transcript)
 		=> delta => transcript.AppendDelta(
-			delta.Kind switch
-			{
-				AiDeltaKind.Thinking => WorkLineKind.Thinking,
-				_ => WorkLineKind.Model
-			},
+			delta.Kind == AiDeltaKind.Thinking ? WorkLineKind.Thinking : WorkLineKind.Model,
 			delta.Text);
 }

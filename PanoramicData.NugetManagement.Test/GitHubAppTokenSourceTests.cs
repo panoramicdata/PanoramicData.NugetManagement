@@ -308,7 +308,7 @@ public class GitHubAppTokenSourceTests(ITestOutputHelper output) : TestWithOutpu
 			GitHubOrganization = organisation
 		};
 
-	internal static Func<HttpRequestMessage, HttpResponseMessage> Token(string token, DateTimeOffset expires, int delayMilliseconds = 0)
+	internal static Func<HttpRequestMessage, HttpResponseMessage> Token(string accessToken, DateTimeOffset expires, int delayMilliseconds = 0)
 		=> _ =>
 		{
 			if (delayMilliseconds > 0)
@@ -317,7 +317,7 @@ public class GitHubAppTokenSourceTests(ITestOutputHelper output) : TestWithOutpu
 			}
 
 			var expiry = expires.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
-			return Response(HttpStatusCode.Created, $$"""{"token":"{{token}}","expires_at":"{{expiry}}"}""");
+			return Response(HttpStatusCode.Created, $$"""{"token":"{{accessToken}}","expires_at":"{{expiry}}"}""");
 		};
 
 	internal static Func<HttpRequestMessage, HttpResponseMessage> Json(HttpStatusCode status, string body)

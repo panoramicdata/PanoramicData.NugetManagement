@@ -58,11 +58,7 @@ public sealed class RegressionGuardService(
 			{
 				await VerifyAsync(repositoryFullName, cancellationToken).ConfigureAwait(false);
 			}
-			catch (OperationCanceledException)
-			{
-				throw;
-			}
-			catch (Exception ex)
+			catch (Exception ex) when (ex is not OperationCanceledException)
 			{
 				logger.LogError(ex, "Regression guard failed for {Repo}", repositoryFullName);
 				SetStatus(repositoryFullName, GuardState.Error, ex.Message);

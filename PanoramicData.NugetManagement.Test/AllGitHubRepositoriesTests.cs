@@ -50,7 +50,7 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 			new() { RepositoryFullName = "panoramicdata/Salt.Api", Organization = "panoramicdata", DeclaredPackageIds = ["Salt.Api"] }
 		};
 
-		var (rows, _) = DashboardService.BuildRows([], previous, _organizations, Listed(Repo("panoramicdata/Salt.Api", declared: null)));
+		var (rows, _) = DashboardService.BuildRows([], previous, _organizations, Listed(Repo("panoramicdata/Salt.Api")));
 
 		rows.Should().ContainSingle().Which.DeclaredPackageIds.Should().Equal("Salt.Api");
 	}
@@ -63,7 +63,7 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 			new() { RepositoryFullName = "panoramicdata/Scripts", Organization = "panoramicdata" }
 		};
 
-		DashboardService.BuildRows([], previous, _organizations, Listed(Repo("panoramicdata/Scripts", declared: null)))
+		DashboardService.BuildRows([], previous, _organizations, Listed(Repo("panoramicdata/Scripts")))
 			.Rows.Should().BeEmpty("it never declared a package id");
 
 		var failed = new Dictionary<string, IReadOnlyList<GitHubRepositoryInfo>?> { ["panoramicdata"] = null };

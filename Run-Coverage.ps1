@@ -69,17 +69,17 @@ if (-not (Test-Path $coverageFile)) {
 $lineRate = [double]$report.coverage.'line-rate' * 100
 $branchRate = [double]$report.coverage.'branch-rate' * 100
 
-Write-Host ''
-Write-Host ('Line coverage:   {0:N1}%' -f $lineRate)
-Write-Host ('Branch coverage: {0:N1}%' -f $branchRate)
-Write-Host ''
+Write-Output ''
+Write-Output ('Line coverage:   {0:N1}%' -f $lineRate)
+Write-Output ('Branch coverage: {0:N1}%' -f $branchRate)
+Write-Output ''
 
 foreach ($package in $report.coverage.packages.package) {
-	Write-Host ('  {0,-50} {1,6:N1}%' -f $package.name, ([double]$package.'line-rate' * 100))
+	Write-Output ('  {0,-50} {1,6:N1}%' -f $package.name, ([double]$package.'line-rate' * 100))
 }
 
-Write-Host ''
-Write-Host "Report: $coverageFile"
+Write-Output ''
+Write-Output "Report: $coverageFile"
 
 if ($MinimumLineCoverage -gt 0 -and $lineRate -lt $MinimumLineCoverage) {
 	Write-Error ('Line coverage {0:N1}% is below the required {1:N1}%.' -f $lineRate, $MinimumLineCoverage)
