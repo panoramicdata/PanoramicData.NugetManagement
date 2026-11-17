@@ -170,7 +170,7 @@ public partial class DashboardService
 		IReadOnlyList<NuGetPackageInfo> packages,
 		IReadOnlyList<RepositoryDashboardRow> previousRows,
 		IReadOnlyList<string> organizations,
-		IReadOnlyDictionary<string, IReadOnlyList<GitHubRepositoryInfo>?>? gitHubRepositories = null)
+		IReadOnlyDictionary<string, IReadOnlyList<GitHubRepositoryInfo>?>? gitHubRepositories)
 	{
 		// A package whose nuspec we could not read keeps the repository we knew it by. Without this a
 		// request going astray removes a repository from governance, which is how eight of them came to

@@ -110,8 +110,8 @@ public partial class DashboardService
 	public async Task<List<string>> ApplyCategoryRemediationsAsync(
 		RepositoryDashboardRow row,
 		AssessmentCategory category,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var applied = new List<string>();
 
@@ -168,8 +168,8 @@ public partial class DashboardService
 	public async Task<List<string>> ApplyRuleRemediationAsync(
 		RepositoryDashboardRow row,
 		RuleResult failure,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var applied = new List<string>();
 
@@ -290,31 +290,41 @@ public partial class DashboardService
 			}
 			catch (OperationCanceledException)
 			{
-				// Atomic per repository: work that never reached its commit is undone, so the clone is
-				// left as it was found rather than half-remediated.
-				if (BulkApplyCancellation.NeedsRevert(run.Phase))
-				{
-					await RevertUncommittedAsync(row, name, onOutput).ConfigureAwait(false);
-				}
-
-				run.Outcome.Results.Add(BulkApplyCancellation.Describe(name, run.Phase));
+				await RollBackAsync(row, run, onOutput).ConfigureAwait(false);
 				throw;
 			}
 			catch (Exception ex)
 			{
-				run.Outcome.Results.Add(new RepoApplyResult
-				{
-					RepositoryFullName = name,
-					Status = RepoApplyStatus.Failed,
-					Message = ex.Message
-				});
-				run.Outcome.StoppedOnFailure = true;
-				onOutput?.Invoke($"⛔ Stopping bulk apply: {ex.Message}");
+				StopWithFailure(run, name, ex, onOutput);
 				break;
 			}
 		}
 
 		return run.Outcome;
+	}
+
+	private async Task RollBackAsync(RepositoryDashboardRow row, BulkApplyRun run, Action<string>? onOutput)
+	{
+		// Atomic per repository: work that never reached its commit is undone, so the clone is
+		// left as it was found rather than half-remediated.
+		if (BulkApplyCancellation.NeedsRevert(run.Phase))
+		{
+			await RevertUncommittedAsync(row, row.RepositoryFullName, onOutput).ConfigureAwait(false);
+		}
+
+		run.Outcome.Results.Add(BulkApplyCancellation.Describe(row.RepositoryFullName, run.Phase));
+	}
+
+	private static void StopWithFailure(BulkApplyRun run, string name, Exception ex, Action<string>? onOutput)
+	{
+		run.Outcome.Results.Add(new RepoApplyResult
+		{
+			RepositoryFullName = name,
+			Status = RepoApplyStatus.Failed,
+			Message = ex.Message
+		});
+		run.Outcome.StoppedOnFailure = true;
+		onOutput?.Invoke($"⛔ Stopping bulk apply: {ex.Message}");
 	}
 
 	/// <summary>Applies the change to one repository, returning false when the whole run must stop.</summary>

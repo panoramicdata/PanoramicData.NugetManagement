@@ -130,7 +130,7 @@ public partial class DashboardService
 	/// The sync comparison is deliberately left alone rather than invalidated, so what it last established
 	/// stays on screen with its age (see <see cref="RepositoryDashboardRow.SyncStatusCheckedAtUtc"/>).
 	/// </remarks>
-	public async Task RefreshLocalGitStatusAsync(RepositoryDashboardRow row, CancellationToken cancellationToken = default)
+	public async Task RefreshLocalGitStatusAsync(RepositoryDashboardRow row, CancellationToken cancellationToken)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null || !row.IsClonedLocally)
@@ -157,7 +157,7 @@ public partial class DashboardService
 	/// </remarks>
 	public async Task RefreshCodacyAnalysisStateAsync(
 		RepositoryDashboardRow row,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		if (string.IsNullOrWhiteSpace(_settings.CodacyApiToken))
 		{
@@ -193,8 +193,8 @@ public partial class DashboardService
 	/// </summary>
 	public async Task<IReadOnlyList<string>> GetWorkingTreeStatusPreviewAsync(
 		RepositoryDashboardRow row,
-		int maxLines = 3,
-		CancellationToken cancellationToken = default)
+		int maxLines,
+		CancellationToken cancellationToken)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null || !row.IsClonedLocally)
@@ -245,8 +245,8 @@ public partial class DashboardService
 	/// </summary>
 	public async Task RunPublishAsync(
 		RepositoryDashboardRow row,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
@@ -268,7 +268,7 @@ public partial class DashboardService
 	/// <summary>
 	/// Checks whether a NuGet package is still listed (not deprecated/de-listed).
 	/// </summary>
-	public Task<bool> IsPackageListedAsync(string packageId, CancellationToken cancellationToken = default)
+	public Task<bool> IsPackageListedAsync(string packageId, CancellationToken cancellationToken)
 		=> _nuget.IsPackageListedAsync(packageId, cancellationToken);
 
 	internal static Dictionary<AssessmentCategory, CategorySummary> BuildCategorySummaries(List<RuleResult> results)

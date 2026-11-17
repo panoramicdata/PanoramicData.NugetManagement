@@ -15,7 +15,7 @@ public class LookupFailureCarryForwardTests(ITestOutputHelper output) : TestWith
 	[Fact]
 	public void AFailedLookupShouldKeepTheRepositoryItHadYesterday()
 	{
-		var result = DashboardService.BuildRows([Unreadable("ConnectWise.Manage.Api")], Previously(), _organizations);
+		var result = DashboardService.BuildRows([Unreadable("ConnectWise.Manage.Api")], Previously(), _organizations, null);
 
 		result.Rows.Should().ContainSingle()
 			.Which.RepositoryFullName.Should().Be("panoramicdata/ConnectWise.Manage.Api");
@@ -25,7 +25,7 @@ public class LookupFailureCarryForwardTests(ITestOutputHelper output) : TestWith
 	[Fact]
 	public void AFailedLookupWithNothingToFallBackOnShouldNotBlameTheNuspec()
 	{
-		var result = DashboardService.BuildRows([Unreadable("Brand.New.Api")], [], _organizations);
+		var result = DashboardService.BuildRows([Unreadable("Brand.New.Api")], [], _organizations, null);
 
 		result.Rows.Should().BeEmpty();
 		var ungoverned = result.Ungoverned.Should().ContainSingle().Subject;
@@ -46,7 +46,7 @@ public class LookupFailureCarryForwardTests(ITestOutputHelper output) : TestWith
 			ResolutionOutcome = RepositoryResolutionOutcome.NotDeclared
 		};
 
-		var result = DashboardService.BuildRows([silent], Previously(), _organizations);
+		var result = DashboardService.BuildRows([silent], Previously(), _organizations, null);
 
 		result.Rows.Should().BeEmpty("the nuspec was read, and it no longer declares a repository");
 		result.Ungoverned.Should().ContainSingle()

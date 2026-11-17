@@ -45,7 +45,7 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		var headBefore = Git(Clone, "rev-parse", "HEAD");
 		var originBefore = Git(Origin, "rev-parse", "main");
 
-		var applied = await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), cancellationToken: TestContext.Current.CancellationToken);
+		var applied = await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), null, TestContext.Current.CancellationToken);
 		applied.Should().NotBeEmpty("the remediation has to have written something for the gate to have anything to refuse");
 
 		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", null, TestContext.Current.CancellationToken);
@@ -68,7 +68,7 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		var row = Row();
 		var originBefore = Git(Origin, "rev-parse", "main");
 
-		await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), cancellationToken: TestContext.Current.CancellationToken);
+		await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), null, TestContext.Current.CancellationToken);
 
 		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", null, TestContext.Current.CancellationToken);
 

@@ -69,7 +69,7 @@ public class RepositoryGroupingTests(ITestOutputHelper output) : TestWithOutput(
 
 	private static (List<RepositoryDashboardRow> Rows, List<UngovernedPackage> Ungoverned) Build(
 		List<NuGetPackageInfo> packages)
-		=> DashboardService.BuildRows(packages, [], _organizations);
+		=> DashboardService.BuildRows(packages, [], _organizations, null);
 
 	private static List<NuGetPackageInfo> EChartsPackages() =>
 	[
