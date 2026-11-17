@@ -19,11 +19,24 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 		"nugetmanagement-tests",
 		Guid.NewGuid().ToString("n"));
 
+	private static WorkItem? EnqueueBuild(WorkLaneService lanes)
+		=> lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+
+	private NavTreeDataProvider ProviderWithQueuedBuild(out WorkLaneService lanes)
+	{
+		lanes = new WorkLaneService();
+		EnqueueBuild(lanes);
+		return NewProvider(lanes, withRepository: Repo);
+	}
+
+	private static NavItem WorkNodeOf(NavTreeDataProvider provider)
+		=> provider.BuildNavItems().Single(i => i.Key == NavTreeDataProvider.WorkKey(Repo));
+
 	[Fact]
 	public void WorkNode_LaneWithItems_AppearsUnderTheRepository()
 	{
 		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		var items = provider.BuildNavItems();
@@ -68,7 +81,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	public void WorkItemNode_HasAViewOfItsOwn()
 	{
 		var lanes = new WorkLaneService();
-		var item = lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null)!;
+		var item = EnqueueBuild(lanes)!;
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		provider.BuildNavItems()
@@ -82,7 +95,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	public void OrganisationWorkNode_HasTheSameViewAsARepositorys()
 	{
 		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		provider.BuildNavItems()
@@ -110,11 +123,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	[Fact]
 	public void WorkNode_QueuedItem_TurnsBlue()
 	{
-		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
-		var provider = NewProvider(lanes, withRepository: Repo);
-
-		var node = provider.BuildNavItems().Single(i => i.Key == NavTreeDataProvider.WorkKey(Repo));
+		var node = WorkNodeOf(ProviderWithQueuedBuild(out _));
 
 		node.IconCss.Should().Contain("text-info", "queued work is outstanding work, whether or not it has started");
 		node.IconCss.Should().NotContain("text-success");
@@ -125,11 +134,11 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	public void WorkNode_RunningItem_TurnsBlue()
 	{
 		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		lanes.TryStartNext(out _);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
-		var node = provider.BuildNavItems().Single(i => i.Key == NavTreeDataProvider.WorkKey(Repo));
+		var node = WorkNodeOf(provider);
 
 		node.IconCss.Should().Contain("text-info");
 		node.IsLeaf.Should().BeFalse("the item running under it has to be reachable");
@@ -139,7 +148,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	public void WorkItemNodes_AreChildrenOfTheWorkNode()
 	{
 		var lanes = new WorkLaneService();
-		var item = lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null)!;
+		var item = EnqueueBuild(lanes)!;
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		// Scoped to the repository's own Work node: the same item is now also mirrored under the
@@ -158,7 +167,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	public void WorkItemNode_RunningWithProgress_CarriesBoth()
 	{
 		var lanes = new WorkLaneService();
-		var item = lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null)!;
+		var item = EnqueueBuild(lanes)!;
 		lanes.TryStartNext(out _);
 		lanes.ReportProgress(item, "repo 8 of 47");
 		var provider = NewProvider(lanes, withRepository: Repo);
@@ -194,7 +203,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 		// that is the compensation for a bulk action no longer being one thing to stop — would vanish
 		// at the exact moment forty repository lanes filled up.
 		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		var node = provider.BuildNavItems()
@@ -216,7 +225,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	{
 		var lanes = new WorkLaneService();
 		lanes.Enqueue("Rediscover", WorkDescriptor.ForOrganization(WorkKind.RediscoverOrganization, "panoramicdata"), "rd", null, null);
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		provider.BuildNavItems()
@@ -239,7 +248,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 		// There is deliberately no estate-wide roll-up node: the spec's stated justification is that
 		// activity is found by the spinner on the repository node. That spinner is this flag.
 		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		lanes.TryStartNext(out _);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
@@ -254,7 +263,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 		// A lane full of pending items is waiting, not working. Spinning for it would make every
 		// repository in the estate spin for the duration of a bulk action, which says nothing.
 		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		provider.BuildNavItems()
@@ -332,7 +341,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	public void OrganisationWorkNode_WithWorkOnlyBeneathIt_ListsThatWork()
 	{
 		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		var items = provider.BuildNavItems();
@@ -386,7 +395,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	public void OrganisationWorkNode_MirroringWork_DoesNotReuseTheRepositoryNodesKeys()
 	{
 		var lanes = new WorkLaneService();
-		lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null);
+		EnqueueBuild(lanes);
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		var items = provider.BuildNavItems();
@@ -400,7 +409,7 @@ public class NavTreeWorkNodeTests(ITestOutputHelper output) : TestWithOutput(out
 	public void OrganisationWorkNode_MirroredWork_KeepsTheItemsIdentityForStoppingIt()
 	{
 		var lanes = new WorkLaneService();
-		var item = lanes.Enqueue("Build", WorkDescriptor.ForRepository(WorkKind.Build, "panoramicdata", Repo), "build", null, null)!;
+		var item = EnqueueBuild(lanes)!;
 		var provider = NewProvider(lanes, withRepository: Repo);
 
 		var orgWorkKey = NavTreeDataProvider.OrgWorkKey("panoramicdata");
