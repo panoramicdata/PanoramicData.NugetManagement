@@ -781,34 +781,9 @@ public sealed partial class WorkExecutors(
 			cache.UpsertRow(row);
 			Say($"✅ Applied {applied.Count} remediation(s)");
 
-			Say("▶ Re-assessing...");
+			await ReassessAfterFixAsync(row, cancellationToken).ConfigureAwait(false);
 
-			// The client is what lets the local assessment read the repository's inbox, so a
-			// re-assessment after a fix reports the same issue state a fresh one would.
-			await dashboard.AssessLocalRepositoryAsync(
-				row,
-				cancellationToken,
-				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
-			cache.UpsertRow(row);
-
-			// Report remaining issues that have no auto-fix.
-			var remaining = row.Assessment?.RuleResults
-				.Where(r => !r.Passed && !dashboard.IsAutoRemediable(r))
-				.ToList() ?? [];
-			if (remaining.Count > 0)
-			{
-				foreach (var r in remaining)
-				{
-					Say($"⚠️ [{r.RuleId}] {r.RuleName} — no auto-fix available");
-				}
-
-				Say($"ℹ️ {remaining.Count} issue(s) require manual fix. Generating AI prompt...");
-				item.GeneratedPrompt = DashboardService.GenerateRemediationPromptForFailures(row, remaining, includeInfo: false);
-			}
-			else if (row.TotalFailures == 0)
-			{
-				Say("🎉 No remaining issues — all rules pass.");
-			}
+			ReportIssuesWithoutAutoFix(item, row);
 		}
 		catch (OperationCanceledException)
 		{
@@ -824,6 +799,41 @@ public sealed partial class WorkExecutors(
 		{
 			Say($"❌ Error: {ex.Message}");
 		}
+	}
+
+	/// <summary>Reports the issues that have no auto-fix and leaves an AI prompt for them on the item.</summary>
+	private void ReportIssuesWithoutAutoFix(WorkItem item, RepositoryDashboardRow row)
+	{
+		var remaining = row.Assessment?.RuleResults
+			.Where(r => !r.Passed && !dashboard.IsAutoRemediable(r))
+			.ToList() ?? [];
+		if (remaining.Count > 0)
+		{
+			foreach (var r in remaining)
+			{
+				Say($"⚠️ [{r.RuleId}] {r.RuleName} — no auto-fix available");
+			}
+
+			Say($"ℹ️ {remaining.Count} issue(s) require manual fix. Generating AI prompt...");
+			item.GeneratedPrompt = DashboardService.GenerateRemediationPromptForFailures(row, remaining, includeInfo: false);
+		}
+		else if (row.TotalFailures == 0)
+		{
+			Say("🎉 No remaining issues — all rules pass.");
+		}
+	}
+
+	private async Task ReassessAfterFixAsync(RepositoryDashboardRow row, CancellationToken cancellationToken)
+	{
+		Say("▶ Re-assessing...");
+
+		// The client is what lets the local assessment read the repository's inbox, so a
+		// re-assessment after a fix reports the same issue state a fresh one would.
+		await dashboard.AssessLocalRepositoryAsync(
+			row,
+			cancellationToken,
+			await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
+		cache.UpsertRow(row);
 	}
 
 	/// <summary>
@@ -857,15 +867,7 @@ public sealed partial class WorkExecutors(
 			cache.UpsertRow(row);
 			Say($"✅ Applied {applied.Count} remediation(s) for {category}");
 
-			Say("▶ Re-assessing...");
-
-			// The client is what lets the local assessment read the repository's inbox, so a
-			// re-assessment after a fix reports the same issue state a fresh one would.
-			await dashboard.AssessLocalRepositoryAsync(
-				row,
-				cancellationToken,
-				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
-			cache.UpsertRow(row);
+			await ReassessAfterFixAsync(row, cancellationToken).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException)
 		{
@@ -1534,16 +1536,24 @@ public sealed partial class WorkExecutors(
 		var testsFine = run.TestsPassed || OnlyKnownFailures(run, knownFailures);
 		var passed = run.Report is not null && testsFine && run.Report.LinePercent >= _coverageTarget;
 
-		Say(run.Report is null
-			? $"   ⚠️ Coverage could not be measured: {run.Problem}"
-			: $"   📏 {run.Report.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}% line coverage, "
-				+ (run.TestsPassed ? "tests pass." : testsFine ? "only already-failing tests fail." : "tests FAIL."));
+		Say(DescribeMeasurement(run, testsFine));
 
 		return new AiRuleCheck(
 			passed,
 			passed
 				? $"Local line coverage is {run.Report!.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}% and no test you could have affected fails."
 				: DescribeCoverage(run, knownFailures));
+	}
+
+	private static string DescribeMeasurement(CoverageRun run, bool testsFine)
+	{
+		if (run.Report is null)
+		{
+			return $"   ⚠️ Coverage could not be measured: {run.Problem}";
+		}
+
+		var tests = run.TestsPassed ? "tests pass." : testsFine ? "only already-failing tests fail." : "tests FAIL.";
+		return $"   📏 {run.Report.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}% line coverage, {tests}";
 	}
 
 	/// <summary>
@@ -1719,74 +1729,96 @@ public sealed partial class WorkExecutors(
 			return new AiRuleCheck(false, summary);
 		}
 
+		if (testBaseline is not null && await CheckTestsAgainstBaselineAsync(row, toolbox, testBaseline, cancellationToken).ConfigureAwait(false) is { } testFailure)
+		{
+			return testFailure;
+		}
+
+		if (duplication is { } measure && await CheckDuplicationAsync(row, measure.Before, measure.Target, cancellationToken).ConfigureAwait(false) is { } duplicationFailure)
+		{
+			return duplicationFailure;
+		}
+
+		return new AiRuleCheck(true, $"{toolbox.FilesWritten.Count} file(s) changed and the build succeeded.");
+	}
+
+	/// <summary>Runs the tests and returns a failing check when any test that passed before now fails, otherwise null.</summary>
+	private async Task<AiRuleCheck?> CheckTestsAgainstBaselineAsync(
+		RepositoryDashboardRow row,
+		AiFixToolbox toolbox,
+		IReadOnlySet<string> testBaseline,
+		CancellationToken cancellationToken)
+	{
 		// A change that compiles can still break behaviour: refactoring duplicated tests to satisfy Codacy
 		// once left a test failing, and a build-only check pushed it. So the tests run too, in the sandbox,
 		// and only a test that passed before and fails now counts against the session — the ones already
 		// failing here need a credential CI has and this run withholds.
-		if (testBaseline is not null)
+		var testOutput = new List<string>();
+
+		// When the session touched nothing but test source, only the classes in those files can have
+		// changed behaviour, so only they are run. In a library whose tests call a live service the
+		// whole suite takes five to twenty-five minutes and fails on its own account now and then; one
+		// session was told that tests in an unrelated class had broken, and spent its last attempt on it.
+		var scope = TestClassesAffectedBy(row.LocalPath!, toolbox.FilesWritten);
+
+		if (scope is not null)
 		{
-			var testOutput = new List<string>();
-
-			// When the session touched nothing but test source, only the classes in those files can have
-			// changed behaviour, so only they are run. In a library whose tests call a live service the
-			// whole suite takes five to twenty-five minutes and fails on its own account now and then; one
-			// session was told that tests in an unrelated class had broken, and spent its last attempt on it.
-			var scope = TestClassesAffectedBy(row.LocalPath!, toolbox.FilesWritten);
-
-			if (scope is not null)
-			{
-				Say($"   🧪 Running only the classes in the changed test file(s): {string.Join(", ", scope)}.");
-			}
-
-			await dashboard.RunTestsAsync(row, testOutput.Add, cancellationToken, sandbox: true, testClasses: scope).ConfigureAwait(false);
-
-			var broken = CoverageMeasurement.ParseFailedTests(string.Join('\n', testOutput))
-				.Where(name => !testBaseline.Contains(name))
-				.Order(StringComparer.Ordinal)
-				.ToList();
-
-			if (broken.Count > 0)
-			{
-				Say($"   ⚠️ {broken.Count.ToString(CultureInfo.InvariantCulture)} test(s) that passed before now fail.");
-
-				return new AiRuleCheck(
-					false,
-					"Your change builds, but these tests passed before you started and fail now: "
-					+ $"{string.Join(", ", broken.Take(10))}. Fix them without undoing what you changed.\n"
-					+ SummariseRun("Tests", false, testOutput));
-			}
-
-			Say("   ✓ No test that passed before fails now.");
+			Say($"   🧪 Running only the classes in the changed test file(s): {string.Join(", ", scope)}.");
 		}
 
+		await dashboard.RunTestsAsync(row, testOutput.Add, cancellationToken, sandbox: true, testClasses: scope).ConfigureAwait(false);
+
+		var broken = CoverageMeasurement.ParseFailedTests(string.Join('\n', testOutput))
+			.Where(name => !testBaseline.Contains(name))
+			.Order(StringComparer.Ordinal)
+			.ToList();
+
+		if (broken.Count > 0)
+		{
+			Say($"   ⚠️ {broken.Count.ToString(CultureInfo.InvariantCulture)} test(s) that passed before now fail.");
+
+			return new AiRuleCheck(
+				false,
+				"Your change builds, but these tests passed before you started and fail now: "
+				+ $"{string.Join(", ", broken.Take(10))}. Fix them without undoing what you changed.\n"
+				+ SummariseRun("Tests", false, testOutput));
+		}
+
+		Say("   ✓ No test that passed before fails now.");
+		return null;
+	}
+
+	/// <summary>Measures repeated code again and returns a failing check when it has not meaningfully dropped, otherwise null.</summary>
+	private async Task<AiRuleCheck?> CheckDuplicationAsync(
+		RepositoryDashboardRow row,
+		DuplicationReport before,
+		string target,
+		CancellationToken cancellationToken)
+	{
 		// Last, because it is the cheap check and the others are the ones that can fail for reasons the model can
 		// fix quickly; but it is the one that says whether the change did anything about the grade.
-		if (duplication is { } measure)
+		var after = await Task.Run(() => DuplicationMeasurement.Measure(row.LocalPath!, target, DuplicationMeasurement.DefaultMinTokens), cancellationToken)
+			.ConfigureAwait(false);
+
+		if (after is null)
 		{
-			var after = await Task.Run(() => DuplicationMeasurement.Measure(row.LocalPath!, measure.Target, DuplicationMeasurement.DefaultMinTokens), cancellationToken)
-				.ConfigureAwait(false);
-
-			if (after is not null)
-			{
-				Say($"   📏 Repeated code in {measure.Target}: "
-					+ $"{measure.Before.Percent.ToString("0", CultureInfo.InvariantCulture)}% → "
-					+ $"{after.Percent.ToString("0", CultureInfo.InvariantCulture)}%.");
-
-				if (!DuplicationMeasurement.IsMeaningfulImprovement(measure.Before, after))
-				{
-					return new AiRuleCheck(
-						false,
-						$"The build passes, but {measure.Target} is still {after.Percent.ToString("0", CultureInfo.InvariantCulture)}% "
-						+ $"repeated (it was {measure.Before.Percent.ToString("0", CultureInfo.InvariantCulture)}%). "
-						+ "Reformatting or joining lines does not change that: it is the same code in more than one place. "
-						+ "Put a repeated run in one shared place — a base interface, a helper method, a new file in the "
-						+ "same folder — and use it from each copy.\n"
-						+ DuplicationMeasurement.Describe(after, 8));
-				}
-			}
+			return null;
 		}
 
-		return new AiRuleCheck(true, $"{toolbox.FilesWritten.Count} file(s) changed and the build succeeded.");
+		Say($"   📏 Repeated code in {target}: "
+			+ $"{before.Percent.ToString("0", CultureInfo.InvariantCulture)}% → "
+			+ $"{after.Percent.ToString("0", CultureInfo.InvariantCulture)}%.");
+
+		return DuplicationMeasurement.IsMeaningfulImprovement(before, after)
+			? null
+			: new AiRuleCheck(
+				false,
+				$"The build passes, but {target} is still {after.Percent.ToString("0", CultureInfo.InvariantCulture)}% "
+				+ $"repeated (it was {before.Percent.ToString("0", CultureInfo.InvariantCulture)}%). "
+				+ "Reformatting or joining lines does not change that: it is the same code in more than one place. "
+				+ "Put a repeated run in one shared place — a base interface, a helper method, a new file in the "
+				+ "same folder — and use it from each copy.\n"
+				+ DuplicationMeasurement.Describe(after, 8));
 	}
 
 	/// <summary>
@@ -1904,6 +1936,13 @@ public sealed partial class WorkExecutors(
 		};
 	}
 
+	private static RuleResult? FindRule(RepositoryDashboardRow row, string ruleId)
+		=> row.Assessment?.RuleResults
+			.FirstOrDefault(r => string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+
+	private static string DescribeFix(string ruleId, int appliedCount)
+		=> appliedCount > 0 ? $"✅ Fixed {ruleId}" : $"⚠️ Could not fix {ruleId}";
+
 	/// <summary>
 	/// Applies the auto-remediation of one rule to a repository, then re-assesses it.
 	/// </summary>
@@ -1925,8 +1964,7 @@ public sealed partial class WorkExecutors(
 		}
 
 		var ruleId = item.Descriptor.Parameter("ruleId")!;
-		var result = row.Assessment?.RuleResults
-			.FirstOrDefault(r => string.Equals(r.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
+		var result = FindRule(row, ruleId);
 
 		if (result is null || result.Passed)
 		{
@@ -1961,17 +1999,9 @@ public sealed partial class WorkExecutors(
 
 			await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
 			cache.UpsertRow(row);
-			Say(applied.Count > 0 ? $"✅ Fixed {result.RuleId}" : $"⚠️ Could not fix {result.RuleId}");
+			Say(DescribeFix(result.RuleId, applied.Count));
 
-			Say("▶ Re-assessing...");
-
-			// The client is what lets the local assessment read the repository's inbox, so a
-			// re-assessment after a fix reports the same issue state a fresh one would.
-			await dashboard.AssessLocalRepositoryAsync(
-				row,
-				cancellationToken,
-				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
-			cache.UpsertRow(row);
+			await ReassessAfterFixAsync(row, cancellationToken).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException)
 		{
@@ -2017,6 +2047,22 @@ public sealed partial class WorkExecutors(
 
 		await RevertPartAppliedFixAsync(row).ConfigureAwait(false);
 	}
+
+	private static IssueAnalysisInput BuildAnalysisInput(RepositoryDashboardRow row, RepositoryIssue issue, GitHubIssueThread thread)
+		=> new(
+			row.RepositoryFullName,
+			thread.Number,
+			thread.Title,
+			thread.Body,
+			thread.AuthorLogin,
+			thread.AuthorAssociation,
+			thread.CreatedAtUtc,
+			issue.LastMaintainerReplyUtc,
+			[.. thread.Comments.Select(comment => new IssueAnalysisComment(
+				comment.AuthorLogin, comment.AuthorAssociation, comment.CreatedAtUtc, comment.Body))],
+			RepositoryFileList(row),
+			[.. row.Assessment?.RuleResults.Where(result => !result.Passed).Select(result => result.RuleId)
+				?? []]);
 
 	/// <summary>
 	/// Reads one human-raised issue and records what should happen about it.
@@ -2077,20 +2123,7 @@ public sealed partial class WorkExecutors(
 			.GetThreadAsync(owner, name, issueNumber, cancellationToken)
 			.ConfigureAwait(false);
 
-		var input = new IssueAnalysisInput(
-			row.RepositoryFullName,
-			thread.Number,
-			thread.Title,
-			thread.Body,
-			thread.AuthorLogin,
-			thread.AuthorAssociation,
-			thread.CreatedAtUtc,
-			issue.LastMaintainerReplyUtc,
-			[.. thread.Comments.Select(comment => new IssueAnalysisComment(
-				comment.AuthorLogin, comment.AuthorAssociation, comment.CreatedAtUtc, comment.Body))],
-			RepositoryFileList(row),
-			[.. row.Assessment?.RuleResults.Where(result => !result.Passed).Select(result => result.RuleId)
-				?? []]);
+		var input = BuildAnalysisInput(row, issue, thread);
 
 		Say($"⏳ Waiting for the model ({ollama.Model})...");
 		using var hold = await ollamaGate.EnterAsync(cancellationToken).ConfigureAwait(false);
@@ -2477,6 +2510,18 @@ public sealed partial class WorkExecutors(
 		await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
 	}
 
+	private static string? TriageRefusal(RepositoryDashboardRow row)
+	{
+		if (row.Assessment is null)
+		{
+			return $"⚠️ {row.RepositoryFullName} has no assessment yet — assess it first, then triage.";
+		}
+
+		return row.OpenIssuesKnown
+			? null
+			: $"⚠️ {row.RepositoryFullName}'s open pull requests are not known — re-assess it first.";
+	}
+
 	/// <summary>
 	/// Classifies one repository's open Dependabot pull requests and acts on the verdicts.
 	/// </summary>
@@ -2506,15 +2551,9 @@ public sealed partial class WorkExecutors(
 			return;
 		}
 
-		if (row.Assessment is null)
+		if (TriageRefusal(row) is { } refusal)
 		{
-			Say($"⚠️ {row.RepositoryFullName} has no assessment yet — assess it first, then triage.");
-			return;
-		}
-
-		if (!row.OpenIssuesKnown)
-		{
-			Say($"⚠️ {row.RepositoryFullName}'s open pull requests are not known — re-assess it first.");
+			Say(refusal);
 			return;
 		}
 
@@ -2538,7 +2577,7 @@ public sealed partial class WorkExecutors(
 		var triages = new DependabotTriageService().Triage(
 			dependabotPullRequests,
 			context,
-			row.Assessment.RuleResults,
+			row.Assessment!.RuleResults,
 			ruleId => remediations.Get(ruleId) is not null);
 
 		// Adoption writes files, which triage has never done. No clone means no adoption: the verdicts
@@ -2893,6 +2932,23 @@ public sealed partial class WorkExecutors(
 		}
 	}
 
+	private AiFixToolbox CreateRepairToolbox(RepositoryDashboardRow row, IReadOnlyList<string> files, IReadOnlyList<string> folders)
+		=> new(
+			row.LocalPath!,
+			build: async token =>
+			{
+				var captured = new List<string>();
+				await dashboard.BuildAsync(row, captured.Add, token, restore: true).ConfigureAwait(false);
+				return SummariseRun("Build", row.Status == PackageStatus.BuildSucceeded, captured);
+			},
+			writablePaths: files.Count + folders.Count == 0 ? null : files,
+			writableFolders: folders.Count == 0 ? null : folders,
+
+			// The oracle runs the tests, with the baseline; a bare run_tests would show the model failures it
+			// did not cause, which is how a session once came to edit a library's integration tests.
+			offerRunTests: false,
+			restoreFile: (path, token) => localRepo.RestoreFileAsync(row.RepositoryFullName, path, token));
+
 	/// <summary>
 	/// Lets the local model repair the uncommitted changes, confined to the files they touch.
 	/// </summary>
@@ -2930,21 +2986,7 @@ public sealed partial class WorkExecutors(
 				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
 			});
 
-			toolbox = new AiFixToolbox(
-				row.LocalPath!,
-				build: async token =>
-				{
-					var captured = new List<string>();
-					await dashboard.BuildAsync(row, captured.Add, token, restore: true).ConfigureAwait(false);
-					return SummariseRun("Build", row.Status == PackageStatus.BuildSucceeded, captured);
-				},
-				writablePaths: files.Count + folders.Count == 0 ? null : files,
-				writableFolders: folders.Count == 0 ? null : folders,
-
-				// The oracle runs the tests, with the baseline; a bare run_tests would show the model failures it
-				// did not cause, which is how a session once came to edit a library's integration tests.
-				offerRunTests: false,
-				restoreFile: (path, token) => localRepo.RestoreFileAsync(row.RepositoryFullName, path, token));
+			toolbox = CreateRepairToolbox(row, files, folders);
 
 			var fixOptions = new AiFixOptions
 			{
@@ -3209,6 +3251,50 @@ public sealed partial class WorkExecutors(
 		}
 	}
 
+	private void ReportPushed(WorkItem item, RepositoryDashboardRow row)
+	{
+		Say("✅ Changes committed and pushed");
+		cache.UpsertRow(row);
+		item.Succeeded = true;
+
+		if (row.CurrentBranch is not null)
+		{
+			Say($"ℹ️ Branch: {row.CurrentBranch} | Clean: {row.IsWorkingTreeClean} | Synced: {row.IsSyncedWithOrigin}");
+		}
+	}
+
+	private async Task HandleFailedPushAsync(WorkItem item, RepositoryDashboardRow row, CommitAndPushOutcome push, CancellationToken cancellationToken)
+	{
+		Say("❌ Commit and push failed");
+		cache.UpsertRow(row);
+		item.Succeeded = false;
+
+		if (push.WasRefused)
+		{
+			logger.LogWarning(
+				"Nothing was pushed for {Repository}: {Reason}",
+				row.RepositoryFullName,
+				push.RefusalReason);
+		}
+
+		if (push.ChangesReverted)
+		{
+			// The fix's re-assessment showed the rule passing; it is failing again now the fix is gone.
+			await RefreshAndReassessAsync(row, cancellationToken).ConfigureAwait(false);
+		}
+	}
+
+	private async Task RefreshAndReassessAsync(RepositoryDashboardRow row, CancellationToken cancellationToken)
+	{
+		Say("▶ Re-assessing...");
+		await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
+		await dashboard.AssessLocalRepositoryAsync(
+			row,
+			cancellationToken,
+			await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
+		cache.UpsertRow(row);
+	}
+
 	/// <summary>
 	/// Commits and pushes one repository's working tree.
 	/// </summary>
@@ -3244,40 +3330,11 @@ public sealed partial class WorkExecutors(
 
 			if (push.Success)
 			{
-				Say("✅ Changes committed and pushed");
-				cache.UpsertRow(row);
-				item.Succeeded = true;
-
-				if (row.CurrentBranch is not null)
-				{
-					Say($"ℹ️ Branch: {row.CurrentBranch} | Clean: {row.IsWorkingTreeClean} | Synced: {row.IsSyncedWithOrigin}");
-				}
+				ReportPushed(item, row);
 			}
 			else
 			{
-				Say("❌ Commit and push failed");
-				cache.UpsertRow(row);
-				item.Succeeded = false;
-
-				if (push.WasRefused)
-				{
-					logger.LogWarning(
-						"Nothing was pushed for {Repository}: {Reason}",
-						row.RepositoryFullName,
-						push.RefusalReason);
-				}
-
-				if (push.ChangesReverted)
-				{
-					// The fix's re-assessment showed the rule passing; it is failing again now the fix is gone.
-					Say("▶ Re-assessing...");
-					await dashboard.RefreshGitStatusAsync(row, cancellationToken).ConfigureAwait(false);
-					await dashboard.AssessLocalRepositoryAsync(
-						row,
-						cancellationToken,
-						await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
-					cache.UpsertRow(row);
-				}
+				await HandleFailedPushAsync(item, row, push, cancellationToken).ConfigureAwait(false);
 			}
 		}
 		catch (OperationCanceledException)
