@@ -38,23 +38,9 @@ public sealed class SolutionItemsRemediation : DataDrivenRemediation
 		}
 
 		var data = result.Advisory.Data;
-		if (data.TryGetValue("remediation_type", out var rtObj) &&
-			rtObj is string rt &&
-			string.Equals(rt, "add_slnx_file_entries", StringComparison.OrdinalIgnoreCase))
-		{
-			return true;
-		}
-
-		if (data.TryGetValue("expected_extension", out var extObj) &&
-			extObj is string ext &&
-			string.Equals(ext, ".slnx", StringComparison.OrdinalIgnoreCase))
-		{
-			return true;
-		}
-
-		return data.TryGetValue("file", out var fileObj) &&
-			fileObj is string file &&
-			file.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
+		return HasString(data, "remediation_type", value => string.Equals(value, "add_slnx_file_entries", StringComparison.OrdinalIgnoreCase))
+			|| HasString(data, "expected_extension", value => string.Equals(value, ".slnx", StringComparison.OrdinalIgnoreCase))
+			|| HasString(data, "file", value => value.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase));
 	}
 
 	/// <inheritdoc />
@@ -71,19 +57,7 @@ public sealed class SolutionItemsRemediation : DataDrivenRemediation
 		}
 
 		var data = result.Advisory.Data;
-		string? slnxRelativePath = null;
-
-		if (data.TryGetValue("file", out var fObj) && fObj is string candidate &&
-			candidate.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
-		{
-			slnxRelativePath = candidate;
-		}
-
-		slnxRelativePath ??= Directory.GetFiles(localPath, "*.slnx", SearchOption.TopDirectoryOnly)
-			.Select(Path.GetFileName)
-			.FirstOrDefault();
-
-		if (string.IsNullOrWhiteSpace(slnxRelativePath))
+		if (string.IsNullOrWhiteSpace(FindSlnx(localPath, data)))
 		{
 			onOutput?.Invoke($"⏭️ [{result.RuleId}] No .slnx file found — cannot add entries.");
 			return;
@@ -101,17 +75,7 @@ public sealed class SolutionItemsRemediation : DataDrivenRemediation
 		List<string> applied,
 		Action<string>? onOutput)
 	{
-		string? slnxRelativePath = null;
-		if (data.TryGetValue("file", out var fObj) && fObj is string f &&
-			f.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
-		{
-			slnxRelativePath = f;
-		}
-
-		slnxRelativePath ??= Directory.GetFiles(localPath, "*.slnx", SearchOption.TopDirectoryOnly)
-			.Select(Path.GetFileName)
-			.FirstOrDefault();
-
+		var slnxRelativePath = FindSlnx(localPath, data);
 		if (string.IsNullOrWhiteSpace(slnxRelativePath))
 		{
 			onOutput?.Invoke($"⏭️ [{result.RuleId}] No .slnx file found — cannot add entries.");
@@ -130,34 +94,9 @@ public sealed class SolutionItemsRemediation : DataDrivenRemediation
 			return;
 		}
 
-		// Determine which standard files actually exist on disk NOW
-		var existingStandardFiles = _expectedSolutionItems
-			.Where(f => File.Exists(Path.Combine(localPath, f)))
-			.ToArray();
-
-		// Determine which of those are already referenced in Solution Items
 		try
 		{
-			var doc = XDocument.Load(slnxFullPath);
-			var solutionItemsFolder = doc.Root?
-				.Elements("Folder")
-				.FirstOrDefault(f =>
-				{
-					var name = f.Attribute("Name")?.Value;
-					return name is not null &&
-						name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase);
-				});
-
-			var referencedFiles = solutionItemsFolder?
-				.Elements("File")
-				.Select(f => f.Attribute("Path")?.Value)
-				.Where(p => p is not null)
-				.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
-
-			var missingFiles = existingStandardFiles
-				.Where(f => !referencedFiles.Contains(f))
-				.ToArray();
-
+			var missingFiles = FindMissingStandardFiles(localPath, slnxFullPath);
 			if (missingFiles.Length == 0)
 			{
 				onOutput?.Invoke($"⏭️ [{result.RuleId}] All standard files already in Solution Items.");
@@ -170,5 +109,43 @@ public sealed class SolutionItemsRemediation : DataDrivenRemediation
 		{
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to scan {slnxRelativePath}: {ex.Message}");
 		}
+	}
+
+	private static bool HasString(Dictionary<string, object> data, string key, Func<string, bool> test)
+		=> data.TryGetValue(key, out var value) && value is string text && test(text);
+
+	private static string? FindSlnx(string localPath, Dictionary<string, object> data)
+	{
+		if (data.TryGetValue("file", out var value) && value is string candidate &&
+			candidate.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
+		{
+			return candidate;
+		}
+
+		return Directory.GetFiles(localPath, "*.slnx", SearchOption.TopDirectoryOnly)
+			.Select(Path.GetFileName)
+			.FirstOrDefault();
+	}
+
+	private static string[] FindMissingStandardFiles(string localPath, string slnxFullPath)
+	{
+		// Determine which standard files actually exist on disk NOW
+		var existingStandardFiles = _expectedSolutionItems
+			.Where(f => File.Exists(Path.Combine(localPath, f)))
+			.ToArray();
+
+		var doc = XDocument.Load(slnxFullPath);
+		var solutionItemsFolder = doc.Root?
+			.Elements("Folder")
+			.FirstOrDefault(f => f.Attribute("Name")?.Value is { } name
+				&& name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase));
+
+		var referencedFiles = solutionItemsFolder?
+			.Elements("File")
+			.Select(f => f.Attribute("Path")?.Value)
+			.Where(p => p is not null)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
+
+		return [.. existingStandardFiles.Where(f => !referencedFiles.Contains(f))];
 	}
 }
