@@ -5,7 +5,7 @@ namespace PanoramicData.NugetManagement.Rules;
 /// <summary>
 /// Checks that PackageReadmeFile is set.
 /// </summary>
-public class PackageReadmeFileRule : RuleBase
+public class PackageReadmeFileRule : ProjectPropertySetRuleBase
 {
 	/// <inheritdoc />
 	public override string RuleId => "PKG-03";
@@ -20,36 +20,20 @@ public class PackageReadmeFileRule : RuleBase
 	public override AssessmentSeverity Severity => AssessmentSeverity.Warning;
 
 	/// <inheritdoc />
-	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
-	{
-		var notApplicable = PackagingCheckApplies(context, out var projects);
-		if (notApplicable is not null)
-		{
-			return Task.FromResult(notApplicable);
-		}
+	protected override string PropertyName => "PackageReadmeFile";
 
-		var missing = projects
-			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "PackageReadmeFile"))
-			.ToList();
+	/// <inheritdoc />
+	protected override string Summary => "Add <PackageReadmeFile>README.md</PackageReadmeFile> and pack the README.md via <None Include>.";
 
-		if (missing.Count > 0)
-		{
-			return Task.FromResult(Fail(
-				$"{string.Join(", ", missing)} do(es) not set PackageReadmeFile.",
-				new RuleAdvisory
-				{
-					Summary = "Add <PackageReadmeFile>README.md</PackageReadmeFile> and pack the README.md via <None Include>.",
-					Detail = $"These published projects do not set `PackageReadmeFile`: {string.Join(", ", missing)}. Add `<PackageReadmeFile>README.md</PackageReadmeFile>` to a `<PropertyGroup>` and include `<None Include=\"..\\README.md\" Pack=\"true\" PackagePath=\"\\\"/>` in an `<ItemGroup>`.",
-					Data = new()
-					{
-						["projects"] = missing.ToArray(),
-						["remediation_type"] = "ensure_csproj_property",
-						["property_name"] = "PackageReadmeFile",
-						["property_value"] = "README.md"
-					}
-				}));
-		}
+	/// <inheritdoc />
+	protected override string FailureMessage(List<string> missing)
+		=> $"{string.Join(", ", missing)} do(es) not set PackageReadmeFile.";
 
-		return Task.FromResult(Pass($"All {projects.Count} published project(s) have PackageReadmeFile set."));
-	}
+	/// <inheritdoc />
+	protected override string Detail(List<string> missing)
+		=> $"These published projects do not set `PackageReadmeFile`: {string.Join(", ", missing)}. Add `<PackageReadmeFile>README.md</PackageReadmeFile>` to a `<PropertyGroup>` and include `<None Include=\"..\\README.md\" Pack=\"true\" PackagePath=\"\\\"/>` in an `<ItemGroup>`.";
+
+	/// <inheritdoc />
+	protected override Dictionary<string, object> AdvisoryData(RepositoryContext context, List<string> missing)
+		=> SetPropertyData(missing, "README.md");
 }

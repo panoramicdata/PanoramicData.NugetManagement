@@ -23,16 +23,16 @@ public abstract class ProjectPropertySetRuleBase : RuleBase
 		}
 
 		var missing = projects
-			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), PropertyName))
+			.Where(csproj => IsMissing(context, csproj))
 			.ToList();
 
 		if (missing.Count == 0)
 		{
-			return Task.FromResult(Pass($"All {projects.Count} published project(s) have {PropertyName} set."));
+			return Task.FromResult(Pass(PassMessage(projects.Count)));
 		}
 
 		return Task.FromResult(Fail(
-			$"{string.Join(", ", missing)} do(es) not have {PropertyName} set.",
+			FailureMessage(missing),
 			new RuleAdvisory
 			{
 				Summary = Summary,
@@ -40,6 +40,22 @@ public abstract class ProjectPropertySetRuleBase : RuleBase
 				Data = AdvisoryData(context, missing)
 			}));
 	}
+
+	/// <summary>Whether <paramref name="csproj"/> still needs fixing. By default, whether the property is unset.</summary>
+	/// <param name="context">The repository being assessed.</param>
+	/// <param name="csproj">The project to check.</param>
+	protected virtual bool IsMissing(RepositoryContext context, string csproj)
+		=> !HasMsBuildProperty(context.GetFileContent(csproj), PropertyName);
+
+	/// <summary>The message given when <paramref name="missing"/> projects fail the rule.</summary>
+	/// <param name="missing">The projects that fail.</param>
+	protected virtual string FailureMessage(List<string> missing)
+		=> $"{string.Join(", ", missing)} do(es) not have {PropertyName} set.";
+
+	/// <summary>The message given when every project passes.</summary>
+	/// <param name="projectCount">How many projects were checked.</param>
+	protected virtual string PassMessage(int projectCount)
+		=> $"All {projectCount} published project(s) have {PropertyName} set.";
 
 	/// <summary>Builds the explanation given when <paramref name="missing"/> projects lack the property.</summary>
 	/// <param name="missing">The projects without the property.</param>
