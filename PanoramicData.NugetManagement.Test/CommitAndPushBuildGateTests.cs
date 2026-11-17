@@ -151,22 +151,7 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		var localRepo = new LocalRepoService(runtimeSettings, NullLogger<LocalRepoService>.Instance);
 		var cache = new DashboardCacheService(NullLogger<DashboardCacheService>.Instance, Path.Combine(_root, "dashboard-cache.json"));
 
-		return new DashboardService(
-			new NuGetDiscoveryService(
-				appSettings,
-				new NuspecRepositoryResolver(new NoopHttpClientFactory(), NullLogger<NuspecRepositoryResolver>.Instance),
-				NullLogger<NuGetDiscoveryService>.Instance),
-			new PublishedVersionRefresher(new NoopPublishedVersionSource()),
-			cache,
-			localRepo,
-			new RemediationRegistry(),
-			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
-			runtimeSettings,
-			new NuGetOwnedPackageCatalog(null),
-			new RuleWaiverCatalog(null),
-			appSettings,
-			new NoopCodacyAnalysisStateService(),
-			NullLogger<DashboardService>.Instance);
+		return DashboardTestFactory.Create(appSettings, runtimeSettings, localRepo, cache);
 	}
 
 	private static string Git(string workingDirectory, params string[] arguments)
@@ -203,22 +188,5 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		}
 
 		GC.SuppressFinalize(this);
-	}
-
-	/// <summary>Never called: nothing here talks to NuGet.</summary>
-	private sealed class NoopHttpClientFactory : IHttpClientFactory
-	{
-		public HttpClient CreateClient(string name)
-			=> throw new InvalidOperationException($"No HTTP client was expected, but '{name}' was requested.");
-	}
-
-	/// <summary>Never called: nothing here reads published versions.</summary>
-	private sealed class NoopPublishedVersionSource : IPublishedVersionSource
-	{
-		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-			throw new InvalidOperationException($"No published-version lookup was expected, but '{packageId}' was asked for.");
-		}
 	}
 }
