@@ -133,17 +133,20 @@ public partial class DashboardService
 					row.LocalPath,
 					row.RepositoryFullName,
 					repoOptions,
-					"main",
-					row.CurrentBranch,
-					row.LatestTag,
-					row.PrimaryPackage?.LatestVersion,
-					row.ReleaseRun,
-					await _localRepo.GetHeadShaAsync(row.RepositoryFullName, cancellationToken).ConfigureAwait(false),
-					row.NextVersion,
-					RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
-					await ResolveLineCoverageAsync(row.RepositoryFullName, repoOptions, "main", cancellationToken).ConfigureAwait(false),
-				await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false),
-				await ResolveIsPrivateAsync(github, row.RepositoryFullName).ConfigureAwait(false));
+					new LocalContextFacts
+					{
+						DefaultBranch = "main",
+						CurrentBranch = row.CurrentBranch,
+						LatestTag = row.LatestTag,
+						LatestPublishedVersion = row.PrimaryPackage?.LatestVersion,
+						ReleaseRun = row.ReleaseRun,
+						HeadSha = await _localRepo.GetHeadShaAsync(row.RepositoryFullName, cancellationToken).ConfigureAwait(false),
+						NextVersion = row.NextVersion,
+						IsConfirmedInSyncWithOrigin = RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
+						LineCoveragePercent = await ResolveLineCoverageAsync(row.RepositoryFullName, repoOptions, "main", cancellationToken).ConfigureAwait(false),
+						PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false),
+						IsPrivateRepository = await ResolveIsPrivateAsync(github, row.RepositoryFullName).ConfigureAwait(false)
+					});
 		}
 
 		var parts = row.RepositoryFullName.Split('/');
@@ -547,17 +550,20 @@ public partial class DashboardService
 			row.LocalPath!,
 			row.RepositoryFullName!,
 			repoOptions,
-			defaultBranch,
-			row.CurrentBranch,
-			row.LatestTag,
-			row.PrimaryPackage?.LatestVersion,
-			row.ReleaseRun,
-			headSha,
-			row.NextVersion,
-			RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
-			await ResolveLineCoverageAsync(row.RepositoryFullName!, repoOptions, defaultBranch, cancellationToken).ConfigureAwait(false),
-			await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName!).ConfigureAwait(false),
-			await ResolveIsPrivateAsync(github, row.RepositoryFullName!).ConfigureAwait(false));
+			new LocalContextFacts
+			{
+				DefaultBranch = defaultBranch,
+				CurrentBranch = row.CurrentBranch,
+				LatestTag = row.LatestTag,
+				LatestPublishedVersion = row.PrimaryPackage?.LatestVersion,
+				ReleaseRun = row.ReleaseRun,
+				HeadSha = headSha,
+				NextVersion = row.NextVersion,
+				IsConfirmedInSyncWithOrigin = RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
+				LineCoveragePercent = await ResolveLineCoverageAsync(row.RepositoryFullName!, repoOptions, defaultBranch, cancellationToken).ConfigureAwait(false),
+				PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName!).ConfigureAwait(false),
+				IsPrivateRepository = await ResolveIsPrivateAsync(github, row.RepositoryFullName!).ConfigureAwait(false)
+			});
 	}
 
 	private static async Task<List<RuleResult>> EvaluateRulesAsync(RepositoryContext context, RepoOptions repoOptions, CancellationToken cancellationToken)
