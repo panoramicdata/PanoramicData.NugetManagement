@@ -1349,26 +1349,13 @@ internal static partial class RemediationHelpers
 
 		try
 		{
-			var json = File.ReadAllText(fullPath);
-			var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-			if (node is not JsonObject root)
+			if (!TryReadJsonObject(fullPath, relativePath, result, onOutput, out var root))
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
 				return;
 			}
 
-			var target = root;
-			foreach (var segment in segments[..^1])
-			{
-				if (!target.TryGetPropertyValue(segment, out var child) || child is not JsonObject childObject)
-				{
-					return;
-				}
-
-				target = childObject;
-			}
-
-			if (!target.Remove(segments[^1]))
+			var target = FindObject(root, segments[..^1]);
+			if (target is null || !target.Remove(segments[^1]))
 			{
 				return;
 			}
@@ -1381,6 +1368,82 @@ internal static partial class RemediationHelpers
 		{
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
 		}
+	}
+
+	private static bool TryReadJsonObject(string fullPath, string relativePath, RuleResult result, Action<string>? onOutput, out JsonObject root)
+	{
+		var json = File.ReadAllText(fullPath);
+		var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+		if (node is JsonObject parsed)
+		{
+			root = parsed;
+			return true;
+		}
+
+		root = [];
+		onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
+		return false;
+	}
+
+	private static JsonObject? FindObject(JsonObject root, string[] segments)
+	{
+		var target = root;
+		foreach (var segment in segments)
+		{
+			if (!target.TryGetPropertyValue(segment, out var child) || child is not JsonObject childObject)
+			{
+				return null;
+			}
+
+			target = childObject;
+		}
+
+		return target;
+	}
+
+	private static JsonObject GetOrCreateObject(JsonObject root, string[] segments)
+	{
+		var target = root;
+		foreach (var segment in segments)
+		{
+			if (target.TryGetPropertyValue(segment, out var child) && child is JsonObject childObject)
+			{
+				target = childObject;
+				continue;
+			}
+
+			var created = new JsonObject();
+			target[segment] = created;
+			target = created;
+		}
+
+		return target;
+	}
+
+	private static bool AlreadySets(JsonObject target, string leaf, string propertyValue)
+		=> target.TryGetPropertyValue(leaf, out var existing) && existing is JsonValue existingValue
+			&& string.Equals(existingValue.ToJsonString().Trim('"'), propertyValue, StringComparison.Ordinal);
+
+	private static bool TryCreateJsonFile(
+		string fullPath,
+		string relativePath,
+		string propertyPath,
+		string? createContent,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		if (createContent is null)
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
+			return false;
+		}
+
+		EnsureDirectory(fullPath);
+		File.WriteAllText(fullPath, createContent);
+		applied.Add(relativePath);
+		onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath}");
+		return true;
 	}
 
 	/// <summary>
@@ -1414,18 +1477,9 @@ internal static partial class RemediationHelpers
 		string valueKind = "string")
 	{
 		var fullPath = ResolvePath(localPath, relativePath);
-		if (!File.Exists(fullPath))
+		if (!File.Exists(fullPath) && !TryCreateJsonFile(fullPath, relativePath, propertyPath, createContent, result, applied, onOutput))
 		{
-			if (createContent is null)
-			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
-				return;
-			}
-
-			EnsureDirectory(fullPath);
-			File.WriteAllText(fullPath, createContent);
-			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath}");
+			return;
 		}
 
 		var segments = propertyPath.Split('.', StringSplitOptions.RemoveEmptyEntries);
@@ -1436,31 +1490,14 @@ internal static partial class RemediationHelpers
 
 		try
 		{
-			var json = File.ReadAllText(fullPath);
-			var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-			if (node is not JsonObject root)
+			if (!TryReadJsonObject(fullPath, relativePath, result, onOutput, out var root))
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
 				return;
 			}
 
-			var target = root;
-			foreach (var segment in segments[..^1])
-			{
-				if (target.TryGetPropertyValue(segment, out var child) && child is JsonObject childObject)
-				{
-					target = childObject;
-					continue;
-				}
-
-				var created = new JsonObject();
-				target[segment] = created;
-				target = created;
-			}
-
+			var target = GetOrCreateObject(root, segments[..^1]);
 			var leaf = segments[^1];
-			if (target.TryGetPropertyValue(leaf, out var existing) && existing is JsonValue existingValue
-				&& string.Equals(existingValue.ToJsonString().Trim('"'), propertyValue, StringComparison.Ordinal))
+			if (AlreadySets(target, leaf, propertyValue))
 			{
 				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already sets {propertyPath} to {propertyValue} — skipping.");
 				return;
