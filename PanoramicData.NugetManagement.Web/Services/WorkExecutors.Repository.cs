@@ -185,8 +185,7 @@ public sealed partial class WorkExecutors
 	/// richer candidate objects.
 	/// </remarks>
 	/// <param name="item">The item naming the organisation and, via <c>fullNames</c>, which repositories to clone.</param>
-	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private Task DiscoverCloneTargetsAsync(WorkItem item, CancellationToken cancellationToken)
+	private Task DiscoverCloneTargetsAsync(WorkItem item)
 	{
 		var organization = item.Organization;
 		var fullNames = item.Descriptor.Parameter("fullNames")?
@@ -287,8 +286,7 @@ public sealed partial class WorkExecutors
 	/// <see cref="WorkFanOut.EnqueueReassess"/> needs the organisation each repository actually is in.
 	/// </remarks>
 	/// <param name="item">The item naming the organisation to scope to, or none for every organisation.</param>
-	/// <param name="cancellationToken">Unused: discovery here is a synchronous cache read.</param>
-	private Task DiscoverReassessTargetsAsync(WorkItem item, CancellationToken cancellationToken)
+	private Task DiscoverReassessTargetsAsync(WorkItem item)
 	{
 		var organization = item.Organization;
 		var rows = cache.GetCachedRows() ?? [];

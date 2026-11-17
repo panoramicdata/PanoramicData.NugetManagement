@@ -202,8 +202,8 @@ public sealed partial class WorkExecutors(
 			WorkKind.CommitAndPush => CommitAndPushAsync(item, cancellationToken),
 			WorkKind.Publish => PublishAsync(item, cancellationToken),
 			WorkKind.RediscoverOrganization => RediscoverOrganizationAsync(item, cancellationToken),
-			WorkKind.DiscoverReassessTargets => DiscoverReassessTargetsAsync(item, cancellationToken),
-			WorkKind.DiscoverCloneTargets => DiscoverCloneTargetsAsync(item, cancellationToken),
+			WorkKind.DiscoverReassessTargets => DiscoverReassessTargetsAsync(item),
+			WorkKind.DiscoverCloneTargets => DiscoverCloneTargetsAsync(item),
 			WorkKind.RefreshAll => RefreshAllAsync(item, cancellationToken),
 			_ => throw new NotSupportedException($"No executor for {item.Descriptor.Kind}.")
 		};
