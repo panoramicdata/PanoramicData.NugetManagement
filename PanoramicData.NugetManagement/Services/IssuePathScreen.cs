@@ -86,19 +86,27 @@ public static class IssuePathScreen
 		return new IssuePathScreenResult(true, string.Empty);
 	}
 
-	private static string? ScreenOne(
-		string root,
-		string path,
-		IReadOnlyCollection<string>? alsoProtected)
+	private static string? ValidateShape(string path)
 	{
 		if (string.IsNullOrWhiteSpace(path))
 		{
 			return "The fix names an empty path.";
 		}
 
-		if (Path.IsPathRooted(path))
+		return Path.IsPathRooted(path)
+			? $"'{path}' is an absolute path; a fix brief names files relative to the repository."
+			: null;
+	}
+
+	private static string? ScreenOne(
+		string root,
+		string path,
+		IReadOnlyCollection<string>? alsoProtected)
+	{
+		var malformed = ValidateShape(path);
+		if (malformed is not null)
 		{
-			return $"'{path}' is an absolute path; a fix brief names files relative to the repository.";
+			return malformed;
 		}
 
 		string full;

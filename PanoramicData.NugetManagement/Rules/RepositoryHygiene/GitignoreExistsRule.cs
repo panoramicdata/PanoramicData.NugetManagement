@@ -35,27 +35,18 @@ public class GitignoreExistsRule : RuleBase
 				}));
 		}
 
-		var hasBin = Contains(content, "[Bb]in") || Contains(content, "bin/");
-		var hasObj = Contains(content, "[Oo]bj") || Contains(content, "obj/");
-		var hasVs = Contains(content, ".vs/");
+		(string Entry, string[] Markers)[] essentials =
+		[
+			("[Bb]in/", ["[Bb]in", "bin/"]),
+			("[Oo]bj/", ["[Oo]bj", "obj/"]),
+			(".vs/", [".vs/"])
+		];
+		var missingEntries = essentials
+			.Where(essential => !essential.Markers.Any(marker => Contains(content, marker)))
+			.Select(essential => essential.Entry)
+			.ToArray();
 
-		var missingEntries = new List<string>();
-		if (!hasBin)
-		{
-			missingEntries.Add("[Bb]in/");
-		}
-
-		if (!hasObj)
-		{
-			missingEntries.Add("[Oo]bj/");
-		}
-
-		if (!hasVs)
-		{
-			missingEntries.Add(".vs/");
-		}
-
-		return Task.FromResult(hasBin && hasObj && hasVs
+		return Task.FromResult(missingEntries.Length == 0
 			? Pass(".gitignore found with essential entries (bin, obj, .vs).")
 			: Fail(
 				".gitignore is missing essential entries (bin/, obj/, .vs/).",
@@ -67,7 +58,7 @@ public class GitignoreExistsRule : RuleBase
 					{
 						["file"] = ".gitignore",
 						["remediation_type"] = "append_lines",
-						["lines"] = missingEntries.ToArray()
+						["lines"] = missingEntries
 					}
 				}));
 	}
