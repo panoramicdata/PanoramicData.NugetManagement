@@ -964,44 +964,52 @@ internal static partial class RemediationHelpers
 			return false;
 		}
 
+		var asAttribute = update.VersionKind.EndsWith("Attribute", StringComparison.Ordinal);
 		var changed = false;
 		foreach (var element in elements)
 		{
-			if (update.VersionKind.EndsWith("Attribute", StringComparison.Ordinal))
-			{
-				var versionAttribute = element.Attribute("Version");
-				if (versionAttribute is null)
-				{
-					element.SetAttributeValue("Version", update.LatestVersion);
-					changed = true;
-					continue;
-				}
-
-				if (!string.Equals(versionAttribute.Value, update.LatestVersion, StringComparison.OrdinalIgnoreCase))
-				{
-					versionAttribute.Value = update.LatestVersion;
-					changed = true;
-				}
-			}
-			else
-			{
-				var versionElement = element.Element("Version");
-				if (versionElement is null)
-				{
-					element.Add(new XElement("Version", update.LatestVersion));
-					changed = true;
-					continue;
-				}
-
-				if (!string.Equals(versionElement.Value, update.LatestVersion, StringComparison.OrdinalIgnoreCase))
-				{
-					versionElement.Value = update.LatestVersion;
-					changed = true;
-				}
-			}
+			changed |= asAttribute
+				? SetVersionAttribute(element, update.LatestVersion)
+				: SetVersionElement(element, update.LatestVersion);
 		}
 
 		return changed;
+	}
+
+	private static bool SetVersionAttribute(XElement element, string latestVersion)
+	{
+		var versionAttribute = element.Attribute("Version");
+		if (versionAttribute is null)
+		{
+			element.SetAttributeValue("Version", latestVersion);
+			return true;
+		}
+
+		if (string.Equals(versionAttribute.Value, latestVersion, StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		versionAttribute.Value = latestVersion;
+		return true;
+	}
+
+	private static bool SetVersionElement(XElement element, string latestVersion)
+	{
+		var versionElement = element.Element("Version");
+		if (versionElement is null)
+		{
+			element.Add(new XElement("Version", latestVersion));
+			return true;
+		}
+
+		if (string.Equals(versionElement.Value, latestVersion, StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		versionElement.Value = latestVersion;
+		return true;
 	}
 
 	private static PackageVersionUpdate? ParsePackageVersionUpdate(string value)
@@ -1060,31 +1068,7 @@ internal static partial class RemediationHelpers
 				return;
 			}
 
-			JsonArray array;
-			if (root.TryGetPropertyValue(arrayProperty, out var existing) && existing is JsonArray existingArray)
-			{
-				array = existingArray;
-			}
-			else
-			{
-				array = [];
-				root[arrayProperty] = array;
-			}
-
-			var currentValues = array
-				.Select(n => n?.GetValue<string>())
-				.Where(v => v is not null)
-				.ToHashSet(StringComparer.Ordinal);
-
-			var added = 0;
-			foreach (var item in items)
-			{
-				if (!currentValues.Contains(item))
-				{
-					array.Add(JsonValue.Create(item));
-					added++;
-				}
-			}
+			var added = AppendMissingItems(GetOrCreateArray(root, arrayProperty), items);
 
 			if (added > 0)
 			{
@@ -1118,63 +1102,97 @@ internal static partial class RemediationHelpers
 	{
 		foreach (var projectPath in projectPaths)
 		{
-			var fullPath = ResolvePath(localPath, projectPath);
-			if (!File.Exists(fullPath))
-			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not exist — skipping.");
-				continue;
-			}
-
-			try
-			{
-				var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
-				var toRemove = doc.Descendants("PackageReference")
-					.Where(e => string.Equals(
-						e.Attribute("Include")?.Value,
-						packageName,
-						StringComparison.OrdinalIgnoreCase))
-					.ToList();
-
-				if (toRemove.Count == 0)
-				{
-					onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not reference {packageName} — skipping.");
-					continue;
-				}
-
-				foreach (var element in toRemove)
-				{
-					// Remove the preceding whitespace/newline node too for clean diffs
-					if (element.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
-					{
-						element.PreviousNode.Remove();
-					}
-
-					element.Remove();
-				}
-
-				// Remove any now-empty ItemGroups
-				var emptyGroups = doc.Descendants("ItemGroup")
-					.Where(g => !g.HasElements)
-					.ToList();
-				foreach (var g in emptyGroups)
-				{
-					if (g.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
-					{
-						g.PreviousNode.Remove();
-					}
-
-					g.Remove();
-				}
-
-				doc.Save(fullPath);
-				applied.Add(projectPath);
-				onOutput?.Invoke($"✅ [{result.RuleId}] Removed {packageName} PackageReference from {projectPath}");
-			}
-			catch (Exception ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
-			}
+			RemovePackageReferenceFromProject(localPath, packageName, projectPath, result, applied, onOutput);
 		}
+	}
+
+	private static JsonArray GetOrCreateArray(JsonObject root, string arrayProperty)
+	{
+		if (root.TryGetPropertyValue(arrayProperty, out var existing) && existing is JsonArray existingArray)
+		{
+			return existingArray;
+		}
+
+		JsonArray array = [];
+		root[arrayProperty] = array;
+		return array;
+	}
+
+	private static int AppendMissingItems(JsonArray array, string[] items)
+	{
+		var currentValues = array
+			.Select(n => n?.GetValue<string>())
+			.Where(v => v is not null)
+			.ToHashSet(StringComparer.Ordinal);
+
+		var added = 0;
+		foreach (var item in items.Where(item => !currentValues.Contains(item)))
+		{
+			array.Add(JsonValue.Create(item));
+			added++;
+		}
+
+		return added;
+	}
+
+	private static void RemovePackageReferenceFromProject(
+		string localPath,
+		string packageName,
+		string projectPath,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, projectPath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not exist — skipping.");
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+			var toRemove = doc.Descendants("PackageReference")
+				.Where(e => string.Equals(
+					e.Attribute("Include")?.Value,
+					packageName,
+					StringComparison.OrdinalIgnoreCase))
+				.ToList();
+
+			if (toRemove.Count == 0)
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not reference {packageName} — skipping.");
+				return;
+			}
+
+			// Remove the preceding whitespace/newline node too for clean diffs
+			toRemove.ForEach(RemoveWithLeadingWhitespace);
+
+			// Remove any now-empty ItemGroups
+			doc.Descendants("ItemGroup")
+				.Where(g => !g.HasElements)
+				.ToList()
+				.ForEach(RemoveWithLeadingWhitespace);
+
+			doc.Save(fullPath);
+			applied.Add(projectPath);
+			onOutput?.Invoke($"✅ [{result.RuleId}] Removed {packageName} PackageReference from {projectPath}");
+		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
+		}
+	}
+
+	private static void RemoveWithLeadingWhitespace(XElement element)
+	{
+		if (element.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
+		{
+			element.PreviousNode.Remove();
+		}
+
+		element.Remove();
 	}
 
 	/// <summary>
