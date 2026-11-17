@@ -54,21 +54,9 @@ public class NextVersionMatchesTagRule : RuleBase, IFixedOutsideTheWorkingTree
 				"No version tag known; the repository is not cloned locally, or has never been released."));
 		}
 
-		// A feature branch's height counts unmerged commits, which are not waiting to be released.
-		if (context.CurrentBranch is { } branch
-			&& !branch.Equals(context.DefaultBranch, StringComparison.OrdinalIgnoreCase))
+		if (UnsettledStateReason(context) is { } unsettled)
 		{
-			return Task.FromResult(NotApplicable(
-				$"On branch {branch} rather than {context.DefaultBranch}, where unreleased work would be."));
-		}
-
-		if (!context.IsConfirmedInSyncWithOrigin)
-		{
-			// Said before the versions are compared, because the comparison would otherwise report a
-			// stale clone's own commits as work waiting to be released.
-			return Task.FromResult(NotApplicable(
-				"The clone is not known to match origin, so commits past the newest local tag may "
-				+ "already have been released. Sync to find out."));
+			return Task.FromResult(NotApplicable(unsettled));
 		}
 
 		if (!TryParseVersion(context.LatestTag, out var tagged))
@@ -92,6 +80,23 @@ public class NextVersionMatchesTagRule : RuleBase, IFixedOutsideTheWorkingTree
 				$"This working tree would release {context.NextVersion}, but the newest tag is "
 				+ $"{context.LatestTag} — that work is committed and not released.",
 				CreateAdvisory(context, context.LatestTag, context.NextVersion)));
+	}
+
+	private static string? UnsettledStateReason(RepositoryContext context)
+	{
+		// A feature branch's height counts unmerged commits, which are not waiting to be released.
+		if (context.CurrentBranch is { } branch
+			&& !branch.Equals(context.DefaultBranch, StringComparison.OrdinalIgnoreCase))
+		{
+			return $"On branch {branch} rather than {context.DefaultBranch}, where unreleased work would be.";
+		}
+
+		// Said before the versions are compared, because the comparison would otherwise report a
+		// stale clone's own commits as work waiting to be released.
+		return context.IsConfirmedInSyncWithOrigin
+			? null
+			: "The clone is not known to match origin, so commits past the newest local tag may "
+				+ "already have been released. Sync to find out.";
 	}
 
 	private static RuleAdvisory CreateAdvisory(RepositoryContext context, string tag, string nextVersion)

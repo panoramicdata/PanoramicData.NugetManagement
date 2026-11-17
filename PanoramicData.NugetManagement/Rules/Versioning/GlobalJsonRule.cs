@@ -54,19 +54,7 @@ public class GlobalJsonRule : RuleBase
 		var content = context.GetFileContent("global.json");
 		if (content is null)
 		{
-			return Task.FromResult(Fail(
-				"global.json not found at repository root.",
-				new RuleAdvisory
-				{
-					Summary = $"Create global.json pinning SDK version to {Standards.DotNetSdkPinVersion} with rollForward: {Standards.SdkRollForward}.",
-					Detail = $"No `global.json` file was found at the repository root. Create one pinning the SDK version to `{Standards.DotNetSdkPinVersion}` with `rollForward: {Standards.SdkRollForward}`.",
-					Data = new()
-					{
-						["expected_path"] = "global.json",
-						["latest_sdk"] = Standards.DotNetSdkPinVersion,
-						["template_content"] = Standards.GetGlobalJsonContent(includeTestRunner)
-					}
-				}));
+			return Task.FromResult(MissingFile(includeTestRunner));
 		}
 
 		var sdk = ParseSdkObject(content);
@@ -74,22 +62,9 @@ public class GlobalJsonRule : RuleBase
 		{
 			// Nothing in the file can be preserved if it does not parse, so this is the one case that
 			// legitimately replaces the whole thing.
-			return Task.FromResult(Fail(
-				"global.json is not valid JSON.",
-				new RuleAdvisory
-				{
-					Summary = "Replace the unparseable global.json with the standard template.",
-					Detail = "The `global.json` file could not be parsed as JSON, so no SDK pin can be read from it.",
-					Data = new()
-					{
-						["remediation_type"] = "replace_file_content",
-						["file"] = "global.json",
-						["new_content"] = Standards.GetGlobalJsonContent(includeTestRunner)
-					}
-				}));
+			return Task.FromResult(InvalidJson(includeTestRunner));
 		}
 
-		var floor = NuGetVersion.Parse(Standards.DotNetSdkPinVersion);
 		var version = sdk["version"]?.ToString();
 		var rollForward = sdk["rollForward"]?.ToString();
 
@@ -97,28 +72,7 @@ public class GlobalJsonRule : RuleBase
 		// version — rewriting it would move it down a feature band for no reason.
 		var corrections = new Dictionary<string, string>();
 		var reasons = new List<string>();
-
-		if (version is null || !NuGetVersion.TryParse(version, out var pinned))
-		{
-			corrections["sdk.version"] = Standards.DotNetSdkPinVersion;
-			reasons.Add($"no SDK version is pinned (expected at least {Standards.DotNetSdkPinVersion})");
-		}
-		else if (pinned < floor)
-		{
-			corrections["sdk.version"] = Standards.DotNetSdkPinVersion;
-			reasons.Add($"the pinned SDK version {version} is below the {Standards.DotNetSdkPinVersion} floor");
-		}
-
-		if (rollForward is null)
-		{
-			corrections["sdk.rollForward"] = Standards.SdkRollForward;
-			reasons.Add($"rollForward is not set, so it defaults to latestPatch and cannot leave the pinned feature band");
-		}
-		else if (!_bandCrossingRollForward.Contains(rollForward, StringComparer.OrdinalIgnoreCase))
-		{
-			corrections["sdk.rollForward"] = Standards.SdkRollForward;
-			reasons.Add($"rollForward '{rollForward}' cannot reach an SDK in a higher feature band");
-		}
+		CollectCorrections(version, rollForward, corrections, reasons);
 
 		if (corrections.Count == 0)
 		{
@@ -167,6 +121,69 @@ public class GlobalJsonRule : RuleBase
 		catch (System.Text.Json.JsonException)
 		{
 			return null;
+		}
+	}
+
+	private RuleResult MissingFile(bool includeTestRunner)
+	{
+		return Fail(
+			"global.json not found at repository root.",
+			new RuleAdvisory
+			{
+				Summary = $"Create global.json pinning SDK version to {Standards.DotNetSdkPinVersion} with rollForward: {Standards.SdkRollForward}.",
+				Detail = $"No `global.json` file was found at the repository root. Create one pinning the SDK version to `{Standards.DotNetSdkPinVersion}` with `rollForward: {Standards.SdkRollForward}`.",
+				Data = new()
+				{
+					["expected_path"] = "global.json",
+					["latest_sdk"] = Standards.DotNetSdkPinVersion,
+					["template_content"] = Standards.GetGlobalJsonContent(includeTestRunner)
+				}
+			});
+	}
+
+	private RuleResult InvalidJson(bool includeTestRunner)
+	{
+		// Nothing in the file can be preserved if it does not parse, so this is the one case that
+		// legitimately replaces the whole thing.
+		return Fail(
+			"global.json is not valid JSON.",
+			new RuleAdvisory
+			{
+				Summary = "Replace the unparseable global.json with the standard template.",
+				Detail = "The `global.json` file could not be parsed as JSON, so no SDK pin can be read from it.",
+				Data = new()
+				{
+					["remediation_type"] = "replace_file_content",
+					["file"] = "global.json",
+					["new_content"] = Standards.GetGlobalJsonContent(includeTestRunner)
+				}
+			});
+	}
+
+	private static void CollectCorrections(string? version, string? rollForward, Dictionary<string, string> corrections, List<string> reasons)
+	{
+		var floor = NuGetVersion.Parse(Standards.DotNetSdkPinVersion);
+
+		if (version is null || !NuGetVersion.TryParse(version, out var pinned))
+		{
+			corrections["sdk.version"] = Standards.DotNetSdkPinVersion;
+			reasons.Add($"no SDK version is pinned (expected at least {Standards.DotNetSdkPinVersion})");
+		}
+		else if (pinned < floor)
+		{
+			corrections["sdk.version"] = Standards.DotNetSdkPinVersion;
+			reasons.Add($"the pinned SDK version {version} is below the {Standards.DotNetSdkPinVersion} floor");
+		}
+
+		if (rollForward is null)
+		{
+			corrections["sdk.rollForward"] = Standards.SdkRollForward;
+			reasons.Add($"rollForward is not set, so it defaults to latestPatch and cannot leave the pinned feature band");
+		}
+		else if (!_bandCrossingRollForward.Contains(rollForward, StringComparer.OrdinalIgnoreCase))
+		{
+			corrections["sdk.rollForward"] = Standards.SdkRollForward;
+			reasons.Add($"rollForward '{rollForward}' cannot reach an SDK in a higher feature band");
 		}
 	}
 }
