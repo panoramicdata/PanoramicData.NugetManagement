@@ -1108,68 +1108,18 @@ public class DashboardService
 			await _publishedVersions.RefreshAsync(row, cancellationToken).ConfigureAwait(false);
 
 			var repoIdentity = RepoIdentity(row);
-			if (!string.IsNullOrWhiteSpace(repoIdentity))
-			{
-				row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
-
-				// Read here rather than relying on a git-status refresh having happened: CI-11 compares
-				// this with what is on nuget.org, and without it the rule has nothing to say. A local
-				// `git describe` on a clone we already have is cheap.
-				row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
-
-				// What a release from this clone would publish, for VER-05 to compare with the tag.
-				row.NextVersion = await _localRepo.GetNextVersionAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
-			}
+			await RefreshLocalGitFactsAsync(row, repoIdentity, cancellationToken).ConfigureAwait(false);
 
 			// After the tag is known, because the run is looked up by it.
 			await RefreshReleaseRunAsync(row, github, cancellationToken).ConfigureAwait(false);
 
-			var detectedDefaultBranch = !string.IsNullOrWhiteSpace(repoIdentity)
-				? await _localRepo.GetRemoteDefaultBranchAsync(repoIdentity!, cancellationToken).ConfigureAwait(false)
-				: null;
-			var defaultBranch = string.IsNullOrWhiteSpace(detectedDefaultBranch)
-				? row.Assessment?.DefaultBranch ?? "main"
-				: detectedDefaultBranch;
+			var defaultBranch = await ResolveDefaultBranchAsync(row, repoIdentity, cancellationToken).ConfigureAwait(false);
 
 			var repoOptions = BuildRepoOptions(row.RepositoryFullName);
 
-			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
-			var localBuilder = new LocalRepositoryContextBuilder(loggerFactory.CreateLogger<LocalRepositoryContextBuilder>());
-			// The release facts the dashboard already knows, handed to the rules so CI-11 can compare
-			// what was tagged with what was actually published.
-			// The checked-out commit, so CQ-06 can say whether Codacy's grades describe it or an older
-			// one. Null when git cannot be read, which leaves that comparison unmade.
-			var headSha = !string.IsNullOrWhiteSpace(repoIdentity)
-				? await _localRepo.GetHeadShaAsync(repoIdentity!, cancellationToken).ConfigureAwait(false)
-				: null;
+			var context = await BuildLocalContextAsync(row, repoIdentity, repoOptions, defaultBranch, github, cancellationToken).ConfigureAwait(false);
 
-			var context = localBuilder.Build(
-				row.LocalPath,
-				row.RepositoryFullName,
-				repoOptions,
-				defaultBranch,
-				row.CurrentBranch,
-				row.LatestTag,
-				row.PrimaryPackage?.LatestVersion,
-				row.ReleaseRun,
-				headSha,
-				row.NextVersion,
-				RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
-				await ResolveLineCoverageAsync(row.RepositoryFullName, repoOptions, defaultBranch, cancellationToken).ConfigureAwait(false),
-				await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false),
-				await ResolveIsPrivateAsync(github, row.RepositoryFullName).ConfigureAwait(false));
-
-			var rules = RuleRegistry.Rules;
-			var results = new List<RuleResult>();
-
-			foreach (var rule in rules)
-			{
-				// Waived rules are evaluated like any other and excused afterwards, so a waiver that has
-				// outlived the problem it was agreed for can be reported as stale rather than standing
-				// unexamined for ever.
-				var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
-				results.Add(RuleWaivers.Apply(result, repoOptions));
-			}
+			var results = await EvaluateRulesAsync(context, repoOptions, cancellationToken).ConfigureAwait(false);
 
 			row.Assessment = new RepoAssessment
 			{
@@ -1181,17 +1131,7 @@ public class DashboardService
 
 			row.CategorySummaries = BuildCategorySummaries(results);
 
-			// The local path is the one every actively-worked repository takes, so without this it
-			// would be exactly those repositories whose inbox was never read.
-			if (github is not null)
-			{
-				var identityParts = row.RepositoryFullName.Split('/');
-				if (identityParts.Length == 2)
-				{
-					await RefreshOpenIssuesAsync(row, github, identityParts[0], identityParts[1], cancellationToken)
-						.ConfigureAwait(false);
-				}
-			}
+			await RefreshInboxIfPossibleAsync(row, github, cancellationToken).ConfigureAwait(false);
 
 			PreviewTriage(row, context, results);
 
@@ -1215,6 +1155,103 @@ public class DashboardService
 			_logger.LogError(ex, "Failed to locally assess {Repo}", row.RepositoryFullName);
 			row.Status = PackageStatus.Error;
 			row.StatusMessage = $"Local assessment failed: {ex.Message}";
+		}
+	}
+
+	private async Task RefreshLocalGitFactsAsync(RepositoryDashboardRow row, string? repoIdentity, CancellationToken cancellationToken)
+	{
+		if (string.IsNullOrWhiteSpace(repoIdentity))
+		{
+			return;
+		}
+
+		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+
+		// Read here rather than relying on a git-status refresh having happened: CI-11 compares
+		// this with what is on nuget.org, and without it the rule has nothing to say. A local
+		// `git describe` on a clone we already have is cheap.
+		row.LatestTag = await _localRepo.GetLatestTagAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+
+		// What a release from this clone would publish, for VER-05 to compare with the tag.
+		row.NextVersion = await _localRepo.GetNextVersionAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+	}
+
+	private async Task<string> ResolveDefaultBranchAsync(RepositoryDashboardRow row, string? repoIdentity, CancellationToken cancellationToken)
+	{
+		var detectedDefaultBranch = !string.IsNullOrWhiteSpace(repoIdentity)
+			? await _localRepo.GetRemoteDefaultBranchAsync(repoIdentity!, cancellationToken).ConfigureAwait(false)
+			: null;
+
+		return string.IsNullOrWhiteSpace(detectedDefaultBranch)
+			? row.Assessment?.DefaultBranch ?? "main"
+			: detectedDefaultBranch;
+	}
+
+	private async Task<RepositoryContext> BuildLocalContextAsync(
+		RepositoryDashboardRow row,
+		string? repoIdentity,
+		RepoOptions repoOptions,
+		string defaultBranch,
+		IGitHubClient? github,
+		CancellationToken cancellationToken)
+	{
+		using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+		var localBuilder = new LocalRepositoryContextBuilder(loggerFactory.CreateLogger<LocalRepositoryContextBuilder>());
+		// The release facts the dashboard already knows, handed to the rules so CI-11 can compare
+		// what was tagged with what was actually published.
+		// The checked-out commit, so CQ-06 can say whether Codacy's grades describe it or an older
+		// one. Null when git cannot be read, which leaves that comparison unmade.
+		var headSha = !string.IsNullOrWhiteSpace(repoIdentity)
+			? await _localRepo.GetHeadShaAsync(repoIdentity!, cancellationToken).ConfigureAwait(false)
+			: null;
+
+		return localBuilder.Build(
+			row.LocalPath!,
+			row.RepositoryFullName!,
+			repoOptions,
+			defaultBranch,
+			row.CurrentBranch,
+			row.LatestTag,
+			row.PrimaryPackage?.LatestVersion,
+			row.ReleaseRun,
+			headSha,
+			row.NextVersion,
+			RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
+			await ResolveLineCoverageAsync(row.RepositoryFullName!, repoOptions, defaultBranch, cancellationToken).ConfigureAwait(false),
+			await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName!).ConfigureAwait(false),
+			await ResolveIsPrivateAsync(github, row.RepositoryFullName!).ConfigureAwait(false));
+	}
+
+	private static async Task<List<RuleResult>> EvaluateRulesAsync(RepositoryContext context, RepoOptions repoOptions, CancellationToken cancellationToken)
+	{
+		var results = new List<RuleResult>();
+
+		foreach (var rule in RuleRegistry.Rules)
+		{
+			// Waived rules are evaluated like any other and excused afterwards, so a waiver that has
+			// outlived the problem it was agreed for can be reported as stale rather than standing
+			// unexamined for ever.
+			var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
+			results.Add(RuleWaivers.Apply(result, repoOptions));
+		}
+
+		return results;
+	}
+
+	private async Task RefreshInboxIfPossibleAsync(RepositoryDashboardRow row, IGitHubClient? github, CancellationToken cancellationToken)
+	{
+		// The local path is the one every actively-worked repository takes, so without this it
+		// would be exactly those repositories whose inbox was never read.
+		if (github is null)
+		{
+			return;
+		}
+
+		var identityParts = row.RepositoryFullName!.Split('/');
+		if (identityParts.Length == 2)
+		{
+			await RefreshOpenIssuesAsync(row, github, identityParts[0], identityParts[1], cancellationToken)
+				.ConfigureAwait(false);
 		}
 	}
 
@@ -2282,7 +2319,7 @@ public class DashboardService
 		Action<RepositoryDashboardRow>? onRepositoryFixed,
 		CancellationToken cancellationToken)
 	{
-		var outcome = new BulkApplyOutcome();
+		var run = new BulkApplyRun(applyFunc, commitMessage, onOutput, onRepositoryFixed);
 		onOutput?.Invoke($"Applying across {affected.Count} repositor{(affected.Count == 1 ? "y" : "ies")}...");
 
 		var index = 0;
@@ -2298,107 +2335,12 @@ public class DashboardService
 
 			// Tracks the atomic boundary for this repository: everything before the commit can be
 			// undone, everything after it has left the machine.
-			var phase = RepoApplyPhase.NotStarted;
+			run.Phase = RepoApplyPhase.NotStarted;
 
 			try
 			{
-				// Checked before the sync rather than after it: a rebase onto an already-dirty tree is
-				// its own hazard, and skipping the repository entirely is the safe outcome either way.
-				if (row.IsClonedLocally && !await VerifyWritableCloneAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
+				if (!await ApplyToRepositoryAsync(row, run, cancellationToken).ConfigureAwait(false))
 				{
-					outcome.Results.Add(new RepoApplyResult
-					{
-						RepositoryFullName = name,
-						Status = RepoApplyStatus.Skipped,
-						Message = "Skipped: the local clone is not in a state it is safe to write to."
-					});
-					continue;
-				}
-
-				// Guardrail: never commit onto a stale clone — sync, then reassess the fresh tree. The
-				// sync is also what clones a repository being remediated for the first time, so its
-				// failure has to stop the repository here: carrying on would apply the remediation to
-				// whatever the path happens to be, up to and including a directory that is not a clone.
-				if (!await GitSyncAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
-				{
-					outcome.Results.Add(new RepoApplyResult
-					{
-						RepositoryFullName = name,
-						Status = RepoApplyStatus.Skipped,
-						Message = "Skipped: the local clone could not be synced with origin."
-					});
-					continue;
-				}
-
-				// The gate again, now unconditionally: the check above is skipped for a row with no
-				// clone, and the sync was supposed to produce one. Remediations create the directories
-				// they write into, so without this a bare directory gets filled with files belonging to
-				// no repository, and nothing notices until the push refuses to touch it.
-				if (!await VerifyWritableCloneAsync(row, onOutput, cancellationToken).ConfigureAwait(false))
-				{
-					outcome.Results.Add(new RepoApplyResult
-					{
-						RepositoryFullName = name,
-						Status = RepoApplyStatus.Skipped,
-						Message = "Skipped: the local clone is not in a state it is safe to write to."
-					});
-					continue;
-				}
-
-				await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
-
-				phase = RepoApplyPhase.Applying;
-				var applied = await applyFunc(row).ConfigureAwait(false);
-				phase = applied.Count == 0 ? RepoApplyPhase.NotStarted : RepoApplyPhase.Applied;
-				if (applied.Count == 0)
-				{
-					outcome.Results.Add(new RepoApplyResult
-					{
-						RepositoryFullName = name,
-						Status = RepoApplyStatus.NothingToDo,
-						Message = "No changes to apply after sync."
-					});
-					continue;
-				}
-
-				// CommitAndPushAsync builds first. Not cancellable: the stop is honoured at the next repository.
-				var push = await CommitAndPushAsync(row, commitMessage, onOutput, CancellationToken.None).ConfigureAwait(false);
-				phase = push.Success ? RepoApplyPhase.Pushed : RepoApplyPhase.Applied;
-				outcome.Results.Add(new RepoApplyResult
-				{
-					RepositoryFullName = name,
-					// A refusal is a skip, not a failure: a guard decided, and nothing was left behind.
-					Status = push.Success
-						? RepoApplyStatus.Pushed
-						: push.WasRefused ? RepoApplyStatus.Skipped : RepoApplyStatus.Failed,
-					Message = push.Success
-						? $"{applied.Count} file(s) committed & pushed."
-						: push.RefusalReason ?? "Commit/push failed."
-				});
-
-				if (push.Success)
-				{
-					// Re-assessed now the fix has landed, so the row stops reporting an issue that no
-					// longer exists. Without this the issue tree still shows the failures a run has just
-					// fixed, because everything downstream reads the assessment taken before the change.
-					await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
-					onRepositoryFixed?.Invoke(row);
-
-					// CommitAndPushAsync has queued the background verification, which reverts if our change broke it.
-					onOutput?.Invoke($"🛡️ Queued {row.RepositoryFullName} for build verification.");
-				}
-
-				if (push.ChangesReverted)
-				{
-					// The build gate left nothing behind, so the next repository is still safe to try.
-					phase = RepoApplyPhase.NotStarted;
-					continue;
-				}
-
-				if (!push.Success)
-				{
-					outcome.StoppedOnFailure = true;
-					onOutput?.Invoke($"⛔ Stopping bulk apply: {(push.WasRefused ? "a guard refused the push" : "commit/push failed")}.");
 					break;
 				}
 			}
@@ -2406,29 +2348,169 @@ public class DashboardService
 			{
 				// Atomic per repository: work that never reached its commit is undone, so the clone is
 				// left as it was found rather than half-remediated.
-				if (BulkApplyCancellation.NeedsRevert(phase))
+				if (BulkApplyCancellation.NeedsRevert(run.Phase))
 				{
 					await RevertUncommittedAsync(row, name, onOutput).ConfigureAwait(false);
 				}
 
-				outcome.Results.Add(BulkApplyCancellation.Describe(name, phase));
+				run.Outcome.Results.Add(BulkApplyCancellation.Describe(name, run.Phase));
 				throw;
 			}
 			catch (Exception ex)
 			{
-				outcome.Results.Add(new RepoApplyResult
+				run.Outcome.Results.Add(new RepoApplyResult
 				{
 					RepositoryFullName = name,
 					Status = RepoApplyStatus.Failed,
 					Message = ex.Message
 				});
-				outcome.StoppedOnFailure = true;
+				run.Outcome.StoppedOnFailure = true;
 				onOutput?.Invoke($"⛔ Stopping bulk apply: {ex.Message}");
 				break;
 			}
 		}
 
-		return outcome;
+		return run.Outcome;
+	}
+
+	/// <summary>Applies the change to one repository, returning false when the whole run must stop.</summary>
+	private async Task<bool> ApplyToRepositoryAsync(RepositoryDashboardRow row, BulkApplyRun run, CancellationToken cancellationToken)
+	{
+		var name = row.RepositoryFullName;
+		if (!await IsReadyToApplyAsync(row, run, cancellationToken).ConfigureAwait(false))
+		{
+			return true;
+		}
+
+		await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+
+		run.Phase = RepoApplyPhase.Applying;
+		var applied = await run.ApplyFunc(row).ConfigureAwait(false);
+		run.Phase = applied.Count == 0 ? RepoApplyPhase.NotStarted : RepoApplyPhase.Applied;
+		if (applied.Count == 0)
+		{
+			run.Outcome.Results.Add(new RepoApplyResult
+			{
+				RepositoryFullName = name,
+				Status = RepoApplyStatus.NothingToDo,
+				Message = "No changes to apply after sync."
+			});
+			return true;
+		}
+
+		// CommitAndPushAsync builds first. Not cancellable: the stop is honoured at the next repository.
+		var push = await CommitAndPushAsync(row, run.CommitMessage, run.OnOutput, CancellationToken.None).ConfigureAwait(false);
+		run.Phase = push.Success ? RepoApplyPhase.Pushed : RepoApplyPhase.Applied;
+		run.Outcome.Results.Add(DescribePush(name, push, applied.Count));
+
+		if (push.Success)
+		{
+			await AfterPushAsync(row, run, cancellationToken).ConfigureAwait(false);
+		}
+
+		if (push.ChangesReverted)
+		{
+			// The build gate left nothing behind, so the next repository is still safe to try.
+			run.Phase = RepoApplyPhase.NotStarted;
+			return true;
+		}
+
+		return push.Success || StopOnFailure(run, push);
+	}
+
+	/// <summary>
+	/// Syncs the clone and confirms it is safe to write to, recording a skip and returning false when
+	/// it is not.
+	/// </summary>
+	private async Task<bool> IsReadyToApplyAsync(RepositoryDashboardRow row, BulkApplyRun run, CancellationToken cancellationToken)
+	{
+		var name = row.RepositoryFullName;
+
+		// Checked before the sync rather than after it: a rebase onto an already-dirty tree is
+		// its own hazard, and skipping the repository entirely is the safe outcome either way.
+		if (row.IsClonedLocally && !await VerifyWritableCloneAsync(row, run.OnOutput, cancellationToken).ConfigureAwait(false))
+		{
+			return run.Skip(name, "Skipped: the local clone is not in a state it is safe to write to.");
+		}
+
+		// Guardrail: never commit onto a stale clone — sync, then reassess the fresh tree. The
+		// sync is also what clones a repository being remediated for the first time, so its
+		// failure has to stop the repository here: carrying on would apply the remediation to
+		// whatever the path happens to be, up to and including a directory that is not a clone.
+		if (!await GitSyncAsync(row, run.OnOutput, cancellationToken).ConfigureAwait(false))
+		{
+			return run.Skip(name, "Skipped: the local clone could not be synced with origin.");
+		}
+
+		// The gate again, now unconditionally: the check above is skipped for a row with no
+		// clone, and the sync was supposed to produce one. Remediations create the directories
+		// they write into, so without this a bare directory gets filled with files belonging to
+		// no repository, and nothing notices until the push refuses to touch it.
+		return await VerifyWritableCloneAsync(row, run.OnOutput, cancellationToken).ConfigureAwait(false)
+			|| run.Skip(name, "Skipped: the local clone is not in a state it is safe to write to.");
+	}
+
+	private static RepoApplyResult DescribePush(string name, CommitAndPushOutcome push, int fileCount)
+		=> new()
+		{
+			RepositoryFullName = name,
+			// A refusal is a skip, not a failure: a guard decided, and nothing was left behind.
+			Status = push.Success
+				? RepoApplyStatus.Pushed
+				: push.WasRefused ? RepoApplyStatus.Skipped : RepoApplyStatus.Failed,
+			Message = push.Success
+				? $"{fileCount} file(s) committed & pushed."
+				: push.RefusalReason ?? "Commit/push failed."
+		};
+
+	private async Task AfterPushAsync(RepositoryDashboardRow row, BulkApplyRun run, CancellationToken cancellationToken)
+	{
+		// Re-assessed now the fix has landed, so the row stops reporting an issue that no
+		// longer exists. Without this the issue tree still shows the failures a run has just
+		// fixed, because everything downstream reads the assessment taken before the change.
+		await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+		run.OnRepositoryFixed?.Invoke(row);
+
+		// CommitAndPushAsync has queued the background verification, which reverts if our change broke it.
+		run.OnOutput?.Invoke($"🛡️ Queued {row.RepositoryFullName} for build verification.");
+	}
+
+	private static bool StopOnFailure(BulkApplyRun run, CommitAndPushOutcome push)
+	{
+		run.Outcome.StoppedOnFailure = true;
+		run.OnOutput?.Invoke($"⛔ Stopping bulk apply: {(push.WasRefused ? "a guard refused the push" : "commit/push failed")}.");
+		return false;
+	}
+
+	/// <summary>The state of one bulk apply: what to run, where to report, and how far the current repository got.</summary>
+	private sealed class BulkApplyRun(
+		Func<RepositoryDashboardRow, Task<List<string>>> applyFunc,
+		string commitMessage,
+		Action<string>? onOutput,
+		Action<RepositoryDashboardRow>? onRepositoryFixed)
+	{
+		public Func<RepositoryDashboardRow, Task<List<string>>> ApplyFunc { get; } = applyFunc;
+
+		public string CommitMessage { get; } = commitMessage;
+
+		public Action<string>? OnOutput { get; } = onOutput;
+
+		public Action<RepositoryDashboardRow>? OnRepositoryFixed { get; } = onRepositoryFixed;
+
+		public BulkApplyOutcome Outcome { get; } = new();
+
+		public RepoApplyPhase Phase { get; set; }
+
+		public bool Skip(string name, string message)
+		{
+			Outcome.Results.Add(new RepoApplyResult
+			{
+				RepositoryFullName = name,
+				Status = RepoApplyStatus.Skipped,
+				Message = message
+			});
+			return false;
+		}
 	}
 
 	private static bool RepoHasFailingRule(RepositoryDashboardRow row, string ruleId)
