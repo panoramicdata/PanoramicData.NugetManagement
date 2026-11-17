@@ -49,26 +49,7 @@ public class WorkflowYamlIsValidRule : RuleBase
 			return Task.FromResult(NotApplicable("No workflow files found."));
 		}
 
-		var broken = new List<(string Path, string Error)>();
-		var read = 0;
-
-		foreach (var path in workflows)
-		{
-			// Null means the file was listed but never fetched, which says nothing about its contents.
-			// Reporting an unread file as invalid would fail every repository the fetcher skipped.
-			var content = context.GetFileContent(path);
-			if (content is null)
-			{
-				continue;
-			}
-
-			read++;
-
-			if (TryDescribeParseFailure(content, out var error))
-			{
-				broken.Add((path, error));
-			}
-		}
+		var (read, broken) = ScanWorkflows(context, workflows);
 
 		if (read == 0)
 		{
@@ -107,6 +88,32 @@ public class WorkflowYamlIsValidRule : RuleBase
 					["broken_files"] = broken.Select(b => b.Path).ToList()
 				}
 			}));
+	}
+
+	private static (int Read, List<(string Path, string Error)> Broken) ScanWorkflows(RepositoryContext context, List<string> workflows)
+	{
+		var broken = new List<(string Path, string Error)>();
+		var read = 0;
+
+		foreach (var path in workflows)
+		{
+			// Null means the file was listed but never fetched, which says nothing about its contents.
+			// Reporting an unread file as invalid would fail every repository the fetcher skipped.
+			var content = context.GetFileContent(path);
+			if (content is null)
+			{
+				continue;
+			}
+
+			read++;
+
+			if (TryDescribeParseFailure(content, out var error))
+			{
+				broken.Add((path, error));
+			}
+		}
+
+		return (read, broken);
 	}
 
 	private static bool IsWorkflowFile(string path)
