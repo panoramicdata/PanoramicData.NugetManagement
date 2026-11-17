@@ -77,18 +77,26 @@ public class CodeCoverageTrendRule : RuleBase
 		if (!lineFell && !branchFell)
 		{
 			var raised = _baselines.Observe(context.FullName, measured);
-			return Task.FromResult(Pass(raised
-				? $"Coverage improved to {line:N1}% line, {branch:N1}% branch."
-				: $"Coverage held at {line:N1}% line, {branch:N1}% branch."));
+			return Task.FromResult(Pass(DescribeHeld(raised, line, branch)));
 		}
 
+		return Task.FromResult(CoverageFell(line, branch, best, lineFell, branchFell));
+	}
+
+	private static string DescribeHeld(bool raised, double line, double branch)
+		=> raised
+			? $"Coverage improved to {line:N1}% line, {branch:N1}% branch."
+			: $"Coverage held at {line:N1}% line, {branch:N1}% branch.";
+
+	private RuleResult CoverageFell(double line, double branch, CoverageBaseline best, bool lineFell, bool branchFell)
+	{
 		var fallen = lineFell && branchFell
 			? $"line coverage {line:N1}% (best {best.LinePercent:N1}%) and branch coverage {branch:N1}% (best {best.BranchPercent:N1}%)"
 			: lineFell
 				? $"line coverage {line:N1}% (best {best.LinePercent:N1}%)"
 				: $"branch coverage {branch:N1}% (best {best.BranchPercent:N1}%)";
 
-		return Task.FromResult(Fail(
+		return Fail(
 			$"Coverage has fallen: {fallen}.",
 			new RuleAdvisory
 			{
@@ -111,7 +119,7 @@ public class CodeCoverageTrendRule : RuleBase
 					["best_line"] = best.LinePercent,
 					["best_branch"] = best.BranchPercent
 				}
-			}));
+			});
 	}
 }
 
