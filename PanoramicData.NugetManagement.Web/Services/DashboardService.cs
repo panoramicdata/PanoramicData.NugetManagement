@@ -30,33 +30,8 @@ public partial class DashboardService
 	/// Initializes a new instance with a package id cache that remembers nothing between discoveries,
 	/// which is correct but spends GitHub calls on every repository each time.
 	/// </summary>
-	public DashboardService(
-		NuGetDiscoveryService nuget,
-		PublishedVersionRefresher publishedVersions,
-		DashboardCacheService cache,
-		LocalRepoService localRepo,
-		RemediationRegistry remediationRegistry,
-		RegressionGuardService regressionGuard,
-		RuntimeSettingsService runtimeSettings,
-		NuGetOwnedPackageCatalog owned,
-		RuleWaiverCatalog waivers,
-		IOptions<AppSettings> settings,
-		ICodacyAnalysisStateService codacyAnalysisState,
-		ILogger<DashboardService> logger)
-		: this(
-			nuget,
-			publishedVersions,
-			cache,
-			localRepo,
-			remediationRegistry,
-			regressionGuard,
-			runtimeSettings,
-			owned,
-			waivers,
-			settings,
-			codacyAnalysisState,
-			logger,
-			new DeclaredPackageIdCache(null))
+	public DashboardService(DashboardStores stores, DashboardWorkers workers, ILogger<DashboardService> logger)
+		: this(stores, workers, logger, new DeclaredPackageIdCache(null))
 	{
 	}
 
@@ -65,31 +40,22 @@ public partial class DashboardService
 	/// holds what earlier discoveries learned about which repositories declare one.
 	/// </summary>
 	public DashboardService(
-		NuGetDiscoveryService nuget,
-		PublishedVersionRefresher publishedVersions,
-		DashboardCacheService cache,
-		LocalRepoService localRepo,
-		RemediationRegistry remediationRegistry,
-		RegressionGuardService regressionGuard,
-		RuntimeSettingsService runtimeSettings,
-		NuGetOwnedPackageCatalog owned,
-		RuleWaiverCatalog waivers,
-		IOptions<AppSettings> settings,
-		ICodacyAnalysisStateService codacyAnalysisState,
+		DashboardStores stores,
+		DashboardWorkers workers,
 		ILogger<DashboardService> logger,
 		DeclaredPackageIdCache packageIdCache)
 	{
-		_nuget = nuget;
-		_publishedVersions = publishedVersions;
-		_cache = cache;
-		_localRepo = localRepo;
-		_regressionGuard = regressionGuard;
-		_runtimeSettings = runtimeSettings;
-		_owned = owned;
-		_waivers = waivers;
-		RemediationRegistry = remediationRegistry;
-		_settings = settings.Value;
-		_codacyAnalysisState = codacyAnalysisState;
+		_nuget = workers.Nuget;
+		_publishedVersions = workers.PublishedVersions;
+		_cache = stores.Cache;
+		_localRepo = workers.LocalRepo;
+		_regressionGuard = workers.RegressionGuard;
+		_runtimeSettings = stores.RuntimeSettings;
+		_owned = stores.Owned;
+		_waivers = stores.Waivers;
+		RemediationRegistry = workers.RemediationRegistry;
+		_settings = stores.Settings.Value;
+		_codacyAnalysisState = workers.CodacyAnalysisState;
 		_logger = logger;
 		_packageIdCache = packageIdCache;
 	}
