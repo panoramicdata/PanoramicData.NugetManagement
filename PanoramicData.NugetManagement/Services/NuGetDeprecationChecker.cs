@@ -95,12 +95,15 @@ public class NuGetDeprecationChecker
 			return null;
 		}
 
-		return new PackageDeprecationStatus(
+		return ToStatus(packageId, deprecation);
+	}
+
+	private static PackageDeprecationStatus ToStatus(string packageId, PackageDeprecationMetadata deprecation)
+		=> new(
 			packageId,
 			[.. deprecation.Reasons ?? []],
 			string.IsNullOrWhiteSpace(deprecation.Message) ? null : deprecation.Message,
 			deprecation.AlternatePackage?.PackageId);
-	}
 
 	/// <summary>
 	/// Picks the metadata entry to inspect: the requested version when it is published, otherwise the

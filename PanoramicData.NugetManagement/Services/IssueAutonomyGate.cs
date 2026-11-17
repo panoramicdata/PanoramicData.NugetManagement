@@ -80,34 +80,9 @@ public static class IssueAutonomyGate
 				"The verdict asks for a fix but describes none, so there is nothing to contain.");
 		}
 
-		if (verdict.Confidence is not IssueConfidence.High)
+		if (FirstRefusal(verdict, verdict.Brief, authorAssociation) is { } refusal)
 		{
-			return new IssueGateDecision(
-				false,
-				$"Confidence is {verdict.Confidence}; unattended fixes need High.");
-		}
-
-		if (verdict.Risks.Count > 0)
-		{
-			return new IssueGateDecision(
-				false,
-				$"Flagged: {string.Join(", ", verdict.Risks)}.");
-		}
-
-		if (!KnownAssociations.Contains(authorAssociation))
-		{
-			return new IssueGateDecision(
-				false,
-				$"The author's association is '{authorAssociation}'; this project has taken no work "
-					+ "from them before.");
-		}
-
-		if (verdict.Brief.Paths.Count > MaxUnattendedPaths)
-		{
-			return new IssueGateDecision(
-				false,
-				$"The fix spans {verdict.Brief.Paths.Count} files; {MaxUnattendedPaths} is the most "
-					+ "that runs unattended.");
+			return new IssueGateDecision(false, refusal);
 		}
 
 		var screen = IssuePathScreen.Screen(cloneRoot, verdict.Brief.Paths, remediationOwned);
@@ -118,6 +93,30 @@ public static class IssueAutonomyGate
 				$"Confident, unflagged, {verdict.Brief.Paths.Count} screened file(s), author is "
 					+ $"{authorAssociation}.")
 			: new IssueGateDecision(false, screen.Refusal);
+	}
+
+	private static string? FirstRefusal(IssueVerdict verdict, IssueFixBrief brief, string authorAssociation)
+	{
+		if (verdict.Confidence is not IssueConfidence.High)
+		{
+			return $"Confidence is {verdict.Confidence}; unattended fixes need High.";
+		}
+
+		if (verdict.Risks.Count > 0)
+		{
+			return $"Flagged: {string.Join(", ", verdict.Risks)}.";
+		}
+
+		if (!KnownAssociations.Contains(authorAssociation))
+		{
+			return $"The author's association is '{authorAssociation}'; this project has taken no work "
+				+ "from them before.";
+		}
+
+		return brief.Paths.Count > MaxUnattendedPaths
+			? $"The fix spans {brief.Paths.Count} files; {MaxUnattendedPaths} is the most "
+				+ "that runs unattended."
+			: null;
 	}
 
 	/// <summary>
