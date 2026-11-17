@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Rules;
@@ -20,10 +19,8 @@ namespace PanoramicData.NugetManagement.Rules;
 /// flagged text the fix then could not change would never clear.
 /// </para>
 /// </remarks>
-public class ClaudeMdNamesNoUnresolvedFileRule : RuleBase
+public class ClaudeMdNamesNoUnresolvedFileRule : InstructionFileRewriteRuleBase
 {
-	private static readonly string[] _files = ["CLAUDE.md", "AGENTS.md"];
-
 	/// <summary>
 	/// Each phrasing the earlier template used, paired with what replaces it. The replacements are the
 	/// current template's wording, so a fixed file lands exactly on what a new repository gets.
@@ -47,50 +44,22 @@ public class ClaudeMdNamesNoUnresolvedFileRule : RuleBase
 	public override AssessmentSeverity Severity => AssessmentSeverity.Warning;
 
 	/// <inheritdoc />
-	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
-	{
-		var present = _files
-			.Select(file => (File: file, Content: context.GetFileContent(file)))
-			.Where(entry => entry.Content is not null)
-			.ToList();
+	protected override IReadOnlyList<(string Pattern, string Replacement)> Rewrites => _rewrites;
 
-		if (present.Count == 0)
-		{
-			return Task.FromResult(NotApplicable("No CLAUDE.md or AGENTS.md to check; AI-01 and AI-02 report the missing files."));
-		}
+	/// <inheritdoc />
+	protected override string PassMessage => "No instruction file names a file that Codacy's reference check cannot resolve.";
 
-		var affected = present
-			.Select(entry => (entry.File, Rewrites: _rewrites
-				.Where(rewrite => Regex.IsMatch(entry.Content!, rewrite.Pattern, RegexOptions.None, TimeSpan.FromSeconds(2)))
-				.ToList()))
-			.Where(entry => entry.Rewrites.Count > 0)
-			.ToList();
+	/// <inheritdoc />
+	protected override string Detail
+		=> "Codacy's Agentlinter reports `Referenced file \"CONTRIBUTING.md\" not found in workspace` "
+			+ "(High, ErrorProne) for a file name in an instruction file, whether or not the repository has "
+			+ "that file. Reword the mention so no file is named — the current template says "
+			+ "\"following the repository's contributing guidelines\" — and leave the rest of the file as it is.";
 
-		if (affected.Count == 0)
-		{
-			return Task.FromResult(Pass("No instruction file names a file that Codacy's reference check cannot resolve."));
-		}
+	/// <inheritdoc />
+	protected override string FailureMessage(string names, string verbSuffix)
+		=> $"{names} name{verbSuffix} CONTRIBUTING.md, which Codacy reports as a missing file reference.";
 
-		// One pattern list for every file: a pattern a file does not contain is a no-op there.
-		var rewrites = affected.SelectMany(entry => entry.Rewrites).Distinct().ToList();
-		var names = string.Join(" and ", affected.Select(entry => entry.File));
-
-		return Task.FromResult(Fail(
-			$"{names} name{(affected.Count == 1 ? "s" : string.Empty)} CONTRIBUTING.md, which Codacy reports as a missing file reference.",
-			new RuleAdvisory
-			{
-				Summary = $"Reword the CONTRIBUTING.md mentions in {names} so Codacy sees no file reference.",
-				Detail = "Codacy's Agentlinter reports `Referenced file \"CONTRIBUTING.md\" not found in workspace` "
-					+ "(High, ErrorProne) for a file name in an instruction file, whether or not the repository has "
-					+ "that file. Reword the mention so no file is named — the current template says "
-					+ "\"following the repository's contributing guidelines\" — and leave the rest of the file as it is.",
-				Data = new()
-				{
-					["remediation_type"] = "replace_regex_in_files",
-					["globs"] = affected.Select(entry => entry.File).ToArray(),
-					["patterns"] = rewrites.Select(rewrite => rewrite.Pattern).ToArray(),
-					["replacements"] = rewrites.Select(rewrite => rewrite.Replacement).ToArray()
-				}
-			}));
-	}
+	/// <inheritdoc />
+	protected override string Summary(string names) => $"Reword the CONTRIBUTING.md mentions in {names} so Codacy sees no file reference.";
 }
