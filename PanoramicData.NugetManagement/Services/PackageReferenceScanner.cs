@@ -78,15 +78,7 @@ public static class PackageReferenceScanner
 
 	private static PackageVersionReference? ReadReference(XElement element, string elementName, string filePath)
 	{
-		var packageId = element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value;
-		if (string.IsNullOrWhiteSpace(packageId))
-		{
-			return null;
-		}
-
-		var versionAttribute = element.Attribute("Version")?.Value;
-		var currentVersion = versionAttribute ?? element.Element("Version")?.Value;
-		if (string.IsNullOrWhiteSpace(currentVersion))
+		if (PackageId(element) is not { } packageId || VersionOf(element) is not { } version)
 		{
 			return null;
 		}
@@ -94,7 +86,20 @@ public static class PackageReferenceScanner
 		return new PackageVersionReference(
 			filePath,
 			packageId,
-			currentVersion,
-			versionAttribute is not null ? $"{elementName}Attribute" : $"{elementName}Element");
+			version.Value,
+			version.IsAttribute ? $"{elementName}Attribute" : $"{elementName}Element");
+	}
+
+	private static string? PackageId(XElement element)
+	{
+		var packageId = element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value;
+		return string.IsNullOrWhiteSpace(packageId) ? null : packageId;
+	}
+
+	private static (string Value, bool IsAttribute)? VersionOf(XElement element)
+	{
+		var attribute = element.Attribute("Version")?.Value;
+		var value = attribute ?? element.Element("Version")?.Value;
+		return string.IsNullOrWhiteSpace(value) ? null : (value, attribute is not null);
 	}
 }
