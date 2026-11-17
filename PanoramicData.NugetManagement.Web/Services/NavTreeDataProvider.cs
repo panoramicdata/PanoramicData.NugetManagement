@@ -28,7 +28,7 @@ public class NavTreeDataProvider : DataProviderBase<NavItem>
 		DashboardCacheService cache,
 		RuntimeSettingsService runtimeSettings,
 		IOptions<AppSettings> settings,
-		RegressionGuardService? regressionGuard = null,
+		RegressionGuardService? regressionGuard,
 		WorkLaneService? workLanes = null,
 		ILogger<NavTreeDataProvider>? logger = null)
 	{

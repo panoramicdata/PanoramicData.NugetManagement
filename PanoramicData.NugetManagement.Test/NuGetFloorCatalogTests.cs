@@ -25,7 +25,7 @@ public class NuGetFloorCatalogTests(ITestOutputHelper output) : TestWithOutput(o
 		// that run's verdicts. Learning applies to the next run.
 		var catalog = new NuGetFloorCatalog(null);
 
-		catalog.Observe("Codacy.Api", "3.0.43");
+		catalog.Observe("Codacy.Api", "3.0.43", null);
 
 		catalog.GetFloor("Codacy.Api").Should().BeNull("this run's floor was fixed when the file loaded");
 	}
@@ -48,10 +48,10 @@ public class NuGetFloorCatalogTests(ITestOutputHelper output) : TestWithOutput(o
 		var path = Path.Combine(_directory, NuGetFloorCatalog.FileName);
 		Directory.CreateDirectory(_directory);
 
-		new NuGetFloorCatalog(path).Observe("Codacy.Api", "3.0.43");
+		new NuGetFloorCatalog(path).Observe("Codacy.Api", "3.0.43", null);
 
 		var second = new NuGetFloorCatalog(path);
-		second.Observe("Codacy.Api", "3.0.11");
+		second.Observe("Codacy.Api", "3.0.11", null);
 
 		new NuGetFloorCatalog(path).GetFloor("Codacy.Api").Should().Be("3.0.43", "the floor is a ratchet");
 	}
@@ -73,7 +73,7 @@ public class NuGetFloorCatalogTests(ITestOutputHelper output) : TestWithOutput(o
 	{
 		var catalog = new NuGetFloorCatalog(null);
 
-		catalog.Observe("Codacy.Api", "$(SomeMsBuildProperty)");
+		catalog.Observe("Codacy.Api", "$(SomeMsBuildProperty)", null);
 
 		catalog.RecentBumps.Should().BeEmpty();
 	}
@@ -123,7 +123,7 @@ public class NuGetFloorCatalogTests(ITestOutputHelper output) : TestWithOutput(o
 		var path = Path.Combine(_directory, NuGetFloorCatalog.FileName);
 		Directory.CreateDirectory(_directory);
 
-		new NuGetFloorCatalog(path).Observe("PanoramicData.Blazor", "11.0.0-beta.1");
+		new NuGetFloorCatalog(path).Observe("PanoramicData.Blazor", "11.0.0-beta.1", null);
 
 		new NuGetFloorCatalog(path).GetFloor("PanoramicData.Blazor").Should().BeNull();
 	}
@@ -151,8 +151,8 @@ public class NuGetFloorCatalogTests(ITestOutputHelper output) : TestWithOutput(o
 	{
 		var catalog = new NuGetFloorCatalog(null);
 
-		catalog.Observe("Codacy.Api", "3.0.43");
-		catalog.Observe("Octokit", "14.0.0");
+		catalog.Observe("Codacy.Api", "3.0.43", null);
+		catalog.Observe("Octokit", "14.0.0", null);
 
 		catalog.PackageIds.Should().BeEquivalentTo(["Codacy.Api", "Octokit"]);
 	}

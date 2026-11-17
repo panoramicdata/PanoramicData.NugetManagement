@@ -100,7 +100,7 @@ public class RepositoryContextBuilder : IDisposable
 	public async Task<RepositoryContext> BuildAsync(
 		Repository repository,
 		RepoOptions options,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var owner = repository.Owner.Login;
 		var repoName = repository.Name;

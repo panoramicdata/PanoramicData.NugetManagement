@@ -266,7 +266,7 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 				settings,
 				NullLogger<RuntimeSettingsService>.Instance,
 				Path.Combine(_temporaryDirectory, "runtime-settings.json")),
-			settings).BuildNavItems();
+			settings, null).BuildNavItems();
 	}
 
 	/// <inheritdoc />

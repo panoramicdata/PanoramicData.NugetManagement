@@ -53,7 +53,7 @@ public class GovernanceWiringTests(ITestOutputHelper output) : TestWithOutput(ou
 		using var provider = Build();
 
 		var ledger = provider.GetRequiredService<GovernanceLedger>();
-		ledger.Append("user", "note");
+		ledger.Append("user", "note", null, null, null);
 
 		ledger.Verify().Intact.Should().BeTrue();
 	}
@@ -66,7 +66,7 @@ public class GovernanceWiringTests(ITestOutputHelper output) : TestWithOutput(ou
 		var ledger = provider.GetRequiredService<GovernanceLedger>();
 
 		var hash = store.Update(new AutopilotPolicy { Enabled = true }, "user", "testing the wiring");
-		var later = ledger.Append("autopilot", "cycle_started");
+		var later = ledger.Append("autopilot", "cycle_started", null, null, null);
 
 		later.PolicyHash.Should().Be(hash);
 		ledger.Query(kind: "policy_changed").Single().PolicyHash.Should().Be(hash);

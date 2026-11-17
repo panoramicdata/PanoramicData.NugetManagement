@@ -54,8 +54,8 @@ public class ActionVersionCatalogTests(ITestOutputHelper output) : TestWithOutpu
 		File.WriteAllText(_tempFile, """{ "actions/checkout": "v6" }""");
 		var catalog = new ActionVersionCatalog(_tempFile);
 
-		catalog.Observe("actions/checkout", 6, "v6");
-		catalog.Observe("actions/checkout", 4, "v6");
+		catalog.Observe("actions/checkout", 6, "v6", null);
+		catalog.Observe("actions/checkout", 4, "v6", null);
 
 		catalog.RecentBumps.Should().BeEmpty();
 		new ActionVersionCatalog(_tempFile).GetFloorSpec("actions/checkout", "v6").Should().Be("v6");

@@ -47,7 +47,7 @@ public class OrganizationAssessor : IDisposable
 	/// <returns>The organization-level assessment result.</returns>
 	public async Task<OrganizationAssessmentResult> AssessAsync(
 		AssessmentOptions options,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		_logger.LogInformation("Starting assessment of organization '{Organization}'...", options.OrganizationName);
 

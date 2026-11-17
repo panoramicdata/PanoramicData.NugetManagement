@@ -50,7 +50,7 @@ public class GroupedRemediationPromptTests(ITestOutputHelper output) : TestWithO
 			Failure("CI-05", AssessmentCategory.CiCd, AssessmentSeverity.Error),
 			Failure("CQ-05", AssessmentCategory.CodeQuality, AssessmentSeverity.Warning));
 
-		var prompt = DashboardService.GenerateRemediationPrompt(row);
+		var prompt = DashboardService.GenerateRemediationPrompt(row, true);
 		Output.WriteLine(prompt);
 
 		prompt.Should().Contain("## CiCd (2 issues)");
@@ -64,7 +64,7 @@ public class GroupedRemediationPromptTests(ITestOutputHelper output) : TestWithO
 			Failure("CI-09", AssessmentCategory.CiCd, AssessmentSeverity.Error),
 			Failure("CQ-05", AssessmentCategory.CodeQuality, AssessmentSeverity.Warning));
 
-		var lines = DashboardService.GenerateRemediationPrompt(row).Split('\n');
+		var lines = DashboardService.GenerateRemediationPrompt(row, true).Split('\n');
 
 		lines.Should().Contain("### [CI-09] CI-09 name");
 		lines.Should().NotContain(l => l.StartsWith("## [", StringComparison.Ordinal));
@@ -78,7 +78,7 @@ public class GroupedRemediationPromptTests(ITestOutputHelper output) : TestWithO
 			Failure("CQ-05", AssessmentCategory.CodeQuality, AssessmentSeverity.Warning),
 			Failure("CI-09", AssessmentCategory.CiCd, AssessmentSeverity.Error));
 
-		var prompt = DashboardService.GenerateRemediationPrompt(row);
+		var prompt = DashboardService.GenerateRemediationPrompt(row, true);
 
 		var cicd = prompt.IndexOf("## CiCd", StringComparison.Ordinal);
 		var codeQuality = prompt.IndexOf("## CodeQuality", StringComparison.Ordinal);
@@ -97,7 +97,7 @@ public class GroupedRemediationPromptTests(ITestOutputHelper output) : TestWithO
 			Failure("CI-01", AssessmentCategory.CiCd, AssessmentSeverity.Error),
 			Failure("CQ-05", AssessmentCategory.CodeQuality, AssessmentSeverity.Warning));
 
-		var prompt = DashboardService.GenerateRemediationPrompt(row);
+		var prompt = DashboardService.GenerateRemediationPrompt(row, true);
 
 		var ci01 = prompt.IndexOf("[CI-01]", StringComparison.Ordinal);
 		var ci09 = prompt.IndexOf("[CI-09]", StringComparison.Ordinal);
@@ -114,7 +114,7 @@ public class GroupedRemediationPromptTests(ITestOutputHelper output) : TestWithO
 			Failure("CI-09", AssessmentCategory.CiCd, AssessmentSeverity.Error),
 			Failure("CI-05", AssessmentCategory.CiCd, AssessmentSeverity.Warning));
 
-		var prompt = DashboardService.GenerateRemediationPrompt(row);
+		var prompt = DashboardService.GenerateRemediationPrompt(row, true);
 
 		prompt.Should().NotContain("## CiCd");
 		prompt.Should().Contain("## [CI-09] CI-09 name");
@@ -127,7 +127,7 @@ public class GroupedRemediationPromptTests(ITestOutputHelper output) : TestWithO
 			Failure("CI-09", AssessmentCategory.CiCd, AssessmentSeverity.Error),
 			Failure("CQ-05", AssessmentCategory.CodeQuality, AssessmentSeverity.Warning));
 
-		var prompt = DashboardService.GenerateCategoryRemediationPrompt(row, AssessmentCategory.CiCd);
+		var prompt = DashboardService.GenerateCategoryRemediationPrompt(row, AssessmentCategory.CiCd, true);
 
 		prompt.Should().NotContain("## CiCd");
 		prompt.Should().Contain("## [CI-09] CI-09 name");

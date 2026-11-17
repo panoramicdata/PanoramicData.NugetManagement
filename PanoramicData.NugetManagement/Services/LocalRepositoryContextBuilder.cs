@@ -120,17 +120,17 @@ public class LocalRepositoryContextBuilder
 		string localPath,
 		string repositoryFullName,
 		RepoOptions options,
-		string defaultBranch = "main",
-		string? currentBranch = null,
-		string? latestTag = null,
-		string? latestPublishedVersion = null,
-		ReleaseRun? releaseRun = null,
-		string? headSha = null,
-		string? nextVersion = null,
-		bool isConfirmedInSyncWithOrigin = false,
-		double? lineCoveragePercent = null,
-		bool? privateVulnerabilityReportingEnabled = null,
-		bool? isPrivateRepository = null)
+		string defaultBranch,
+		string? currentBranch,
+		string? latestTag,
+		string? latestPublishedVersion,
+		ReleaseRun? releaseRun,
+		string? headSha,
+		string? nextVersion,
+		bool isConfirmedInSyncWithOrigin,
+		double? lineCoveragePercent,
+		bool? privateVulnerabilityReportingEnabled,
+		bool? isPrivateRepository)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]

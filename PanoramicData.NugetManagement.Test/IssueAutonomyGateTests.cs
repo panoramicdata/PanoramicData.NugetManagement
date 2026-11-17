@@ -55,7 +55,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 	{
 		WithFile("src/Documents.cs");
 
-		var decision = IssueAutonomyGate.MayFixAutomatically(FixVerdict(), "Contributor", _root);
+		var decision = IssueAutonomyGate.MayFixAutomatically(FixVerdict(), "Contributor", _root, null);
 
 		decision.Allowed.Should().BeTrue(
 			"this is the boring case the feature exists to automate: a confident, unflagged fix to "
@@ -68,7 +68,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 		WithFile("src/Documents.cs");
 
 		var decision = IssueAutonomyGate.MayFixAutomatically(
-			FixVerdict(confidence: IssueConfidence.Medium), "Contributor", _root);
+			FixVerdict(confidence: IssueConfidence.Medium), "Contributor", _root, null);
 
 		decision.Allowed.Should().BeFalse(
 			"a model that is only fairly sure it understood a stranger's report is describing "
@@ -81,7 +81,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 		WithFile("src/Documents.cs");
 
 		var decision = IssueAutonomyGate.MayFixAutomatically(
-			FixVerdict(risks: [IssueRiskFlag.ContainsExternalLinks]), "Contributor", _root);
+			FixVerdict(risks: [IssueRiskFlag.ContainsExternalLinks]), "Contributor", _root, null);
 
 		decision.Allowed.Should().BeFalse(
 			"the bar is zero flags rather than no severe ones — grading severity would put the "
@@ -94,7 +94,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 		WithFile(".github/workflows/publish.yml");
 
 		var decision = IssueAutonomyGate.MayFixAutomatically(
-			FixVerdict(paths: [".github/workflows/publish.yml"]), "Owner", _root);
+			FixVerdict(paths: [".github/workflows/publish.yml"]), "Owner", _root, null);
 
 		decision.Allowed.Should().BeFalse(
 			"a confident verdict from a known author must not buy access to the publish workflow");
@@ -106,7 +106,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 		WithFile("src/A.cs").WithFile("src/B.cs").WithFile("src/C.cs").WithFile("src/D.cs");
 
 		var decision = IssueAutonomyGate.MayFixAutomatically(
-			FixVerdict(paths: ["src/A.cs", "src/B.cs", "src/C.cs", "src/D.cs"]), "Member", _root);
+			FixVerdict(paths: ["src/A.cs", "src/B.cs", "src/C.cs", "src/D.cs"]), "Member", _root, null);
 
 		decision.Allowed.Should().BeFalse(
 			"breadth is the signal that the model has understood something larger than one report, "
@@ -118,7 +118,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 	{
 		WithFile("src/Documents.cs");
 
-		var decision = IssueAutonomyGate.MayFixAutomatically(FixVerdict(), "None", _root);
+		var decision = IssueAutonomyGate.MayFixAutomatically(FixVerdict(), "None", _root, null);
 
 		decision.Allowed.Should().BeFalse(
 			"acting unattended on a first-time stranger's text is the case with the least evidence "
@@ -132,7 +132,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 
 		var verdict = FixVerdict() with { Action = IssueAction.Escalate };
 
-		var decision = IssueAutonomyGate.MayFixAutomatically(verdict, "Owner", _root);
+		var decision = IssueAutonomyGate.MayFixAutomatically(verdict, "Owner", _root, null);
 
 		decision.Allowed.Should().BeFalse(
 			"Escalate means the model asked for a human; honouring the brief anyway would make the "
@@ -142,7 +142,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 	[Fact]
 	public void MayFixAutomatically_BlocksWhenTheRepositoryIsNotClonedLocally()
 	{
-		var decision = IssueAutonomyGate.MayFixAutomatically(FixVerdict(), "Owner", string.Empty);
+		var decision = IssueAutonomyGate.MayFixAutomatically(FixVerdict(), "Owner", string.Empty, null);
 
 		decision.Allowed.Should().BeFalse(
 			"with no clone there is nothing to screen the brief's paths against, and an unscreened "
@@ -191,7 +191,7 @@ public class IssueAutonomyGateTests(ITestOutputHelper output) : TestWithOutput(o
 			action, IssueConfidence.High, [], "certain", "drafted", null);
 
 		IssueAutonomyGate.MayAnswerAutomatically(verdict).Allowed.Should().BeFalse();
-		IssueAutonomyGate.MayFixAutomatically(verdict, "Owner", _root).Allowed.Should().BeFalse(
+		IssueAutonomyGate.MayFixAutomatically(verdict, "Owner", _root, null).Allowed.Should().BeFalse(
 			"closing a real person's issue, or declaring it an attack, is published under the "
 				+ "organisation's name and is never worth automating");
 	}

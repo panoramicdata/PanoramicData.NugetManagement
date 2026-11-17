@@ -30,7 +30,7 @@ public static class AgentApiTokenFile
 	/// The token in the file, or null when there is no file or nothing usable in it.
 	/// </summary>
 	/// <param name="path">The file to read; the default location when omitted.</param>
-	public static string? Read(string? path = null)
+	public static string? Read(string? path)
 	{
 		try
 		{

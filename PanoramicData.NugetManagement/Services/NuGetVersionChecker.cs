@@ -207,7 +207,7 @@ public class NuGetVersionChecker
 	public async Task<PackageVersionStatus?> GetVersionStatusAsync(
 		string packageId,
 		string currentVersion,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		if (!NuGetVersion.TryParse(currentVersion, out var current))
 		{

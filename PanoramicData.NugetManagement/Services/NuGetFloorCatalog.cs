@@ -103,7 +103,7 @@ public sealed class NuGetFloorCatalog
 	/// <param name="packageId">The package identifier.</param>
 	/// <param name="version">The version the repository declares.</param>
 	/// <param name="repository">The repository that declares it.</param>
-	public void Observe(string packageId, string version, string? repository = null)
+	public void Observe(string packageId, string version, string? repository)
 	{
 		// Versions can be MSBuild properties rather than literals; those say nothing about the estate.
 		if (!NuGetVersion.TryParse(version, out var observed))

@@ -271,7 +271,7 @@ public sealed partial class WorkExecutors(
 					output.Add(line);
 					Say(line);
 				},
-				cancellationToken).ConfigureAwait(false);
+				cancellationToken, false).ConfigureAwait(false);
 
 			var succeeded = row.Status == PackageStatus.BuildSucceeded;
 
@@ -570,8 +570,9 @@ public sealed partial class WorkExecutors(
 		try
 		{
 			var freshRows = await dashboard.DiscoverPackagesAsync(
-				cancellationToken: cancellationToken,
-				github: await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
+				null,
+				cancellationToken,
+				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
 			SayUnreadNuspecs();
 
 			var existingByRepository = (cache.GetCachedRows() ?? [])
@@ -1078,7 +1079,7 @@ public sealed partial class WorkExecutors(
 
 			if (string.Equals(ruleId, "CQ-06", StringComparison.OrdinalIgnoreCase) && targetPath is { Length: > 0 })
 			{
-				var measured = await Task.Run(() => DuplicationMeasurement.Measure(row.LocalPath, targetPath), cancellationToken)
+				var measured = await Task.Run(() => DuplicationMeasurement.Measure(row.LocalPath, targetPath, DuplicationMeasurement.DefaultMinTokens), cancellationToken)
 					.ConfigureAwait(false);
 
 				// Below this the grade is about something else — complexity, an issue — and a duplication check
@@ -1105,7 +1106,7 @@ public sealed partial class WorkExecutors(
 				test: async token =>
 				{
 					var captured = new List<string>();
-					await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true).ConfigureAwait(false);
+					await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true, null).ConfigureAwait(false);
 					return SummariseRun("Tests", row.Status == PackageStatus.TestsPassed, captured);
 				},
 				// Confined to the test project, so "raising coverage" cannot be done by deleting the code
@@ -1192,7 +1193,7 @@ public sealed partial class WorkExecutors(
 				if (row.Status == PackageStatus.BuildSucceeded)
 				{
 					var testOutput = new List<string>();
-					await dashboard.RunTestsAsync(row, testOutput.Add, cancellationToken, sandbox: true).ConfigureAwait(false);
+					await dashboard.RunTestsAsync(row, testOutput.Add, cancellationToken, sandbox: true, null).ConfigureAwait(false);
 					testBaseline = CoverageMeasurement.ParseFailedTests(string.Join('\n', testOutput));
 				}
 				else
@@ -1257,7 +1258,7 @@ public sealed partial class WorkExecutors(
 							+ $"Measured now:\n{DescribeCoverage(baseline, knownFailures)}\n"
 						: string.Empty)
 					+ (duplicationBefore is not null
-						? $"\n{DuplicationMeasurement.Describe(duplicationBefore)}"
+						? $"\n{DuplicationMeasurement.Describe(duplicationBefore, 8)}"
 							+ "The same code appears in more than one file, so changing only this file cannot remove it. "
 							+ $"You may edit this file and these files that share it: {string.Join(", ", duplicationBefore.PeerFiles)}. "
 							+ "You may also add one new file in the same folder to hold the shared code. "
@@ -1768,7 +1769,7 @@ public sealed partial class WorkExecutors(
 		// fix quickly; but it is the one that says whether the change did anything about the grade.
 		if (duplication is { } measure)
 		{
-			var after = await Task.Run(() => DuplicationMeasurement.Measure(row.LocalPath!, measure.Target), cancellationToken)
+			var after = await Task.Run(() => DuplicationMeasurement.Measure(row.LocalPath!, measure.Target, DuplicationMeasurement.DefaultMinTokens), cancellationToken)
 				.ConfigureAwait(false);
 
 			if (after is not null)
@@ -1786,7 +1787,7 @@ public sealed partial class WorkExecutors(
 						+ "Reformatting or joining lines does not change that: it is the same code in more than one place. "
 						+ "Put a repeated run in one shared place — a base interface, a helper method, a new file in the "
 						+ "same folder — and use it from each copy.\n"
-						+ DuplicationMeasurement.Describe(after));
+						+ DuplicationMeasurement.Describe(after, 8));
 				}
 			}
 		}
@@ -2292,7 +2293,7 @@ public sealed partial class WorkExecutors(
 			Func<CancellationToken, Task<string>> testTool = async token =>
 			{
 				var captured = new List<string>();
-				await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true).ConfigureAwait(false);
+				await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true, null).ConfigureAwait(false);
 				return SummariseRun("Tests", row.Status == PackageStatus.TestsPassed, captured);
 			};
 
@@ -2323,7 +2324,7 @@ public sealed partial class WorkExecutors(
 				async token =>
 				{
 					var captured = new List<string>();
-					await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true).ConfigureAwait(false);
+					await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true, null).ConfigureAwait(false);
 					return new IssueFixCheckStep(
 						row.Status == PackageStatus.TestsPassed, string.Join("\n", captured));
 				});
@@ -2647,7 +2648,7 @@ public sealed partial class WorkExecutors(
 					Say(line);
 				},
 				cancellationToken,
-				sandbox: item.Descriptor.Parameter("sandbox") == "true").ConfigureAwait(false);
+				sandbox: item.Descriptor.Parameter("sandbox") == "true", null).ConfigureAwait(false);
 
 			var passed = row.Status == PackageStatus.TestsPassed;
 
@@ -2764,7 +2765,7 @@ public sealed partial class WorkExecutors(
 				}
 
 				var testOutput = new List<string>();
-				await dashboard.RunTestsAsync(row, testOutput.Add, token, sandbox: true).ConfigureAwait(false);
+				await dashboard.RunTestsAsync(row, testOutput.Add, token, sandbox: true, null).ConfigureAwait(false);
 
 				if (row.Status == PackageStatus.TestsPassed)
 				{
@@ -2879,7 +2880,7 @@ public sealed partial class WorkExecutors(
 			}
 
 			var testOutput = new List<string>();
-			await dashboard.RunTestsAsync(row, testOutput.Add, cancellationToken, sandbox: true).ConfigureAwait(false);
+			await dashboard.RunTestsAsync(row, testOutput.Add, cancellationToken, sandbox: true, null).ConfigureAwait(false);
 
 			var failed = CoverageMeasurement.ParseFailedTests(string.Join('\n', testOutput));
 			Say($"ℹ️ {failed.Count.ToString(CultureInfo.InvariantCulture)} test(s) already fail on the last commit.");

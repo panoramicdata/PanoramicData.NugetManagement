@@ -107,9 +107,9 @@ public class DashboardService
 	/// packages declare are taken at their word, which is what discovery did before.
 	/// </param>
 	public async Task<List<RepositoryDashboardRow>> DiscoverPackagesAsync(
-		string? organization = null,
-		CancellationToken cancellationToken = default,
-		IGitHubClient? github = null)
+		string? organization,
+		CancellationToken cancellationToken,
+		IGitHubClient? github)
 	{
 		var organizations = organization is null
 			? _runtimeSettings.Organizations
@@ -614,7 +614,7 @@ public class DashboardService
 	/// </remarks>
 	public async Task<int> ReconcileLocalStateAsync(
 		IEnumerable<RepositoryDashboardRow> rows,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var changed = 0;
 
@@ -1229,7 +1229,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt from failed rules.
 	/// </summary>
-	public static string GenerateRemediationPrompt(RepositoryDashboardRow row, bool includeInfo = true)
+	public static string GenerateRemediationPrompt(RepositoryDashboardRow row, bool includeInfo)
 	{
 		if (row.Assessment is null)
 		{
@@ -1245,7 +1245,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt for a specific category's failed rules.
 	/// </summary>
-	public static string GenerateCategoryRemediationPrompt(RepositoryDashboardRow row, AssessmentCategory category, bool includeInfo = true)
+	public static string GenerateCategoryRemediationPrompt(RepositoryDashboardRow row, AssessmentCategory category, bool includeInfo)
 	{
 		if (row.Assessment is null)
 		{
@@ -1284,7 +1284,7 @@ public class DashboardService
 	/// <summary>
 	/// Generates an AI remediation prompt from an explicit set of rule failures.
 	/// </summary>
-	public static string GenerateRemediationPromptForFailures(RepositoryDashboardRow row, IEnumerable<RuleResult> failures, bool includeInfo = false)
+	public static string GenerateRemediationPromptForFailures(RepositoryDashboardRow row, IEnumerable<RuleResult> failures, bool includeInfo)
 	{
 		var filtered = failures
 			.Where(r => !r.Passed && (includeInfo || r.Severity != AssessmentSeverity.Info))
@@ -1701,9 +1701,9 @@ public class DashboardService
 	/// </param>
 	public async Task BuildAsync(
 		RepositoryDashboardRow row,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default,
-		bool restore = false)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken,
+		bool restore)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
@@ -2448,7 +2448,7 @@ public class DashboardService
 	/// <summary>
 	/// Refreshes the git status for a row (branch, working tree clean state, and sync status with origin).
 	/// </summary>
-	public async Task RefreshGitStatusAsync(RepositoryDashboardRow row, CancellationToken cancellationToken = default)
+	public async Task RefreshGitStatusAsync(RepositoryDashboardRow row, CancellationToken cancellationToken)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null || !row.IsClonedLocally)
@@ -2569,10 +2569,10 @@ public class DashboardService
 	/// <param name="testClasses">Only these classes, or null for the whole suite.</param>
 	public async Task RunTestsAsync(
 		RepositoryDashboardRow row,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default,
-		bool sandbox = false,
-		IReadOnlyList<string>? testClasses = null)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken,
+		bool sandbox,
+		IReadOnlyList<string>? testClasses)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
