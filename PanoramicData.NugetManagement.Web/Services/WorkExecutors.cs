@@ -1441,7 +1441,7 @@ public sealed partial class WorkExecutors(
 		}
 
 		var (ok, text) = await LocalRepoService
-			.RunCommandWithStreamingAsync(cloneRoot, "dotnet", ["build", project, "--nologo", "--verbosity", "quiet"], null, cancellationToken)
+			.RunCommandWithStreamingAsync(cloneRoot, "dotnet", ["build", project, "--nologo", "--verbosity", "quiet"], null, cancellationToken, null)
 			.ConfigureAwait(false);
 
 		if (ok)

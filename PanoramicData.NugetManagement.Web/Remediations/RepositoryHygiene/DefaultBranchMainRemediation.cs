@@ -132,7 +132,7 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 	private static bool Run(string localPath, string fileName, IReadOnlyList<string> arguments, out string output)
 	{
 		var (exitCode, commandOutput) = LocalRepoService
-			.RunCommandAsync(localPath, fileName, arguments)
+			.RunCommandAsync(localPath, fileName, arguments, CancellationToken.None)
 			.GetAwaiter()
 			.GetResult();
 

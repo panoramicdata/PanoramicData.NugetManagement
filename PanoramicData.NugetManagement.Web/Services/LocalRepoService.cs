@@ -154,7 +154,7 @@ public partial class LocalRepoService
 	/// offered back to it as sources.
 	/// </remarks>
 	public async Task<IReadOnlyList<(string Path, string RepoIdentity)>> FindLocalRepositoriesAsync(
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var codeRoot = GetUserCodeRoot();
 		if (codeRoot is null || !Directory.Exists(codeRoot))
@@ -215,54 +215,13 @@ public partial class LocalRepoService
 	/// </remarks>
 	public static string? ParseRepoIdentity(string remoteUrl)
 	{
-		const string GitHubHost = "github.com";
-
 		var value = remoteUrl.Trim();
-		string path;
-
 		var colon = value.IndexOf(':');
-		if (value.Contains("://", StringComparison.Ordinal))
-		{
-			// https://github.com/owner/name.git, and the ssh:// form of the same.
-			var authorityStart = value.IndexOf("://", StringComparison.Ordinal) + 3;
-			var pathStart = value.IndexOf('/', authorityStart);
-			if (pathStart < 0)
-			{
-				return null;
-			}
 
-			// Ignore any user@ prefix, and any :port suffix, before comparing the host.
-			var authority = value[authorityStart..pathStart];
-			var at = authority.LastIndexOf('@');
-			var host = at >= 0 ? authority[(at + 1)..] : authority;
-			var port = host.IndexOf(':');
-			if (port >= 0)
-			{
-				host = host[..port];
-			}
-
-			if (!string.Equals(host, GitHubHost, StringComparison.OrdinalIgnoreCase))
-			{
-				return null;
-			}
-
-			path = value[pathStart..];
-		}
-		else if (colon > 0)
-		{
-			// git@github.com:owner/name.git — everything before the first colon is user@host.
-			var authority = value[..colon];
-			var at = authority.LastIndexOf('@');
-			var host = at >= 0 ? authority[(at + 1)..] : authority;
-
-			if (!string.Equals(host, GitHubHost, StringComparison.OrdinalIgnoreCase))
-			{
-				return null;
-			}
-
-			path = value[(colon + 1)..];
-		}
-		else
+		var path = value.Contains("://", StringComparison.Ordinal)
+			? PathFromUrlRemote(value)
+			: colon > 0 ? PathFromScpRemote(value, colon) : null;
+		if (path is null)
 		{
 			return null;
 		}
@@ -277,6 +236,40 @@ public partial class LocalRepoService
 		var segments = path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
 		return segments.Length == 2 ? $"{segments[0]}/{segments[1]}" : null;
 	}
+
+	private static string? PathFromUrlRemote(string value)
+	{
+		// https://github.com/owner/name.git, and the ssh:// form of the same.
+		var authorityStart = value.IndexOf("://", StringComparison.Ordinal) + 3;
+		var pathStart = value.IndexOf('/', authorityStart);
+		if (pathStart < 0)
+		{
+			return null;
+		}
+
+		// Ignore any user@ prefix, and any :port suffix, before comparing the host.
+		var host = HostOf(value[authorityStart..pathStart]);
+		var port = host.IndexOf(':');
+		if (port >= 0)
+		{
+			host = host[..port];
+		}
+
+		return IsGitHubHost(host) ? value[pathStart..] : null;
+	}
+
+	private static string? PathFromScpRemote(string value, int colon)
+		// git@github.com:owner/name.git — everything before the first colon is user@host.
+		=> IsGitHubHost(HostOf(value[..colon])) ? value[(colon + 1)..] : null;
+
+	private static string HostOf(string authority)
+	{
+		var at = authority.LastIndexOf('@');
+		return at >= 0 ? authority[(at + 1)..] : authority;
+	}
+
+	private static bool IsGitHubHost(string host)
+		=> string.Equals(host, "github.com", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// Gets the local path for a repository, given its <c>owner/name</c> identity.
@@ -313,7 +306,7 @@ public partial class LocalRepoService
 	/// re-pointed at a fork. This is the only reliable way to find out, and callers use it to confirm
 	/// they are about to write to the repository they think they are.
 	/// </remarks>
-	public async Task<string?> GetOriginUrlAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<string?> GetOriginUrlAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -370,7 +363,7 @@ public partial class LocalRepoService
 	public (int Moved, IReadOnlyList<string> Failures) MoveClones(
 		string fromRoot,
 		string toRoot,
-		Action<string>? onOutput = null)
+		Action<string>? onOutput)
 	{
 		var moved = 0;
 		var failures = new List<string>();
@@ -466,7 +459,7 @@ public partial class LocalRepoService
 	/// local commits to push is the normal state at the point this matters, whereas missing commits means
 	/// whatever is about to be committed was decided against a repository that has since moved on.
 	/// </remarks>
-	public async Task<int?> CountCommitsBehindOriginAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<int?> CountCommitsBehindOriginAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -507,7 +500,7 @@ public partial class LocalRepoService
 	/// <param name="cancellationToken">A cancellation token.</param>
 	public async Task<(bool CaughtUp, int? Behind)> FastForwardToOriginAsync(
 		string repoIdentity,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var behind = await CountCommitsBehindOriginAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 		if (behind is not > 0)
@@ -540,7 +533,7 @@ public partial class LocalRepoService
 	/// </remarks>
 	public async Task<(bool Success, IReadOnlyList<string> Discarded)> DiscardLocalChangesAsync(
 		string repoIdentity,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -573,7 +566,7 @@ public partial class LocalRepoService
 	public async Task<(bool Success, string Output)> StashLocalChangesAsync(
 		string repoIdentity,
 		string message,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -605,7 +598,7 @@ public partial class LocalRepoService
 	public async Task<bool> SnapshotLocalChangesAsync(
 		string repoIdentity,
 		string message,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -640,7 +633,7 @@ public partial class LocalRepoService
 	/// <param name="repoIdentity">The repository.</param>
 	/// <param name="message">The label the entry was made with.</param>
 	/// <param name="cancellationToken">Signalled when the work is stopped.</param>
-	public async Task DropSnapshotAsync(string repoIdentity, string message, CancellationToken cancellationToken = default)
+	public async Task DropSnapshotAsync(string repoIdentity, string message, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		var (exit, output) = await RunCommandAsync(path, "git", ["stash", "list", "--format=%gd|%gs"], cancellationToken).ConfigureAwait(false);
@@ -669,7 +662,7 @@ public partial class LocalRepoService
 	/// <param name="cancellationToken">Signalled when the work is stopped.</param>
 	public async Task<(bool Success, string Output)> PopStashAsync(
 		string repoIdentity,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		var (exit, output) = await RunCommandAsync(path, "git", ["stash", "pop"], cancellationToken).ConfigureAwait(false);
@@ -687,7 +680,7 @@ public partial class LocalRepoService
 	public async Task<string> RestoreFileAsync(
 		string repoIdentity,
 		string relativePath,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 
@@ -786,7 +779,7 @@ public partial class LocalRepoService
 	/// <summary>
 	/// Gets the current branch name for a local repository.
 	/// </summary>
-	public async Task<string?> GetCurrentBranchAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<string?> GetCurrentBranchAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -806,7 +799,7 @@ public partial class LocalRepoService
 	/// Null is a real answer — "we do not know" — and the rules keep the comparison unmade rather than
 	/// reporting a staleness they cannot see.
 	/// </remarks>
-	public async Task<string?> GetHeadShaAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<string?> GetHeadShaAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -822,7 +815,7 @@ public partial class LocalRepoService
 	/// <summary>
 	/// Gets the remote default branch name for origin when available.
 	/// </summary>
-	public async Task<string?> GetRemoteDefaultBranchAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<string?> GetRemoteDefaultBranchAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -834,46 +827,51 @@ public partial class LocalRepoService
 		_ = await RunCommandAsync(path, "git", ["remote", "set-head", "origin", "-a"], cancellationToken).ConfigureAwait(false);
 
 		var (showExitCode, showOutput) = await RunCommandAsync(path, "git", ["remote", "show", "origin"], cancellationToken).ConfigureAwait(false);
-		if (showExitCode == 0)
+		if (showExitCode == 0 && HeadBranchFromRemoteShow(showOutput) is { } remoteHeadBranch)
 		{
-			var headBranchLine = showOutput
-				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-				.FirstOrDefault(line => line.Contains("HEAD branch:", StringComparison.OrdinalIgnoreCase));
-
-			if (headBranchLine is not null)
-			{
-				var idx = headBranchLine.IndexOf(':');
-				if (idx >= 0)
-				{
-					var remoteHeadBranch = headBranchLine[(idx + 1)..].Trim();
-					if (!string.IsNullOrWhiteSpace(remoteHeadBranch) &&
-						!string.Equals(remoteHeadBranch, "(unknown)", StringComparison.OrdinalIgnoreCase))
-					{
-						return remoteHeadBranch;
-					}
-				}
-			}
+			return remoteHeadBranch;
 		}
 
 		var (headExitCode, headOutput) = await RunCommandAsync(path, "git", ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cancellationToken).ConfigureAwait(false);
-		if (headExitCode == 0)
+		return headExitCode == 0 ? BranchFromSymbolicRef(headOutput) : null;
+	}
+
+	private static string? HeadBranchFromRemoteShow(string showOutput)
+	{
+		var headBranchLine = showOutput
+			.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+			.FirstOrDefault(line => line.Contains("HEAD branch:", StringComparison.OrdinalIgnoreCase));
+
+		var idx = headBranchLine?.IndexOf(':') ?? -1;
+		if (headBranchLine is null || idx < 0)
 		{
-			var full = headOutput.Trim();
-			if (!string.IsNullOrWhiteSpace(full))
-			{
-				return full.StartsWith("origin/", StringComparison.OrdinalIgnoreCase)
-					? full["origin/".Length..]
-					: full;
-			}
+			return null;
 		}
 
-		return null;
+		var remoteHeadBranch = headBranchLine[(idx + 1)..].Trim();
+		return string.IsNullOrWhiteSpace(remoteHeadBranch)
+			|| string.Equals(remoteHeadBranch, "(unknown)", StringComparison.OrdinalIgnoreCase)
+				? null
+				: remoteHeadBranch;
+	}
+
+	private static string? BranchFromSymbolicRef(string headOutput)
+	{
+		var full = headOutput.Trim();
+		if (string.IsNullOrWhiteSpace(full))
+		{
+			return null;
+		}
+
+		return full.StartsWith("origin/", StringComparison.OrdinalIgnoreCase)
+			? full["origin/".Length..]
+			: full;
 	}
 
 	/// <summary>
 	/// Checks whether the working tree is clean.
 	/// </summary>
-	public async Task<bool?> IsWorkingTreeCleanAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<bool?> IsWorkingTreeCleanAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -896,8 +894,8 @@ public partial class LocalRepoService
 	/// </summary>
 	public async Task<IReadOnlyList<string>> GetWorkingTreeStatusPreviewAsync(
 		string repoIdentity,
-		int maxLines = 3,
-		CancellationToken cancellationToken = default)
+		int maxLines,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path) || maxLines <= 0)
@@ -1020,7 +1018,7 @@ public partial class LocalRepoService
 	/// Performs a git fetch first, then compares HEAD against origin/{branch}.
 	/// Returns true if HEAD matches origin/{branch} (not behind and not ahead).
 	/// </summary>
-	public async Task<bool?> IsSyncedWithOriginAsync(string repoIdentity, CancellationToken cancellationToken = default)
+	public async Task<bool?> IsSyncedWithOriginAsync(string repoIdentity, CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		if (!Directory.Exists(path))
@@ -1044,25 +1042,26 @@ public partial class LocalRepoService
 
 		var branch = branchOutput.Trim();
 
-		// Check if behind origin
-		var (behindExit, behindOutput) = await RunCommandAsync(path, "git", ["rev-list", "--count", $"HEAD..origin/{branch}"], cancellationToken).ConfigureAwait(false);
-		if (behindExit != 0)
-		{
-			// Remote tracking branch may not exist
-			return null;
-		}
-
-		// Check if ahead of origin
-		var (aheadExit, aheadOutput) = await RunCommandAsync(path, "git", ["rev-list", "--count", $"origin/{branch}..HEAD"], cancellationToken).ConfigureAwait(false);
-		if (aheadExit != 0)
+		// Behind, then ahead of origin; either failing means the remote tracking branch may not exist.
+		var behind = await CountCommitsAsync(path, $"HEAD..origin/{branch}", cancellationToken).ConfigureAwait(false);
+		var ahead = behind is null ? null : await CountCommitsAsync(path, $"origin/{branch}..HEAD", cancellationToken).ConfigureAwait(false);
+		if (behind is null || ahead is null)
 		{
 			return null;
 		}
-
-		var behind = int.TryParse(behindOutput.Trim(), out var b) ? b : -1;
-		var ahead = int.TryParse(aheadOutput.Trim(), out var a) ? a : -1;
 
 		return behind == 0 && ahead == 0;
+	}
+
+	private static async Task<int?> CountCommitsAsync(string path, string range, CancellationToken cancellationToken)
+	{
+		var (exit, output) = await RunCommandAsync(path, "git", ["rev-list", "--count", range], cancellationToken).ConfigureAwait(false);
+		if (exit != 0)
+		{
+			return null;
+		}
+
+		return int.TryParse(output.Trim(), out var count) ? count : -1;
 	}
 
 	/// <summary>
@@ -1078,7 +1077,7 @@ public partial class LocalRepoService
 	/// </remarks>
 	public async Task<GitRemoteAccessResult> CheckRemoteAccessAsync(
 		string probeUrl,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var workingDirectory = Directory.GetCurrentDirectory();
 
@@ -1127,7 +1126,7 @@ public partial class LocalRepoService
 		string cloneUrl,
 		string repoIdentity,
 		Action<string>? onOutput,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var targetPath = GetLocalPath(repoIdentity);
 
@@ -1136,7 +1135,7 @@ public partial class LocalRepoService
 		Directory.CreateDirectory(parent);
 
 		_logger.LogInformation("Cloning {Url} to {Path}", cloneUrl, targetPath);
-		return await RunCommandWithStreamingAsync(parent, "git", ["clone", cloneUrl, Path.GetFileName(targetPath)], onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(parent, "git", ["clone", cloneUrl, Path.GetFileName(targetPath)], onOutput, cancellationToken, null).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1146,34 +1145,34 @@ public partial class LocalRepoService
 		string repoIdentity,
 		string branchName,
 		string commitMessage,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 
 		// Create and checkout branch
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", "-b", branchName], onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", "-b", branchName], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Stage all changes
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["add", "-A"], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["add", "-A"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Commit
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", commitMessage], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", commitMessage], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Push
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push", "-u", "origin", branchName], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push", "-u", "origin", branchName], onOutput, cancellationToken, null).ConfigureAwait(false);
 		return (ok, output);
 	}
 
@@ -1183,32 +1182,32 @@ public partial class LocalRepoService
 	public async Task<(bool Success, string Output)> MergeToMainAsync(
 		string repoIdentity,
 		string branchName,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", "main"], onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", "main"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["merge", branchName], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["merge", branchName], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push", "origin", "main"], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push", "origin", "main"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Clean up branch
-		await RunCommandWithStreamingAsync(path, "git", ["branch", "-d", branchName], onOutput, cancellationToken).ConfigureAwait(false);
-		await RunCommandWithStreamingAsync(path, "git", ["push", "origin", "--delete", branchName], onOutput, cancellationToken).ConfigureAwait(false);
+		await RunCommandWithStreamingAsync(path, "git", ["branch", "-d", branchName], onOutput, cancellationToken, null).ConfigureAwait(false);
+		await RunCommandWithStreamingAsync(path, "git", ["push", "origin", "--delete", branchName], onOutput, cancellationToken, null).ConfigureAwait(false);
 
 		return (true, output);
 	}
@@ -1230,10 +1229,10 @@ public partial class LocalRepoService
 		if (restore)
 		{
 			// Asked for explicitly because what the project references has just changed.
-			return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
+			return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "normal"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		}
 
-		var result = await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--no-restore", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
+		var result = await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--no-restore", "--verbosity", "normal"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (result.Success || cancellationToken.IsCancellationRequested || !IsMissingRestoreFailure(result.Output))
 		{
 			return result;
@@ -1241,7 +1240,7 @@ public partial class LocalRepoService
 
 		_logger.LogInformation("Build in {Path} had no restore; restoring and rebuilding", path);
 		onOutput?.Invoke("Nothing has been restored here yet; rebuilding with a restore.");
-		return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "normal"], onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "normal"], onOutput, cancellationToken, null).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1258,12 +1257,12 @@ public partial class LocalRepoService
 	/// </summary>
 	public async Task<(bool Success, string Output)> BuildWithRestoreAsync(
 		string repoIdentity,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Building (with restore) in {Path}", path);
-		return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "quiet"], onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "quiet"], onOutput, cancellationToken, null).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1271,12 +1270,12 @@ public partial class LocalRepoService
 	/// </summary>
 	public async Task<IReadOnlyList<(string Hash, string Subject)>> GetRecentCommitsAsync(
 		string repoIdentity,
-		int count = 20,
-		CancellationToken cancellationToken = default)
+		int count,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		var (ok, output) = await RunCommandWithStreamingAsync(
-			path, "git", ["log", "-n", count.ToString(System.Globalization.CultureInfo.InvariantCulture), "--pretty=format:%H%x1f%s"], null, cancellationToken).ConfigureAwait(false);
+			path, "git", ["log", "-n", count.ToString(System.Globalization.CultureInfo.InvariantCulture), "--pretty=format:%H%x1f%s"], null, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return [];
@@ -1302,13 +1301,13 @@ public partial class LocalRepoService
 	public async Task<(bool Success, string Output)> BuildAtCommitAsync(
 		string repoIdentity,
 		string commitHash,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		var branch = await GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
 
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", commitHash], onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", commitHash], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
@@ -1317,13 +1316,13 @@ public partial class LocalRepoService
 		try
 		{
 			// Use a full build (with restore) since dependencies may differ at the parent commit.
-			return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "quiet"], onOutput, cancellationToken).ConfigureAwait(false);
+			return await RunCommandWithStreamingAsync(path, "dotnet", ["build", "--verbosity", "quiet"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		}
 		finally
 		{
 			if (!string.IsNullOrWhiteSpace(branch))
 			{
-				await RunCommandWithStreamingAsync(path, "git", ["checkout", branch], onOutput, cancellationToken).ConfigureAwait(false);
+				await RunCommandWithStreamingAsync(path, "git", ["checkout", branch], onOutput, cancellationToken, null).ConfigureAwait(false);
 			}
 		}
 	}
@@ -1337,26 +1336,26 @@ public partial class LocalRepoService
 		string repoIdentity,
 		string lastGoodCommitHash,
 		string message,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 
 		var (ok, output) = await RunCommandWithStreamingAsync(
-			path, "git", ["revert", "--no-edit", "--no-commit", $"{lastGoodCommitHash}..HEAD"], onOutput, cancellationToken).ConfigureAwait(false);
+			path, "git", ["revert", "--no-edit", "--no-commit", $"{lastGoodCommitHash}..HEAD"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
-			await RunCommandWithStreamingAsync(path, "git", ["revert", "--abort"], onOutput, cancellationToken).ConfigureAwait(false);
+			await RunCommandWithStreamingAsync(path, "git", ["revert", "--abort"], onOutput, cancellationToken, null).ConfigureAwait(false);
 			return (false, output);
 		}
 
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", message], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", message], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
-		return await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken, null).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1364,28 +1363,28 @@ public partial class LocalRepoService
 	/// </summary>
 	public async Task<(bool Success, string Output)> GitSyncAsync(
 		string repoIdentity,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Git syncing {Path}", path);
 
 		// Fetch
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["fetch", "--prune"], onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["fetch", "--prune"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Pull with rebase
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["pull", "--rebase"], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["pull", "--rebase"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Push
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		return (ok, output);
 	}
 
@@ -1395,21 +1394,21 @@ public partial class LocalRepoService
 	public async Task<(bool Success, string Output)> CommitAndPushAsync(
 		string repoIdentity,
 		string commitMessage,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Commit and push in {Path}", path);
 
 		// Stage all changes
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["add", "-A"], onOutput, cancellationToken).ConfigureAwait(false);
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["add", "-A"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
 		// Commit (allow empty commit to succeed gracefully)
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", commitMessage], onOutput, cancellationToken).ConfigureAwait(false);
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", commitMessage], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			// Check if "nothing to commit" — that's fine, continue with fetch/rebase/push
@@ -1463,7 +1462,7 @@ public partial class LocalRepoService
 
 		while (true)
 		{
-			var result = await RunCommandWithStreamingAsync(workingDirectory, "git", arguments, onOutput, cancellationToken).ConfigureAwait(false);
+			var result = await RunCommandWithStreamingAsync(workingDirectory, "git", arguments, onOutput, cancellationToken, null).ConfigureAwait(false);
 
 			if (result.Success || attempt >= _networkAttempts || !IsTransientNetworkFailure(result.Output))
 			{
@@ -1533,27 +1532,7 @@ public partial class LocalRepoService
 				continue;
 			}
 
-			var filter = BuildTestFilter(projectConfig);
-			var args = new List<string> { "test", projectPath, "--no-build", "--no-restore", "--verbosity", "normal" };
-
-			if (testClasses is { Count: > 0 })
-			{
-				// Only the classes asked for, in whichever form this project's runner takes. Replaces the
-				// project's own filter rather than adding to it: two filters on one run fight.
-				var projectFile = Path.Combine(path, projectPath);
-				var packages = Path.Combine(path, "Directory.Packages.props");
-
-				args.AddRange(CoverageMeasurement.ClassFilterArguments(
-					CoverageMeasurement.UsesTestingPlatform(
-						File.Exists(projectFile) ? File.ReadAllText(projectFile) : string.Empty,
-						File.Exists(packages) ? File.ReadAllText(packages) : string.Empty),
-					testClasses));
-			}
-			else if (!string.IsNullOrWhiteSpace(filter))
-			{
-				args.Add("--filter");
-				args.Add(filter);
-			}
+			var args = BuildTestArguments(path, projectPath, projectConfig, testClasses);
 
 			onOutput?.Invoke($"▶ dotnet {string.Join(' ', args)}");
 			var (success, output) = await RunCommandWithStreamingAsync(path, "dotnet", args, onOutput, cancellationToken, environment).ConfigureAwait(false);
@@ -1562,6 +1541,33 @@ public partial class LocalRepoService
 		}
 
 		return (allPassed, string.Join('\n', combinedOutput));
+	}
+
+	private static List<string> BuildTestArguments(string path, string projectPath, NugetManagementProjectConfig? projectConfig, IReadOnlyList<string>? testClasses)
+	{
+		var args = new List<string> { "test", projectPath, "--no-build", "--no-restore", "--verbosity", "normal" };
+		var filter = BuildTestFilter(projectConfig);
+
+		if (testClasses is { Count: > 0 })
+		{
+			// Only the classes asked for, in whichever form this project's runner takes. Replaces the
+			// project's own filter rather than adding to it: two filters on one run fight.
+			var projectFile = Path.Combine(path, projectPath);
+			var packages = Path.Combine(path, "Directory.Packages.props");
+
+			args.AddRange(CoverageMeasurement.ClassFilterArguments(
+				CoverageMeasurement.UsesTestingPlatform(
+					File.Exists(projectFile) ? File.ReadAllText(projectFile) : string.Empty,
+					File.Exists(packages) ? File.ReadAllText(packages) : string.Empty),
+				testClasses));
+		}
+		else if (!string.IsNullOrWhiteSpace(filter))
+		{
+			args.Add("--filter");
+			args.Add(filter);
+		}
+
+		return args;
 	}
 
 	/// <summary>
@@ -1654,29 +1660,26 @@ public partial class LocalRepoService
 		foreach (var project in projects)
 		{
 			var projectConfig = repositoryConfig?.GetProjectConfig(project);
-			if (projectConfig?.TestingTreatment == ProjectTreatment.Exclude)
-			{
-				continue;
-			}
-
-			if (projectConfig?.TestingTreatment == ProjectTreatment.Include)
-			{
-				selected.Add((project, projectConfig));
-				continue;
-			}
-
-			if (projectConfig?.Treatment == ProjectTreatment.Exclude)
-			{
-				continue;
-			}
-
-			if (IsLikelyTestProject(project) && IsAutoIncludedProject(project))
+			if (IsSelectedForTesting(project, projectConfig))
 			{
 				selected.Add((project, projectConfig));
 			}
 		}
 
 		return selected;
+	}
+
+	private static bool IsSelectedForTesting(string project, NugetManagementProjectConfig? projectConfig)
+	{
+		var testing = projectConfig?.TestingTreatment;
+		if (testing is ProjectTreatment.Exclude or ProjectTreatment.Include)
+		{
+			return testing == ProjectTreatment.Include;
+		}
+
+		return projectConfig?.Treatment != ProjectTreatment.Exclude
+			&& IsLikelyTestProject(project)
+			&& IsAutoIncludedProject(project);
 	}
 
 	private static string BuildTestFilter(NugetManagementProjectConfig? config)
@@ -1686,62 +1689,15 @@ public partial class LocalRepoService
 			return string.Empty;
 		}
 
-		var baseClauses = new List<string>();
+		var baseExpression = string.Join('&', CategoryClauses(config));
 
-		if (config.DefaultTestingLevel == ProjectTestingLevel.Smoke)
-		{
-			baseClauses.Add("(TestCategory!=Integration&Category!=Integration)");
-			baseClauses.Add("(TestCategory!=Slow&Category!=Slow)");
-		}
-
-		var includeCollections = config.CollectionTreatments
-			.Where(rule => !string.IsNullOrWhiteSpace(rule.Name) && rule.Treatment == ProjectTreatment.Include)
-			.Select(rule => rule.Name.Trim())
-			.ToArray();
-
-		var excludeCollections = config.CollectionTreatments
-			.Where(rule => !string.IsNullOrWhiteSpace(rule.Name) && rule.Treatment == ProjectTreatment.Exclude)
-			.Select(rule => rule.Name.Trim())
-			.ToArray();
-
-		if (includeCollections.Length > 0)
-		{
-			var includeExpression = includeCollections
-				.Select(value => $"(TestCategory={value}|Category={value})")
-				.ToArray();
-
-			if (includeExpression.Length > 0)
-			{
-				baseClauses.Add("(" + string.Join("|", includeExpression) + ")");
-			}
-		}
-
-		if (excludeCollections.Length > 0)
-		{
-			foreach (var value in excludeCollections)
-			{
-				baseClauses.Add($"(TestCategory!={value}&Category!={value})");
-			}
-		}
-
-		var includeTests = config.TestTreatments
-			.Where(rule => !string.IsNullOrWhiteSpace(rule.Id) && rule.Treatment == ProjectTreatment.Include)
-			.Select(rule => $"FullyQualifiedName~{rule.Id.Trim()}")
-			.ToArray();
-
-		var excludeTests = config.TestTreatments
-			.Where(rule => !string.IsNullOrWhiteSpace(rule.Id) && rule.Treatment == ProjectTreatment.Exclude)
-			.Select(rule => $"FullyQualifiedName!~{rule.Id.Trim()}")
-			.ToArray();
-
-		var baseExpression = string.Join('&', baseClauses);
-		var explicitTestIncludeExpression = includeTests.Length == 0
-			? string.Empty
-			: "(" + string.Join('|', includeTests) + ")";
+		var includeTests = TestRuleExpressions(config, ProjectTreatment.Include, "FullyQualifiedName~");
+		var excludeTests = TestRuleExpressions(config, ProjectTreatment.Exclude, "FullyQualifiedName!~");
 
 		var combined = baseExpression;
-		if (!string.IsNullOrWhiteSpace(explicitTestIncludeExpression))
+		if (includeTests.Length > 0)
 		{
+			var explicitTestIncludeExpression = "(" + string.Join('|', includeTests) + ")";
 			combined = string.IsNullOrWhiteSpace(baseExpression)
 				? explicitTestIncludeExpression
 				: $"(({baseExpression})|{explicitTestIncludeExpression})";
@@ -1756,6 +1712,41 @@ public partial class LocalRepoService
 
 		return combined;
 	}
+
+	private static List<string> CategoryClauses(NugetManagementProjectConfig config)
+	{
+		var baseClauses = new List<string>();
+
+		if (config.DefaultTestingLevel == ProjectTestingLevel.Smoke)
+		{
+			baseClauses.Add("(TestCategory!=Integration&Category!=Integration)");
+			baseClauses.Add("(TestCategory!=Slow&Category!=Slow)");
+		}
+
+		var includeExpression = CollectionNames(config, ProjectTreatment.Include)
+			.Select(value => $"(TestCategory={value}|Category={value})")
+			.ToArray();
+
+		if (includeExpression.Length > 0)
+		{
+			baseClauses.Add("(" + string.Join("|", includeExpression) + ")");
+		}
+
+		baseClauses.AddRange(CollectionNames(config, ProjectTreatment.Exclude)
+			.Select(value => $"(TestCategory!={value}&Category!={value})"));
+
+		return baseClauses;
+	}
+
+	private static string[] CollectionNames(NugetManagementProjectConfig config, ProjectTreatment treatment)
+		=> [.. config.CollectionTreatments
+			.Where(rule => !string.IsNullOrWhiteSpace(rule.Name) && rule.Treatment == treatment)
+			.Select(rule => rule.Name.Trim())];
+
+	private static string[] TestRuleExpressions(NugetManagementProjectConfig config, ProjectTreatment treatment, string prefix)
+		=> [.. config.TestTreatments
+			.Where(rule => !string.IsNullOrWhiteSpace(rule.Id) && rule.Treatment == treatment)
+			.Select(rule => $"{prefix}{rule.Id.Trim()}")];
 
 	private static bool IsLikelyTestProject(string projectPath)
 	{
@@ -1776,8 +1767,8 @@ public partial class LocalRepoService
 	/// </summary>
 	public async Task<(bool Success, string Output)> RunPublishScriptAsync(
 		string repoIdentity,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
 		var publishScript = Path.Combine(path, "Publish.ps1");
@@ -1787,7 +1778,7 @@ public partial class LocalRepoService
 		}
 
 		_logger.LogInformation("Running Publish.ps1 in {Path}", path);
-		return await RunCommandWithStreamingAsync(path, "pwsh", ["-ExecutionPolicy", "Bypass", "-File", "Publish.ps1"], onOutput, cancellationToken).ConfigureAwait(false);
+		return await RunCommandWithStreamingAsync(path, "pwsh", ["-ExecutionPolicy", "Bypass", "-File", "Publish.ps1"], onOutput, cancellationToken, null).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -1816,7 +1807,7 @@ public partial class LocalRepoService
 		string workingDirectory,
 		string fileName,
 		IReadOnlyList<string> arguments,
-		IReadOnlyDictionary<string, string?>? environment = null)
+		IReadOnlyDictionary<string, string?>? environment)
 	{
 		var startInfo = new ProcessStartInfo
 		{
@@ -1872,11 +1863,11 @@ public partial class LocalRepoService
 		string workingDirectory,
 		string fileName,
 		IReadOnlyList<string> arguments,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		using var process = new Process
 		{
-			StartInfo = BuildProcessStartInfo(workingDirectory, fileName, arguments)
+			StartInfo = BuildProcessStartInfo(workingDirectory, fileName, arguments, null)
 		};
 
 		process.Start();
@@ -1906,9 +1897,9 @@ public partial class LocalRepoService
 		string workingDirectory,
 		string fileName,
 		IReadOnlyList<string> arguments,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default,
-		IReadOnlyDictionary<string, string?>? environment = null)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken,
+		IReadOnlyDictionary<string, string?>? environment)
 	{
 		using var process = new Process
 		{
@@ -1917,31 +1908,34 @@ public partial class LocalRepoService
 
 		var outputLines = new List<string>();
 
-		process.OutputDataReceived += (_, e) =>
+		void Capture(object? sender, DataReceivedEventArgs e)
 		{
-			if (e.Data is not null)
+			if (e.Data is null)
 			{
-				var line = StripAnsi(e.Data);
-				outputLines.Add(line);
-				onOutput?.Invoke(line);
+				return;
 			}
-		};
 
-		process.ErrorDataReceived += (_, e) =>
-		{
-			if (e.Data is not null)
-			{
-				var line = StripAnsi(e.Data);
-				outputLines.Add(line);
-				onOutput?.Invoke(line);
-			}
-		};
+			var line = StripAnsi(e.Data);
+			outputLines.Add(line);
+			onOutput?.Invoke(line);
+		}
+
+		process.OutputDataReceived += Capture;
+		process.ErrorDataReceived += Capture;
 
 		process.Start();
 		using var job = ProcessJob.TryAssign(process);
 		process.BeginOutputReadLine();
 		process.BeginErrorReadLine();
 
+		await WaitForExitAsync(process, job, cancellationToken).ConfigureAwait(false);
+
+		var fullOutput = string.Join('\n', outputLines);
+		return (process.ExitCode == 0, fullOutput);
+	}
+
+	private static async Task WaitForExitAsync(Process process, IDisposable? job, CancellationToken cancellationToken)
+	{
 		try
 		{
 			// A bounded WaitForExit does not wait for the output pipes. WaitForExitAsync does, and a worker the
@@ -1978,8 +1972,5 @@ public partial class LocalRepoService
 
 			throw;
 		}
-
-		var fullOutput = string.Join('\n', outputLines);
-		return (process.ExitCode == 0, fullOutput);
 	}
 }

@@ -277,7 +277,7 @@ public static partial class CoverageMeasurement
 				// Built first, in the normal environment: restoring packages may need this machine's NuGet
 				// configuration, which the test run below deliberately does not get.
 				var (built, buildText) = await LocalRepoService
-					.RunCommandWithStreamingAsync(cloneRoot, "dotnet", ["build", project, "--nologo", "--verbosity", "quiet"], onOutput, cancellationToken)
+					.RunCommandWithStreamingAsync(cloneRoot, "dotnet", ["build", project, "--nologo", "--verbosity", "quiet"], onOutput, cancellationToken, null)
 					.ConfigureAwait(false);
 
 				if (!built)

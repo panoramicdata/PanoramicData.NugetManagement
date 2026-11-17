@@ -33,7 +33,7 @@ public class ContextDeclarationSiteContentTests(ITestOutputHelper output)
 
 	private RepositoryContext Build()
 		=> new LocalRepositoryContextBuilder(NullLogger<LocalRepositoryContextBuilder>.Instance)
-			.Build(_root, "panoramicdata/Athonet.Api", new RepoOptions(), "main", null, null, null, null, null, null, false, null, null, null);
+			.Build(_root, "panoramicdata/Athonet.Api", new RepoOptions(), new LocalContextFacts());
 
 	[Theory]
 	[InlineData(".config/dotnet-tools.json", """{ "tools": { "nbgv": { "version": "3.10.94" } } }""")]

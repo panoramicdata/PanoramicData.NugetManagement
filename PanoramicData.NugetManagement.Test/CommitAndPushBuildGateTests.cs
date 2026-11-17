@@ -172,7 +172,7 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 	private static string Git(string workingDirectory, params string[] arguments)
 	{
 		var (exitCode, output) = LocalRepoService
-			.RunCommandAsync(workingDirectory, "git", arguments)
+			.RunCommandAsync(workingDirectory, "git", arguments, CancellationToken.None)
 			.GetAwaiter()
 			.GetResult();
 

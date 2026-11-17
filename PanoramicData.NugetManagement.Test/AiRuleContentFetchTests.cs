@@ -31,7 +31,7 @@ public class AiRuleContentFetchTests(ITestOutputHelper output) : TestWithOutput(
 
 	private RepositoryContext Build()
 		=> new LocalRepositoryContextBuilder(NullLogger<LocalRepositoryContextBuilder>.Instance)
-			.Build(_root, "panoramicdata/SomeRepo", new RepoOptions(), "main", null, null, null, null, null, null, false, null, null, null);
+			.Build(_root, "panoramicdata/SomeRepo", new RepoOptions(), new LocalContextFacts());
 
 	[Fact]
 	public void ClaudeMd_ContentIsFetched()

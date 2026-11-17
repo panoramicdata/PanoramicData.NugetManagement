@@ -39,7 +39,7 @@ public class DeliveredChangeTests : TestWithOutput, IDisposable
 
 	private void Git(params string[] args)
 	{
-		var (ok, output) = LocalRepoService.RunCommandWithStreamingAsync(_root, "git", args).GetAwaiter().GetResult();
+		var (ok, output) = LocalRepoService.RunCommandWithStreamingAsync(_root, "git", args, null, CancellationToken.None, null).GetAwaiter().GetResult();
 
 		ok.Should().BeTrue($"git {string.Join(' ', args)} should work: {output}");
 	}
