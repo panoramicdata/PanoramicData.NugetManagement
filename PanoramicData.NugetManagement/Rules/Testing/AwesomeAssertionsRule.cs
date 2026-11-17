@@ -78,11 +78,7 @@ public class AwesomeAssertionsRule : RuleBase
 			return Task.FromResult(Pass("FluentAssertions is not referenced."));
 		}
 
-		var where = pinnedCentrally
-			? referencingProjects.Length > 0
-				? $"Directory.Packages.props and {string.Join(", ", referencingProjects)}"
-				: "Directory.Packages.props"
-			: string.Join(", ", referencingProjects);
+		var where = DescribeLocations(pinnedCentrally, referencingProjects);
 
 		return Task.FromResult(Fail(
 			$"FluentAssertions is referenced in {where}; use AwesomeAssertions instead.",
@@ -116,4 +112,11 @@ public class AwesomeAssertionsRule : RuleBase
 				}
 			}));
 	}
+
+	private static string DescribeLocations(bool pinnedCentrally, string[] referencingProjects)
+		=> pinnedCentrally
+			? referencingProjects.Length > 0
+				? $"Directory.Packages.props and {string.Join(", ", referencingProjects)}"
+				: "Directory.Packages.props"
+			: string.Join(", ", referencingProjects);
 }

@@ -36,32 +36,10 @@ public class CiWorkflowStepsRule : RuleBase
 				}));
 		}
 
-		var hasRestore = Contains(content, "dotnet restore");
-		var hasBuild = Contains(content, "dotnet build");
-		var hasRelease = Contains(content, "--configuration Release");
-		var hasPack = Contains(content, "dotnet pack");
-		var missingSteps = new List<string>();
-		if (!hasRestore)
-		{
-			missingSteps.Add("dotnet restore");
-		}
+		string[] requiredSteps = ["dotnet restore", "dotnet build", "--configuration Release", "dotnet pack"];
+		var missingSteps = requiredSteps.Where(step => !Contains(content, step)).ToArray();
 
-		if (!hasBuild)
-		{
-			missingSteps.Add("dotnet build");
-		}
-
-		if (!hasRelease)
-		{
-			missingSteps.Add("--configuration Release");
-		}
-
-		if (!hasPack)
-		{
-			missingSteps.Add("dotnet pack");
-		}
-
-		return Task.FromResult(hasRestore && hasBuild && hasRelease && hasPack
+		return Task.FromResult(missingSteps.Length == 0
 			? Pass("CI workflow contains restore, build (Release), and pack steps.")
 			: Fail(
 				"CI workflow is missing one or more required steps (restore, build --configuration Release, pack).",
@@ -72,7 +50,7 @@ public class CiWorkflowStepsRule : RuleBase
 					Data = new()
 					{
 						["workflow_file"] = ciWorkflowPath,
-						["missing_steps"] = missingSteps.ToArray()
+						["missing_steps"] = missingSteps
 					}
 				}));
 	}
