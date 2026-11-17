@@ -11,7 +11,6 @@ window.scrollTail = {
 	// and zoom leave scrollTop a little short of the arithmetic, and a reader who has not touched the
 	// scrollbar must not be treated as having scrolled away.
 	threshold: 24,
-
 	// Scrolls the element to the bottom if its reader is still following it. Safe to call on every
 	// render: the listener is attached once, and the element remembers its own state.
 	follow: function (element) {
@@ -25,15 +24,23 @@ window.scrollTail = {
 			// having to scroll down to opt in.
 			element.dataset.tailPinned = "1";
 
-			element.addEventListener("scroll", function () {
-				const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
-				element.dataset.tailPinned = distance <= window.scrollTail.threshold ? "1" : "0";
-			}, { passive: true });
+			element.addEventListener(
+				"scroll",
+				function () {
+					const distance =
+						element.scrollHeight -
+						element.scrollTop -
+						element.clientHeight;
+					element.dataset.tailPinned =
+						distance <= window.scrollTail.threshold ? "1" : "0";
+				},
+				{ passive: true },
+			);
 		}
 
 		if (element.dataset.tailPinned === "1") {
 			// Fires the listener above, which finds the distance at zero and leaves the element pinned.
 			element.scrollTop = element.scrollHeight;
 		}
-	}
+	},
 };

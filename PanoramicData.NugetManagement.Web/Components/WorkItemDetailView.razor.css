@@ -19,6 +19,7 @@
 	font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 	font-size: 0.85rem;
 	line-height: 1.45;
+
 	/* Takes the height left over, and keeps enough to be worth reading if the heading is tall. */
 	flex: 1;
 	min-height: 8rem;
