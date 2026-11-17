@@ -591,39 +591,7 @@ internal static partial class RemediationHelpers
 
 		foreach (var projectPath in projectPaths)
 		{
-			var fullPath = ResolvePath(localPath, projectPath);
-			if (!File.Exists(fullPath))
-			{
-				continue;
-			}
-
-			try
-			{
-				var doc = XDocument.Load(fullPath);
-				foreach (var pkgRef in doc.Descendants("PackageReference"))
-				{
-					var name = pkgRef.Attribute("Include")?.Value;
-					if (string.IsNullOrEmpty(name))
-					{
-						continue;
-					}
-
-					// Version from attribute
-					var version = pkgRef.Attribute("Version")?.Value;
-
-					// Version from child element
-					version ??= pkgRef.Element("Version")?.Value;
-
-					if (!string.IsNullOrEmpty(version) && !packageVersions.ContainsKey(name))
-					{
-						packageVersions[name] = version;
-					}
-				}
-			}
-			catch (Exception ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {projectPath}: {ex.Message}");
-			}
+			CollectPackageVersions(localPath, projectPath, packageVersions, result, onOutput);
 		}
 
 		// Phase 2: add PackageVersion entries to Directory.Packages.props
@@ -635,46 +603,97 @@ internal static partial class RemediationHelpers
 		// Phase 3: remove Version attributes/elements from csproj files
 		foreach (var projectPath in projectPaths)
 		{
-			var fullPath = ResolvePath(localPath, projectPath);
-			if (!File.Exists(fullPath))
-			{
-				continue;
-			}
+			StripVersions(localPath, projectPath, result, applied, onOutput);
+		}
+	}
 
-			try
+	private static void CollectPackageVersions(
+		string localPath,
+		string projectPath,
+		Dictionary<string, string> packageVersions,
+		RuleResult result,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, projectPath);
+		if (!File.Exists(fullPath))
+		{
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath);
+			foreach (var pkgRef in doc.Descendants("PackageReference"))
 			{
-				var doc = XDocument.Load(fullPath);
-				var changed = false;
-				foreach (var pkgRef in doc.Descendants("PackageReference"))
+				var name = pkgRef.Attribute("Include")?.Value;
+				if (string.IsNullOrEmpty(name))
 				{
-					var versionAttr = pkgRef.Attribute("Version");
-					if (versionAttr is not null)
-					{
-						versionAttr.Remove();
-						changed = true;
-					}
-
-					// Also remove <Version> child element
-					var versionElement = pkgRef.Element("Version");
-					if (versionElement is not null)
-					{
-						versionElement.Remove();
-						changed = true;
-					}
+					continue;
 				}
 
-				if (changed)
+				// Version from attribute, then from child element
+				var version = pkgRef.Attribute("Version")?.Value ?? pkgRef.Element("Version")?.Value;
+
+				if (!string.IsNullOrEmpty(version) && !packageVersions.ContainsKey(name))
 				{
-					doc.Save(fullPath);
-					applied.Add(projectPath);
-					onOutput?.Invoke($"✅ [{result.RuleId}] Removed Version attributes from PackageReference in {projectPath}");
+					packageVersions[name] = version;
 				}
-			}
-			catch (Exception ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
 			}
 		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {projectPath}: {ex.Message}");
+		}
+	}
+
+	private static void StripVersions(
+		string localPath,
+		string projectPath,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, projectPath);
+		if (!File.Exists(fullPath))
+		{
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath);
+			var changed = false;
+			foreach (var pkgRef in doc.Descendants("PackageReference"))
+			{
+				changed |= RemoveIfPresent(pkgRef.Attribute("Version"));
+
+				// Also remove <Version> child element
+				changed |= RemoveIfPresent(pkgRef.Element("Version"));
+			}
+
+			if (changed)
+			{
+				doc.Save(fullPath);
+				applied.Add(projectPath);
+				onOutput?.Invoke($"✅ [{result.RuleId}] Removed Version attributes from PackageReference in {projectPath}");
+			}
+		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
+		}
+	}
+
+	private static bool RemoveIfPresent(XAttribute? attribute)
+	{
+		attribute?.Remove();
+		return attribute is not null;
+	}
+
+	private static bool RemoveIfPresent(XElement? element)
+	{
+		element?.Remove();
+		return element is not null;
 	}
 
 	/// <summary>
@@ -700,33 +719,7 @@ internal static partial class RemediationHelpers
 		{
 			var doc = XDocument.Load(fullPath);
 
-			// Find or create an ItemGroup for PackageVersion entries
-			var itemGroup = doc.Root?.Elements("ItemGroup")
-				.FirstOrDefault(ig => ig.Elements("PackageVersion").Any());
-
-			if (itemGroup is null)
-			{
-				itemGroup = new XElement("ItemGroup");
-				doc.Root?.Add(itemGroup);
-			}
-
-			var added = 0;
-			foreach (var (name, version) in packageVersions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
-			{
-				// Skip if already present
-				var existing = itemGroup.Elements("PackageVersion")
-					.Any(pv => string.Equals(pv.Attribute("Include")?.Value, name, StringComparison.OrdinalIgnoreCase));
-
-				if (existing)
-				{
-					continue;
-				}
-
-				itemGroup.Add(new XElement("PackageVersion",
-					new XAttribute("Include", name),
-					new XAttribute("Version", version)));
-				added++;
-			}
+			var added = AddMissingPackageVersions(ItemGroupHolding(doc, "PackageVersion"), packageVersions);
 
 			if (added > 0)
 			{
@@ -762,34 +755,7 @@ internal static partial class RemediationHelpers
 		try
 		{
 			var doc = XDocument.Load(fullPath);
-			var solutionItemsFolder = doc.Root?
-				.Elements("Folder")
-				.FirstOrDefault(f =>
-				{
-					var name = f.Attribute("Name")?.Value;
-					return name is not null &&
-						name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase);
-				});
-
-			if (solutionItemsFolder is null)
-			{
-				solutionItemsFolder = new XElement("Folder", new XAttribute("Name", "/Solution Items/"));
-				doc.Root?.Add(solutionItemsFolder);
-			}
-
-			var addedCount = 0;
-			foreach (var missingFile in missingFiles)
-			{
-				var alreadyExists = solutionItemsFolder.Elements("File")
-					.Any(el => string.Equals(el.Attribute("Path")?.Value, missingFile, StringComparison.OrdinalIgnoreCase));
-				if (alreadyExists)
-				{
-					continue;
-				}
-
-				solutionItemsFolder.Add(new XElement("File", new XAttribute("Path", missingFile)));
-				addedCount++;
-			}
+			var addedCount = AddMissingFileEntries(SolutionItemsFolder(doc), missingFiles);
 
 			if (addedCount > 0)
 			{
@@ -806,6 +772,64 @@ internal static partial class RemediationHelpers
 		{
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
+	}
+
+	private static int AddMissingPackageVersions(XElement itemGroup, Dictionary<string, string> packageVersions)
+	{
+		var added = 0;
+		foreach (var (name, version) in packageVersions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+		{
+			// Skip if already present
+			var existing = itemGroup.Elements("PackageVersion")
+				.Any(pv => string.Equals(pv.Attribute("Include")?.Value, name, StringComparison.OrdinalIgnoreCase));
+
+			if (existing)
+			{
+				continue;
+			}
+
+			itemGroup.Add(new XElement("PackageVersion",
+				new XAttribute("Include", name),
+				new XAttribute("Version", version)));
+			added++;
+		}
+
+		return added;
+	}
+
+	private static XElement SolutionItemsFolder(XDocument doc)
+	{
+		var solutionItemsFolder = doc.Root?
+			.Elements("Folder")
+			.FirstOrDefault(f => f.Attribute("Name")?.Value is { } name
+				&& name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase));
+
+		if (solutionItemsFolder is null)
+		{
+			solutionItemsFolder = new XElement("Folder", new XAttribute("Name", "/Solution Items/"));
+			doc.Root?.Add(solutionItemsFolder);
+		}
+
+		return solutionItemsFolder;
+	}
+
+	private static int AddMissingFileEntries(XElement solutionItemsFolder, string[] missingFiles)
+	{
+		var addedCount = 0;
+		foreach (var missingFile in missingFiles)
+		{
+			var alreadyExists = solutionItemsFolder.Elements("File")
+				.Any(el => string.Equals(el.Attribute("Path")?.Value, missingFile, StringComparison.OrdinalIgnoreCase));
+			if (alreadyExists)
+			{
+				continue;
+			}
+
+			solutionItemsFolder.Add(new XElement("File", new XAttribute("Path", missingFile)));
+			addedCount++;
+		}
+
+		return addedCount;
 	}
 
 	/// <summary>
