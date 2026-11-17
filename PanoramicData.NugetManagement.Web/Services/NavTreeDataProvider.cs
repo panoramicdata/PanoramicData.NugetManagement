@@ -515,158 +515,104 @@ public partial class NavTreeDataProvider : DataProviderBase<NavItem>
 
 	private static void AddAssessmentNodes(List<NavItem> items, string organization, string repoKey, RepositoryDashboardRow row)
 	{
-		var assessmentFailed = row.Assessment is null && row.Status == PackageStatus.Error;
-
 		// Category sub-nodes (only if assessed). An assessment that threw before producing a result
 		// leaves Assessment null with the reason recorded on StatusMessage — silently skipping past
 		// it here is exactly how a repository could look unassessed forever instead of broken.
 		if (row.Assessment is null)
 		{
-			if (assessmentFailed)
-			{
-				items.Add(new NavItem
-				{
-					Key = AssessmentErrorKey(row.RepositoryFullName),
-					Text = string.IsNullOrWhiteSpace(row.StatusMessage)
-						? "Assessment failed"
-						: $"Assessment failed: {row.StatusMessage}",
-					ParentKey = repoKey,
-					IconCss = "fas fa-triangle-exclamation text-danger",
-					HealthStatus = PackageHealthStatus.Error,
-					View = NavView.None,
-					Organization = organization,
-					RepositoryFullName = row.RepositoryFullName,
-					IsLeaf = true,
-					SortOrder = 3
-				});
-			}
-
+			AddAssessmentFailedNode(items, organization, repoKey, row);
 			return;
 		}
 
 		foreach (var category in row.CategorySummaries.Keys.OrderBy(c => c.ToString()))
 		{
-			var catKey = CategoryKey(row.RepositoryFullName, category);
-			var catFailures = row.Assessment.RuleResults
-				.Where(r => !r.Passed && r.Category == category)
-				.ToList();
-			var catHasErrors = catFailures.Any(r => r.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error);
-			var catHasWarnings = catFailures.Any(r => r.Severity == AssessmentSeverity.Warning);
+			AddCategoryNodes(items, organization, repoKey, row, row.Assessment, category);
+		}
+	}
 
+	private static void AddAssessmentFailedNode(List<NavItem> items, string organization, string repoKey, RepositoryDashboardRow row)
+	{
+		if (row.Status != PackageStatus.Error)
+		{
+			return;
+		}
+
+		items.Add(new NavItem
+		{
+			Key = AssessmentErrorKey(row.RepositoryFullName),
+			Text = string.IsNullOrWhiteSpace(row.StatusMessage)
+				? "Assessment failed"
+				: $"Assessment failed: {row.StatusMessage}",
+			ParentKey = repoKey,
+			IconCss = "fas fa-triangle-exclamation text-danger",
+			HealthStatus = PackageHealthStatus.Error,
+			View = NavView.None,
+			Organization = organization,
+			RepositoryFullName = row.RepositoryFullName,
+			IsLeaf = true,
+			SortOrder = 3
+		});
+	}
+
+	private static void AddCategoryNodes(
+		List<NavItem> items,
+		string organization,
+		string repoKey,
+		RepositoryDashboardRow row,
+		RepoAssessment assessment,
+		AssessmentCategory category)
+	{
+		var catKey = CategoryKey(row.RepositoryFullName, category);
+		var catFailures = assessment.RuleResults
+			.Where(r => !r.Passed && r.Category == category)
+			.ToList();
+		var catHasErrors = catFailures.Any(r => r.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error);
+		var catHasWarnings = catFailures.Any(r => r.Severity == AssessmentSeverity.Warning);
+
+		items.Add(new NavItem
+		{
+			Key = catKey,
+			Text = category.ToString(),
+			ParentKey = repoKey,
+			IconCss = GetHealthIcon(true, catFailures.Count, catHasErrors, catHasWarnings),
+			View = NavView.CategoryDetail,
+			Organization = organization,
+			RepositoryFullName = row.RepositoryFullName,
+			Category = category,
+			IsLeaf = catFailures.Count == 0,
+			// Rank 3, after the repo-level Work node (0), Packages (1) and Issues (2) — see the
+			// comment beside the Work node for why this must be explicit rather than tie-broken.
+			SortOrder = 3,
+			IssueCount = catFailures.Count,
+			HasErrors = catHasErrors,
+			HasWarnings = catHasWarnings
+		});
+
+		// Individual failing rule nodes under each category
+		foreach (var rule in catFailures.OrderBy(r => r.RuleId))
+		{
 			items.Add(new NavItem
 			{
-				Key = catKey,
-				Text = category.ToString(),
-				ParentKey = repoKey,
-				IconCss = GetHealthIcon(true, catFailures.Count, catHasErrors, catHasWarnings),
-				View = NavView.CategoryDetail,
+				Key = RuleKey(row.RepositoryFullName, rule.RuleId),
+				Text = $"{rule.RuleId} {rule.RuleName}",
+				ParentKey = catKey,
+				IconCss = GetRuleIcon(rule.Severity),
+				View = NavView.RuleDetail,
 				Organization = organization,
 				RepositoryFullName = row.RepositoryFullName,
 				Category = category,
-				IsLeaf = catFailures.Count == 0,
-				// Rank 3, after the repo-level Work node (0), Packages (1) and Issues (2) — see the
-				// comment beside the Work node for why this must be explicit rather than tie-broken.
-				SortOrder = 3,
-				IssueCount = catFailures.Count,
-				HasErrors = catHasErrors,
-				HasWarnings = catHasWarnings
+				RuleId = rule.RuleId,
+				IsLeaf = true,
+				IssueCount = 1,
+				HasErrors = rule.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error,
+				HasWarnings = rule.Severity == AssessmentSeverity.Warning
 			});
-
-			// Individual failing rule nodes under each category
-			foreach (var rule in catFailures.OrderBy(r => r.RuleId))
-			{
-				items.Add(new NavItem
-				{
-					Key = RuleKey(row.RepositoryFullName, rule.RuleId),
-					Text = $"{rule.RuleId} {rule.RuleName}",
-					ParentKey = catKey,
-					IconCss = GetRuleIcon(rule.Severity),
-					View = NavView.RuleDetail,
-					Organization = organization,
-					RepositoryFullName = row.RepositoryFullName,
-					Category = category,
-					RuleId = rule.RuleId,
-					IsLeaf = true,
-					IssueCount = 1,
-					HasErrors = rule.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error,
-					HasWarnings = rule.Severity == AssessmentSeverity.Warning
-				});
-			}
 		}
 	}
 
 	/// <summary>
 	/// Applies the package-name regex and locally-cloned filters.
 	/// </summary>
-	/// <summary>
-	/// Adds the branch accounting for packages whose declared repository is not ours to govern.
-	/// </summary>
-	/// <remarks>
-	/// Absent when there is nothing to report, so the tree gains a node only where there is something
-	/// to do about it. The children are leaves and carry no view: there is nothing to act on, and the
-	/// reason on each names the repository declared, which is the nuspec that needs correcting.
-	/// </remarks>
-	private static void AddNotGovernedNodes(
-		List<NavItem> items,
-		string organization,
-		string orgKey,
-		IReadOnlyList<UngovernedPackage> packages)
-	{
-		if (packages.Count == 0)
-		{
-			return;
-		}
-
-		var notGovernedKey = NotGovernedKey(organization);
-
-		items.Add(new NavItem
-		{
-			Key = notGovernedKey,
-			Text = $"Not governed ({packages.Count})",
-			ParentKey = orgKey,
-			IconCss = "fas fa-circle-question",
-			View = NavView.None,
-			Organization = organization,
-			IsLeaf = false,
-			// Rank 3, after Repositories (0), Issues (1) and the org-level Work node (2).
-			SortOrder = 3
-		});
-
-		foreach (var package in packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))
-		{
-			items.Add(new NavItem
-			{
-				Key = $"notgoverned:{organization}:{package.PackageId}",
-				Text = $"{package.PackageId} — {package.Reason}",
-				ParentKey = notGovernedKey,
-				IconCss = "fas fa-circle-question",
-				View = NavView.None,
-				Organization = organization,
-				PackageId = package.PackageId,
-				IsLeaf = true
-			});
-		}
-	}
-
-	/// <summary>
-	/// The packages of one organisation that belong to no repository we govern, honouring the name
-	/// filter. They have no repository, so they are held beside the rows rather than among them.
-	/// </summary>
-	private List<UngovernedPackage> UngovernedPackagesFor(string organization, string fallbackOrganization)
-	{
-		var packages = _cache.GetUngovernedPackages()
-			.Where(package => string.IsNullOrEmpty(package.Organization)
-				? string.Equals(organization, fallbackOrganization, StringComparison.OrdinalIgnoreCase)
-				: string.Equals(package.Organization, organization, StringComparison.OrdinalIgnoreCase));
-
-		if (FilterRegex is not null)
-		{
-			packages = packages.Where(package => FilterRegex.IsMatch(package.PackageId));
-		}
-
-		return [.. packages];
-	}
-
 	private List<RepositoryDashboardRow>? ApplyFilters(List<RepositoryDashboardRow>? rows)
 	{
 		if (rows is null)

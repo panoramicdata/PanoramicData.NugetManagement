@@ -55,6 +55,22 @@ public partial class NavTreeDataProvider
 
 		items.Add(WorkContainerNode(workKey, parentKey, laneKey, organization, repositoryFullName, sortOrder, laneItems.Count, itemsBelow));
 
+		AddOwnWorkNodes(items, laneItems, workKey, laneKey, organization, repositoryFullName);
+
+		if (itemsBelow > 0)
+		{
+			AddMirroredWorkNodes(items, workKey, laneKey, organization, laneItems.Count);
+		}
+	}
+
+	private static void AddOwnWorkNodes(
+		List<NavItem> items,
+		IReadOnlyList<Models.WorkItem> laneItems,
+		string workKey,
+		string laneKey,
+		string organization,
+		string? repositoryFullName)
+	{
 		for (var index = 0; index < laneItems.Count; index++)
 		{
 			var workItem = laneItems[index];
@@ -76,11 +92,6 @@ public partial class NavTreeDataProvider
 				// The lane's own order, not alphabetical: the queue's order is the information.
 				SortOrder = index
 			});
-		}
-
-		if (itemsBelow > 0)
-		{
-			AddMirroredWorkNodes(items, workKey, laneKey, organization, laneItems.Count);
 		}
 	}
 

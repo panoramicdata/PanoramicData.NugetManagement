@@ -212,4 +212,73 @@ public partial class NavTreeDataProvider
 			IssueCount = 0,
 			AffectedRepoCount = 0
 		};
+
+	/// <summary>
+	/// Adds the branch accounting for packages whose declared repository is not ours to govern.
+	/// </summary>
+	/// <remarks>
+	/// Absent when there is nothing to report, so the tree gains a node only where there is something
+	/// to do about it. The children are leaves and carry no view: there is nothing to act on, and the
+	/// reason on each names the repository declared, which is the nuspec that needs correcting.
+	/// </remarks>
+	private static void AddNotGovernedNodes(
+		List<NavItem> items,
+		string organization,
+		string orgKey,
+		IReadOnlyList<UngovernedPackage> packages)
+	{
+		if (packages.Count == 0)
+		{
+			return;
+		}
+
+		var notGovernedKey = NotGovernedKey(organization);
+
+		items.Add(new NavItem
+		{
+			Key = notGovernedKey,
+			Text = $"Not governed ({packages.Count})",
+			ParentKey = orgKey,
+			IconCss = "fas fa-circle-question",
+			View = NavView.None,
+			Organization = organization,
+			IsLeaf = false,
+			// Rank 3, after Repositories (0), Issues (1) and the org-level Work node (2).
+			SortOrder = 3
+		});
+
+		foreach (var package in packages.OrderBy(p => p.PackageId, StringComparer.OrdinalIgnoreCase))
+		{
+			items.Add(new NavItem
+			{
+				Key = $"notgoverned:{organization}:{package.PackageId}",
+				Text = $"{package.PackageId} — {package.Reason}",
+				ParentKey = notGovernedKey,
+				IconCss = "fas fa-circle-question",
+				View = NavView.None,
+				Organization = organization,
+				PackageId = package.PackageId,
+				IsLeaf = true
+			});
+		}
+	}
+
+	/// <summary>
+	/// The packages of one organisation that belong to no repository we govern, honouring the name
+	/// filter. They have no repository, so they are held beside the rows rather than among them.
+	/// </summary>
+	private List<UngovernedPackage> UngovernedPackagesFor(string organization, string fallbackOrganization)
+	{
+		var packages = _cache.GetUngovernedPackages()
+			.Where(package => string.IsNullOrEmpty(package.Organization)
+				? string.Equals(organization, fallbackOrganization, StringComparison.OrdinalIgnoreCase)
+				: string.Equals(package.Organization, organization, StringComparison.OrdinalIgnoreCase));
+
+		if (FilterRegex is not null)
+		{
+			packages = packages.Where(package => FilterRegex.IsMatch(package.PackageId));
+		}
+
+		return [.. packages];
+	}
 }
