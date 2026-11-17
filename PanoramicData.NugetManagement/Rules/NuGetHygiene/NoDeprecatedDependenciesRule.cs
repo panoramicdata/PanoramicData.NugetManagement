@@ -55,26 +55,7 @@ public class NoDeprecatedDependenciesRule : RuleBase
 			return Pass("No explicit NuGet package versions were found to evaluate.");
 		}
 
-		var findings = new List<DeprecatedDependency>();
-		var checkedPackages = new Dictionary<string, PackageDeprecationStatus?>(StringComparer.OrdinalIgnoreCase);
-
-		foreach (var reference in references)
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-
-			var key = $"{reference.PackageId}/{reference.CurrentVersion}";
-			if (!checkedPackages.TryGetValue(key, out var status))
-			{
-				status = await _deprecationResolver(reference.PackageId, reference.CurrentVersion, cancellationToken)
-					.ConfigureAwait(false);
-				checkedPackages[key] = status;
-			}
-
-			if (status is not null)
-			{
-				findings.Add(new DeprecatedDependency(reference.FilePath, status));
-			}
-		}
+		var findings = await FindDeprecatedAsync(references, cancellationToken).ConfigureAwait(false);
 
 		if (findings.Count == 0)
 		{
@@ -133,6 +114,34 @@ public class NoDeprecatedDependenciesRule : RuleBase
 		=> status.Message is null
 			? string.Empty
 			: $" The author says: \"{status.Message}\"";
+
+	private async Task<List<DeprecatedDependency>> FindDeprecatedAsync(
+		List<PackageVersionReference> references,
+		CancellationToken cancellationToken)
+	{
+		var findings = new List<DeprecatedDependency>();
+		var checkedPackages = new Dictionary<string, PackageDeprecationStatus?>(StringComparer.OrdinalIgnoreCase);
+
+		foreach (var reference in references)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var key = $"{reference.PackageId}/{reference.CurrentVersion}";
+			if (!checkedPackages.TryGetValue(key, out var status))
+			{
+				status = await _deprecationResolver(reference.PackageId, reference.CurrentVersion, cancellationToken)
+					.ConfigureAwait(false);
+				checkedPackages[key] = status;
+			}
+
+			if (status is not null)
+			{
+				findings.Add(new DeprecatedDependency(reference.FilePath, status));
+			}
+		}
+
+		return findings;
+	}
 
 	private sealed record DeprecatedDependency(string FilePath, PackageDeprecationStatus Status);
 }

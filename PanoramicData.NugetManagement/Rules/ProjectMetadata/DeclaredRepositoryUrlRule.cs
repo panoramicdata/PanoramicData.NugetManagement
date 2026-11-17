@@ -47,30 +47,7 @@ public partial class DeclaredRepositoryUrlRule : RuleBase
 		}
 
 		var canonical = $"https://github.com/{context.FullName}";
-		var wrong = new List<DeclaredUrl>();
-
-		// Directory.Build.props as well as the projects: a repository that declares its metadata once
-		// for every project declares its repository URL there too, and a wrong name is exactly as
-		// published from there as it is from a csproj.
-		var files = projects
-			.Concat(context.FileExists(_directoryBuildProps) ? [_directoryBuildProps] : [])
-			.ToList();
-
-		foreach (var project in files)
-		{
-			var content = context.GetFileContent(project);
-
-			foreach (var propertyName in new[] { "RepositoryUrl", "PackageProjectUrl" })
-			{
-				foreach (var declared in MsBuildProperties.TryGetValues(content, propertyName) ?? [])
-				{
-					if (IsWrong(declared, context.FullName, propertyName))
-					{
-						wrong.Add(new DeclaredUrl(project, propertyName, declared));
-					}
-				}
-			}
-		}
+		var wrong = FindWrongDeclarations(context, projects);
 
 		if (wrong.Count == 0)
 		{
@@ -115,6 +92,36 @@ public partial class DeclaredRepositoryUrlRule : RuleBase
 					["canonical_url"] = canonical
 				}
 			}));
+	}
+
+	private static List<DeclaredUrl> FindWrongDeclarations(RepositoryContext context, List<string> projects)
+	{
+		var wrong = new List<DeclaredUrl>();
+
+		// Directory.Build.props as well as the projects: a repository that declares its metadata once
+		// for every project declares its repository URL there too, and a wrong name is exactly as
+		// published from there as it is from a csproj.
+		var files = projects
+			.Concat(context.FileExists(_directoryBuildProps) ? [_directoryBuildProps] : [])
+			.ToList();
+
+		foreach (var project in files)
+		{
+			var content = context.GetFileContent(project);
+
+			foreach (var propertyName in new[] { "RepositoryUrl", "PackageProjectUrl" })
+			{
+				foreach (var declared in MsBuildProperties.TryGetValues(content, propertyName) ?? [])
+				{
+					if (IsWrong(declared, context.FullName, propertyName))
+					{
+						wrong.Add(new DeclaredUrl(project, propertyName, declared));
+					}
+				}
+			}
+		}
+
+		return wrong;
 	}
 
 	/// <summary>
