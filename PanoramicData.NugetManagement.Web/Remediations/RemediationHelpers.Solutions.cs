@@ -32,17 +32,17 @@ internal static partial class RemediationHelpers
 		var slnPath = PickLegacySolution(localPath, slnCandidates);
 		if (slnPath is null)
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] No root .sln file found to migrate.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] No root .sln file found to migrate.");
 			return false;
 		}
 
 		if (slnCandidates.Length > 1)
 		{
-			onOutput?.Invoke($"ℹ️ [{result.RuleId}] Multiple .sln files found; selected {Path.GetFileName(slnPath)} for migration.");
+			Say(onOutput, $"ℹ️ [{result.RuleId}] Multiple .sln files found; selected {Path.GetFileName(slnPath)} for migration.");
 		}
 
 		var slnFileName = Path.GetFileName(slnPath);
-		onOutput?.Invoke($"▶ [{result.RuleId}] Running: dotnet sln {slnFileName} migrate");
+		Say(onOutput, $"▶ [{result.RuleId}] Running: dotnet sln {slnFileName} migrate");
 
 		try
 		{
@@ -51,7 +51,7 @@ internal static partial class RemediationHelpers
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to migrate {slnFileName}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to migrate {slnFileName}: {ex.Message}");
 			return false;
 		}
 	}
@@ -90,7 +90,7 @@ internal static partial class RemediationHelpers
 
 		if (!string.IsNullOrWhiteSpace(output))
 		{
-			onOutput?.Invoke(output.Trim());
+			Say(onOutput, output.Trim());
 		}
 
 		if (process.ExitCode == 0)
@@ -100,10 +100,10 @@ internal static partial class RemediationHelpers
 
 		if (!string.IsNullOrWhiteSpace(error))
 		{
-			onOutput?.Invoke(error.Trim());
+			Say(onOutput, error.Trim());
 		}
 
-		onOutput?.Invoke($"❌ [{result.RuleId}] Migration command failed with exit code {process.ExitCode}.");
+		Say(onOutput, $"❌ [{result.RuleId}] Migration command failed with exit code {process.ExitCode}.");
 		return false;
 	}
 
@@ -112,7 +112,7 @@ internal static partial class RemediationHelpers
 		var slnxPath = Path.ChangeExtension(slnPath, ".slnx");
 		if (!File.Exists(slnxPath))
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Migration completed but {Path.GetFileName(slnxPath)} was not found.");
+			Say(onOutput, $"❌ [{result.RuleId}] Migration completed but {Path.GetFileName(slnxPath)} was not found.");
 			return false;
 		}
 
@@ -123,7 +123,7 @@ internal static partial class RemediationHelpers
 		AddOnce(applied, Path.GetFileName(slnPath));
 
 		var slnFileName = Path.GetFileName(slnPath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Migrated {slnFileName} to {slnxRelative} and deleted {slnFileName}.");
+		Say(onOutput, $"✅ [{result.RuleId}] Migrated {slnFileName} to {slnxRelative} and deleted {slnFileName}.");
 		return true;
 	}
 

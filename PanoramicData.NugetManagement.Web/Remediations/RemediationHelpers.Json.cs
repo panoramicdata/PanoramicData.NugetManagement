@@ -49,11 +49,11 @@ internal static partial class RemediationHelpers
 
 			File.WriteAllText(fullPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Removed {propertyPath} from {relativePath}");
+			Say(onOutput, $"✅ [{result.RuleId}] Removed {propertyPath} from {relativePath}");
 		}
 		catch (JsonException ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -68,7 +68,7 @@ internal static partial class RemediationHelpers
 		}
 
 		root = [];
-		onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
+		Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
 		return false;
 	}
 
@@ -122,14 +122,14 @@ internal static partial class RemediationHelpers
 	{
 		if (createContent is null)
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
 			return false;
 		}
 
 		EnsureDirectory(fullPath);
 		File.WriteAllText(fullPath, createContent);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Created {relativePath}");
 		return true;
 	}
 
@@ -207,7 +207,7 @@ internal static partial class RemediationHelpers
 			var leaf = segments[^1];
 			if (AlreadySets(target, leaf, propertyValue))
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already sets {propertyPath} to {propertyValue} — skipping.");
+				Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} already sets {propertyPath} to {propertyValue} — skipping.");
 				return;
 			}
 
@@ -219,11 +219,11 @@ internal static partial class RemediationHelpers
 				applied.Add(relativePath);
 			}
 
-			onOutput?.Invoke($"✅ [{result.RuleId}] Set {propertyPath} to {propertyValue} in {relativePath}");
+			Say(onOutput, $"✅ [{result.RuleId}] Set {propertyPath} to {propertyValue} in {relativePath}");
 		}
 		catch (JsonException ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -263,14 +263,14 @@ internal static partial class RemediationHelpers
 	{
 		if (patterns.Length != replacements.Length)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] {patterns.Length} pattern(s) but {replacements.Length} replacement(s) — skipping.");
+			Say(onOutput, $"❌ [{result.RuleId}] {patterns.Length} pattern(s) but {replacements.Length} replacement(s) — skipping.");
 			return;
 		}
 
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot edit.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot edit.");
 			return;
 		}
 
@@ -282,13 +282,13 @@ internal static partial class RemediationHelpers
 
 		if (content == original)
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] Nothing to change in {relativePath} — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] Nothing to change in {relativePath} — skipping.");
 			return;
 		}
 
 		File.WriteAllText(fullPath, content);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Updated {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Updated {relativePath}");
 	}
 
 	private static bool TryApplyPatterns(
@@ -310,12 +310,12 @@ internal static partial class RemediationHelpers
 			}
 			catch (RegexParseException ex)
 			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Invalid pattern '{patterns[i]}': {ex.Message}");
+				Say(onOutput, $"❌ [{result.RuleId}] Invalid pattern '{patterns[i]}': {ex.Message}");
 				return false;
 			}
 			catch (RegexMatchTimeoutException)
 			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Pattern '{patterns[i]}' timed out against {relativePath}.");
+				Say(onOutput, $"❌ [{result.RuleId}] Pattern '{patterns[i]}' timed out against {relativePath}.");
 				return false;
 			}
 		}

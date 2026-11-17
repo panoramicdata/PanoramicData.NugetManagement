@@ -30,7 +30,7 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set fetch-depth.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set fetch-depth.");
 			return;
 		}
 
@@ -42,13 +42,13 @@ internal static partial class RemediationHelpers
 
 		if (!changed)
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] No actions/checkout step to change in {relativePath} — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] No actions/checkout step to change in {relativePath} — skipping.");
 			return;
 		}
 
 		File.WriteAllText(fullPath, string.Join(newline, lines));
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Set fetch-depth: 0 on actions/checkout in {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Set fetch-depth: 0 on actions/checkout in {relativePath}");
 	}
 
 	/// <summary>

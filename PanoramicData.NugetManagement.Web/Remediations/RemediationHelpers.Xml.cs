@@ -38,13 +38,13 @@ internal static partial class RemediationHelpers
 
 		if (!RewriteTargetFrameworks(doc, lists, latest))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already targets {latest} — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} already targets {latest} — skipping.");
 			return;
 		}
 
 		doc.Save(fullPath);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Updated <TargetFrameworks> to include {latest} in {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Updated <TargetFrameworks> to include {latest} in {relativePath}");
 	}
 
 	private static bool TryLoadForEdit(string fullPath, string relativePath, RuleResult result, Action<string>? onOutput, out XDocument? doc)
@@ -57,7 +57,7 @@ internal static partial class RemediationHelpers
 		catch (Exception ex)
 		{
 			doc = null;
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to read {relativePath}: {ex.Message}");
 			return false;
 		}
 	}
@@ -141,7 +141,7 @@ internal static partial class RemediationHelpers
 		// Property tag exists — check if it already has the correct value
 		if (xml.Contains($"<{propertyName}>{propertyValue}</{propertyName}>", StringComparison.OrdinalIgnoreCase))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already has <{propertyName}>{propertyValue}</{propertyName}> — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} already has <{propertyName}>{propertyValue}</{propertyName}> — skipping.");
 			return;
 		}
 
@@ -167,7 +167,7 @@ internal static partial class RemediationHelpers
                 """;
 		File.WriteAllText(fullPath, content);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath} with <{propertyName}>{propertyValue}</{propertyName}>");
+		Say(onOutput, $"✅ [{result.RuleId}] Created {relativePath} with <{propertyName}>{propertyValue}</{propertyName}>");
 	}
 
 	private static void UpdateProperty(
@@ -190,12 +190,12 @@ internal static partial class RemediationHelpers
 				existing.Value = propertyValue;
 				doc.Save(fullPath);
 				applied.Add(relativePath);
-				onOutput?.Invoke($"✅ [{result.RuleId}] Updated <{propertyName}> to {propertyValue} in {relativePath}");
+				Say(onOutput, $"✅ [{result.RuleId}] Updated <{propertyName}> to {propertyValue} in {relativePath}");
 			}
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to update {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to update {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -222,11 +222,11 @@ internal static partial class RemediationHelpers
 			propertyGroup.Add(new XElement(propertyName, propertyValue));
 			doc.Save(fullPath);
 			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Added <{propertyName}>{propertyValue}</{propertyName}> to {relativePath}");
+			Say(onOutput, $"✅ [{result.RuleId}] Added <{propertyName}>{propertyValue}</{propertyName}> to {relativePath}");
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -246,7 +246,7 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add PackageReference.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add PackageReference.");
 			return;
 		}
 
@@ -255,18 +255,18 @@ internal static partial class RemediationHelpers
 			var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
 			if (HasPackageReference(doc, packageName))
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already references {packageName} — skipping.");
+				Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} already references {packageName} — skipping.");
 				return;
 			}
 
 			AppendPackageReference(doc, packageName, packageVersion, privateAssets);
 			doc.Save(fullPath);
 			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Added <PackageReference Include=\"{packageName}\" /> to {relativePath}");
+			Say(onOutput, $"✅ [{result.RuleId}] Added <PackageReference Include=\"{packageName}\" /> to {relativePath}");
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
 	}
 

@@ -27,14 +27,14 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already exists — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} already exists — skipping.");
 			return;
 		}
 
 		EnsureDirectory(fullPath);
 		File.WriteAllText(fullPath, content);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Created {relativePath}");
 	}
 
 	/// <summary>
@@ -50,13 +50,13 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — skipping.");
 			return;
 		}
 
 		File.Delete(fullPath);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Deleted {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Deleted {relativePath}");
 	}
 
 	/// <summary>
@@ -73,14 +73,14 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot append.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot append.");
 			return;
 		}
 
 		var content = File.ReadAllText(fullPath);
 		if (content.Contains(lineContent, StringComparison.OrdinalIgnoreCase))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already contains '{lineContent}' — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} already contains '{lineContent}' — skipping.");
 			return;
 		}
 
@@ -92,7 +92,7 @@ internal static partial class RemediationHelpers
 		content += lineContent + Environment.NewLine;
 		File.WriteAllText(fullPath, content);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Appended to {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Appended to {relativePath}");
 	}
 
 	/// <summary>
@@ -109,21 +109,21 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot prepend.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot prepend.");
 			return;
 		}
 
 		var content = File.ReadAllText(fullPath);
 		if (content.Contains(lineContent, StringComparison.OrdinalIgnoreCase))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already contains the line — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} already contains the line — skipping.");
 			return;
 		}
 
 		content = lineContent + Environment.NewLine + Environment.NewLine + content;
 		File.WriteAllText(fullPath, content);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Prepended badge to {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Prepended badge to {relativePath}");
 	}
 
 	/// <summary>
@@ -141,7 +141,7 @@ internal static partial class RemediationHelpers
 		EnsureDirectory(fullPath);
 		File.WriteAllText(fullPath, newContent);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Replaced content of {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Replaced content of {relativePath}");
 	}
 
 	/// <summary>
@@ -159,22 +159,25 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot replace.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot replace.");
 			return;
 		}
 
 		var content = File.ReadAllText(fullPath);
 		if (!content.Contains(oldText, StringComparison.OrdinalIgnoreCase))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not contain '{oldText}' — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not contain '{oldText}' — skipping.");
 			return;
 		}
 
 		content = content.Replace(oldText, newText, StringComparison.OrdinalIgnoreCase);
 		File.WriteAllText(fullPath, content);
 		applied.Add(relativePath);
-		onOutput?.Invoke($"✅ [{result.RuleId}] Replaced '{oldText}' with '{newText}' in {relativePath}");
+		Say(onOutput, $"✅ [{result.RuleId}] Replaced '{oldText}' with '{newText}' in {relativePath}");
 	}
+
+	/// <summary>Passes a progress line to the callback, when there is one.</summary>
+	private static void Say(Action<string>? onOutput, string message) => onOutput?.Invoke(message);
 
 	/// <summary>
 	/// Resolves a relative path to a full path under the local repo root.
@@ -209,7 +212,7 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add items.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add items.");
 			return;
 		}
 
@@ -219,7 +222,7 @@ internal static partial class RemediationHelpers
 			var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip });
 			if (node is not JsonObject root)
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
+				Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
 				return;
 			}
 
@@ -231,16 +234,16 @@ internal static partial class RemediationHelpers
 				var updated = root.ToJsonString(options);
 				File.WriteAllText(fullPath, updated);
 				applied.Add(relativePath);
-				onOutput?.Invoke($"✅ [{result.RuleId}] Added {added} item(s) to {arrayProperty} in {relativePath}");
+				Say(onOutput, $"✅ [{result.RuleId}] Added {added} item(s) to {arrayProperty} in {relativePath}");
 			}
 			else
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] All items already present in {arrayProperty} — skipping.");
+				Say(onOutput, $"⏭️ [{result.RuleId}] All items already present in {arrayProperty} — skipping.");
 			}
 		}
 		catch (JsonException ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to parse {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -301,7 +304,7 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, projectPath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not exist — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {projectPath} does not exist — skipping.");
 			return;
 		}
 
@@ -312,7 +315,7 @@ internal static partial class RemediationHelpers
 
 			if (toRemove.Count == 0)
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not reference {packageName} — skipping.");
+				Say(onOutput, $"⏭️ [{result.RuleId}] {projectPath} does not reference {packageName} — skipping.");
 				return;
 			}
 
@@ -320,11 +323,11 @@ internal static partial class RemediationHelpers
 
 			doc.Save(fullPath);
 			applied.Add(projectPath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Removed {packageName} PackageReference from {projectPath}");
+			Say(onOutput, $"✅ [{result.RuleId}] Removed {packageName} PackageReference from {projectPath}");
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
 		}
 	}
 
@@ -389,11 +392,11 @@ internal static partial class RemediationHelpers
 
 			doc.Save(fullPath);
 			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Removed <PackageVersion Include=\"{packageName}\" /> from {relativePath}");
+			Say(onOutput, $"✅ [{result.RuleId}] Removed <PackageVersion Include=\"{packageName}\" /> from {relativePath}");
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -424,7 +427,7 @@ internal static partial class RemediationHelpers
 	{
 		if (patterns.Length != replacements.Length)
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {patterns.Length} pattern(s) but {replacements.Length} replacement(s) — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {patterns.Length} pattern(s) but {replacements.Length} replacement(s) — skipping.");
 			return;
 		}
 
@@ -450,7 +453,7 @@ internal static partial class RemediationHelpers
 			}
 		}
 
-		onOutput?.Invoke(changedCount == 0
+		Say(onOutput, changedCount == 0
 			? $"⏭️ [{result.RuleId}] Nothing matched the patterns — no files changed."
 			: $"✅ [{result.RuleId}] Rewrote {changedCount} file(s).");
 	}
@@ -485,7 +488,7 @@ internal static partial class RemediationHelpers
 		}
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or RegexParseException)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to rewrite {file}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to rewrite {file}: {ex.Message}");
 			return false;
 		}
 	}

@@ -25,14 +25,14 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add package version.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add package version.");
 			return;
 		}
 
 		var xml = File.ReadAllText(fullPath);
 		if (xml.Contains(packageName, StringComparison.OrdinalIgnoreCase))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already references {packageName} — skipping.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} already references {packageName} — skipping.");
 			return;
 		}
 
@@ -47,11 +47,11 @@ internal static partial class RemediationHelpers
 
 			doc.Save(fullPath);
 			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Added <PackageVersion Include=\"{packageName}\" Version=\"{packageVersion}\" /> to {relativePath}");
+			Say(onOutput, $"✅ [{result.RuleId}] Added <PackageVersion Include=\"{packageName}\" Version=\"{packageVersion}\" /> to {relativePath}");
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -102,7 +102,7 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot update package versions.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot update package versions.");
 			return;
 		}
 
@@ -113,18 +113,18 @@ internal static partial class RemediationHelpers
 
 			if (!changed)
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] No matching package version entries found in {relativePath} — skipping.");
+				Say(onOutput, $"⏭️ [{result.RuleId}] No matching package version entries found in {relativePath} — skipping.");
 				return;
 			}
 
 			doc.Save(fullPath);
 			AddOnce(applied, relativePath);
 
-			onOutput?.Invoke($"✅ [{result.RuleId}] Updated package versions in {relativePath}");
+			Say(onOutput, $"✅ [{result.RuleId}] Updated package versions in {relativePath}");
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -202,7 +202,7 @@ internal static partial class RemediationHelpers
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {projectPath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to read {projectPath}: {ex.Message}");
 		}
 	}
 
@@ -252,12 +252,12 @@ internal static partial class RemediationHelpers
 			{
 				doc.Save(fullPath);
 				applied.Add(projectPath);
-				onOutput?.Invoke($"✅ [{result.RuleId}] Removed Version attributes from PackageReference in {projectPath}");
+				Say(onOutput, $"✅ [{result.RuleId}] Removed Version attributes from PackageReference in {projectPath}");
 			}
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
 		}
 	}
 
@@ -288,7 +288,7 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot migrate package versions.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot migrate package versions.");
 			return;
 		}
 
@@ -302,12 +302,12 @@ internal static partial class RemediationHelpers
 			{
 				doc.Save(fullPath);
 				applied.Add(relativePath);
-				onOutput?.Invoke($"✅ [{result.RuleId}] Added {added} PackageVersion entries to {relativePath}");
+				Say(onOutput, $"✅ [{result.RuleId}] Added {added} PackageVersion entries to {relativePath}");
 			}
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -325,7 +325,7 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add entries.");
+			Say(onOutput, $"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot add entries.");
 			return;
 		}
 
@@ -338,16 +338,16 @@ internal static partial class RemediationHelpers
 			{
 				doc.Save(fullPath);
 				applied.Add(relativePath);
-				onOutput?.Invoke($"✅ [{result.RuleId}] Added {addedCount} file entries to Solution Items in {relativePath}");
+				Say(onOutput, $"✅ [{result.RuleId}] Added {addedCount} file entries to Solution Items in {relativePath}");
 			}
 			else
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] All files already in Solution Items — skipping.");
+				Say(onOutput, $"⏭️ [{result.RuleId}] All files already in Solution Items — skipping.");
 			}
 		}
 		catch (Exception ex)
 		{
-			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
+			Say(onOutput, $"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
 	}
 
