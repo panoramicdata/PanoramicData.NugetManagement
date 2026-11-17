@@ -49,29 +49,28 @@ public class SolutionItemsRule : RuleBase
 
 		if (slnxFile is null)
 		{
-			return Task.FromResult(Fail(
+			return Task.FromResult(Problem(
 				"No .slnx solution file found — cannot check Solution Items.",
-				new RuleAdvisory
-				{
-					Summary = "Create an SDK-style .slnx solution file at the repository root.",
-					Detail = "No `.slnx` solution file was found at the repository root. Create one before Solution Items can be checked.",
-					Data = new() { ["expected_extension"] = ".slnx" }
-				}));
+				"Create an SDK-style .slnx solution file at the repository root.",
+				"No `.slnx` solution file was found at the repository root. Create one before Solution Items can be checked.",
+				new() { ["expected_extension"] = ".slnx" }));
 		}
 
 		var content = context.GetFileContent(slnxFile);
 		if (content is null)
 		{
-			return Task.FromResult(Fail(
+			return Task.FromResult(Problem(
 				$"Could not read {slnxFile} content.",
-				new RuleAdvisory
-				{
-					Summary = "Ensure the .slnx file is accessible.",
-					Detail = $"The `.slnx` file `{slnxFile}` could not be read. Ensure it is accessible and not corrupted.",
-					Data = new() { ["file"] = slnxFile }
-				}));
+				"Ensure the .slnx file is accessible.",
+				$"The `.slnx` file `{slnxFile}` could not be read. Ensure it is accessible and not corrupted.",
+				new() { ["file"] = slnxFile }));
 		}
 
+		return Task.FromResult(CheckSolutionItems(context, slnxFile, content));
+	}
+
+	private RuleResult CheckSolutionItems(RepositoryContext context, string slnxFile, string content)
+	{
 		XDocument doc;
 		try
 		{
@@ -79,36 +78,26 @@ public class SolutionItemsRule : RuleBase
 		}
 		catch
 		{
-			return Task.FromResult(Fail(
+			return Problem(
 				$"{slnxFile} is not valid XML.",
-				new RuleAdvisory
-				{
-					Summary = "Fix the .slnx file to be valid XML.",
-					Detail = $"The `.slnx` file `{slnxFile}` is not valid XML. Fix the XML syntax.",
-					Data = new() { ["file"] = slnxFile }
-				}));
+				"Fix the .slnx file to be valid XML.",
+				$"The `.slnx` file `{slnxFile}` is not valid XML. Fix the XML syntax.",
+				new() { ["file"] = slnxFile });
 		}
 
 		// Find the Solution Items folder
 		var solutionItemsFolder = doc.Root?
 			.Elements("Folder")
-			.FirstOrDefault(f =>
-			{
-				var name = f.Attribute("Name")?.Value;
-				return name is not null &&
-					name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase);
-			});
+			.FirstOrDefault(f => f.Attribute("Name")?.Value is { } name
+				&& name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase));
 
 		if (solutionItemsFolder is null)
 		{
-			return Task.FromResult(Fail(
+			return Problem(
 				$"{slnxFile} does not contain a Solution Items folder.",
-				new RuleAdvisory
-				{
-					Summary = "Add a <Folder Name=\"/Solution Items/\"> element to the .slnx file containing standard repo files.",
-					Detail = $"The `.slnx` file `{slnxFile}` does not contain a `Solution Items` folder. Add a `<Folder Name=\"/Solution Items/\">` element with `<File Path=\"...\"/>` entries for standard repository root files.",
-					Data = new() { ["file"] = slnxFile }
-				}));
+				"Add a <Folder Name=\"/Solution Items/\"> element to the .slnx file containing standard repo files.",
+				$"The `.slnx` file `{slnxFile}` does not contain a `Solution Items` folder. Add a `<Folder Name=\"/Solution Items/\">` element with `<File Path=\"...\"/>` entries for standard repository root files.",
+				new() { ["file"] = slnxFile });
 		}
 
 		// Get the files referenced in Solution Items
@@ -123,23 +112,20 @@ public class SolutionItemsRule : RuleBase
 			.Where(f => context.FileExists(f) && !referencedFiles.Contains(f))
 			.ToList();
 
-		if (missing.Count > 0)
-		{
-			return Task.FromResult(Fail(
+		return missing.Count == 0
+			? Pass("Solution Items folder references all standard repository files.")
+			: Problem(
 				$"Solution Items folder is missing references to: {string.Join(", ", missing)}.",
-				new RuleAdvisory
+				"Add <File Path=\"...\"/> entries for the missing files in the Solution Items folder.",
+				$"The Solution Items folder in `{slnxFile}` is missing references to: {string.Join(", ", missing)}. Add `<File Path=\"...\"/>` entries for each missing file.",
+				new()
 				{
-					Summary = "Add <File Path=\"...\"/> entries for the missing files in the Solution Items folder.",
-					Detail = $"The Solution Items folder in `{slnxFile}` is missing references to: {string.Join(", ", missing)}. Add `<File Path=\"...\"/>` entries for each missing file.",
-					Data = new()
-					{
-						["file"] = slnxFile,
-						["missing_files"] = missing.ToArray(),
-						["remediation_type"] = "add_slnx_file_entries"
-					}
-				}));
-		}
-
-		return Task.FromResult(Pass("Solution Items folder references all standard repository files."));
+					["file"] = slnxFile,
+					["missing_files"] = missing.ToArray(),
+					["remediation_type"] = "add_slnx_file_entries"
+				});
 	}
+
+	private RuleResult Problem(string message, string summary, string detail, Dictionary<string, object> data)
+		=> Fail(message, new RuleAdvisory { Summary = summary, Detail = detail, Data = data });
 }
