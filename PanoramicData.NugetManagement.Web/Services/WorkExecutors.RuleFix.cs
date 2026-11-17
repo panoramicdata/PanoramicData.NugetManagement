@@ -124,31 +124,9 @@ public sealed partial class WorkExecutors
 		var targetPath = item.Descriptor.Parameter("path");
 		var ollama = runtimeSettings.Ollama;
 
-		if (!ollama.IsConfigured)
+		if (UnstartableReason(row, ollama, ruleId, out var result) is { } reason)
 		{
-			Say("⚠️ No Ollama server is configured — set one under Settings, Ollama Config.");
-			return null;
-		}
-
-		if (row.LocalPath is null || !row.IsClonedLocally)
-		{
-			Say($"⏭️ {row.RepositoryFullName} is not cloned locally, and the model edits files on disk.");
-			return null;
-		}
-
-		var result = FindRule(row, ruleId);
-
-		if (result is null || result.Passed)
-		{
-			Say($"⏭️ {ruleId} is no longer failing on {row.RepositoryFullName}.");
-			return null;
-		}
-
-		// Fix and Fix with AI are disjoint. A rule that gained a remediation since this item was queued
-		// belongs to Fix now, and doing it here would spend a GPU on work a function can do exactly.
-		if (remediations.Get(ruleId) is not null)
-		{
-			Say($"⏭️ {ruleId} now has an automatic remediation — use Fix instead.");
+			Say(reason);
 			return null;
 		}
 
@@ -158,6 +136,37 @@ public sealed partial class WorkExecutors
 		}
 
 		return await ConfirmStillFailingAsync(new RuleFixContext(item, progress, row, ruleId, targetPath, ollama, result), cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>Why the fix cannot start at all, or null; <paramref name="result"/> is the failing rule when it can.</summary>
+	private string? UnstartableReason(RepositoryDashboardRow row, OllamaOptions ollama, string ruleId, out RuleResult result)
+	{
+		result = null!;
+
+		if (!ollama.IsConfigured)
+		{
+			return "⚠️ No Ollama server is configured — set one under Settings, Ollama Config.";
+		}
+
+		if (row.LocalPath is null || !row.IsClonedLocally)
+		{
+			return $"⏭️ {row.RepositoryFullName} is not cloned locally, and the model edits files on disk.";
+		}
+
+		var found = FindRule(row, ruleId);
+
+		if (found is null || found.Passed)
+		{
+			return $"⏭️ {ruleId} is no longer failing on {row.RepositoryFullName}.";
+		}
+
+		result = found;
+
+		// Fix and Fix with AI are disjoint. A rule that gained a remediation since this item was queued
+		// belongs to Fix now, and doing it here would spend a GPU on work a function can do exactly.
+		return remediations.Get(ruleId) is not null
+			? $"⏭️ {ruleId} now has an automatic remediation — use Fix instead."
+			: null;
 	}
 
 	/// <summary>Says so and returns true when the clone holds changes the session did not make.</summary>
@@ -401,21 +410,30 @@ public sealed partial class WorkExecutors
 			return null;
 		}
 
-		return async () =>
+		return () => MeasureKeptProgressAsync(fix, startingPoint);
+	}
+
+	private static async Task<string?> MeasureKeptProgressAsync(RuleFixContext fix, CoberturaReport startingPoint)
+	{
+		if (fix.Toolbox!.FilesWritten.Count == 0)
 		{
-			if (fix.Toolbox!.FilesWritten.Count == 0)
-			{
-				return null;
-			}
+			return null;
+		}
 
-			var final = await CoverageMeasurement.MeasureAsync(fix.Row.LocalPath!, null, CancellationToken.None).ConfigureAwait(false);
+		var final = await CoverageMeasurement.MeasureAsync(fix.Row.LocalPath!, null, CancellationToken.None).ConfigureAwait(false);
+		return DescribeKeptProgress(startingPoint, final, fix.KnownFailures);
+	}
 
-			return final.Report is { } reached
-				&& (final.TestsPassed || OnlyKnownFailures(final, fix.KnownFailures))
-				&& reached.LinePercent >= startingPoint.LinePercent + _coverageProgressWorthKeeping
-					? $"{startingPoint.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}% to {reached.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}%"
-					: null;
-		};
+	internal static string? DescribeKeptProgress(CoberturaReport startingPoint, CoverageRun final, IReadOnlySet<string> knownFailures)
+	{
+		if (final.Report is not { } reached
+			|| !(final.TestsPassed || OnlyKnownFailures(final, knownFailures))
+			|| reached.LinePercent < startingPoint.LinePercent + _coverageProgressWorthKeeping)
+		{
+			return null;
+		}
+
+		return $"{startingPoint.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}% to {reached.LinePercent.ToString("0.0", CultureInfo.InvariantCulture)}%";
 	}
 
 	/// <summary>
@@ -653,10 +671,7 @@ public sealed partial class WorkExecutors
 		// Taken before anything is put back: Undo forgets what the session wrote, and the diff of a
 		// reverted change is exactly what a reviewer most wants to see.
 		var writtenFiles = fix.Toolbox?.FilesWritten.Order(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
-
-		var sessionDiff = governance is not null && row.LocalPath is not null && writtenFiles.Count > 0
-			? await governance.CaptureDiffAsync(row.LocalPath, writtenFiles, CancellationToken.None).ConfigureAwait(false)
-			: string.Empty;
+		var sessionDiff = await CaptureSessionDiffAsync(row, writtenFiles).ConfigureAwait(false);
 
 		string? keptProgress = null;
 
@@ -665,18 +680,30 @@ public sealed partial class WorkExecutors
 			keptProgress = await RevertOrKeepAsync(fix, cancellationToken).ConfigureAwait(false);
 		}
 
-		if (governance is not null && fix.RecordedRequest is not null)
+		RecordSession(fix, keptProgress, writtenFiles, sessionDiff, cancellationToken.IsCancellationRequested);
+	}
+
+	private async Task<string> CaptureSessionDiffAsync(RepositoryDashboardRow row, List<string> writtenFiles)
+		=> governance is not null && row.LocalPath is not null && writtenFiles.Count > 0
+			? await governance.CaptureDiffAsync(row.LocalPath, writtenFiles, CancellationToken.None).ConfigureAwait(false)
+			: string.Empty;
+
+	private void RecordSession(RuleFixContext fix, string? keptProgress, List<string> writtenFiles, string sessionDiff, bool cancelled)
+	{
+		if (governance is null || fix.RecordedRequest is null)
 		{
-			governance.RecordAiSession(
-				fix.Item,
-				fix.RecordedRequest,
-				runtimeSettings.Ollama.Model,
-				fix.RecordedOutcome,
-				SessionVerdict(fix.Succeeded, keptProgress, cancellationToken.IsCancellationRequested),
-				writtenFiles,
-				sessionDiff,
-				fix.RecordedLogPath);
+			return;
 		}
+
+		governance.RecordAiSession(
+			fix.Item,
+			fix.RecordedRequest,
+			runtimeSettings.Ollama.Model,
+			fix.RecordedOutcome,
+			SessionVerdict(fix.Succeeded, keptProgress, cancelled),
+			writtenFiles,
+			sessionDiff,
+			fix.RecordedLogPath);
 	}
 
 	internal static string SessionVerdict(bool succeeded, string? keptProgress, bool cancelled)

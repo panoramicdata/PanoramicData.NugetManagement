@@ -33,4 +33,30 @@ public class WorkExecutorsPureHelperTests
 		WorkExecutors.DescribeMeasurement(run, testsFine: false)
 			.Should().Contain("could not be measured").And.Contain("no test project");
 	}
+	[Theory]
+	[InlineData(50, 53, true, "50.0% to 53.0%")]
+	[InlineData(50, 51, true, null)]
+	[InlineData(50, 90, false, null)]
+	public void DescribeKeptProgress_KeepsOnlyRealProgressThatStillPasses(int startPercent, int endPercent, bool testsPassed, string? expected)
+	{
+		var start = ReportAt(startPercent);
+		var final = new CoverageRun(testsPassed, ReportAt(endPercent), null, string.Empty);
+
+		WorkExecutors.DescribeKeptProgress(start, final, new HashSet<string>()).Should().Be(expected);
+	}
+
+	[Fact]
+	public void DescribeKeptProgress_IgnoresFailuresTheCloneAlreadyHad()
+	{
+		var final = new CoverageRun(false, ReportAt(60), null, string.Empty, new HashSet<string> { "Known.Test" });
+
+		WorkExecutors.DescribeKeptProgress(ReportAt(50), final, new HashSet<string> { "Known.Test" })
+			.Should().Be("50.0% to 60.0%");
+	}
+
+	private static CoberturaReport ReportAt(int percent)
+	{
+		var lines = Enumerable.Range(1, 100).ToDictionary(line => line, line => line <= percent);
+		return CoberturaReport.FromFiles([new FileCoverage("a.cs", lines)]);
+	}
 }
