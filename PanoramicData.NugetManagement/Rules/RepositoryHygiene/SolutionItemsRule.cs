@@ -85,11 +85,7 @@ public class SolutionItemsRule : RuleBase
 				new() { ["file"] = slnxFile });
 		}
 
-		// Find the Solution Items folder
-		var solutionItemsFolder = doc.Root?
-			.Elements("Folder")
-			.FirstOrDefault(f => f.Attribute("Name")?.Value is { } name
-				&& name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase));
+		var solutionItemsFolder = FindSolutionItemsFolder(doc);
 
 		if (solutionItemsFolder is null)
 		{
@@ -100,17 +96,7 @@ public class SolutionItemsRule : RuleBase
 				new() { ["file"] = slnxFile });
 		}
 
-		// Get the files referenced in Solution Items
-		var referencedFiles = solutionItemsFolder
-			.Elements("File")
-			.Select(f => f.Attribute("Path")?.Value)
-			.Where(p => p is not null)
-			.ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-		// Check which expected files exist in the repo but are missing from Solution Items
-		var missing = _expectedSolutionItems
-			.Where(f => context.FileExists(f) && !referencedFiles.Contains(f))
-			.ToList();
+		var missing = FindMissingReferences(context, solutionItemsFolder);
 
 		return missing.Count == 0
 			? Pass("Solution Items folder references all standard repository files.")
@@ -124,6 +110,27 @@ public class SolutionItemsRule : RuleBase
 					["missing_files"] = missing.ToArray(),
 					["remediation_type"] = "add_slnx_file_entries"
 				});
+	}
+
+	private static XElement? FindSolutionItemsFolder(XDocument doc)
+		=> doc.Root?
+			.Elements("Folder")
+			.FirstOrDefault(f => f.Attribute("Name")?.Value is { } name
+				&& name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase));
+
+	private static List<string> FindMissingReferences(RepositoryContext context, XElement solutionItemsFolder)
+	{
+		// Get the files referenced in Solution Items
+		var referencedFiles = solutionItemsFolder
+			.Elements("File")
+			.Select(f => f.Attribute("Path")?.Value)
+			.Where(p => p is not null)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		// Check which expected files exist in the repo but are missing from Solution Items
+		return _expectedSolutionItems
+			.Where(f => context.FileExists(f) && !referencedFiles.Contains(f))
+			.ToList();
 	}
 
 	private RuleResult Problem(string message, string summary, string detail, Dictionary<string, object> data)
