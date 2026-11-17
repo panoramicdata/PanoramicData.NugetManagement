@@ -123,7 +123,7 @@ public class LocalRepoServiceFastForwardTests(ITestOutputHelper output) : TestWi
 	private static string Git(string workingDirectory, params string[] arguments)
 	{
 		var (exitCode, output) = LocalRepoService
-			.RunCommandAsync(workingDirectory, "git", arguments)
+			.RunCommandAsync(workingDirectory, "git", arguments, CancellationToken.None)
 			.GetAwaiter()
 			.GetResult();
 

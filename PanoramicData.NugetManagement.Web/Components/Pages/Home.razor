@@ -2297,7 +2297,7 @@ else
 
 		try
 		{
-			var result = await LocalRepo.CheckRemoteAccessAsync($"https://github.com/{probeRepository}.git");
+			var result = await LocalRepo.CheckRemoteAccessAsync($"https://github.com/{probeRepository}.git", CancellationToken.None);
 			_gitAccessProblem = result.Access == GitRemoteAccess.Ok ? null : result;
 		}
 		catch (Exception ex)
