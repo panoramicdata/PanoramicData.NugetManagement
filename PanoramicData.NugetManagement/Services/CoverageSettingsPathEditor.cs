@@ -37,54 +37,67 @@ public static partial class CoverageSettingsPathEditor
 
 		for (var i = 0; i < lines.Length; i++)
 		{
-			// A comment can quote the flag — the workflows this fixes carry one explaining the problem.
-			if (lines[i].TrimStart().StartsWith('#'))
+			if (RewriteLine(lines, i) is { } rewritten)
 			{
-				continue;
+				lines[i] = rewritten;
+				changed = true;
 			}
-
-			var match = SettingsPattern().Match(lines[i]);
-			var prefixed = false;
-			if (!match.Success)
-			{
-				match = PrefixedPattern().Match(lines[i]);
-				prefixed = match.Success;
-			}
-
-			if (!match.Success || IsDriveLetterPath(match.Groups["path"].Value) || !IsDirectHostRun(lines, i))
-			{
-				continue;
-			}
-
-			var path = match.Groups["path"].Value;
-			if (path.StartsWith("./", StringComparison.Ordinal))
-			{
-				path = path[2..];
-			}
-
-			var workingDirectory = WorkingDirectory(lines, i);
-			if (workingDirectory is not null && (!prefixed || path.StartsWith("../", StringComparison.Ordinal)))
-			{
-				if (Resolve(workingDirectory, path) is not { } resolved)
-				{
-					continue;
-				}
-
-				path = resolved;
-			}
-			else if (prefixed)
-			{
-				continue;
-			}
-
-			lines[i] = string.Concat(
-				lines[i].AsSpan(0, match.Groups["path"].Index),
-				prefixed ? path : $"{_workspace}/{path}",
-				lines[i].AsSpan(match.Groups["path"].Index + match.Groups["path"].Length));
-			changed = true;
 		}
 
 		return changed ? string.Join(newline, lines) : null;
+	}
+
+	private static string? RewriteLine(string[] lines, int i)
+	{
+		var line = lines[i];
+
+		// A comment can quote the flag — the workflows this fixes carry one explaining the problem.
+		if (line.TrimStart().StartsWith('#'))
+		{
+			return null;
+		}
+
+		var (match, prefixed) = MatchSettings(line);
+		var pathGroup = match.Groups["path"];
+		if (!match.Success || IsDriveLetterPath(pathGroup.Value) || !IsDirectHostRun(lines, i))
+		{
+			return null;
+		}
+
+		if (ResolveTarget(lines, i, pathGroup.Value, prefixed) is not { } path)
+		{
+			return null;
+		}
+
+		return string.Concat(
+			line.AsSpan(0, pathGroup.Index),
+			prefixed ? path : $"{_workspace}/{path}",
+			line.AsSpan(pathGroup.Index + pathGroup.Length));
+	}
+
+	private static (Match Match, bool Prefixed) MatchSettings(string line)
+	{
+		var match = SettingsPattern().Match(line);
+		if (match.Success)
+		{
+			return (match, false);
+		}
+
+		match = PrefixedPattern().Match(line);
+		return (match, match.Success);
+	}
+
+	private static string? ResolveTarget(string[] lines, int i, string matchedPath, bool prefixed)
+	{
+		var path = matchedPath.StartsWith("./", StringComparison.Ordinal) ? matchedPath[2..] : matchedPath;
+
+		var workingDirectory = WorkingDirectory(lines, i);
+		if (workingDirectory is not null && (!prefixed || path.StartsWith("../", StringComparison.Ordinal)))
+		{
+			return Resolve(workingDirectory, path);
+		}
+
+		return prefixed ? null : path;
 	}
 
 	/// <summary>
@@ -138,14 +151,20 @@ public static partial class CoverageSettingsPathEditor
 
 			if (WorkingDirectoryPattern().Match(lines[j]) is { Success: true } match)
 			{
-				var value = match.Groups["dir"].Value.Trim().Trim('\'', '"').Trim('/');
-				return value.Length == 0 || value.Contains("${{", StringComparison.Ordinal) || value.StartsWith('.') && value.Length == 1
-					? null
-					: value;
+				return NormaliseDirectory(match.Groups["dir"].Value);
 			}
 		}
 
 		return null;
+	}
+
+
+	private static string? NormaliseDirectory(string raw)
+	{
+		var value = raw.Trim().Trim('\'', '"').Trim('/');
+		return value.Length == 0 || value.Contains("${{", StringComparison.Ordinal) || (value.StartsWith('.') && value.Length == 1)
+			? null
+			: value;
 	}
 
 	/// <summary>
