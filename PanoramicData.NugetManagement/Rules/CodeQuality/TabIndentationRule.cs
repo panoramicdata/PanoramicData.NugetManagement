@@ -54,11 +54,17 @@ public class TabIndentationRule : RuleBase
 				}));
 		}
 
-		// Check there is no override to spaces for C# or XML sections
-		// We look for indent_style = space after a [*.cs] or [*.{xml,...}] section header
-		var lines = content.Split('\n');
+		var overriddenSection = FindSpaceOverrideSection(content);
+		return Task.FromResult(overriddenSection is null
+			? Pass("Tab indentation is enforced for C# and XML files.")
+			: SpaceOverrideFailure(overriddenSection));
+	}
+
+	private static string? FindSpaceOverrideSection(string content)
+	{
+		// An indent_style = space line after a [*.cs] or [*.{xml,...}] section header overrides the global tab.
 		var currentSection = "";
-		foreach (var rawLine in lines)
+		foreach (var rawLine in content.Split('\n'))
 		{
 			var line = rawLine.Trim();
 			if (line.StartsWith('[') && line.EndsWith(']'))
@@ -70,26 +76,29 @@ public class TabIndentationRule : RuleBase
 			if (line.Equals("indent_style = space", StringComparison.OrdinalIgnoreCase) &&
 				IsCSharpOrXmlSection(currentSection))
 			{
-				return Task.FromResult(Fail(
-					$".editorconfig overrides indent_style to space in section {currentSection}.",
-					new RuleAdvisory
-					{
-						Summary = $"Change indent_style = space to indent_style = tab in the {currentSection} section.",
-						Detail = $"The `.editorconfig` section `{currentSection}` overrides `indent_style` to `space`. Change it to `indent_style = tab`.",
-						Data = new()
-						{
-							["file"] = ".editorconfig",
-							["remediation_type"] = "replace_in_file",
-							["section"] = currentSection,
-							["old_text"] = "indent_style = space",
-							["new_text"] = "indent_style = tab"
-						}
-					}));
+				return currentSection;
 			}
 		}
 
-		return Task.FromResult(Pass("Tab indentation is enforced for C# and XML files."));
+		return null;
 	}
+
+	private RuleResult SpaceOverrideFailure(string currentSection)
+		=> Fail(
+			$".editorconfig overrides indent_style to space in section {currentSection}.",
+			new RuleAdvisory
+			{
+				Summary = $"Change indent_style = space to indent_style = tab in the {currentSection} section.",
+				Detail = $"The `.editorconfig` section `{currentSection}` overrides `indent_style` to `space`. Change it to `indent_style = tab`.",
+				Data = new()
+				{
+					["file"] = ".editorconfig",
+					["remediation_type"] = "replace_in_file",
+					["section"] = currentSection,
+					["old_text"] = "indent_style = space",
+					["new_text"] = "indent_style = tab"
+				}
+			});
 
 	private static bool IsCSharpOrXmlSection(string sectionHeader)
 	{

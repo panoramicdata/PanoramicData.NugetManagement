@@ -37,18 +37,7 @@ public class CiActionsCheckoutVersionRule : RuleBase, IGovernsDependency
 		var content = context.GetFileContent(ciWorkflowPath);
 		if (content is null)
 		{
-			return Task.FromResult(Fail(
-				"CI workflow not found.",
-				new RuleAdvisory
-				{
-					Summary = $"Create `{ciWorkflowPath}` and use `actions/checkout@{Standards.LatestActionsCheckoutVersion}`",
-					Detail = $"Create `{ciWorkflowPath}` using `actions/checkout@{Standards.LatestActionsCheckoutVersion}`.",
-					Data = new()
-					{
-						["expected_path"] = ciWorkflowPath,
-						["latest_version"] = Standards.LatestActionsCheckoutVersion
-					}
-				}));
+			return Task.FromResult(WorkflowNotFound(ciWorkflowPath));
 		}
 
 		var floor = Services.ActionVersionCatalog.Default.GetFloorSpec("actions/checkout", Standards.LatestActionsCheckoutVersion);
@@ -92,4 +81,18 @@ public class CiActionsCheckoutVersionRule : RuleBase, IGovernsDependency
 				Data = data
 			}));
 	}
+
+	private RuleResult WorkflowNotFound(string ciWorkflowPath)
+		=> Fail(
+			"CI workflow not found.",
+			new RuleAdvisory
+			{
+				Summary = $"Create `{ciWorkflowPath}` and use `actions/checkout@{Standards.LatestActionsCheckoutVersion}`",
+				Detail = $"Create `{ciWorkflowPath}` using `actions/checkout@{Standards.LatestActionsCheckoutVersion}`.",
+				Data = new()
+				{
+					["expected_path"] = ciWorkflowPath,
+					["latest_version"] = Standards.LatestActionsCheckoutVersion
+				}
+			});
 }
