@@ -102,19 +102,7 @@ public sealed class RuleWaiverCatalog
 			return empty;
 		}
 
-		Dictionary<string, List<RuleWaiver>?>? raw;
-		try
-		{
-			raw = JsonSerializer.Deserialize<Dictionary<string, List<RuleWaiver>?>>(
-				File.ReadAllText(filePath),
-				_jsonOptions);
-		}
-		catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
-		{
-			loadFailure = $"{Path.GetFileName(filePath)} could not be read: {ex.Message}";
-			return empty;
-		}
-
+		var raw = ReadRaw(filePath, out loadFailure);
 		if (raw is null)
 		{
 			return empty;
@@ -130,24 +118,7 @@ public sealed class RuleWaiverCatalog
 				continue;
 			}
 
-			var kept = new List<RuleWaiver>();
-			foreach (var waiver in waivers)
-			{
-				// Refused one at a time rather than failing the file: one unusable entry is an unusable
-				// entry, not grounds to drop every other waiver the estate has agreed.
-				var refusal = Refusal(waiver);
-				if (refusal is not null)
-				{
-					refusals.Append(refusals.Length == 0 ? string.Empty : " ")
-						.Append(repository)
-						.Append(": ")
-						.Append(refusal);
-					continue;
-				}
-
-				kept.Add(waiver);
-			}
-
+			var kept = KeepUsable(repository, waivers, refusals);
 			if (kept.Count > 0)
 			{
 				loaded[repository.Trim()] = kept;
@@ -162,6 +133,46 @@ public sealed class RuleWaiverCatalog
 		return loaded;
 	}
 
+
+	private static Dictionary<string, List<RuleWaiver>?>? ReadRaw(string filePath, out string? loadFailure)
+	{
+		loadFailure = null;
+
+		try
+		{
+			return JsonSerializer.Deserialize<Dictionary<string, List<RuleWaiver>?>>(
+				File.ReadAllText(filePath),
+				_jsonOptions);
+		}
+		catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+		{
+			loadFailure = $"{Path.GetFileName(filePath)} could not be read: {ex.Message}";
+			return null;
+		}
+	}
+
+	private static List<RuleWaiver> KeepUsable(string repository, List<RuleWaiver> waivers, StringBuilder refusals)
+	{
+		var kept = new List<RuleWaiver>();
+		foreach (var waiver in waivers)
+		{
+			// Refused one at a time rather than failing the file: one unusable entry is an unusable
+			// entry, not grounds to drop every other waiver the estate has agreed.
+			var refusal = Refusal(waiver);
+			if (refusal is not null)
+			{
+				refusals.Append(refusals.Length == 0 ? string.Empty : " ")
+					.Append(repository)
+					.Append(": ")
+					.Append(refusal);
+				continue;
+			}
+
+			kept.Add(waiver);
+		}
+
+		return kept;
+	}
 	/// <summary>
 	/// Why a waiver cannot be used, or null when it can.
 	/// </summary>
