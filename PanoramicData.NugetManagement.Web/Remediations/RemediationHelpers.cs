@@ -73,17 +73,9 @@ internal static partial class RemediationHelpers
 	{
 		var fullPath = ResolvePath(localPath, relativePath);
 		XDocument? doc = null;
-		if (File.Exists(fullPath))
+		if (File.Exists(fullPath) && !TryLoadForEdit(fullPath, relativePath, result, onOutput, out doc))
 		{
-			try
-			{
-				doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
-			}
-			catch (Exception ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {relativePath}: {ex.Message}");
-				return;
-			}
+			return;
 		}
 
 		var lists = doc?.Descendants("TargetFrameworks").ToList() ?? [];
@@ -93,39 +85,7 @@ internal static partial class RemediationHelpers
 			return;
 		}
 
-		var latestMajor = 0;
-		var isMajorMoniker = latest.StartsWith("net", StringComparison.Ordinal) && latest.EndsWith(".0", StringComparison.Ordinal)
-			&& int.TryParse(latest[3..^2], System.Globalization.CultureInfo.InvariantCulture, out latestMajor);
-		var previous = isMajorMoniker ? $"net{latestMajor - 1}.0" : null;
-		var changed = false;
-
-		foreach (var list in lists)
-		{
-			var entries = list.Value
-				.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-				.Select(entry => previous is not null && string.Equals(entry, previous, StringComparison.OrdinalIgnoreCase) ? latest : entry)
-				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.ToList();
-			if (!entries.Contains(latest, StringComparer.OrdinalIgnoreCase))
-			{
-				entries.Add(latest);
-			}
-
-			var joined = string.Join(';', entries);
-			if (joined != list.Value)
-			{
-				list.Value = joined;
-				changed = true;
-			}
-		}
-
-		foreach (var single in doc.Descendants("TargetFramework").Where(e => previous is not null && string.Equals(e.Value.Trim(), previous, StringComparison.OrdinalIgnoreCase)))
-		{
-			single.Value = latest;
-			changed = true;
-		}
-
-		if (!changed)
+		if (!RewriteTargetFrameworks(doc, lists, latest))
 		{
 			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already targets {latest} — skipping.");
 			return;
@@ -135,6 +95,71 @@ internal static partial class RemediationHelpers
 		applied.Add(relativePath);
 		onOutput?.Invoke($"✅ [{result.RuleId}] Updated <TargetFrameworks> to include {latest} in {relativePath}");
 	}
+
+	private static bool TryLoadForEdit(string fullPath, string relativePath, RuleResult result, Action<string>? onOutput, out XDocument? doc)
+	{
+		try
+		{
+			doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+			return true;
+		}
+		catch (Exception ex)
+		{
+			doc = null;
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {relativePath}: {ex.Message}");
+			return false;
+		}
+	}
+
+	private static bool RewriteTargetFrameworks(XDocument doc, List<XElement> lists, string latest)
+	{
+		var previous = PreviousMoniker(latest);
+		var changed = false;
+
+		foreach (var list in lists)
+		{
+			changed |= RewriteList(list, previous, latest);
+		}
+
+		foreach (var single in doc.Descendants("TargetFramework").Where(e => previous is not null && string.Equals(e.Value.Trim(), previous, StringComparison.OrdinalIgnoreCase)))
+		{
+			single.Value = latest;
+			changed = true;
+		}
+
+		return changed;
+	}
+
+	private static string? PreviousMoniker(string latest)
+	{
+		var latestMajor = 0;
+		var isMajorMoniker = latest.StartsWith("net", StringComparison.Ordinal) && latest.EndsWith(".0", StringComparison.Ordinal)
+			&& int.TryParse(latest[3..^2], System.Globalization.CultureInfo.InvariantCulture, out latestMajor);
+		return isMajorMoniker ? $"net{latestMajor - 1}.0" : null;
+	}
+
+	private static bool RewriteList(XElement list, string? previous, string latest)
+	{
+		var entries = list.Value
+			.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.Select(entry => previous is not null && string.Equals(entry, previous, StringComparison.OrdinalIgnoreCase) ? latest : entry)
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (!entries.Contains(latest, StringComparer.OrdinalIgnoreCase))
+		{
+			entries.Add(latest);
+		}
+
+		var joined = string.Join(';', entries);
+		if (joined == list.Value)
+		{
+			return false;
+		}
+
+		list.Value = joined;
+		return true;
+	}
+
 	/// <summary>
 	/// Ensures an XML property exists in a .props or .csproj file.
 	/// Creates the file if it doesn't exist.
@@ -151,51 +176,88 @@ internal static partial class RemediationHelpers
 		var fullPath = ResolvePath(localPath, relativePath);
 		if (!File.Exists(fullPath))
 		{
-			EnsureDirectory(fullPath);
-			var content = $"""
+			CreatePropertyFile(fullPath, relativePath, propertyName, propertyValue, result, applied, onOutput);
+			return;
+		}
+
+		var xml = File.ReadAllText(fullPath);
+		if (!xml.Contains($"<{propertyName}>", StringComparison.OrdinalIgnoreCase))
+		{
+			AddProperty(fullPath, relativePath, xml, propertyName, propertyValue, result, applied, onOutput);
+			return;
+		}
+
+		// Property tag exists — check if it already has the correct value
+		if (xml.Contains($"<{propertyName}>{propertyValue}</{propertyName}>", StringComparison.OrdinalIgnoreCase))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already has <{propertyName}>{propertyValue}</{propertyName}> — skipping.");
+			return;
+		}
+
+		UpdateProperty(fullPath, relativePath, xml, propertyName, propertyValue, result, applied, onOutput);
+	}
+
+	private static void CreatePropertyFile(
+		string fullPath,
+		string relativePath,
+		string propertyName,
+		string propertyValue,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		EnsureDirectory(fullPath);
+		var content = $"""
                 <Project>
                   <PropertyGroup>
                     <{propertyName}>{propertyValue}</{propertyName}>
                   </PropertyGroup>
                 </Project>
                 """;
-			File.WriteAllText(fullPath, content);
-			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath} with <{propertyName}>{propertyValue}</{propertyName}>");
-			return;
-		}
+		File.WriteAllText(fullPath, content);
+		applied.Add(relativePath);
+		onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath} with <{propertyName}>{propertyValue}</{propertyName}>");
+	}
 
-		var xml = File.ReadAllText(fullPath);
-		if (xml.Contains($"<{propertyName}>", StringComparison.OrdinalIgnoreCase))
+	private static void UpdateProperty(
+		string fullPath,
+		string relativePath,
+		string xml,
+		string propertyName,
+		string propertyValue,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		// Property exists but with a different value — update it
+		try
 		{
-			// Property tag exists — check if it already has the correct value
-			if (xml.Contains($"<{propertyName}>{propertyValue}</{propertyName}>", StringComparison.OrdinalIgnoreCase))
+			var doc = XDocument.Parse(xml);
+			var existing = doc.Descendants(propertyName).FirstOrDefault();
+			if (existing is not null)
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already has <{propertyName}>{propertyValue}</{propertyName}> — skipping.");
-				return;
+				existing.Value = propertyValue;
+				doc.Save(fullPath);
+				applied.Add(relativePath);
+				onOutput?.Invoke($"✅ [{result.RuleId}] Updated <{propertyName}> to {propertyValue} in {relativePath}");
 			}
-
-			// Property exists but with a different value — update it
-			try
-			{
-				var doc = XDocument.Parse(xml);
-				var existing = doc.Descendants(propertyName).FirstOrDefault();
-				if (existing is not null)
-				{
-					existing.Value = propertyValue;
-					doc.Save(fullPath);
-					applied.Add(relativePath);
-					onOutput?.Invoke($"✅ [{result.RuleId}] Updated <{propertyName}> to {propertyValue} in {relativePath}");
-				}
-			}
-			catch (Exception ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to update {relativePath}: {ex.Message}");
-			}
-
-			return;
 		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to update {relativePath}: {ex.Message}");
+		}
+	}
 
+	private static void AddProperty(
+		string fullPath,
+		string relativePath,
+		string xml,
+		string propertyName,
+		string propertyValue,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
 		try
 		{
 			var doc = XDocument.Parse(xml);
@@ -240,39 +302,13 @@ internal static partial class RemediationHelpers
 		try
 		{
 			var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
-			var existing = doc.Descendants("PackageReference")
-				.FirstOrDefault(element => string.Equals(
-					element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value,
-					packageName,
-					StringComparison.OrdinalIgnoreCase));
-
-			if (existing is not null)
+			if (HasPackageReference(doc, packageName))
 			{
 				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already references {packageName} — skipping.");
 				return;
 			}
 
-			var itemGroup = doc.Root?.Elements("ItemGroup")
-				.FirstOrDefault(group => group.Elements("PackageReference").Any());
-
-			if (itemGroup is null)
-			{
-				itemGroup = new XElement("ItemGroup");
-				doc.Root?.Add(itemGroup);
-			}
-
-			var packageReference = new XElement("PackageReference", new XAttribute("Include", packageName));
-			if (!string.IsNullOrWhiteSpace(packageVersion))
-			{
-				packageReference.SetAttributeValue("Version", packageVersion);
-			}
-
-			if (!string.IsNullOrWhiteSpace(privateAssets))
-			{
-				packageReference.SetAttributeValue("PrivateAssets", privateAssets);
-			}
-
-			itemGroup.Add(packageReference);
+			AppendPackageReference(doc, packageName, packageVersion, privateAssets);
 			doc.Save(fullPath);
 			applied.Add(relativePath);
 			onOutput?.Invoke($"✅ [{result.RuleId}] Added <PackageReference Include=\"{packageName}\" /> to {relativePath}");
@@ -281,6 +317,31 @@ internal static partial class RemediationHelpers
 		{
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
+	}
+
+	private static bool HasPackageReference(XDocument doc, string packageName)
+		=> doc.Descendants("PackageReference")
+			.Any(element => string.Equals(
+				element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value,
+				packageName,
+				StringComparison.OrdinalIgnoreCase));
+
+	private static void AppendPackageReference(XDocument doc, string packageName, string? packageVersion, string? privateAssets)
+	{
+		var itemGroup = ItemGroupHolding(doc, "PackageReference");
+
+		var packageReference = new XElement("PackageReference", new XAttribute("Include", packageName));
+		if (!string.IsNullOrWhiteSpace(packageVersion))
+		{
+			packageReference.SetAttributeValue("Version", packageVersion);
+		}
+
+		if (!string.IsNullOrWhiteSpace(privateAssets))
+		{
+			packageReference.SetAttributeValue("PrivateAssets", privateAssets);
+		}
+
+		itemGroup.Add(packageReference);
 	}
 
 	/// <summary>
@@ -429,14 +490,7 @@ internal static partial class RemediationHelpers
 		try
 		{
 			var doc = XDocument.Parse(xml);
-			var itemGroup = doc.Root?.Elements("ItemGroup")
-				.FirstOrDefault(ig => ig.Elements("PackageVersion").Any());
-
-			if (itemGroup is null)
-			{
-				itemGroup = new XElement("ItemGroup");
-				doc.Root?.Add(itemGroup);
-			}
+			var itemGroup = ItemGroupHolding(doc, "PackageVersion");
 
 			itemGroup.Add(new XElement("PackageVersion",
 				new XAttribute("Include", packageName),
@@ -470,41 +524,58 @@ internal static partial class RemediationHelpers
 
 		foreach (var fileUpdates in groupedUpdates)
 		{
-			var fullPath = ResolvePath(localPath, fileUpdates.Key);
-			if (!File.Exists(fullPath))
+			ApplyUpdatesToFile(localPath, fileUpdates.Key, [.. fileUpdates], result, applied, onOutput);
+		}
+	}
+
+	private static XElement ItemGroupHolding(XDocument doc, string childName)
+	{
+		var itemGroup = doc.Root?.Elements("ItemGroup")
+			.FirstOrDefault(group => group.Elements(childName).Any());
+
+		if (itemGroup is null)
+		{
+			itemGroup = new XElement("ItemGroup");
+			doc.Root?.Add(itemGroup);
+		}
+
+		return itemGroup;
+	}
+
+	private static void ApplyUpdatesToFile(
+		string localPath,
+		string relativePath,
+		List<PackageVersionUpdate> fileUpdates,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, relativePath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot update package versions.");
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+			var changed = UpdateAll(doc, fileUpdates);
+
+			if (!changed)
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {fileUpdates.Key} does not exist — cannot update package versions.");
-				continue;
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] No matching package version entries found in {relativePath} — skipping.");
+				return;
 			}
 
-			try
-			{
-				var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
-				var changed = false;
+			doc.Save(fullPath);
+			AddOnce(applied, relativePath);
 
-				foreach (var update in fileUpdates)
-				{
-					changed |= UpdatePackageVersion(doc, update);
-				}
-
-				if (!changed)
-				{
-					onOutput?.Invoke($"⏭️ [{result.RuleId}] No matching package version entries found in {fileUpdates.Key} — skipping.");
-					continue;
-				}
-
-				doc.Save(fullPath);
-				if (!applied.Contains(fileUpdates.Key, StringComparer.OrdinalIgnoreCase))
-				{
-					applied.Add(fileUpdates.Key);
-				}
-
-				onOutput?.Invoke($"✅ [{result.RuleId}] Updated package versions in {fileUpdates.Key}");
-			}
-			catch (Exception ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {fileUpdates.Key}: {ex.Message}");
-			}
+			onOutput?.Invoke($"✅ [{result.RuleId}] Updated package versions in {relativePath}");
+		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
 	}
 
@@ -524,39 +595,7 @@ internal static partial class RemediationHelpers
 
 		foreach (var projectPath in projectPaths)
 		{
-			var fullPath = ResolvePath(localPath, projectPath);
-			if (!File.Exists(fullPath))
-			{
-				continue;
-			}
-
-			try
-			{
-				var doc = XDocument.Load(fullPath);
-				foreach (var pkgRef in doc.Descendants("PackageReference"))
-				{
-					var name = pkgRef.Attribute("Include")?.Value;
-					if (string.IsNullOrEmpty(name))
-					{
-						continue;
-					}
-
-					// Version from attribute
-					var version = pkgRef.Attribute("Version")?.Value;
-
-					// Version from child element
-					version ??= pkgRef.Element("Version")?.Value;
-
-					if (!string.IsNullOrEmpty(version) && !packageVersions.ContainsKey(name))
-					{
-						packageVersions[name] = version;
-					}
-				}
-			}
-			catch (Exception ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {projectPath}: {ex.Message}");
-			}
+			CollectPackageVersions(localPath, projectPath, packageVersions, result, onOutput);
 		}
 
 		// Phase 2: add PackageVersion entries to Directory.Packages.props
@@ -568,46 +607,121 @@ internal static partial class RemediationHelpers
 		// Phase 3: remove Version attributes/elements from csproj files
 		foreach (var projectPath in projectPaths)
 		{
-			var fullPath = ResolvePath(localPath, projectPath);
-			if (!File.Exists(fullPath))
-			{
-				continue;
-			}
+			StripVersions(localPath, projectPath, result, applied, onOutput);
+		}
+	}
 
-			try
-			{
-				var doc = XDocument.Load(fullPath);
-				var changed = false;
-				foreach (var pkgRef in doc.Descendants("PackageReference"))
-				{
-					var versionAttr = pkgRef.Attribute("Version");
-					if (versionAttr is not null)
-					{
-						versionAttr.Remove();
-						changed = true;
-					}
+	private static bool UpdateAll(XDocument doc, List<PackageVersionUpdate> fileUpdates)
+	{
+		var changed = false;
+		foreach (var update in fileUpdates)
+		{
+			changed |= UpdatePackageVersion(doc, update);
+		}
 
-					// Also remove <Version> child element
-					var versionElement = pkgRef.Element("Version");
-					if (versionElement is not null)
-					{
-						versionElement.Remove();
-						changed = true;
-					}
-				}
+		return changed;
+	}
 
-				if (changed)
-				{
-					doc.Save(fullPath);
-					applied.Add(projectPath);
-					onOutput?.Invoke($"✅ [{result.RuleId}] Removed Version attributes from PackageReference in {projectPath}");
-				}
-			}
-			catch (Exception ex)
+	private static void AddOnce(List<string> applied, string relativePath)
+	{
+		if (!applied.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
+		{
+			applied.Add(relativePath);
+		}
+	}
+
+	private static void CollectPackageVersions(
+		string localPath,
+		string projectPath,
+		Dictionary<string, string> packageVersions,
+		RuleResult result,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, projectPath);
+		if (!File.Exists(fullPath))
+		{
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath);
+			foreach (var pkgRef in doc.Descendants("PackageReference"))
 			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
+				RecordVersion(pkgRef, packageVersions);
 			}
 		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to read {projectPath}: {ex.Message}");
+		}
+	}
+
+	private static void RecordVersion(XElement pkgRef, Dictionary<string, string> packageVersions)
+	{
+		var name = pkgRef.Attribute("Include")?.Value;
+		if (string.IsNullOrEmpty(name))
+		{
+			return;
+		}
+
+		// Version from attribute, then from child element
+		var version = pkgRef.Attribute("Version")?.Value ?? pkgRef.Element("Version")?.Value;
+
+		if (!string.IsNullOrEmpty(version))
+		{
+			packageVersions.TryAdd(name, version);
+		}
+	}
+
+	private static void StripVersions(
+		string localPath,
+		string projectPath,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, projectPath);
+		if (!File.Exists(fullPath))
+		{
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath);
+			var changed = false;
+			foreach (var pkgRef in doc.Descendants("PackageReference"))
+			{
+				changed |= RemoveIfPresent(pkgRef.Attribute("Version"));
+
+				// Also remove <Version> child element
+				changed |= RemoveIfPresent(pkgRef.Element("Version"));
+			}
+
+			if (changed)
+			{
+				doc.Save(fullPath);
+				applied.Add(projectPath);
+				onOutput?.Invoke($"✅ [{result.RuleId}] Removed Version attributes from PackageReference in {projectPath}");
+			}
+		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
+		}
+	}
+
+	private static bool RemoveIfPresent(XAttribute? attribute)
+	{
+		attribute?.Remove();
+		return attribute is not null;
+	}
+
+	private static bool RemoveIfPresent(XElement? element)
+	{
+		element?.Remove();
+		return element is not null;
 	}
 
 	/// <summary>
@@ -633,33 +747,7 @@ internal static partial class RemediationHelpers
 		{
 			var doc = XDocument.Load(fullPath);
 
-			// Find or create an ItemGroup for PackageVersion entries
-			var itemGroup = doc.Root?.Elements("ItemGroup")
-				.FirstOrDefault(ig => ig.Elements("PackageVersion").Any());
-
-			if (itemGroup is null)
-			{
-				itemGroup = new XElement("ItemGroup");
-				doc.Root?.Add(itemGroup);
-			}
-
-			var added = 0;
-			foreach (var (name, version) in packageVersions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
-			{
-				// Skip if already present
-				var existing = itemGroup.Elements("PackageVersion")
-					.Any(pv => string.Equals(pv.Attribute("Include")?.Value, name, StringComparison.OrdinalIgnoreCase));
-
-				if (existing)
-				{
-					continue;
-				}
-
-				itemGroup.Add(new XElement("PackageVersion",
-					new XAttribute("Include", name),
-					new XAttribute("Version", version)));
-				added++;
-			}
+			var added = AddMissingPackageVersions(ItemGroupHolding(doc, "PackageVersion"), packageVersions);
 
 			if (added > 0)
 			{
@@ -695,34 +783,7 @@ internal static partial class RemediationHelpers
 		try
 		{
 			var doc = XDocument.Load(fullPath);
-			var solutionItemsFolder = doc.Root?
-				.Elements("Folder")
-				.FirstOrDefault(f =>
-				{
-					var name = f.Attribute("Name")?.Value;
-					return name is not null &&
-						name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase);
-				});
-
-			if (solutionItemsFolder is null)
-			{
-				solutionItemsFolder = new XElement("Folder", new XAttribute("Name", "/Solution Items/"));
-				doc.Root?.Add(solutionItemsFolder);
-			}
-
-			var addedCount = 0;
-			foreach (var missingFile in missingFiles)
-			{
-				var alreadyExists = solutionItemsFolder.Elements("File")
-					.Any(el => string.Equals(el.Attribute("Path")?.Value, missingFile, StringComparison.OrdinalIgnoreCase));
-				if (alreadyExists)
-				{
-					continue;
-				}
-
-				solutionItemsFolder.Add(new XElement("File", new XAttribute("Path", missingFile)));
-				addedCount++;
-			}
+			var addedCount = AddMissingFileEntries(SolutionItemsFolder(doc), missingFiles);
 
 			if (addedCount > 0)
 			{
@@ -739,6 +800,64 @@ internal static partial class RemediationHelpers
 		{
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {relativePath}: {ex.Message}");
 		}
+	}
+
+	private static int AddMissingPackageVersions(XElement itemGroup, Dictionary<string, string> packageVersions)
+	{
+		var added = 0;
+		foreach (var (name, version) in packageVersions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+		{
+			// Skip if already present
+			var existing = itemGroup.Elements("PackageVersion")
+				.Any(pv => string.Equals(pv.Attribute("Include")?.Value, name, StringComparison.OrdinalIgnoreCase));
+
+			if (existing)
+			{
+				continue;
+			}
+
+			itemGroup.Add(new XElement("PackageVersion",
+				new XAttribute("Include", name),
+				new XAttribute("Version", version)));
+			added++;
+		}
+
+		return added;
+	}
+
+	private static XElement SolutionItemsFolder(XDocument doc)
+	{
+		var solutionItemsFolder = doc.Root?
+			.Elements("Folder")
+			.FirstOrDefault(f => f.Attribute("Name")?.Value is { } name
+				&& name.Contains("Solution Items", StringComparison.OrdinalIgnoreCase));
+
+		if (solutionItemsFolder is null)
+		{
+			solutionItemsFolder = new XElement("Folder", new XAttribute("Name", "/Solution Items/"));
+			doc.Root?.Add(solutionItemsFolder);
+		}
+
+		return solutionItemsFolder;
+	}
+
+	private static int AddMissingFileEntries(XElement solutionItemsFolder, string[] missingFiles)
+	{
+		var addedCount = 0;
+		foreach (var missingFile in missingFiles)
+		{
+			var alreadyExists = solutionItemsFolder.Elements("File")
+				.Any(el => string.Equals(el.Attribute("Path")?.Value, missingFile, StringComparison.OrdinalIgnoreCase));
+			if (alreadyExists)
+			{
+				continue;
+			}
+
+			solutionItemsFolder.Add(new XElement("File", new XAttribute("Path", missingFile)));
+			addedCount++;
+		}
+
+		return addedCount;
 	}
 
 	/// <summary>
@@ -766,13 +885,7 @@ internal static partial class RemediationHelpers
 
 		var slnCandidates = Directory.GetFiles(localPath, "*.sln", SearchOption.TopDirectoryOnly)
 			.ToArray();
-		var repoName = Path.GetFileName(localPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-		var slnPath = slnCandidates
-			.FirstOrDefault(path => string.Equals(
-				Path.GetFileNameWithoutExtension(path),
-				repoName,
-				StringComparison.OrdinalIgnoreCase))
-			?? slnCandidates.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+		var slnPath = PickLegacySolution(localPath, slnCandidates);
 		if (slnPath is null)
 		{
 			onOutput?.Invoke($"⏭️ [{result.RuleId}] No root .sln file found to migrate.");
@@ -789,70 +902,85 @@ internal static partial class RemediationHelpers
 
 		try
 		{
-			using var process = new Process
-			{
-				StartInfo = new ProcessStartInfo
-				{
-					FileName = "dotnet",
-					ArgumentList = { "sln", slnFileName, "migrate" },
-					WorkingDirectory = localPath,
-					UseShellExecute = false,
-					RedirectStandardOutput = true,
-					RedirectStandardError = true,
-					CreateNoWindow = true
-				}
-			};
-
-			process.Start();
-			var output = process.StandardOutput.ReadToEnd();
-			var error = process.StandardError.ReadToEnd();
-			process.WaitForExit();
-
-			if (!string.IsNullOrWhiteSpace(output))
-			{
-				onOutput?.Invoke(output.Trim());
-			}
-
-			if (process.ExitCode != 0)
-			{
-				if (!string.IsNullOrWhiteSpace(error))
-				{
-					onOutput?.Invoke(error.Trim());
-				}
-
-				onOutput?.Invoke($"❌ [{result.RuleId}] Migration command failed with exit code {process.ExitCode}.");
-				return false;
-			}
-
-			var slnxPath = Path.ChangeExtension(slnPath, ".slnx");
-			if (!File.Exists(slnxPath))
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Migration completed but {Path.GetFileName(slnxPath)} was not found.");
-				return false;
-			}
-
-			File.Delete(slnPath);
-
-			var slnxRelative = Path.GetFileName(slnxPath);
-			if (!applied.Any(path => string.Equals(path, slnxRelative, StringComparison.OrdinalIgnoreCase)))
-			{
-				applied.Add(slnxRelative);
-			}
-
-			var slnRelative = Path.GetFileName(slnPath);
-			if (!applied.Any(path => string.Equals(path, slnRelative, StringComparison.OrdinalIgnoreCase)))
-			{
-				applied.Add(slnRelative);
-			}
-
-			onOutput?.Invoke($"✅ [{result.RuleId}] Migrated {slnFileName} to {slnxRelative} and deleted {slnFileName}.");
-			return true;
+			return RunSlnMigrate(localPath, slnFileName, result, onOutput)
+				&& CompleteMigration(slnPath, applied, result, onOutput);
 		}
 		catch (Exception ex)
 		{
 			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to migrate {slnFileName}: {ex.Message}");
 			return false;
 		}
+	}
+
+	private static string? PickLegacySolution(string localPath, string[] slnCandidates)
+	{
+		var repoName = Path.GetFileName(localPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+		return slnCandidates
+			.FirstOrDefault(path => string.Equals(
+				Path.GetFileNameWithoutExtension(path),
+				repoName,
+				StringComparison.OrdinalIgnoreCase))
+			?? slnCandidates.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+	}
+
+	private static bool RunSlnMigrate(string localPath, string slnFileName, RuleResult result, Action<string>? onOutput)
+	{
+		using var process = new Process
+		{
+			StartInfo = new ProcessStartInfo
+			{
+				FileName = "dotnet",
+				ArgumentList = { "sln", slnFileName, "migrate" },
+				WorkingDirectory = localPath,
+				UseShellExecute = false,
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				CreateNoWindow = true
+			}
+		};
+
+		process.Start();
+		var output = process.StandardOutput.ReadToEnd();
+		var error = process.StandardError.ReadToEnd();
+		process.WaitForExit();
+
+		if (!string.IsNullOrWhiteSpace(output))
+		{
+			onOutput?.Invoke(output.Trim());
+		}
+
+		if (process.ExitCode == 0)
+		{
+			return true;
+		}
+
+		if (!string.IsNullOrWhiteSpace(error))
+		{
+			onOutput?.Invoke(error.Trim());
+		}
+
+		onOutput?.Invoke($"❌ [{result.RuleId}] Migration command failed with exit code {process.ExitCode}.");
+		return false;
+	}
+
+	private static bool CompleteMigration(string slnPath, List<string> applied, RuleResult result, Action<string>? onOutput)
+	{
+		var slnxPath = Path.ChangeExtension(slnPath, ".slnx");
+		if (!File.Exists(slnxPath))
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Migration completed but {Path.GetFileName(slnxPath)} was not found.");
+			return false;
+		}
+
+		File.Delete(slnPath);
+
+		var slnxRelative = Path.GetFileName(slnxPath);
+		AddOnce(applied, slnxRelative);
+		AddOnce(applied, Path.GetFileName(slnPath));
+
+		var slnFileName = Path.GetFileName(slnPath);
+		onOutput?.Invoke($"✅ [{result.RuleId}] Migrated {slnFileName} to {slnxRelative} and deleted {slnFileName}.");
+		return true;
 	}
 
 	private static bool UpdatePackageVersion(XDocument doc, PackageVersionUpdate update)
@@ -873,44 +1001,52 @@ internal static partial class RemediationHelpers
 			return false;
 		}
 
+		var asAttribute = update.VersionKind.EndsWith("Attribute", StringComparison.Ordinal);
 		var changed = false;
 		foreach (var element in elements)
 		{
-			if (update.VersionKind.EndsWith("Attribute", StringComparison.Ordinal))
-			{
-				var versionAttribute = element.Attribute("Version");
-				if (versionAttribute is null)
-				{
-					element.SetAttributeValue("Version", update.LatestVersion);
-					changed = true;
-					continue;
-				}
-
-				if (!string.Equals(versionAttribute.Value, update.LatestVersion, StringComparison.OrdinalIgnoreCase))
-				{
-					versionAttribute.Value = update.LatestVersion;
-					changed = true;
-				}
-			}
-			else
-			{
-				var versionElement = element.Element("Version");
-				if (versionElement is null)
-				{
-					element.Add(new XElement("Version", update.LatestVersion));
-					changed = true;
-					continue;
-				}
-
-				if (!string.Equals(versionElement.Value, update.LatestVersion, StringComparison.OrdinalIgnoreCase))
-				{
-					versionElement.Value = update.LatestVersion;
-					changed = true;
-				}
-			}
+			changed |= asAttribute
+				? SetVersionAttribute(element, update.LatestVersion)
+				: SetVersionElement(element, update.LatestVersion);
 		}
 
 		return changed;
+	}
+
+	private static bool SetVersionAttribute(XElement element, string latestVersion)
+	{
+		var versionAttribute = element.Attribute("Version");
+		if (versionAttribute is null)
+		{
+			element.SetAttributeValue("Version", latestVersion);
+			return true;
+		}
+
+		if (string.Equals(versionAttribute.Value, latestVersion, StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		versionAttribute.Value = latestVersion;
+		return true;
+	}
+
+	private static bool SetVersionElement(XElement element, string latestVersion)
+	{
+		var versionElement = element.Element("Version");
+		if (versionElement is null)
+		{
+			element.Add(new XElement("Version", latestVersion));
+			return true;
+		}
+
+		if (string.Equals(versionElement.Value, latestVersion, StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		versionElement.Value = latestVersion;
+		return true;
 	}
 
 	private static PackageVersionUpdate? ParsePackageVersionUpdate(string value)
@@ -969,31 +1105,7 @@ internal static partial class RemediationHelpers
 				return;
 			}
 
-			JsonArray array;
-			if (root.TryGetPropertyValue(arrayProperty, out var existing) && existing is JsonArray existingArray)
-			{
-				array = existingArray;
-			}
-			else
-			{
-				array = [];
-				root[arrayProperty] = array;
-			}
-
-			var currentValues = array
-				.Select(n => n?.GetValue<string>())
-				.Where(v => v is not null)
-				.ToHashSet(StringComparer.Ordinal);
-
-			var added = 0;
-			foreach (var item in items)
-			{
-				if (!currentValues.Contains(item))
-				{
-					array.Add(JsonValue.Create(item));
-					added++;
-				}
-			}
+			var added = AppendMissingItems(GetOrCreateArray(root, arrayProperty), items);
 
 			if (added > 0)
 			{
@@ -1027,63 +1139,104 @@ internal static partial class RemediationHelpers
 	{
 		foreach (var projectPath in projectPaths)
 		{
-			var fullPath = ResolvePath(localPath, projectPath);
-			if (!File.Exists(fullPath))
-			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not exist — skipping.");
-				continue;
-			}
-
-			try
-			{
-				var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
-				var toRemove = doc.Descendants("PackageReference")
-					.Where(e => string.Equals(
-						e.Attribute("Include")?.Value,
-						packageName,
-						StringComparison.OrdinalIgnoreCase))
-					.ToList();
-
-				if (toRemove.Count == 0)
-				{
-					onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not reference {packageName} — skipping.");
-					continue;
-				}
-
-				foreach (var element in toRemove)
-				{
-					// Remove the preceding whitespace/newline node too for clean diffs
-					if (element.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
-					{
-						element.PreviousNode.Remove();
-					}
-
-					element.Remove();
-				}
-
-				// Remove any now-empty ItemGroups
-				var emptyGroups = doc.Descendants("ItemGroup")
-					.Where(g => !g.HasElements)
-					.ToList();
-				foreach (var g in emptyGroups)
-				{
-					if (g.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
-					{
-						g.PreviousNode.Remove();
-					}
-
-					g.Remove();
-				}
-
-				doc.Save(fullPath);
-				applied.Add(projectPath);
-				onOutput?.Invoke($"✅ [{result.RuleId}] Removed {packageName} PackageReference from {projectPath}");
-			}
-			catch (Exception ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
-			}
+			RemovePackageReferenceFromProject(localPath, packageName, projectPath, result, applied, onOutput);
 		}
+	}
+
+	private static JsonArray GetOrCreateArray(JsonObject root, string arrayProperty)
+	{
+		if (root.TryGetPropertyValue(arrayProperty, out var existing) && existing is JsonArray existingArray)
+		{
+			return existingArray;
+		}
+
+		JsonArray array = [];
+		root[arrayProperty] = array;
+		return array;
+	}
+
+	private static int AppendMissingItems(JsonArray array, string[] items)
+	{
+		var currentValues = array
+			.Select(n => n?.GetValue<string>())
+			.Where(v => v is not null)
+			.ToHashSet(StringComparer.Ordinal);
+
+		var added = 0;
+		foreach (var item in items.Where(item => !currentValues.Contains(item)))
+		{
+			array.Add(JsonValue.Create(item));
+			added++;
+		}
+
+		return added;
+	}
+
+	private static void RemovePackageReferenceFromProject(
+		string localPath,
+		string packageName,
+		string projectPath,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		var fullPath = ResolvePath(localPath, projectPath);
+		if (!File.Exists(fullPath))
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not exist — skipping.");
+			return;
+		}
+
+		try
+		{
+			var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
+			var toRemove = ReferencesTo(doc, packageName);
+
+			if (toRemove.Count == 0)
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {projectPath} does not reference {packageName} — skipping.");
+				return;
+			}
+
+			RemoveAndPrune(doc, toRemove);
+
+			doc.Save(fullPath);
+			applied.Add(projectPath);
+			onOutput?.Invoke($"✅ [{result.RuleId}] Removed {packageName} PackageReference from {projectPath}");
+		}
+		catch (Exception ex)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to modify {projectPath}: {ex.Message}");
+		}
+	}
+
+	private static List<XElement> ReferencesTo(XDocument doc, string packageName)
+		=> FindByInclude(doc, "PackageReference", packageName);
+
+	private static List<XElement> FindByInclude(XDocument doc, string elementName, string include)
+		=> [.. doc.Descendants(elementName)
+			.Where(e => string.Equals(e.Attribute("Include")?.Value, include, StringComparison.OrdinalIgnoreCase))];
+
+	private static void RemoveAndPrune(XDocument doc, List<XElement> toRemove)
+	{
+		// Remove the preceding whitespace/newline node too for clean diffs
+		toRemove.ForEach(RemoveWithLeadingWhitespace);
+
+		// Remove any now-empty ItemGroups
+		doc.Descendants("ItemGroup")
+			.Where(g => !g.HasElements)
+			.ToList()
+			.ForEach(RemoveWithLeadingWhitespace);
+	}
+
+	private static void RemoveWithLeadingWhitespace(XElement element)
+	{
+		if (element.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
+		{
+			element.PreviousNode.Remove();
+		}
+
+		element.Remove();
 	}
 
 	/// <summary>
@@ -1106,25 +1259,15 @@ internal static partial class RemediationHelpers
 		try
 		{
 			var doc = XDocument.Load(fullPath, LoadOptions.PreserveWhitespace);
-			var toRemove = doc.Descendants("PackageVersion")
-				.Where(e => string.Equals(e.Attribute("Include")?.Value, packageName, StringComparison.OrdinalIgnoreCase))
-				.ToList();
+			var toRemove = FindByInclude(doc, "PackageVersion", packageName);
 
 			if (toRemove.Count == 0)
 			{
 				return;
 			}
 
-			foreach (var element in toRemove)
-			{
-				// Remove the preceding whitespace/newline node too, for clean diffs
-				if (element.PreviousNode is XText { Value: var ws } && ws.Trim().Length == 0)
-				{
-					element.PreviousNode.Remove();
-				}
-
-				element.Remove();
-			}
+			// Remove the preceding whitespace/newline node too, for clean diffs
+			toRemove.ForEach(RemoveWithLeadingWhitespace);
 
 			doc.Save(fullPath);
 			applied.Add(relativePath);
@@ -1183,35 +1326,50 @@ internal static partial class RemediationHelpers
 
 		foreach (var file in matches)
 		{
-			try
+			if (RewriteFile(file, root, patterns, replacements, applied, result, onOutput))
 			{
-				var original = File.ReadAllText(file);
-				var updated = original;
-
-				for (var i = 0; i < patterns.Length; i++)
-				{
-					updated = Regex.Replace(updated, patterns[i], replacements[i]);
-				}
-
-				if (updated == original)
-				{
-					continue;
-				}
-
-				File.WriteAllText(file, updated);
-				var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-				applied.Add(relative);
 				changedCount++;
-			}
-			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or RegexParseException)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Failed to rewrite {file}: {ex.Message}");
 			}
 		}
 
 		onOutput?.Invoke(changedCount == 0
 			? $"⏭️ [{result.RuleId}] Nothing matched the patterns — no files changed."
 			: $"✅ [{result.RuleId}] Rewrote {changedCount} file(s).");
+	}
+
+	private static bool RewriteFile(
+		string file,
+		string root,
+		string[] patterns,
+		string[] replacements,
+		List<string> applied,
+		RuleResult result,
+		Action<string>? onOutput)
+	{
+		try
+		{
+			var original = File.ReadAllText(file);
+			var updated = original;
+
+			for (var i = 0; i < patterns.Length; i++)
+			{
+				updated = Regex.Replace(updated, patterns[i], replacements[i]);
+			}
+
+			if (updated == original)
+			{
+				return false;
+			}
+
+			File.WriteAllText(file, updated);
+			applied.Add(Path.GetRelativePath(root, file).Replace('\\', '/'));
+			return true;
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or RegexParseException)
+		{
+			onOutput?.Invoke($"❌ [{result.RuleId}] Failed to rewrite {file}: {ex.Message}");
+			return false;
+		}
 	}
 
 	/// <summary>
@@ -1240,26 +1398,13 @@ internal static partial class RemediationHelpers
 
 		try
 		{
-			var json = File.ReadAllText(fullPath);
-			var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-			if (node is not JsonObject root)
+			if (!TryReadJsonObject(fullPath, relativePath, result, onOutput, out var root))
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
 				return;
 			}
 
-			var target = root;
-			foreach (var segment in segments[..^1])
-			{
-				if (!target.TryGetPropertyValue(segment, out var child) || child is not JsonObject childObject)
-				{
-					return;
-				}
-
-				target = childObject;
-			}
-
-			if (!target.Remove(segments[^1]))
+			var target = FindObject(root, segments[..^1]);
+			if (target is null || !target.Remove(segments[^1]))
 			{
 				return;
 			}
@@ -1274,6 +1419,109 @@ internal static partial class RemediationHelpers
 		}
 	}
 
+	private static bool TryReadJsonObject(string fullPath, string relativePath, RuleResult result, Action<string>? onOutput, out JsonObject root)
+	{
+		var json = File.ReadAllText(fullPath);
+		var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+		if (node is JsonObject parsed)
+		{
+			root = parsed;
+			return true;
+		}
+
+		root = [];
+		onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
+		return false;
+	}
+
+	private static JsonObject? FindObject(JsonObject root, string[] segments)
+	{
+		var target = root;
+		foreach (var segment in segments)
+		{
+			if (!target.TryGetPropertyValue(segment, out var child) || child is not JsonObject childObject)
+			{
+				return null;
+			}
+
+			target = childObject;
+		}
+
+		return target;
+	}
+
+	private static JsonObject GetOrCreateObject(JsonObject root, string[] segments)
+	{
+		var target = root;
+		foreach (var segment in segments)
+		{
+			if (target.TryGetPropertyValue(segment, out var child) && child is JsonObject childObject)
+			{
+				target = childObject;
+				continue;
+			}
+
+			var created = new JsonObject();
+			target[segment] = created;
+			target = created;
+		}
+
+		return target;
+	}
+
+	private static bool AlreadySets(JsonObject target, string leaf, string propertyValue)
+		=> target.TryGetPropertyValue(leaf, out var existing) && existing is JsonValue existingValue
+			&& string.Equals(existingValue.ToJsonString().Trim('"'), propertyValue, StringComparison.Ordinal);
+
+	private static bool TryCreateJsonFile(
+		string fullPath,
+		string relativePath,
+		string propertyPath,
+		string? createContent,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+	{
+		if (createContent is null)
+		{
+			onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
+			return false;
+		}
+
+		EnsureDirectory(fullPath);
+		File.WriteAllText(fullPath, createContent);
+		applied.Add(relativePath);
+		onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath}");
+		return true;
+	}
+
+	/// <summary>Sets a string property in a JSON file, leaving a missing file alone.</summary>
+	public static void EnsureJsonProperty(
+		string localPath,
+		string relativePath,
+		string propertyPath,
+		string propertyValue,
+		RuleResult result,
+		List<string> applied,
+		Action<string>? onOutput)
+		=> EnsureJsonProperty(localPath, relativePath, propertyPath, propertyValue, result, applied, onOutput, new JsonPropertyOptions());
+
+	/// <summary>How <see cref="EnsureJsonProperty(string, string, string, string, RuleResult, List{string}, Action{string}?, JsonPropertyOptions)"/> creates a missing file and writes the value.</summary>
+	internal sealed class JsonPropertyOptions
+	{
+		/// <summary>
+		/// When supplied, the content to write if the file does not exist. Without it a missing file is
+		/// left alone: a rule that only knows the property cannot invent the rest of the document.
+		/// </summary>
+		public string? CreateContent { get; init; }
+
+		/// <summary>
+		/// How to write the value: <c>string</c> (the default), <c>bool</c> or <c>number</c>. Writing
+		/// <c>"true"</c> where a schema wants <c>true</c> is not a fix.
+		/// </summary>
+		public string ValueKind { get; init; } = "string";
+	}
+
 	/// <summary>
 	/// Sets a property in a JSON file, addressed by a dotted path such as <c>test.runner</c>,
 	/// creating any intermediate objects.
@@ -1285,14 +1533,7 @@ internal static partial class RemediationHelpers
 	/// <param name="result">The failed rule result being remediated.</param>
 	/// <param name="applied">List to append successfully modified file paths to.</param>
 	/// <param name="onOutput">Optional callback for progress messages.</param>
-	/// <param name="createContent">
-	/// When supplied, the content to write if the file does not exist. Without it a missing file is
-	/// left alone: a rule that only knows the property cannot invent the rest of the document.
-	/// </param>
-	/// <param name="valueKind">
-	/// How to write <paramref name="propertyValue"/>: <c>string</c> (the default), <c>bool</c> or
-	/// <c>number</c>. Writing <c>"true"</c> where a schema wants <c>true</c> is not a fix.
-	/// </param>
+	/// <param name="options">When to create a missing file, and how to write the value.</param>
 	public static void EnsureJsonProperty(
 		string localPath,
 		string relativePath,
@@ -1301,22 +1542,14 @@ internal static partial class RemediationHelpers
 		RuleResult result,
 		List<string> applied,
 		Action<string>? onOutput,
-		string? createContent = null,
-		string valueKind = "string")
+		JsonPropertyOptions options)
 	{
+		var createContent = options.CreateContent;
+		var valueKind = options.ValueKind;
 		var fullPath = ResolvePath(localPath, relativePath);
-		if (!File.Exists(fullPath))
+		if (!File.Exists(fullPath) && !TryCreateJsonFile(fullPath, relativePath, propertyPath, createContent, result, applied, onOutput))
 		{
-			if (createContent is null)
-			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} does not exist — cannot set {propertyPath}.");
-				return;
-			}
-
-			EnsureDirectory(fullPath);
-			File.WriteAllText(fullPath, createContent);
-			applied.Add(relativePath);
-			onOutput?.Invoke($"✅ [{result.RuleId}] Created {relativePath}");
+			return;
 		}
 
 		var segments = propertyPath.Split('.', StringSplitOptions.RemoveEmptyEntries);
@@ -1327,31 +1560,14 @@ internal static partial class RemediationHelpers
 
 		try
 		{
-			var json = File.ReadAllText(fullPath);
-			var node = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-			if (node is not JsonObject root)
+			if (!TryReadJsonObject(fullPath, relativePath, result, onOutput, out var root))
 			{
-				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} root is not a JSON object.");
 				return;
 			}
 
-			var target = root;
-			foreach (var segment in segments[..^1])
-			{
-				if (target.TryGetPropertyValue(segment, out var child) && child is JsonObject childObject)
-				{
-					target = childObject;
-					continue;
-				}
-
-				var created = new JsonObject();
-				target[segment] = created;
-				target = created;
-			}
-
+			var target = GetOrCreateObject(root, segments[..^1]);
 			var leaf = segments[^1];
-			if (target.TryGetPropertyValue(leaf, out var existing) && existing is JsonValue existingValue
-				&& string.Equals(existingValue.ToJsonString().Trim('"'), propertyValue, StringComparison.Ordinal))
+			if (AlreadySets(target, leaf, propertyValue))
 			{
 				onOutput?.Invoke($"⏭️ [{result.RuleId}] {relativePath} already sets {propertyPath} to {propertyValue} — skipping.");
 				return;
@@ -1421,24 +1637,9 @@ internal static partial class RemediationHelpers
 		}
 
 		var original = File.ReadAllText(fullPath);
-		var content = original;
-
-		for (var i = 0; i < patterns.Length; i++)
+		if (!TryApplyPatterns(original, patterns, replacements, relativePath, result, onOutput, out var content))
 		{
-			try
-			{
-				content = Regex.Replace(content, patterns[i], replacements[i], RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2));
-			}
-			catch (RegexParseException ex)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Invalid pattern '{patterns[i]}': {ex.Message}");
-				return;
-			}
-			catch (RegexMatchTimeoutException)
-			{
-				onOutput?.Invoke($"❌ [{result.RuleId}] Pattern '{patterns[i]}' timed out against {relativePath}.");
-				return;
-			}
+			return;
 		}
 
 		if (content == original)
@@ -1450,6 +1651,38 @@ internal static partial class RemediationHelpers
 		File.WriteAllText(fullPath, content);
 		applied.Add(relativePath);
 		onOutput?.Invoke($"✅ [{result.RuleId}] Updated {relativePath}");
+	}
+
+	private static bool TryApplyPatterns(
+		string original,
+		string[] patterns,
+		string[] replacements,
+		string relativePath,
+		RuleResult result,
+		Action<string>? onOutput,
+		out string content)
+	{
+		content = original;
+
+		for (var i = 0; i < patterns.Length; i++)
+		{
+			try
+			{
+				content = Regex.Replace(content, patterns[i], replacements[i], RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2));
+			}
+			catch (RegexParseException ex)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Invalid pattern '{patterns[i]}': {ex.Message}");
+				return false;
+			}
+			catch (RegexMatchTimeoutException)
+			{
+				onOutput?.Invoke($"❌ [{result.RuleId}] Pattern '{patterns[i]}' timed out against {relativePath}.");
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/// <summary>
@@ -1480,22 +1713,7 @@ internal static partial class RemediationHelpers
 		var newline = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
 		var lines = original.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').ToList();
 
-		var changed = false;
-
-		// Walk backwards so the line indices of steps not yet visited stay valid as lines are inserted.
-		for (var i = lines.Count - 1; i >= 0; i--)
-		{
-			var match = CheckoutUsesLine().Match(lines[i]);
-			if (!match.Success)
-			{
-				continue;
-			}
-
-			// The indent of the step's keys: for "- uses: ..." that is the column of "uses", so the
-			// "with:" we add lines up with it rather than with the dash.
-			var keyIndent = match.Groups["lead"].Value.Length + match.Groups["dash"].Value.Length;
-			changed |= SetFetchDepthForStep(lines, i, keyIndent);
-		}
+		var changed = SetFetchDepthOnAllSteps(lines);
 
 		if (!changed)
 		{
@@ -1515,6 +1733,50 @@ internal static partial class RemediationHelpers
 	/// <returns>True if any line was changed or inserted.</returns>
 	private static bool SetFetchDepthForStep(List<string> lines, int usesLineIndex, int keyIndent)
 	{
+		var end = FindStepEnd(lines, usesLineIndex, keyIndent);
+		var withIndex = FindWithLine(lines, usesLineIndex, end, keyIndent);
+
+		if (withIndex < 0)
+		{
+			lines.Insert(usesLineIndex + 1, $"{new string(' ', keyIndent)}with:");
+			lines.Insert(usesLineIndex + 2, $"{new string(' ', keyIndent + 2)}fetch-depth: 0");
+			return true;
+		}
+
+		var existing = UpdateExistingFetchDepth(lines, withIndex, end, keyIndent);
+		if (existing is not null)
+		{
+			return existing.Value;
+		}
+
+		lines.Insert(withIndex + 1, $"{new string(' ', EntryIndent(lines, withIndex, end, keyIndent))}fetch-depth: 0");
+		return true;
+	}
+
+	private static bool SetFetchDepthOnAllSteps(List<string> lines)
+	{
+		var changed = false;
+
+		// Walk backwards so the line indices of steps not yet visited stay valid as lines are inserted.
+		for (var i = lines.Count - 1; i >= 0; i--)
+		{
+			var match = CheckoutUsesLine().Match(lines[i]);
+			if (!match.Success)
+			{
+				continue;
+			}
+
+			// The indent of the step's keys: for "- uses: ..." that is the column of "uses", so the
+			// "with:" we add lines up with it rather than with the dash.
+			var keyIndent = match.Groups["lead"].Value.Length + match.Groups["dash"].Value.Length;
+			changed |= SetFetchDepthForStep(lines, i, keyIndent);
+		}
+
+		return changed;
+	}
+
+	private static int FindStepEnd(List<string> lines, int usesLineIndex, int keyIndent)
+	{
 		// The step runs until a line that is neither blank nor indented past the step's keys.
 		var end = usesLineIndex + 1;
 		while (end < lines.Count && (lines[end].Trim().Length == 0 || IndentOf(lines[end]) >= keyIndent))
@@ -1528,25 +1790,25 @@ internal static partial class RemediationHelpers
 			end++;
 		}
 
-		var withIndex = -1;
+		return end;
+	}
+
+	private static int FindWithLine(List<string> lines, int usesLineIndex, int end, int keyIndent)
+	{
 		for (var i = usesLineIndex + 1; i < end; i++)
 		{
 			if (IndentOf(lines[i]) == keyIndent && lines[i].Trim() == "with:")
 			{
-				withIndex = i;
-				break;
+				return i;
 			}
 		}
 
-		if (withIndex < 0)
-		{
-			lines.Insert(usesLineIndex + 1, $"{new string(' ', keyIndent)}with:");
-			lines.Insert(usesLineIndex + 2, $"{new string(' ', keyIndent + 2)}fetch-depth: 0");
-			return true;
-		}
+		return -1;
+	}
 
+	private static int EntryIndent(List<string> lines, int withIndex, int end, int keyIndent)
+	{
 		// Reuse whatever indent the existing "with:" entries already use.
-		var entryIndent = keyIndent + 2;
 		for (var i = withIndex + 1; i < end; i++)
 		{
 			if (lines[i].Trim().Length == 0)
@@ -1554,15 +1816,15 @@ internal static partial class RemediationHelpers
 				continue;
 			}
 
-			if (IndentOf(lines[i]) <= keyIndent)
-			{
-				break;
-			}
-
-			entryIndent = IndentOf(lines[i]);
-			break;
+			return IndentOf(lines[i]) <= keyIndent ? keyIndent + 2 : IndentOf(lines[i]);
 		}
 
+		return keyIndent + 2;
+	}
+
+	/// <returns>Null when there is no fetch-depth line, otherwise whether it had to change.</returns>
+	private static bool? UpdateExistingFetchDepth(List<string> lines, int withIndex, int end, int keyIndent)
+	{
 		for (var i = withIndex + 1; i < end; i++)
 		{
 			if (IndentOf(lines[i]) <= keyIndent && lines[i].Trim().Length > 0)
@@ -1585,8 +1847,7 @@ internal static partial class RemediationHelpers
 			return true;
 		}
 
-		lines.Insert(withIndex + 1, $"{new string(' ', entryIndent)}fetch-depth: 0");
-		return true;
+		return null;
 	}
 
 	private static int IndentOf(string line) => line.Length - line.TrimStart(' ').Length;

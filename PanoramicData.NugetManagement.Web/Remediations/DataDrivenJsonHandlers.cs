@@ -25,7 +25,8 @@ internal static class DataDrivenJsonHandlers
 			foreach (var jsonPath in DataDrivenRemediation.ReadStrings(data, "file", "files"))
 			{
 				RemediationHelpers.EnsureJsonProperty(
-					localPath, jsonPath, jpPath, jpValue, result, applied, onOutput, createContent, valueKind);
+					localPath, jsonPath, jpPath, jpValue, result, applied, onOutput,
+					new RemediationHelpers.JsonPropertyOptions { CreateContent = createContent, ValueKind = valueKind });
 			}
 		}
 	}
