@@ -1416,7 +1416,7 @@ else
 	{
 		try
 		{
-			await Dashboard.RefreshLocalGitStatusAsync(row);
+			await Dashboard.RefreshLocalGitStatusAsync(row, CancellationToken.None);
 		}
 		catch (Exception ex)
 		{
@@ -1477,7 +1477,7 @@ else
 
 			try
 			{
-				await Dashboard.RefreshLocalGitStatusAsync(row);
+				await Dashboard.RefreshLocalGitStatusAsync(row, CancellationToken.None);
 			}
 			catch (Exception ex)
 			{
@@ -1514,7 +1514,7 @@ else
 	{
 		try
 		{
-			await Dashboard.RefreshCodacyAnalysisStateAsync(row);
+			await Dashboard.RefreshCodacyAnalysisStateAsync(row, CancellationToken.None);
 		}
 		catch (Exception ex)
 		{
@@ -5128,7 +5128,7 @@ else
 			}
 			else
 			{
-				await Dashboard.AssessRepositoryAsync(_selectedRow, github);
+				await Dashboard.AssessRepositoryAsync(_selectedRow, github, CancellationToken.None);
 			}
 
            await PersistSelectedRowUpdateAsync();
@@ -5321,7 +5321,7 @@ else
 			return;
 		}
 
-		var lines = await Dashboard.GetWorkingTreeStatusPreviewAsync(_selectedRow, maxLines: 3);
+		var lines = await Dashboard.GetWorkingTreeStatusPreviewAsync(_selectedRow, maxLines: 3, CancellationToken.None);
 		if (lines.Count == 0)
 		{
 			AppendConsole("ℹ️ Working tree is dirty but no git porcelain entries were captured.");

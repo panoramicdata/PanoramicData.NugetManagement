@@ -102,7 +102,7 @@ public class PushBuildGateTests
 		sources.Values.Sum(text => CountOf(text, "_localRepo.CommitAndPushAsync("))
 			.Should().Be(1, "a second place that pushes would not be built first");
 
-		var dashboard = sources.Single(entry => entry.Key.EndsWith("DashboardService.cs", StringComparison.Ordinal)).Value;
+		var dashboard = sources.Single(entry => entry.Key.EndsWith("DashboardService.Git.cs", StringComparison.Ordinal)).Value;
 		var start = dashboard.IndexOf("public async Task<CommitAndPushOutcome> CommitAndPushAsync(", StringComparison.Ordinal);
 		start.Should().BeGreaterThan(0);
 

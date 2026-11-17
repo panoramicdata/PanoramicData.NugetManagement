@@ -213,7 +213,7 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 			new() { RepositoryFullName = "panoramicdata/Scripts", Organization = "panoramicdata" }
 		};
 
-		var (rows, _) = DashboardService.BuildRows([], previous, _organizations);
+		var (rows, _) = DashboardService.BuildRows([], previous, _organizations, null);
 
 		rows.Should().BeEmpty();
 	}

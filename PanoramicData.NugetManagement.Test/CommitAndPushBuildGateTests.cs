@@ -45,10 +45,10 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		var headBefore = Git(Clone, "rev-parse", "HEAD");
 		var originBefore = Git(Origin, "rev-parse", "main");
 
-		var applied = await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), cancellationToken: TestContext.Current.CancellationToken);
+		var applied = await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), null, TestContext.Current.CancellationToken);
 		applied.Should().NotBeEmpty("the remediation has to have written something for the gate to have anything to refuse");
 
-		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", cancellationToken: TestContext.Current.CancellationToken);
+		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", null, TestContext.Current.CancellationToken);
 
 		push.Success.Should().BeFalse();
 		push.WasRefused.Should().BeTrue();
@@ -68,9 +68,9 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		var row = Row();
 		var originBefore = Git(Origin, "rev-parse", "main");
 
-		await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), cancellationToken: TestContext.Current.CancellationToken);
+		await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), null, TestContext.Current.CancellationToken);
 
-		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", cancellationToken: TestContext.Current.CancellationToken);
+		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", null, TestContext.Current.CancellationToken);
 
 		push.Success.Should().BeTrue(push.RefusalReason);
 		Git(Origin, "rev-parse", "main").Should().NotBe(originBefore);
@@ -88,7 +88,7 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		Git(Clone, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "broken already");
 		Git(Clone, "push", "-q", "origin", "main");
 
-		var push = await dashboard.CommitAndPushAsync(Row(), "NuGet governance remediation for test", cancellationToken: TestContext.Current.CancellationToken);
+		var push = await dashboard.CommitAndPushAsync(Row(), "NuGet governance remediation for test", null, TestContext.Current.CancellationToken);
 
 		push.WasRefused.Should().BeFalse(push.RefusalReason);
 	}

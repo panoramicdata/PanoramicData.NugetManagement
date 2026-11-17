@@ -691,7 +691,7 @@ public sealed partial class WorkExecutors(
 			}
 			else
 			{
-				await dashboard.AssessRepositoryAsync(row, github).ConfigureAwait(false);
+				await dashboard.AssessRepositoryAsync(row, github, CancellationToken.None).ConfigureAwait(false);
 			}
 
 			cache.UpsertRow(row);
@@ -719,7 +719,7 @@ public sealed partial class WorkExecutors(
 		var listed = new List<string>();
 		foreach (var package in row.Packages)
 		{
-			if (await dashboard.IsPackageListedAsync(package.PackageId).ConfigureAwait(false))
+			if (await dashboard.IsPackageListedAsync(package.PackageId, CancellationToken.None).ConfigureAwait(false))
 			{
 				listed.Add(package.PackageId);
 			}
@@ -3393,7 +3393,7 @@ public sealed partial class WorkExecutors(
 			return;
 		}
 
-		var lines = await dashboard.GetWorkingTreeStatusPreviewAsync(row, maxLines: 3).ConfigureAwait(false);
+		var lines = await dashboard.GetWorkingTreeStatusPreviewAsync(row, maxLines: 3, CancellationToken.None).ConfigureAwait(false);
 		if (lines.Count == 0)
 		{
 			Say("ℹ️ Working tree is dirty but no git porcelain entries were captured.");
