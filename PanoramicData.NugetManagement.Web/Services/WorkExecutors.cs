@@ -2259,111 +2259,20 @@ public sealed partial class WorkExecutors(
 			return;
 		}
 
-		var issue = row.OpenIssues.FirstOrDefault(candidate => candidate.Number == issueNumber);
-		var brief = issue?.Analysis?.Brief;
-
-		if (issue is null || brief is null)
+		if (PlanIssueFix(row, issueNumber) is not { } plan)
 		{
-			Say($"⏭️ #{issueNumber} has no fix brief any more.");
 			return;
 		}
-
-		// Screened again here, and not only at the gate. The clone moves — another session commits, a
-		// remediation rewrites a file, a branch changes underneath — and the allowlist this session is
-		// about to be handed must describe the repository as it is now, not as it was when a model
-		// looked at it.
-		var screen = IssuePathScreen.Screen(row.LocalPath, brief.Paths, RemediationOwnedPaths(row));
-
-		if (!screen.Accepted)
-		{
-			Say($"⏭️ #{issueNumber}: {screen.Refusal}");
-			return;
-		}
-
-		// The reproducing test goes in the test project, and only there: the red-test step may add new test
-		// files and nothing else, so a bug cannot be "reproduced" by editing the code it is meant to
-		// exercise. A repository with no test project has nowhere to put one; it gets a project from the
-		// TST-01 rule fix first, which is told how this estate builds one.
-		var testProjects = CoverageMeasurement.FindTestProjects(row.LocalPath);
-
-		if (testProjects.Count == 0)
-		{
-			Say($"⏭️ #{issueNumber}: {row.RepositoryFullName} has no test project, so there is nowhere to write a "
-				+ "failing test. Fix TST-01 first.");
-			return;
-		}
-
-		var testFolders = testProjects
-			.Select(project => (Path.GetDirectoryName(project) ?? string.Empty).Replace('\\', '/'))
-			.Where(folder => folder.Length > 0)
-			.Distinct(StringComparer.OrdinalIgnoreCase)
-			.ToList();
 
 		try
 		{
-			using var client = new Ollama.Api.OllamaClient(new Ollama.Api.OllamaClientOptions
-			{
-				Uri = new Uri(ollama.BaseUrl!),
-				ApiKey = ollama.ApiKey,
-				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
-			});
+			using var client = CreateOllamaClient(ollama);
 
 			await RecordPreExistingChangesAsync(item, row.LocalPath, cancellationToken).ConfigureAwait(false);
 
-			Func<CancellationToken, Task<string>> buildTool = async token =>
-			{
-				var captured = new List<string>();
-				await dashboard.BuildAsync(row, captured.Add, token, restore: true).ConfigureAwait(false);
-				return SummariseRun("Build", row.Status == PackageStatus.BuildSucceeded, captured);
-			};
-
-			Func<CancellationToken, Task<string>> testTool = async token =>
-			{
-				var captured = new List<string>();
-				await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true, null).ConfigureAwait(false);
-				return SummariseRun("Tests", row.Status == PackageStatus.TestsPassed, captured);
-			};
-
-			// Two toolboxes because the two steps may write different things: the first only new files in
-			// the test folders, the second only the files the brief named.
-			var redToolbox = new AiFixToolbox(
-				row.LocalPath,
-				build: buildTool,
-				test: testTool,
-				writableFolders: testFolders,
-				newFilesOnly: true,
-				afterWrite: (path, token) => BuildFeedbackAsync(row.LocalPath, testProjects, path, token));
-
-			var fixToolbox = new AiFixToolbox(
-				row.LocalPath,
-				build: buildTool,
-				test: testTool,
-				writablePaths: brief.Paths);
-
-			var oracle = new IssueFixOracle(
-				async token =>
-				{
-					var captured = new List<string>();
-					await dashboard.BuildAsync(row, captured.Add, token, restore: true).ConfigureAwait(false);
-					return new IssueFixCheckStep(
-						row.Status == PackageStatus.BuildSucceeded, string.Join("\n", captured));
-				},
-				async token =>
-				{
-					var captured = new List<string>();
-					await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true, null).ConfigureAwait(false);
-					return new IssueFixCheckStep(
-						row.Status == PackageStatus.TestsPassed, string.Join("\n", captured));
-				});
-
-			async Task<AiRuleCheck> CheckTestCompilesAsync(CancellationToken token)
-			{
-				var captured = new List<string>();
-				await dashboard.BuildAsync(row, captured.Add, token, restore: true).ConfigureAwait(false);
-				var built = row.Status == PackageStatus.BuildSucceeded;
-
-				return new AiRuleCheck(built, built ? "The test project builds." : string.Join('\n', captured.TakeLast(30)));
-			}
+			var redToolbox = CreateRedToolbox(row, plan);
+			var fixToolbox = CreateFixToolbox(row, plan);
+			var oracle = CreateIssueOracle(row);
 
 			var fixOptions = new AiFixOptions
 			{
@@ -2382,6 +2291,8 @@ public sealed partial class WorkExecutors(
 				AiTranscriptSink.For(item.Transcript),
 				log,
 				onStatus: progress.Report);
+
+			var brief = plan.Brief;
 
 			// The report as the model sees it: the brief's paraphrase, never the reporter's own words.
 			var issueText = $"Goal: {brief.Goal}\nDone looks like: {brief.ExpectedEndState}";
@@ -2410,7 +2321,7 @@ public sealed partial class WorkExecutors(
 			item.Transcript.Append(WorkLineKind.Prompt, $"Task:\n{fixPrompt}");
 
 			Say($"▶ #{issueNumber} on {row.RepositoryFullName} via {ollama.Model}: a failing test first in "
-				+ $"{string.Join(", ", testFolders)}, then a fix writing only {string.Join(", ", brief.Paths)}.");
+				+ $"{string.Join(", ", plan.TestFolders)}, then a fix writing only {string.Join(", ", brief.Paths)}.");
 
 			// The model's server is held by the decorator around each call into the model, and not by this
 			// method: delivery waits for CI, which can take half an hour, and that must not idle the GPU.
@@ -2422,7 +2333,7 @@ public sealed partial class WorkExecutors(
 					fixPrompt,
 					AiFixPrompt.SystemPrompt,
 					oracle.CheckAsync,
-					CheckTestCompilesAsync),
+					token => CheckIssueTestCompilesAsync(row, token)),
 				ollamaGate);
 
 			var pipeline = AiChangePipelineFactory.Create(
@@ -2430,7 +2341,7 @@ public sealed partial class WorkExecutors(
 				new DashboardAiChangeTests(dashboard, localRepo, row, row.RepositoryFullName),
 				work,
 				new OctokitGitHubWriteApi(await CreateGitHubClientAsync().ConfigureAwait(false)),
-				AiChangePipelineFactory.IssueFixLimits(brief.Paths, testFolders),
+				AiChangePipelineFactory.IssueFixLimits(brief.Paths, plan.TestFolders),
 				KeepDeliveredChange(item, row.LocalPath));
 
 			var delivery = await pipeline.RunAsync(change, Say, cancellationToken).ConfigureAwait(false);
@@ -2444,6 +2355,121 @@ public sealed partial class WorkExecutors(
 			Say($"⏹️ Stopped the fix for #{issueNumber}.");
 			throw;
 		}
+	}
+
+	private sealed record IssueFixPlan(IssueFixBrief Brief, IReadOnlyList<string> TestProjects, List<string> TestFolders);
+
+	/// <summary>Works out what an issue fix may touch, saying why and returning null when it cannot go ahead.</summary>
+	private IssueFixPlan? PlanIssueFix(RepositoryDashboardRow row, int issueNumber)
+	{
+		var brief = row.OpenIssues.FirstOrDefault(candidate => candidate.Number == issueNumber)?.Analysis?.Brief;
+
+		if (brief is null)
+		{
+			Say($"⏭️ #{issueNumber} has no fix brief any more.");
+			return null;
+		}
+
+		// Screened again here, and not only at the gate. The clone moves — another session commits, a
+		// remediation rewrites a file, a branch changes underneath — and the allowlist this session is
+		// about to be handed must describe the repository as it is now, not as it was when a model
+		// looked at it.
+		var screen = IssuePathScreen.Screen(row.LocalPath!, brief.Paths, RemediationOwnedPaths(row));
+
+		if (!screen.Accepted)
+		{
+			Say($"⏭️ #{issueNumber}: {screen.Refusal}");
+			return null;
+		}
+
+		// The reproducing test goes in the test project, and only there: the red-test step may add new test
+		// files and nothing else, so a bug cannot be "reproduced" by editing the code it is meant to
+		// exercise. A repository with no test project has nowhere to put one; it gets a project from the
+		// TST-01 rule fix first, which is told how this estate builds one.
+		var testProjects = CoverageMeasurement.FindTestProjects(row.LocalPath!);
+
+		if (testProjects.Count == 0)
+		{
+			Say($"⏭️ #{issueNumber}: {row.RepositoryFullName} has no test project, so there is nowhere to write a "
+				+ "failing test. Fix TST-01 first.");
+			return null;
+		}
+
+		var testFolders = testProjects
+			.Select(project => (Path.GetDirectoryName(project) ?? string.Empty).Replace('\\', '/'))
+			.Where(folder => folder.Length > 0)
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+
+		return new IssueFixPlan(brief, testProjects, testFolders);
+	}
+
+	private static Ollama.Api.OllamaClient CreateOllamaClient(OllamaOptions ollama)
+		=> new(new Ollama.Api.OllamaClientOptions
+		{
+			Uri = new Uri(ollama.BaseUrl!),
+			ApiKey = ollama.ApiKey,
+			Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
+		});
+
+	private Func<CancellationToken, Task<string>> BuildTool(RepositoryDashboardRow row)
+		=> async token =>
+		{
+			var captured = new List<string>();
+			await dashboard.BuildAsync(row, captured.Add, token, restore: true).ConfigureAwait(false);
+			return SummariseRun("Build", row.Status == PackageStatus.BuildSucceeded, captured);
+		};
+
+	private Func<CancellationToken, Task<string>> TestTool(RepositoryDashboardRow row)
+		=> async token =>
+		{
+			var captured = new List<string>();
+			await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true, null).ConfigureAwait(false);
+			return SummariseRun("Tests", row.Status == PackageStatus.TestsPassed, captured);
+		};
+
+	// Two toolboxes because the two steps may write different things: the first only new files in
+	// the test folders, the second only the files the brief named.
+	private AiFixToolbox CreateRedToolbox(RepositoryDashboardRow row, IssueFixPlan plan)
+		=> new(
+			row.LocalPath!,
+			build: BuildTool(row),
+			test: TestTool(row),
+			writableFolders: plan.TestFolders,
+			newFilesOnly: true,
+			afterWrite: (path, token) => BuildFeedbackAsync(row.LocalPath!, plan.TestProjects, path, token));
+
+	private AiFixToolbox CreateFixToolbox(RepositoryDashboardRow row, IssueFixPlan plan)
+		=> new(
+			row.LocalPath!,
+			build: BuildTool(row),
+			test: TestTool(row),
+			writablePaths: plan.Brief.Paths);
+
+	private IssueFixOracle CreateIssueOracle(RepositoryDashboardRow row)
+		=> new(
+			async token =>
+			{
+				var captured = new List<string>();
+				await dashboard.BuildAsync(row, captured.Add, token, restore: true).ConfigureAwait(false);
+				return new IssueFixCheckStep(
+					row.Status == PackageStatus.BuildSucceeded, string.Join("\n", captured));
+			},
+			async token =>
+			{
+				var captured = new List<string>();
+				await dashboard.RunTestsAsync(row, captured.Add, token, sandbox: true, null).ConfigureAwait(false);
+				return new IssueFixCheckStep(
+					row.Status == PackageStatus.TestsPassed, string.Join("\n", captured));
+			});
+
+	private async Task<AiRuleCheck> CheckIssueTestCompilesAsync(RepositoryDashboardRow row, CancellationToken token)
+	{
+		var captured = new List<string>();
+		await dashboard.BuildAsync(row, captured.Add, token, restore: true).ConfigureAwait(false);
+		var built = row.Status == PackageStatus.BuildSucceeded;
+
+		return new AiRuleCheck(built, built ? "The test project builds." : string.Join('\n', captured.TakeLast(30)));
 	}
 
 	/// <summary>
