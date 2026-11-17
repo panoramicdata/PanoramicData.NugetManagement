@@ -19,8 +19,8 @@ internal static class DataDrivenJsonHandlers
 		if (data.TryGetValue("property_path", out var jpPathObj) && jpPathObj is string jpPath &&
 			data.TryGetValue("property_value", out var jpValueObj) && jpValueObj is string jpValue)
 		{
-			var createContent = data.TryGetValue("create_content", out var ccObj) && ccObj is string cc ? cc : null;
-			var valueKind = data.TryGetValue("value_kind", out var vkObj) && vkObj is string vk ? vk : "string";
+			var createContent = OptionalString(data, "create_content");
+			var valueKind = OptionalString(data, "value_kind") ?? "string";
 
 			foreach (var jsonPath in DataDrivenRemediation.ReadStrings(data, "file", "files"))
 			{
@@ -29,6 +29,9 @@ internal static class DataDrivenJsonHandlers
 			}
 		}
 	}
+
+	private static string? OptionalString(Dictionary<string, object> data, string key)
+		=> data.TryGetValue(key, out var value) && value is string text ? text : null;
 
 	internal static void EnsureJsonProperties(string localPath, RuleResult result, Dictionary<string, object> data, List<string> applied, Action<string>? onOutput)
 	{
