@@ -29,7 +29,7 @@ internal static partial class RemediationHelpers
 			return;
 		}
 
-		var lists = doc?.Descendants("TargetFrameworks").ToList() ?? [];
+		var lists = FrameworkLists(doc);
 		if (doc is null || lists.Count == 0)
 		{
 			EnsureXmlProperty(localPath, relativePath, "TargetFramework", latest, result, applied, onOutput);
@@ -46,6 +46,9 @@ internal static partial class RemediationHelpers
 		applied.Add(relativePath);
 		Say(onOutput, $"✅ [{result.RuleId}] Updated <TargetFrameworks> to include {latest} in {relativePath}");
 	}
+
+	private static List<XElement> FrameworkLists(XDocument? doc)
+		=> doc is null ? [] : [.. doc.Descendants("TargetFrameworks")];
 
 	private static bool TryLoadForEdit(string fullPath, string relativePath, RuleResult result, Action<string>? onOutput, out XDocument? doc)
 	{
