@@ -22,9 +22,8 @@ public sealed partial class WorkExecutors
 	/// whatever happened to be in a shared console buffer.
 	/// </remarks>
 	/// <param name="item">The item naming the repository to build.</param>
-	/// <param name="progress">Unused: a build reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task BuildAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task BuildAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)
@@ -110,9 +109,8 @@ public sealed partial class WorkExecutors
 	/// repository from nothing more than the name.
 	/// </remarks>
 	/// <param name="item">The item naming the repository to clone.</param>
-	/// <param name="progress">Unused: a clone reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task CloneAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task CloneAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var repositoryFullName = item.RepositoryFullName;
 		if (repositoryFullName is null)
@@ -138,11 +136,7 @@ public sealed partial class WorkExecutors
 				Say($"❌ {repositoryFullName}: {output}");
 			}
 		}
-		catch (OperationCanceledException)
-		{
-			throw;
-		}
-		catch (Exception ex)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			Say($"❌ {repositoryFullName}: {ex.Message}");
 		}
@@ -191,9 +185,8 @@ public sealed partial class WorkExecutors
 	/// richer candidate objects.
 	/// </remarks>
 	/// <param name="item">The item naming the organisation and, via <c>fullNames</c>, which repositories to clone.</param>
-	/// <param name="progress">Unused: this step reports no sub-steps of its own.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private Task DiscoverCloneTargetsAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private Task DiscoverCloneTargetsAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var organization = item.Organization;
 		var fullNames = item.Descriptor.Parameter("fullNames")?
@@ -294,9 +287,8 @@ public sealed partial class WorkExecutors
 	/// <see cref="WorkFanOut.EnqueueReassess"/> needs the organisation each repository actually is in.
 	/// </remarks>
 	/// <param name="item">The item naming the organisation to scope to, or none for every organisation.</param>
-	/// <param name="progress">Unused: this step reports no sub-steps of its own.</param>
 	/// <param name="cancellationToken">Unused: discovery here is a synchronous cache read.</param>
-	private Task DiscoverReassessTargetsAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private Task DiscoverReassessTargetsAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var organization = item.Organization;
 		var rows = cache.GetCachedRows() ?? [];
@@ -329,9 +321,8 @@ public sealed partial class WorkExecutors
 	/// existed for repositories that are unchanged, and fans out re-assessment across the rest.
 	/// </summary>
 	/// <param name="item">The item this run was queued as; carries no organisation, since it spans all of them.</param>
-	/// <param name="progress">Unused: this step reports no sub-steps of its own.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task RefreshAllAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task RefreshAllAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		Say("▶ Discovering packages...");
 
@@ -471,12 +462,7 @@ public sealed partial class WorkExecutors
 			cache.UpsertRow(row);
 			Say($"✅ Assessment complete for {row.RepositoryFullName}");
 		}
-		catch (OperationCanceledException)
-		{
-			// The pump says so, and says it the same way for every step.
-			throw;
-		}
-		catch (Exception ex)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			Say($"❌ Assessment failed: {ex.Message}");
 		}
@@ -528,9 +514,8 @@ public sealed partial class WorkExecutors
 	/// UI instead.
 	/// </remarks>
 	/// <param name="item">The item naming the repository to fix.</param>
-	/// <param name="progress">Unused: a fix-all reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task FixAllAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task FixAllAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)

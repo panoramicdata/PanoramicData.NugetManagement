@@ -186,25 +186,25 @@ public sealed partial class WorkExecutors(
 	private Task DispatchAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
 		=> item.Descriptor.Kind switch
 		{
-			WorkKind.Clone => CloneAsync(item, progress, cancellationToken),
+			WorkKind.Clone => CloneAsync(item, cancellationToken),
 			WorkKind.Reassess => ReassessAsync(item, cancellationToken),
-			WorkKind.FixAll => FixAllAsync(item, progress, cancellationToken),
+			WorkKind.FixAll => FixAllAsync(item, cancellationToken),
 			WorkKind.FixCategory => FixCategoryAsync(item, cancellationToken),
-			WorkKind.FixRule => FixRuleAsync(item, progress, cancellationToken),
+			WorkKind.FixRule => FixRuleAsync(item, cancellationToken),
 			WorkKind.FixWithAiRule => FixWithAiRuleAsync(item, progress, cancellationToken),
 			WorkKind.AnalyseIssue => AnalyseIssueAsync(item, cancellationToken),
 			WorkKind.FixWithAiIssue => FixWithAiIssueAsync(item, progress, cancellationToken),
 			WorkKind.UnstickWithAi => UnstickWithAiAsync(item, progress, cancellationToken),
-			WorkKind.TriageDependabot => TriageDependabotAsync(item, progress, cancellationToken),
-			WorkKind.Build => BuildAsync(item, progress, cancellationToken),
+			WorkKind.TriageDependabot => TriageDependabotAsync(item, cancellationToken),
+			WorkKind.Build => BuildAsync(item, cancellationToken),
 			WorkKind.Test => TestAsync(item, cancellationToken),
 			WorkKind.GitSync => GitSyncAsync(item, cancellationToken),
-			WorkKind.CommitAndPush => CommitAndPushAsync(item, progress, cancellationToken),
-			WorkKind.Publish => PublishAsync(item, progress, cancellationToken),
+			WorkKind.CommitAndPush => CommitAndPushAsync(item, cancellationToken),
+			WorkKind.Publish => PublishAsync(item, cancellationToken),
 			WorkKind.RediscoverOrganization => RediscoverOrganizationAsync(item, cancellationToken),
-			WorkKind.DiscoverReassessTargets => DiscoverReassessTargetsAsync(item, progress, cancellationToken),
-			WorkKind.DiscoverCloneTargets => DiscoverCloneTargetsAsync(item, progress, cancellationToken),
-			WorkKind.RefreshAll => RefreshAllAsync(item, progress, cancellationToken),
+			WorkKind.DiscoverReassessTargets => DiscoverReassessTargetsAsync(item, cancellationToken),
+			WorkKind.DiscoverCloneTargets => DiscoverCloneTargetsAsync(item, cancellationToken),
+			WorkKind.RefreshAll => RefreshAllAsync(item, cancellationToken),
 			_ => throw new NotSupportedException($"No executor for {item.Descriptor.Kind}.")
 		};
 
@@ -296,14 +296,7 @@ public sealed partial class WorkExecutors(
 
 			RememberTestResult(row, passed ? RepositoryTestState.Passed : RepositoryTestState.Failed);
 		}
-		catch (OperationCanceledException)
-		{
-			// Stopping is not failing. Rethrown so the runner marks the item Cancelled and logs
-			// the stop, and so the step badge is left alone rather than painted red for work the
-			// user chose to end.
-			throw;
-		}
-		catch (Exception ex)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			Say($"❌ Error: {ex.Message}");
 			item.Succeeded = false;

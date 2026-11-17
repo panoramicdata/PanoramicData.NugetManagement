@@ -77,87 +77,7 @@ public sealed partial class WorkExecutors
 				Say($"  ...and {changed.Count - 12} more.");
 			}
 
-			IReadOnlySet<string>? baseline = null;
-
-			async Task<UnstickCheck> JudgeAsync(CancellationToken token)
-			{
-				var buildOutput = new List<string>();
-				await dashboard.BuildAsync(row, buildOutput.Add, token, restore: true).ConfigureAwait(false);
-
-				var built = row.Status == PackageStatus.BuildSucceeded;
-				RememberBuildResult(row, built ? RepositoryBuildState.Succeeded : RepositoryBuildState.Failed);
-
-				if (!built)
-				{
-					return new UnstickCheck(false, SummariseRun("Build", false, buildOutput));
-				}
-
-				var testOutput = new List<string>();
-				await dashboard.RunTestsAsync(row, testOutput.Add, token, sandbox: true, null).ConfigureAwait(false);
-
-				if (row.Status == PackageStatus.TestsPassed)
-				{
-					return new UnstickCheck(true, "The build succeeds and the tests pass.");
-				}
-
-				var failed = CoverageMeasurement.ParseFailedTests(string.Join('\n', testOutput));
-
-				if (failed.Count == 0)
-				{
-					return new UnstickCheck(false, SummariseRun("Tests", false, testOutput));
-				}
-
-				baseline ??= await MeasureTestBaselineAsync(row, token).ConfigureAwait(false);
-
-				var added = failed
-					.Where(name => !baseline.Contains(name))
-					.Order(StringComparer.Ordinal)
-					.ToList();
-
-				return added.Count == 0
-					? new UnstickCheck(
-						true,
-						$"{failed.Count.ToString(CultureInfo.InvariantCulture)} test(s) fail, and every one failed before "
-						+ "these changes too.")
-					: new UnstickCheck(
-						false,
-						"These tests passed before the changes and fail now: "
-						+ $"{string.Join(", ", added.Take(10))}.\n{SummariseRun("Tests", false, testOutput)}");
-			}
-
-			Say("🔨 Building and testing the changes as they stand...");
-			var check = await JudgeAsync(cancellationToken).ConfigureAwait(false);
-
-			var resolved = check.Passed;
-
-			if (resolved)
-			{
-				Say($"✅ {check.Summary} Committing them as they are.");
-			}
-			else
-			{
-				Say($"⚠️ These changes are not safe to commit as they are: {FirstLine(check.Summary)}");
-
-				resolved = await RepairUncommittedWithModelAsync(item, row, changed, check.Summary, JudgeAsync, progress, cancellationToken)
-					.ConfigureAwait(false);
-			}
-
-			var pushed = false;
-
-			if (resolved)
-			{
-				pushed = await DeliverUnstuckChangesAsync(item, row, changed, baseline ?? new HashSet<string>(), cancellationToken)
-					.ConfigureAwait(false);
-			}
-
-			if (!pushed)
-			{
-				await SetChangesAsideAsync(row).ConfigureAwait(false);
-			}
-
-			var synced = await SyncAfterUnstickAsync(row, cancellationToken).ConfigureAwait(false);
-
-			item.Succeeded = synced;
+			item.Succeeded = await JudgeAndDeliverUnstickAsync(item, row, changed, progress, cancellationToken).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException)
 		{
@@ -169,6 +89,102 @@ public sealed partial class WorkExecutors
 			Say($"❌ Error: {ex.Message}");
 			item.Succeeded = false;
 		}
+	}
+
+	private sealed class TestBaseline
+	{
+		public IReadOnlySet<string>? Value { get; set; }
+	}
+
+	private async Task<bool> JudgeAndDeliverUnstickAsync(
+		WorkItem item,
+		RepositoryDashboardRow row,
+		IReadOnlyList<string> changed,
+		IProgress<string> progress,
+		CancellationToken cancellationToken)
+	{
+		var baseline = new TestBaseline();
+
+		Say("🔨 Building and testing the changes as they stand...");
+		var check = await JudgeUnstickAsync(row, baseline, cancellationToken).ConfigureAwait(false);
+
+		var resolved = check.Passed;
+
+		if (resolved)
+		{
+			Say($"✅ {check.Summary} Committing them as they are.");
+		}
+		else
+		{
+			Say($"⚠️ These changes are not safe to commit as they are: {FirstLine(check.Summary)}");
+
+			resolved = await RepairUncommittedWithModelAsync(
+					item,
+					row,
+					changed,
+					check.Summary,
+					token => JudgeUnstickAsync(row, baseline, token),
+					progress,
+					cancellationToken)
+				.ConfigureAwait(false);
+		}
+
+		var pushed = resolved
+			&& await DeliverUnstuckChangesAsync(item, row, changed, baseline.Value ?? new HashSet<string>(), cancellationToken)
+				.ConfigureAwait(false);
+
+		if (!pushed)
+		{
+			await SetChangesAsideAsync(row).ConfigureAwait(false);
+		}
+
+		return await SyncAfterUnstickAsync(row, cancellationToken).ConfigureAwait(false);
+	}
+
+	private async Task<UnstickCheck> JudgeUnstickAsync(RepositoryDashboardRow row, TestBaseline baseline, CancellationToken token)
+	{
+		var buildOutput = new List<string>();
+		await dashboard.BuildAsync(row, buildOutput.Add, token, restore: true).ConfigureAwait(false);
+
+		var built = row.Status == PackageStatus.BuildSucceeded;
+		RememberBuildResult(row, built ? RepositoryBuildState.Succeeded : RepositoryBuildState.Failed);
+
+		if (!built)
+		{
+			return new UnstickCheck(false, SummariseRun("Build", false, buildOutput));
+		}
+
+		var testOutput = new List<string>();
+		await dashboard.RunTestsAsync(row, testOutput.Add, token, sandbox: true, null).ConfigureAwait(false);
+
+		if (row.Status == PackageStatus.TestsPassed)
+		{
+			return new UnstickCheck(true, "The build succeeds and the tests pass.");
+		}
+
+		var failed = CoverageMeasurement.ParseFailedTests(string.Join('\n', testOutput));
+
+		if (failed.Count == 0)
+		{
+			return new UnstickCheck(false, SummariseRun("Tests", false, testOutput));
+		}
+
+		baseline.Value ??= await MeasureTestBaselineAsync(row, token).ConfigureAwait(false);
+
+		var added = failed
+			.Where(name => !baseline.Value.Contains(name))
+			.Order(StringComparer.Ordinal)
+			.ToList();
+
+		return added.Count == 0
+			? new UnstickCheck(
+				true,
+				$"{failed.Count.ToString(CultureInfo.InvariantCulture)} test(s) fail, and every one failed before "
+				+ "these changes too.")
+			: new UnstickCheck(
+				false,
+				"These tests passed before the changes and fail now: "
+				+ $"{string.Join(", ", added.Take(10))}.\n{SummariseRun("Tests", false, testOutput)}");
 	}
 
 	private static string FirstLine(string text)
@@ -274,32 +290,7 @@ public sealed partial class WorkExecutors
 			Say($"⏳ Waiting for the model ({ollama.Model})...");
 			using var hold = await ollamaGate.EnterAsync(cancellationToken).ConfigureAwait(false);
 
-			using var client = new Ollama.Api.OllamaClient(new Ollama.Api.OllamaClientOptions
-			{
-				Uri = new Uri(ollama.BaseUrl!),
-				ApiKey = ollama.ApiKey,
-				Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
-			});
-
 			toolbox = CreateRepairToolbox(row, files, folders);
-
-			var fixOptions = new AiFixOptions
-			{
-				MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
-				MaxAttempts = ollama.MaxAttemptsPerRule,
-				TimeBudget = _sessionTimeBudget
-			};
-
-			using var sessionLog = OpenSessionLog(row.RepositoryFullName, "unstick");
-
-			var session = new AiFixSession(
-				new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow, ollama.ToDirect()),
-				toolbox,
-				fixOptions,
-				Say,
-				AiTranscriptSink.For(item.Transcript),
-				sessionLog,
-				onStatus: progress.Report);
 
 			var request = new AiFixRequest(
 				row.RepositoryFullName,
@@ -308,30 +299,8 @@ public sealed partial class WorkExecutors
 				UnstickPrompt.BuildTask(row.RepositoryFullName, changed, problem),
 				AiFixPrompt.SystemPrompt);
 
-			LogSessionStart(sessionLog, request, ollama, fixOptions, [.. files, .. folders]);
-
-			item.Transcript.Append(WorkLineKind.Prompt, $"System prompt:\n{request.SystemPrompt}");
-			item.Transcript.Append(WorkLineKind.Prompt, $"Task:\n{request.Task}");
-
-			Say($"▶ Repairing the uncommitted changes in {row.RepositoryFullName} via {ollama.Model}.");
-
-			var outcome = await session
-				.RunAsync(
-					request,
-					async token =>
-					{
-						var verdict = await judge(token).ConfigureAwait(false);
-						Say(verdict.Passed ? $"   ✓ {verdict.Summary}" : $"   ⚠️ {FirstLine(verdict.Summary)}");
-						return new AiRuleCheck(verdict.Passed, verdict.Summary);
-					},
-					cancellationToken)
+			succeeded = await RunRepairSessionAsync(item, row, toolbox, request, [.. files, .. folders], judge, progress, cancellationToken)
 				.ConfigureAwait(false);
-
-			succeeded = outcome.Succeeded;
-
-			Say(succeeded
-				? "✅ The model got the changes building and passing."
-				: "❌ The model could not get the changes building and passing.");
 
 			return succeeded;
 		}
@@ -348,6 +317,64 @@ public sealed partial class WorkExecutors
 				}
 			}
 		}
+	}
+
+	private async Task<bool> RunRepairSessionAsync(
+		WorkItem item,
+		RepositoryDashboardRow row,
+		AiFixToolbox toolbox,
+		AiFixRequest request,
+		IReadOnlyList<string> paths,
+		Func<CancellationToken, Task<UnstickCheck>> judge,
+		IProgress<string> progress,
+		CancellationToken cancellationToken)
+	{
+		var ollama = runtimeSettings.Ollama;
+
+		using var client = CreateOllamaClient(ollama);
+
+		var fixOptions = new AiFixOptions
+		{
+			MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
+			MaxAttempts = ollama.MaxAttemptsPerRule,
+			TimeBudget = _sessionTimeBudget
+		};
+
+		using var sessionLog = OpenSessionLog(row.RepositoryFullName, "unstick");
+
+		var session = new AiFixSession(
+			new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow, ollama.ToDirect()),
+			toolbox,
+			fixOptions,
+			Say,
+			AiTranscriptSink.For(item.Transcript),
+			sessionLog,
+			onStatus: progress.Report);
+
+		LogSessionStart(sessionLog, request, ollama, fixOptions, paths);
+
+		item.Transcript.Append(WorkLineKind.Prompt, $"System prompt:\n{request.SystemPrompt}");
+		item.Transcript.Append(WorkLineKind.Prompt, $"Task:\n{request.Task}");
+
+		Say($"▶ Repairing the uncommitted changes in {row.RepositoryFullName} via {ollama.Model}.");
+
+		var outcome = await session
+			.RunAsync(
+				request,
+				async token =>
+				{
+					var verdict = await judge(token).ConfigureAwait(false);
+					Say(verdict.Passed ? $"   ✓ {verdict.Summary}" : $"   ⚠️ {FirstLine(verdict.Summary)}");
+					return new AiRuleCheck(verdict.Passed, verdict.Summary);
+				},
+				cancellationToken)
+			.ConfigureAwait(false);
+
+		Say(outcome.Succeeded
+			? "✅ The model got the changes building and passing."
+			: "❌ The model could not get the changes building and passing.");
+
+		return outcome.Succeeded;
 	}
 
 	/// <summary>

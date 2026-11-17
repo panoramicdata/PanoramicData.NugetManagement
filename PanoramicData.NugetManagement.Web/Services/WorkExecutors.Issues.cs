@@ -63,19 +63,10 @@ public sealed partial class WorkExecutors
 			return;
 		}
 
-		var issue = row.OpenIssues.FirstOrDefault(candidate => candidate.Number == issueNumber);
+		var issue = FindAnalysableIssue(row, issueNumber);
 
 		if (issue is null)
 		{
-			Say($"⏭️ Issue #{issueNumber} is no longer open on {row.RepositoryFullName}.");
-			return;
-		}
-
-		// Re-checked rather than trusted from the queue: an item can sit in a lane while the world
-		// changes, and analysing a bot's issue would have two passes judging the same item in public.
-		if (!HumanIssueFilter.IsHumanRaised(issue))
-		{
-			Say($"⏭️ #{issueNumber} is not a human-raised issue.");
 			return;
 		}
 
@@ -89,15 +80,47 @@ public sealed partial class WorkExecutors
 
 		var input = BuildAnalysisInput(row, issue, thread);
 
+		var verdict = await AnalyseWithModelAsync(item, ollama, input, cancellationToken).ConfigureAwait(false);
+
+		issue.Analysis = verdict;
+		issue.AnalysedAtIssueUpdatedUtc = thread.Comments.Count > 0
+			? thread.Comments[^1].CreatedAtUtc
+			: thread.CreatedAtUtc;
+
+		cache.UpsertRow(row);
+
+		await ActOnVerdictAsync(item, row, issue, thread, verdict, github, cancellationToken)
+			.ConfigureAwait(false);
+	}
+
+	/// <summary>The open, human-raised issue to analyse, or null after saying why there is none.</summary>
+	private RepositoryIssue? FindAnalysableIssue(RepositoryDashboardRow row, int issueNumber)
+	{
+		var issue = row.OpenIssues.FirstOrDefault(candidate => candidate.Number == issueNumber);
+
+		if (issue is null)
+		{
+			Say($"⏭️ Issue #{issueNumber} is no longer open on {row.RepositoryFullName}.");
+			return null;
+		}
+
+		// Re-checked rather than trusted from the queue: an item can sit in a lane while the world
+		// changes, and analysing a bot's issue would have two passes judging the same item in public.
+		if (HumanIssueFilter.IsHumanRaised(issue))
+		{
+			return issue;
+		}
+
+		Say($"⏭️ #{issueNumber} is not a human-raised issue.");
+		return null;
+	}
+
+	private async Task<IssueVerdict> AnalyseWithModelAsync(WorkItem item, OllamaOptions ollama, IssueAnalysisInput input, CancellationToken cancellationToken)
+	{
 		Say($"⏳ Waiting for the model ({ollama.Model})...");
 		using var hold = await ollamaGate.EnterAsync(cancellationToken).ConfigureAwait(false);
 
-		using var client = new Ollama.Api.OllamaClient(new Ollama.Api.OllamaClientOptions
-		{
-			Uri = new Uri(ollama.BaseUrl!),
-			ApiKey = ollama.ApiKey,
-			Timeout = TimeSpan.FromMilliseconds(ollama.RequestTimeoutMs)
-		});
+		using var client = CreateOllamaClient(ollama);
 
 		var session = new IssueAnalysisSession(
 			new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow),
@@ -109,18 +132,8 @@ public sealed partial class WorkExecutors
 			WorkLineKind.Prompt,
 			$"Task:\n{IssueAnalysisSession.BuildTask(input, DateTimeOffset.UtcNow)}");
 
-		var verdict = await session
+		return await session
 			.AnalyseAsync(input, DateTimeOffset.UtcNow, cancellationToken)
-			.ConfigureAwait(false);
-
-		issue.Analysis = verdict;
-		issue.AnalysedAtIssueUpdatedUtc = thread.Comments.Count > 0
-			? thread.Comments[^1].CreatedAtUtc
-			: thread.CreatedAtUtc;
-
-		cache.UpsertRow(row);
-
-		await ActOnVerdictAsync(item, row, issue, thread, verdict, github, cancellationToken)
 			.ConfigureAwait(false);
 	}
 
@@ -230,95 +243,122 @@ public sealed partial class WorkExecutors
 
 		try
 		{
-			using var client = CreateOllamaClient(ollama);
-
-			await RecordPreExistingChangesAsync(item, row.LocalPath, cancellationToken).ConfigureAwait(false);
-
-			var redToolbox = CreateRedToolbox(row, plan);
-			var fixToolbox = CreateFixToolbox(row, plan);
-			var oracle = CreateIssueOracle(row);
-
-			var fixOptions = new AiFixOptions
-			{
-				MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
-				MaxAttempts = ollama.MaxAttemptsPerRule
-			};
-
-			using var redLog = OpenSessionLog(row.RepositoryFullName, $"issue-{issueNumber}-red");
-			using var fixLog = OpenSessionLog(row.RepositoryFullName, $"issue-{issueNumber}-fix");
-
-			AiFixSession NewSession(AiFixToolbox toolbox, AiSessionLog log) => new(
-				new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow, ollama.ToDirect()),
-				toolbox,
-				fixOptions,
-				Say,
-				AiTranscriptSink.For(item.Transcript),
-				log,
-				onStatus: progress.Report);
-
-			var brief = plan.Brief;
-
-			// The report as the model sees it: the brief's paraphrase, never the reporter's own words.
-			var issueText = $"Goal: {brief.Goal}\nDone looks like: {brief.ExpectedEndState}";
-
-			var (owner, name) = SplitFullName(row.RepositoryFullName);
-
-			var change = new AiChangeRequest(
-				owner,
-				name,
-				AiChangeKind.IssueFix,
-				AiChangePipelineFactory.Slug($"issue {issueNumber}", Guid.NewGuid().ToString("N")[..6]),
-				$"Fix #{issueNumber}: {AiChangePipelineFactory.Shorten(brief.Goal, 60)}",
-				issueNumber,
-				RequiresRedTest: IssueAutonomyGate.RequiresRedTest);
-
-			var fixPrompt = IssueFixPrompt.BuildTask(brief, row.RepositoryFullName, issueNumber);
-
-			LogSessionStart(
-				fixLog,
-				new AiFixRequest(row.RepositoryFullName, $"issue-{issueNumber}", $"Issue #{issueNumber}", fixPrompt, AiFixPrompt.SystemPrompt),
-				ollama,
-				fixOptions,
-				brief.Paths);
-
-			item.Transcript.Append(WorkLineKind.Prompt, $"System prompt:\n{AiFixPrompt.SystemPrompt}");
-			item.Transcript.Append(WorkLineKind.Prompt, $"Task:\n{fixPrompt}");
-
-			Say($"▶ #{issueNumber} on {row.RepositoryFullName} via {ollama.Model}: a failing test first in "
-				+ $"{string.Join(", ", plan.TestFolders)}, then a fix writing only {string.Join(", ", brief.Paths)}.");
-
-			// The model's server is held by the decorator around each call into the model, and not by this
-			// method: delivery waits for CI, which can take half an hour, and that must not idle the GPU.
-			var work = new GatedAiChangeWork(
-				new AiSessionChangeWork(
-					NewSession(redToolbox, redLog),
-					NewSession(fixToolbox, fixLog),
-					issueText,
-					fixPrompt,
-					AiFixPrompt.SystemPrompt,
-					oracle.CheckAsync,
-					token => CheckIssueTestCompilesAsync(row, token)),
-				ollamaGate);
-
-			var pipeline = AiChangePipelineFactory.Create(
-				new LocalRepoAiChangeGit(row.LocalPath, row.RepositoryFullName),
-				new DashboardAiChangeTests(dashboard, localRepo, row, row.RepositoryFullName),
-				work,
-				new OctokitGitHubWriteApi(await CreateGitHubClientAsync().ConfigureAwait(false)),
-				AiChangePipelineFactory.IssueFixLimits(brief.Paths, plan.TestFolders),
-				KeepDeliveredChange(item, row.LocalPath));
-
-			var delivery = await pipeline.RunAsync(change, Say, cancellationToken).ConfigureAwait(false);
-			NoteDeliveryOutcome(item, row, delivery);
-
-			await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
-			cache.UpsertRow(row);
+			await RunIssueFixAsync(item, progress, row, plan, issueNumber, cancellationToken).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException)
 		{
 			Say($"⏹️ Stopped the fix for #{issueNumber}.");
 			throw;
 		}
+	}
+
+	private async Task RunIssueFixAsync(
+		WorkItem item,
+		IProgress<string> progress,
+		RepositoryDashboardRow row,
+		IssueFixPlan plan,
+		int issueNumber,
+		CancellationToken cancellationToken)
+	{
+		var ollama = runtimeSettings.Ollama;
+		var brief = plan.Brief;
+
+		using var client = CreateOllamaClient(ollama);
+
+		await RecordPreExistingChangesAsync(item, row.LocalPath!, cancellationToken).ConfigureAwait(false);
+
+		var fixOptions = new AiFixOptions
+		{
+			MaxTurnsPerAttempt = ollama.MaxTurnsPerAttempt,
+			MaxAttempts = ollama.MaxAttemptsPerRule
+		};
+
+		using var redLog = OpenSessionLog(row.RepositoryFullName, $"issue-{issueNumber}-red");
+		using var fixLog = OpenSessionLog(row.RepositoryFullName, $"issue-{issueNumber}-fix");
+
+		var fixPrompt = IssueFixPrompt.BuildTask(brief, row.RepositoryFullName, issueNumber);
+
+		LogSessionStart(
+			fixLog,
+			new AiFixRequest(row.RepositoryFullName, $"issue-{issueNumber}", $"Issue #{issueNumber}", fixPrompt, AiFixPrompt.SystemPrompt),
+			ollama,
+			fixOptions,
+			brief.Paths);
+
+		item.Transcript.Append(WorkLineKind.Prompt, $"System prompt:\n{AiFixPrompt.SystemPrompt}");
+		item.Transcript.Append(WorkLineKind.Prompt, $"Task:\n{fixPrompt}");
+
+		Say($"▶ #{issueNumber} on {row.RepositoryFullName} via {ollama.Model}: a failing test first in "
+			+ $"{string.Join(", ", plan.TestFolders)}, then a fix writing only {string.Join(", ", brief.Paths)}.");
+
+		// The model's server is held by the decorator around each call into the model, and not by this
+		// method: delivery waits for CI, which can take half an hour, and that must not idle the GPU.
+		var work = new GatedAiChangeWork(
+			new AiSessionChangeWork(
+				NewIssueSession(item, progress, client, ollama, fixOptions, CreateRedToolbox(row, plan), redLog),
+				NewIssueSession(item, progress, client, ollama, fixOptions, CreateFixToolbox(row, plan), fixLog),
+
+				// The report as the model sees it: the brief's paraphrase, never the reporter's own words.
+				$"Goal: {brief.Goal}\nDone looks like: {brief.ExpectedEndState}",
+				fixPrompt,
+				AiFixPrompt.SystemPrompt,
+				CreateIssueOracle(row).CheckAsync,
+				token => CheckIssueTestCompilesAsync(row, token)),
+			ollamaGate);
+
+		await DeliverIssueFixAsync(item, row, plan, work, issueNumber, cancellationToken).ConfigureAwait(false);
+	}
+
+	private AiFixSession NewIssueSession(
+		WorkItem item,
+		IProgress<string> progress,
+		Ollama.Api.OllamaClient client,
+		OllamaOptions ollama,
+		AiFixOptions fixOptions,
+		AiFixToolbox toolbox,
+		AiSessionLog log)
+		=> new(
+			new OllamaChatModel(client, ollama.Model!, ollama.ContextWindow, ollama.ToDirect()),
+			toolbox,
+			fixOptions,
+			Say,
+			AiTranscriptSink.For(item.Transcript),
+			log,
+			onStatus: progress.Report);
+
+	private async Task DeliverIssueFixAsync(
+		WorkItem item,
+		RepositoryDashboardRow row,
+		IssueFixPlan plan,
+		IAiChangeWork work,
+		int issueNumber,
+		CancellationToken cancellationToken)
+	{
+		var brief = plan.Brief;
+		var (owner, name) = SplitFullName(row.RepositoryFullName);
+
+		var change = new AiChangeRequest(
+			owner,
+			name,
+			AiChangeKind.IssueFix,
+			AiChangePipelineFactory.Slug($"issue {issueNumber}", Guid.NewGuid().ToString("N")[..6]),
+			$"Fix #{issueNumber}: {AiChangePipelineFactory.Shorten(brief.Goal, 60)}",
+			issueNumber,
+			RequiresRedTest: IssueAutonomyGate.RequiresRedTest);
+
+		var pipeline = AiChangePipelineFactory.Create(
+			new LocalRepoAiChangeGit(row.LocalPath!, row.RepositoryFullName),
+			new DashboardAiChangeTests(dashboard, localRepo, row, row.RepositoryFullName),
+			work,
+			new OctokitGitHubWriteApi(await CreateGitHubClientAsync().ConfigureAwait(false)),
+			AiChangePipelineFactory.IssueFixLimits(brief.Paths, plan.TestFolders),
+			KeepDeliveredChange(item, row.LocalPath!));
+
+		var delivery = await pipeline.RunAsync(change, Say, cancellationToken).ConfigureAwait(false);
+		NoteDeliveryOutcome(item, row, delivery);
+
+		await dashboard.RefreshGitStatusAsync(row, CancellationToken.None).ConfigureAwait(false);
+		cache.UpsertRow(row);
 	}
 
 	private sealed record IssueFixPlan(IssueFixBrief Brief, IReadOnlyList<string> TestProjects, List<string> TestFolders);
@@ -526,11 +566,9 @@ public sealed partial class WorkExecutors
 	/// </para>
 	/// </remarks>
 	/// <param name="item">The item naming the repository to triage.</param>
-	/// <param name="progress">Unused: triage reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
 	private async Task TriageDependabotAsync(
 		WorkItem item,
-		IProgress<string> progress,
 		CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
@@ -570,18 +608,7 @@ public sealed partial class WorkExecutors
 			row.Assessment!.RuleResults,
 			ruleId => remediations.Get(ruleId) is not null);
 
-		// Adoption writes files, which triage has never done. No clone means no adoption: the verdicts
-		// are still reached and reported, and every adoptable pull request is left open saying why. The
-		// guard matches the one the Fix lane uses, rather than inventing a second opinion about when a
-		// clone can be written to.
-		var adopter = row is { IsClonedLocally: true, LocalPath: not null }
-			? new CloneBumpAdopter(row.LocalPath)
-			: null;
-
-		if (adopter is null)
-		{
-			Say($"ℹ️ {row.RepositoryFullName} is not cloned locally, so nothing can be adopted this pass.");
-		}
+		var adopter = AdopterFor(row);
 
 		var outcome = await triageRunner
 			.RunAsync(
@@ -594,6 +621,26 @@ public sealed partial class WorkExecutors
 				adopter)
 			.ConfigureAwait(false);
 
+		await ReportTriageOutcomeAsync(row, outcome, triages, cancellationToken).ConfigureAwait(false);
+	}
+
+	private CloneBumpAdopter? AdopterFor(RepositoryDashboardRow row)
+	{
+		// Adoption writes files, which triage has never done. No clone means no adoption: the verdicts
+		// are still reached and reported, and every adoptable pull request is left open saying why. The
+		// guard matches the one the Fix lane uses, rather than inventing a second opinion about when a
+		// clone can be written to.
+		if (row is { IsClonedLocally: true, LocalPath: not null })
+		{
+			return new CloneBumpAdopter(row.LocalPath);
+		}
+
+		Say($"ℹ️ {row.RepositoryFullName} is not cloned locally, so nothing can be adopted this pass.");
+		return null;
+	}
+
+	private async Task ReportTriageOutcomeAsync(RepositoryDashboardRow row, DependabotTriageOutcome outcome, IReadOnlyList<DependabotTriage> triages, CancellationToken cancellationToken)
+	{
 		Say($"✅ {row.RepositoryFullName}: closed {outcome.Closed}, adopted {outcome.Adopted}, "
 			+ $"closed {outcome.Obsolete} for dependencies it no longer references, "
 			+ $"{outcome.Covered} awaiting an existing fix, {outcome.Uncovered} with no fix available, "

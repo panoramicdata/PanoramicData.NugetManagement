@@ -195,12 +195,8 @@ public sealed partial class WorkExecutors
 				.WaitAsync(cancellationToken)
 				.ConfigureAwait(false);
 		}
-		catch (OperationCanceledException)
-		{
-			// A cancelled fix stops now rather than after the baseline.
-			throw;
-		}
-		catch (Exception)
+		// A cancelled fix stops now rather than after the baseline.
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			item.PreExistingChanges = new Dictionary<string, string>(StringComparer.Ordinal);
 		}
@@ -321,28 +317,16 @@ public sealed partial class WorkExecutors
 		AiFixToolbox toolbox,
 		IReadOnlySet<string>? testBaseline,
 		CancellationToken cancellationToken,
-		(DuplicationReport Before, string Target)? duplication = null)
+		(DuplicationReport Before, string Target)? duplication)
 	{
 		if (toolbox.FilesWritten.Count == 0)
 		{
 			return new AiRuleCheck(false, "Nothing was written, so nothing changed.");
 		}
 
-		// Captured rather than said, for the reason SummariseRun gives: a verbose build streamed into
-		// the transcript pushes the session out of it.
-		var captured = new List<string>();
-		await dashboard.BuildAsync(row, captured.Add, cancellationToken, restore: true).ConfigureAwait(false);
-
-		var built = row.Status == PackageStatus.BuildSucceeded;
-
-		RememberBuildResult(row, built ? RepositoryBuildState.Succeeded : RepositoryBuildState.Failed);
-
-		var summary = SummariseRun("Build", built, captured);
-		Say(built ? $"   ✓ {summary}" : $"   ⚠️ {summary}");
-
-		if (!built)
+		if (await RunBuildCheckAsync(row, cancellationToken).ConfigureAwait(false) is { } buildFailure)
 		{
-			return new AiRuleCheck(false, summary);
+			return buildFailure;
 		}
 
 		if (testBaseline is not null && await CheckTestsAgainstBaselineAsync(row, toolbox, testBaseline, cancellationToken).ConfigureAwait(false) is { } testFailure)
@@ -356,6 +340,24 @@ public sealed partial class WorkExecutors
 		}
 
 		return new AiRuleCheck(true, $"{toolbox.FilesWritten.Count} file(s) changed and the build succeeded.");
+	}
+
+	/// <summary>Builds the clone and returns a failing check when it does not build, otherwise null.</summary>
+	private async Task<AiRuleCheck?> RunBuildCheckAsync(RepositoryDashboardRow row, CancellationToken cancellationToken)
+	{
+		// Captured rather than said, for the reason SummariseRun gives: a verbose build streamed into
+		// the transcript pushes the session out of it.
+		var captured = new List<string>();
+		await dashboard.BuildAsync(row, captured.Add, cancellationToken, restore: true).ConfigureAwait(false);
+
+		var built = row.Status == PackageStatus.BuildSucceeded;
+
+		RememberBuildResult(row, built ? RepositoryBuildState.Succeeded : RepositoryBuildState.Failed);
+
+		var summary = SummariseRun("Build", built, captured);
+		Say(built ? $"   ✓ {summary}" : $"   ⚠️ {summary}");
+
+		return built ? null : new AiRuleCheck(false, summary);
 	}
 
 	/// <summary>Runs the tests and returns a failing check when any test that passed before now fails, otherwise null.</summary>
@@ -568,9 +570,8 @@ public sealed partial class WorkExecutors
 	/// been fixed by something else, in which case the item is skipped rather than re-applied.
 	/// </remarks>
 	/// <param name="item">The item naming the repository and, via <c>ruleId</c>, which rule to fix.</param>
-	/// <param name="progress">Unused: a single-rule fix reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task FixRuleAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task FixRuleAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)

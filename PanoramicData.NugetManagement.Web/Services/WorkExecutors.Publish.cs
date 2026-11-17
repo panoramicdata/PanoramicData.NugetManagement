@@ -42,14 +42,7 @@ public sealed partial class WorkExecutors
 
 			await SayDirtyWorkingTreePreviewAsync(row).ConfigureAwait(false);
 		}
-		catch (OperationCanceledException)
-		{
-			// Stopping is not failing, and every other step says so the same way. Without this rethrow
-			// a stopped sync reports "❌ Error: The operation was canceled" as though something had gone
-			// wrong, instead of the runner's stop line.
-			throw;
-		}
-		catch (Exception ex)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			Say($"❌ Error: {ex.Message}");
 		}
@@ -59,9 +52,8 @@ public sealed partial class WorkExecutors
 	/// Publishes one repository's packages.
 	/// </summary>
 	/// <param name="item">The item naming the repository to publish.</param>
-	/// <param name="progress">Unused: a publish reports no sub-steps.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
-	private async Task PublishAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task PublishAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)
@@ -87,14 +79,7 @@ public sealed partial class WorkExecutors
 				row.NextVersion,
 				row.TotalFailures);
 		}
-		catch (OperationCanceledException)
-		{
-			// Stopping is not failing, and every other step says so the same way. Without this rethrow
-			// a stopped publish reports "❌ Error: The operation was canceled" as though something had
-			// gone wrong, instead of the runner's stop line.
-			throw;
-		}
-		catch (Exception ex)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			Say($"❌ Error: {ex.Message}");
 		}
@@ -153,9 +138,8 @@ public sealed partial class WorkExecutors
 	/// it is logged as a warning instead, which is the loudest thing the console has.
 	/// </remarks>
 	/// <param name="item">The item naming the repository to commit and push.</param>
-	/// <param name="progress">Unused: a commit and push reports no sub-steps.</param>
 	/// <param name="cancellationToken">Stops the checks and the build before the commit; the push itself is not interruptible.</param>
-	private async Task CommitAndPushAsync(WorkItem item, IProgress<string> progress, CancellationToken cancellationToken)
+	private async Task CommitAndPushAsync(WorkItem item, CancellationToken cancellationToken)
 	{
 		var row = RowFor(item);
 		if (row is null)
@@ -186,14 +170,7 @@ public sealed partial class WorkExecutors
 				await HandleFailedPushAsync(item, row, push, cancellationToken).ConfigureAwait(false);
 			}
 		}
-		catch (OperationCanceledException)
-		{
-			// Stopping is not failing. Rethrown so the runner marks the item Cancelled and logs
-			// the stop, and so the step badge is left alone rather than painted red for work the
-			// user chose to end.
-			throw;
-		}
-		catch (Exception ex)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			Say($"❌ Error: {ex.Message}");
 			item.Succeeded = false;
