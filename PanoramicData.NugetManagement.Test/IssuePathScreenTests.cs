@@ -15,12 +15,11 @@ public class IssuePathScreenTests(ITestOutputHelper output) : TestWithOutput(out
 {
 	private readonly string _root = Directory.CreateTempSubdirectory("issue-path-screen-").FullName;
 
-	private string GivenFile(string relativePath)
+	private void GivenFile(string relativePath)
 	{
 		var full = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
 		Directory.CreateDirectory(Path.GetDirectoryName(full)!);
 		File.WriteAllText(full, "// content");
-		return full;
 	}
 
 	public void Dispose()

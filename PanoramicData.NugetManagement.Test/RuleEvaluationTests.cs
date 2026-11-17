@@ -337,7 +337,7 @@ public class RuleEvaluationTests : TestWithOutput
 	[Fact]
 	public async Task REPO06_ShouldPass_WhenDefaultAndCurrentBranchAreMain()
 	{
-		var context = CreateEmptyContext(defaultBranch: "main", currentBranch: "main");
+		var context = CreateEmptyContext();
 
 		var rule = GetRule("REPO-06");
 		var result = await rule.EvaluateAsync(context, CancellationToken.None);
@@ -683,7 +683,8 @@ public class RuleEvaluationTests : TestWithOutput
 	public async Task CI08_ShouldPass_WhenAllRequiredSnippetsPresent()
 	{
 		var ci = string.Join("\n",
-		[
+		new[]
+		{
 			"on:",
 			"  push:",
 			"    tags: ['[0-9]*.[0-9]*.[0-9]*']",
@@ -700,7 +701,7 @@ public class RuleEvaluationTests : TestWithOutput
 			"      with:",
 			"        user: david_n_m_bond",
 			"    - run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }}"
-		]);
+		});
 
 		var context = CreateContext(new Dictionary<string, string>
 		{
@@ -727,7 +728,8 @@ public class RuleEvaluationTests : TestWithOutput
 	public async Task CI08_ShouldFail_WhenNuGetLoginUsesServerUrlInsteadOfNamedUser()
 	{
 		var ci = string.Join("\n",
-		[
+		new[]
+		{
 			"on:",
 			"  push:",
 			"    tags: ['[0-9]*.[0-9]*.[0-9]*']",
@@ -744,7 +746,7 @@ public class RuleEvaluationTests : TestWithOutput
 			"      with:",
 			"        nuget-server-url: https://api.nuget.org/v3/index.json",
 			"    - run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }}"
-		]);
+		});
 
 		var context = CreateContext(new Dictionary<string, string>
 		{
@@ -756,7 +758,8 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	private static string CiWithPushLine(string pushLine) => string.Join("\n",
-	[
+	new[]
+	{
 		"on:",
 		"  push:",
 		"    tags: ['[0-9]*.[0-9]*.[0-9]*']",
@@ -775,7 +778,7 @@ public class RuleEvaluationTests : TestWithOutput
 		"    - name: Extra step",
 		"      run: echo kept",
 		$"    - run: {pushLine}"
-	]);
+	});
 
 	[Fact]
 	public async Task CI08_ShouldFailWithTargetedRemoval_WhenPushStepUsesSkipDuplicate()

@@ -191,7 +191,7 @@ public static class DetachedProcessLauncher
 		=> IsProcessInJob(GetCurrentProcess(), nint.Zero, out var inJob) && inJob;
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct ProcessInformation
+	private record struct ProcessInformation
 	{
 		public nint hProcess;
 		public nint hThread;
@@ -200,7 +200,7 @@ public static class DetachedProcessLauncher
 	}
 
 	[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-	private struct StartupInfo
+	private record struct StartupInfo
 	{
 		public int cb;
 		public nint lpReserved;

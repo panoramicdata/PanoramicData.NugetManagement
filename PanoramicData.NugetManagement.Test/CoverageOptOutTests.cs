@@ -173,7 +173,7 @@ public class CoverageOptOutTests
 	public async Task WithoutTheDeclaration_Tst10StillGradesRed_WhenThereIsNoFigure()
 	{
 		var result = await new CodeCoverageBandRule()
-			.EvaluateAsync(ContextWith(null, coverage: null), CancellationToken.None);
+			.EvaluateAsync(ContextWith(null), CancellationToken.None);
 
 		result.IsApplicable.Should().BeTrue();
 		result.Passed.Should().BeFalse();

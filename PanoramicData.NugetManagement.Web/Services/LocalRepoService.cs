@@ -1617,8 +1617,7 @@ public partial class LocalRepoService
 			}
 		}
 
-		// Wrapped in one root so several test projects' reports read as a single document;
-		// ChangedLineCoverage reads every <class> beneath whatever the root is.
+		// One root element so several test project reports parse as a single document.
 		return reports.Count == 0
 			? null
 			: "<reports>" + string.Concat(reports.Select(StripXmlDeclaration)) + "</reports>";

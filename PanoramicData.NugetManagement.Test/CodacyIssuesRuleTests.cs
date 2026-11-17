@@ -96,7 +96,7 @@ public class CodacyIssuesRuleTests(ITestOutputHelper output) : TestWithOutput(ou
 	public async Task WarnsWithFullDetail_WhenIssuesWithinBudget()
 	{
 		var rule = new CodacyIssuesRule(new FakeService(new CodacyRepositoryReport { IsTracked = true, Issues = SampleIssues(4) }));
-		var result = await rule.EvaluateAsync(Context(Token(maxIssueCount: 0)), TestContext.Current.CancellationToken);
+		var result = await rule.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
 
 		result.Passed.Should().BeFalse();
 		result.Severity.Should().Be(AssessmentSeverity.Warning);

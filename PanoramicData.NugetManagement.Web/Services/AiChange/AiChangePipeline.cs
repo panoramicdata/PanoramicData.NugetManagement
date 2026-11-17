@@ -361,18 +361,23 @@ public sealed class AiChangePipeline(
 				.GetCheckRunsAsync(request.Owner, request.Name, sha, cancellationToken)
 				.ConfigureAwait(false);
 
-			switch (CheckRunGate.Evaluate(runs))
+			var gate = CheckRunGate.Evaluate(runs);
+
+			if (gate == CheckGateResult.Passed)
 			{
-				case CheckGateResult.Passed:
-					return null;
+				return null;
+			}
 
-				case CheckGateResult.Failed:
-					var failed = string.Join(", ", runs.Where(run => run.Conclusion == CheckRunConclusion.Failed).Select(run => run.Name));
-					return new AiChangeOutcome(AiChangeOutcomeKind.LeftOpenCiFailed, $"CI failed ({failed}); the pull request is left open.");
+			if (gate == CheckGateResult.Failed)
+			{
+				var failed = string.Join(", ", runs.Where(run => run.Conclusion == CheckRunConclusion.Failed).Select(run => run.Name));
+				return new AiChangeOutcome(AiChangeOutcomeKind.LeftOpenCiFailed, $"CI failed ({failed}); the pull request is left open.");
+			}
 
-				case CheckGateResult.NoChecks when waited >= options.NoChecksGrace:
-					say("The repository has no CI checks, so the local gate alone decides the merge.");
-					return null;
+			if (gate == CheckGateResult.NoChecks && waited >= options.NoChecksGrace)
+			{
+				say("The repository has no CI checks, so the local gate alone decides the merge.");
+				return null;
 			}
 
 			if (waited >= options.CiTimeout)

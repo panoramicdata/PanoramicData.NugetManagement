@@ -135,8 +135,7 @@ public class AwesomeAssertionsRuleTests(ITestOutputHelper output) : TestWithOutp
 		var data = result.Advisory!.Data;
 		data["remediation_type"].Should().Be("replace_regex_in_files");
 
-		// The .cs sweep is what turns `using FluentAssertions;` into `using AwesomeAssertions;`;
-		// without it the swap compiles nothing.
+		// Without the .cs sweep the swap compiles nothing.
 		var globs = (string[])data["globs"];
 		globs.Should().Contain("Directory.Packages.props");
 		globs.Should().Contain("**/*.csproj");

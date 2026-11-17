@@ -67,8 +67,7 @@ public static class CodacySecurityFormatter
 		sb.AppendLine("pushing; the finding clears on Codacy's next analysis rather than immediately.");
 		sb.AppendLine();
 
-		// SLA first, category second. A reader triaging a long list wants the late work at the top;
-		// which kind of problem it is only matters once they have decided what to pick up.
+		// Late work first, then category.
 		var slaGroups = findings
 			.GroupBy(finding => finding.SlaStatus)
 			.OrderBy(group => group.Key);

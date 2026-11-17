@@ -466,7 +466,8 @@ public static class Standards
 	/// </summary>
 	public static string GetTrustedPublishingCiWorkflowContent(string nuGetUser)
 		=> string.Join("\n",
-		[
+		new[]
+		{
 				"name: CI",
 				string.Empty,
 				"on:",
@@ -531,7 +532,7 @@ public static class Standards
 				string.Empty,
 				"    - name: Push to NuGet",
 			 "      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json"
-		]);
+		});
 
 	/// <summary>
 	/// The standard .gitignore content for .NET repositories.

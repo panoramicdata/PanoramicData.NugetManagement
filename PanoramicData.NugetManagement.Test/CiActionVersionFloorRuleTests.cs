@@ -21,12 +21,10 @@ public class CiActionVersionFloorRuleTests(ITestOutputHelper output) : TestWithO
 	/// of a test. A file is used rather than <c>Observe</c> because the floor a rule compares against
 	/// is frozen at load time — observations only raise it for the next run.
 	/// </summary>
-	private ActionVersionCatalog SeedCatalog(Dictionary<string, string> floors)
+	private void SeedCatalog(Dictionary<string, string> floors)
 	{
 		File.WriteAllText(_tempFile, JsonSerializer.Serialize(floors));
-		var catalog = new ActionVersionCatalog(_tempFile);
-		ActionVersionCatalog.Default = catalog;
-		return catalog;
+		ActionVersionCatalog.Default = new ActionVersionCatalog(_tempFile);
 	}
 
 	/// <inheritdoc />

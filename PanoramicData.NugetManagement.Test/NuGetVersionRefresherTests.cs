@@ -17,7 +17,7 @@ public class NuGetVersionRefresherTests(ITestOutputHelper output) : TestWithOutp
 	public async Task ShouldRecordEveryPackageItLooksUp()
 	{
 		var cache = new NuGetVersionCache(null);
-		var refresher = Refresher(cache, (id, _) => Task.FromResult<(string, DateTimeOffset)?>(("3.0.43", _published)));
+		var refresher = Refresher(cache, (_, _) => Task.FromResult<(string, DateTimeOffset)?>(("3.0.43", _published)));
 
 		await refresher.RefreshAsync(["Codacy.Api", "Octokit"], TestContext.Current.CancellationToken);
 
@@ -29,7 +29,7 @@ public class NuGetVersionRefresherTests(ITestOutputHelper output) : TestWithOutp
 	public async Task ShouldReportHowManyPackagesActuallyChanged()
 	{
 		var cache = new NuGetVersionCache(null);
-		var refresher = Refresher(cache, (id, _) => Task.FromResult<(string, DateTimeOffset)?>(("3.0.43", _published)));
+		var refresher = Refresher(cache, (_, _) => Task.FromResult<(string, DateTimeOffset)?>(("3.0.43", _published)));
 
 		await refresher.RefreshAsync(["Codacy.Api"], TestContext.Current.CancellationToken);
 

@@ -41,10 +41,10 @@ public class DependabotAdoptionPlanTests(ITestOutputHelper output) : TestWithOut
 		FileContents = files.ToDictionary(f => f.Path, f => f.Content, StringComparer.OrdinalIgnoreCase)
 	};
 
-	private static (string, string) Packages(params (string Id, string Version)[] packages)
+	private static (string, string) Packages(params (string Id, string Version)[] entries)
 		=> (_packagesProps,
 			"<Project><ItemGroup>"
-				+ string.Concat(packages.Select(p =>
+				+ string.Concat(entries.Select(p =>
 					$"""<PackageVersion Include="{p.Id}" Version="{p.Version}" />"""))
 				+ "</ItemGroup></Project>");
 
