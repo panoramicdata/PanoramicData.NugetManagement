@@ -5128,7 +5128,7 @@ else
 			}
 			else
 			{
-				await Dashboard.AssessRepositoryAsync(_selectedRow, github);
+				await Dashboard.AssessRepositoryAsync(_selectedRow, github, CancellationToken.None);
 			}
 
            await PersistSelectedRowUpdateAsync();

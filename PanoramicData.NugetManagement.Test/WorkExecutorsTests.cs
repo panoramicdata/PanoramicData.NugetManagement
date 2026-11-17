@@ -374,7 +374,7 @@ public sealed class DashboardServiceCancellationTests(ITestOutputHelper output) 
 		using var cancellation = new CancellationTokenSource();
 		await cancellation.CancelAsync();
 
-		var act = () => CreateDashboardService().AssessLocalRepositoryAsync(row, cancellation.Token);
+		var act = () => CreateDashboardService().AssessLocalRepositoryAsync(row, cancellation.Token, null);
 
 		await act.Should().ThrowAsync<OperationCanceledException>(
 			"the caller's cancellation handling — the revert, and the runner marking the item Cancelled — cannot run if the stop is swallowed here");

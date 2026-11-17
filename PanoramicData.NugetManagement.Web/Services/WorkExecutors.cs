@@ -691,7 +691,7 @@ public sealed partial class WorkExecutors(
 			}
 			else
 			{
-				await dashboard.AssessRepositoryAsync(row, github).ConfigureAwait(false);
+				await dashboard.AssessRepositoryAsync(row, github, CancellationToken.None).ConfigureAwait(false);
 			}
 
 			cache.UpsertRow(row);

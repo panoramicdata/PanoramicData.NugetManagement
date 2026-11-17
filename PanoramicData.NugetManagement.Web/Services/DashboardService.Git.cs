@@ -57,8 +57,8 @@ public partial class DashboardService
 	/// </remarks>
 	public async Task<bool> GitSyncAsync(
 		RepositoryDashboardRow row,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)
@@ -88,41 +88,47 @@ public partial class DashboardService
 
 	private async Task<bool> EnsureClonedAsync(RepositoryDashboardRow row, string repoIdentity, Action<string>? onOutput, CancellationToken cancellationToken)
 	{
-		var isClonedLocally = _localRepo.IsClonedLocally(repoIdentity);
-		if (!isClonedLocally)
+		if (!_localRepo.IsClonedLocally(repoIdentity))
 		{
-			var cloneUrl = BuildCloneUrl(row);
-			if (cloneUrl is null)
-			{
-				row.Status = PackageStatus.Error;
-				row.StatusMessage = "No repository known for this package.";
-				onOutput?.Invoke($"❌ {row.RepositoryFullName}: no repository is known for this package, so there is nothing to clone.");
-				return false;
-			}
-
-			onOutput?.Invoke($"Cloning {row.RepositoryFullName}...");
-			var (cloneSuccess, cloneOutput) = await _localRepo.CloneAsync(cloneUrl, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
-			if (!cloneSuccess)
-			{
-				row.Status = PackageStatus.Error;
-				row.StatusMessage = "Git sync failed.";
-				onOutput?.Invoke(cloneOutput);
-				return false;
-			}
-
-			row.IsClonedLocally = true;
-			row.LocalPath = _localRepo.GetLocalPath(repoIdentity);
-			onOutput?.Invoke($"Cloned to {row.LocalPath}");
+			return await CloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 		}
-		else if (await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false) is not null)
+
+		if (await VerifyLocalCloneAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false) is null)
 		{
-			// An existing folder of the right name holding the wrong repository: syncing it would pull
-			// somebody else's history into what this row believes is its checkout.
+			return true;
+		}
+
+		// An existing folder of the right name holding the wrong repository: syncing it would pull
+		// somebody else's history into what this row believes is its checkout.
+		row.Status = PackageStatus.Error;
+		row.StatusMessage = "Local folder holds a different repository.";
+		return false;
+	}
+
+	private async Task<bool> CloneAsync(RepositoryDashboardRow row, string repoIdentity, Action<string>? onOutput, CancellationToken cancellationToken)
+	{
+		var cloneUrl = BuildCloneUrl(row);
+		if (cloneUrl is null)
+		{
 			row.Status = PackageStatus.Error;
-			row.StatusMessage = "Local folder holds a different repository.";
+			row.StatusMessage = "No repository known for this package.";
+			onOutput?.Invoke($"❌ {row.RepositoryFullName}: no repository is known for this package, so there is nothing to clone.");
 			return false;
 		}
 
+		onOutput?.Invoke($"Cloning {row.RepositoryFullName}...");
+		var (cloneSuccess, cloneOutput) = await _localRepo.CloneAsync(cloneUrl, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
+		if (!cloneSuccess)
+		{
+			row.Status = PackageStatus.Error;
+			row.StatusMessage = "Git sync failed.";
+			onOutput?.Invoke(cloneOutput);
+			return false;
+		}
+
+		row.IsClonedLocally = true;
+		row.LocalPath = _localRepo.GetLocalPath(repoIdentity);
+		onOutput?.Invoke($"Cloned to {row.LocalPath}");
 		return true;
 	}
 
@@ -137,8 +143,8 @@ public partial class DashboardService
 	public async Task<CommitAndPushOutcome> CommitAndPushAsync(
 		RepositoryDashboardRow row,
 		string commitMessage,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var repoIdentity = RepoIdentity(row);
 		if (repoIdentity is null)

@@ -17,8 +17,8 @@ public partial class DashboardService
 	/// </summary>
 	public async Task<List<string>> ApplyRemediationsAsync(
 		RepositoryDashboardRow row,
-		Action<string>? onOutput = null,
-		CancellationToken cancellationToken = default)
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
 	{
 		var applied = new List<string>();
 
@@ -69,7 +69,7 @@ public partial class DashboardService
 		{
 			var before = applied.Count;
 			onOutput?.Invoke("▶ Re-assessing the working tree for fixes the last change unlocked...");
-			await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+			await AssessLocalRepositoryAsync(row, cancellationToken, null).ConfigureAwait(false);
 			ApplyFailures(row, applied, onOutput, cancellationToken);
 
 			if (applied.Count == before)
@@ -326,7 +326,7 @@ public partial class DashboardService
 			return true;
 		}
 
-		await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+		await AssessLocalRepositoryAsync(row, cancellationToken, null).ConfigureAwait(false);
 
 		run.Phase = RepoApplyPhase.Applying;
 		var applied = await run.ApplyFunc(row).ConfigureAwait(false);
@@ -412,7 +412,7 @@ public partial class DashboardService
 		// Re-assessed now the fix has landed, so the row stops reporting an issue that no
 		// longer exists. Without this the issue tree still shows the failures a run has just
 		// fixed, because everything downstream reads the assessment taken before the change.
-		await AssessLocalRepositoryAsync(row, cancellationToken).ConfigureAwait(false);
+		await AssessLocalRepositoryAsync(row, cancellationToken, null).ConfigureAwait(false);
 		run.OnRepositoryFixed?.Invoke(row);
 
 		// CommitAndPushAsync has queued the background verification, which reverts if our change broke it.

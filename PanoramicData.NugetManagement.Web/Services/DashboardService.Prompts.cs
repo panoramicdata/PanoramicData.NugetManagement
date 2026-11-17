@@ -311,7 +311,7 @@ public partial class DashboardService
 	/// <summary>
 	/// Generates a single consolidated AI prompt for a category across every affected repository.
 	/// </summary>
-	public string GenerateCombinedCategoryPrompt(IEnumerable<RepositoryDashboardRow> rows, AssessmentCategory category, bool onlyNonRemediable = true)
+	public string GenerateCombinedCategoryPrompt(IEnumerable<RepositoryDashboardRow> rows, AssessmentCategory category, bool onlyNonRemediable)
 	{
 		var group = BuildIssueCentricView(rows).Categories.FirstOrDefault(c => c.Category == category);
 		return group is null ? string.Empty : CombinedRemediationPromptBuilder.ForCategory(group, onlyNonRemediable);

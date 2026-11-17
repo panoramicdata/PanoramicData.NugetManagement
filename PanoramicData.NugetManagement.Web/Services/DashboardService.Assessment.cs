@@ -119,7 +119,7 @@ public partial class DashboardService
 	public async Task<RepositoryContext> BuildContextAsync(
 		RepositoryDashboardRow row,
 		IGitHubClient github,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		var repoOptions = BuildRepoOptions(row.RepositoryFullName);
 
@@ -171,12 +171,11 @@ public partial class DashboardService
 	public async Task AssessRepositoryAsync(
 		RepositoryDashboardRow row,
 		IGitHubClient github,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		if (row.RepositoryFullName is null)
 		{
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = "No repository identified.";
+			FailAssessment(row, "No repository identified.");
 			return;
 		}
 
@@ -185,65 +184,70 @@ public partial class DashboardService
 
 		try
 		{
-			// Read what is actually on nuget.org now. Discovery is the only other thing that writes
-			// this, and Re-assess skips discovery, so without this CI-11 compares a fresh tag against
-			// an hours-old version and cannot be talked out of it.
-			await _publishedVersions.RefreshAsync(row, cancellationToken).ConfigureAwait(false);
-
-			var parts = row.RepositoryFullName.Split('/');
-			if (parts.Length != 2)
-			{
-				row.Status = PackageStatus.Error;
-				row.StatusMessage = "Invalid repository full name.";
-				return;
-			}
-
-			var repo = await github.Repository.Get(parts[0], parts[1]).ConfigureAwait(false);
-			var repoOptions = BuildRepoOptions(row.RepositoryFullName);
-
-			using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
-			using var contextBuilder = new RepositoryContextBuilder(github, loggerFactory.CreateLogger<RepositoryContextBuilder>());
-			var context = await contextBuilder.BuildAsync(repo, repoOptions, cancellationToken).ConfigureAwait(false);
-
-			var results = await EvaluateRulesAsync(context, repoOptions, cancellationToken).ConfigureAwait(false);
-			StoreAssessment(row, context, results);
-
-			await RefreshOpenIssuesAsync(row, github, parts[0], parts[1], cancellationToken).ConfigureAwait(false);
-			PreviewTriage(row, context, results);
-
-			row.Status = PackageStatus.Assessed;
-			row.StatusMessage = $"{row.TotalFailures} issue(s) found.";
+			await AssessViaGitHubAsync(row, github, cancellationToken).ConfigureAwait(false);
 		}
 		catch (NotFoundException)
 		{
 			_logger.LogWarning("Repository {Repo} not found on GitHub (private, renamed, or wrong owner).", row.RepositoryFullName);
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = $"Repository '{row.RepositoryFullName}' not found on GitHub (private, renamed, or wrong owner).";
+			FailAssessment(row, $"Repository '{row.RepositoryFullName}' not found on GitHub (private, renamed, or wrong owner).");
 		}
 		catch (RateLimitExceededException)
 		{
 			_logger.LogWarning("GitHub rate limit hit while assessing {Repo}.", row.RepositoryFullName);
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = "GitHub rate limit reached. Configure a Personal Access Token (AppSettings:GitHubPat) or wait a few minutes.";
+			FailAssessment(row, "GitHub rate limit reached. Configure a Personal Access Token (AppSettings:GitHubPat) or wait a few minutes.");
 		}
 		catch (ApiException ex) when (IsSecondaryRateLimit(ex))
 		{
 			_logger.LogWarning("GitHub secondary rate limit hit while assessing {Repo}.", row.RepositoryFullName);
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = "GitHub secondary rate limit reached. Configure a Personal Access Token (AppSettings:GitHubPat) or wait a few minutes.";
+			FailAssessment(row, "GitHub secondary rate limit reached. Configure a Personal Access Token (AppSettings:GitHubPat) or wait a few minutes.");
 		}
 		catch (AuthorizationException)
 		{
 			_logger.LogWarning("GitHub authorization failed while assessing {Repo}.", row.RepositoryFullName);
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = "GitHub authentication failed. Check the token is valid and has 'repo' + 'read:org' scopes.";
+			FailAssessment(row, "GitHub authentication failed. Check the token is valid and has 'repo' + 'read:org' scopes.");
 		}
 		catch (Exception ex)
 		{
 			_logger.LogError(ex, "Failed to assess {Repo}", row.RepositoryFullName);
-			row.Status = PackageStatus.Error;
-			row.StatusMessage = $"Assessment failed: {ex.Message}";
+			FailAssessment(row, $"Assessment failed: {ex.Message}");
 		}
+	}
+
+	private async Task AssessViaGitHubAsync(RepositoryDashboardRow row, IGitHubClient github, CancellationToken cancellationToken)
+	{
+		// Read what is actually on nuget.org now. Discovery is the only other thing that writes
+		// this, and Re-assess skips discovery, so without this CI-11 compares a fresh tag against
+		// an hours-old version and cannot be talked out of it.
+		await _publishedVersions.RefreshAsync(row, cancellationToken).ConfigureAwait(false);
+
+		var parts = row.RepositoryFullName!.Split('/');
+		if (parts.Length != 2)
+		{
+			FailAssessment(row, "Invalid repository full name.");
+			return;
+		}
+
+		var repo = await github.Repository.Get(parts[0], parts[1]).ConfigureAwait(false);
+		var repoOptions = BuildRepoOptions(row.RepositoryFullName);
+
+		using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+		using var contextBuilder = new RepositoryContextBuilder(github, loggerFactory.CreateLogger<RepositoryContextBuilder>());
+		var context = await contextBuilder.BuildAsync(repo, repoOptions, cancellationToken).ConfigureAwait(false);
+
+		var results = await EvaluateRulesAsync(context, repoOptions, cancellationToken).ConfigureAwait(false);
+		StoreAssessment(row, context, results);
+
+		await RefreshOpenIssuesAsync(row, github, parts[0], parts[1], cancellationToken).ConfigureAwait(false);
+		PreviewTriage(row, context, results);
+
+		row.Status = PackageStatus.Assessed;
+		row.StatusMessage = $"{row.TotalFailures} issue(s) found.";
+	}
+
+	private static void FailAssessment(RepositoryDashboardRow row, string message)
+	{
+		row.Status = PackageStatus.Error;
+		row.StatusMessage = message;
 	}
 
 	private static bool IsSecondaryRateLimit(ApiException ex)
@@ -424,8 +428,8 @@ public partial class DashboardService
 	/// </param>
 	public async Task AssessLocalRepositoryAsync(
 		RepositoryDashboardRow row,
-		CancellationToken cancellationToken = default,
-		IGitHubClient? github = null)
+		CancellationToken cancellationToken,
+		IGitHubClient? github)
 	{
 		if (row.RepositoryFullName is null || row.LocalPath is null)
 		{
