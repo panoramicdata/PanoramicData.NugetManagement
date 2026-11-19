@@ -56,57 +56,59 @@ public class CodacyCoverageUploadRule : RuleBase
 			context.GetFileContent(path) is { } content
 			&& _uploadMarkers.Any(marker => content.Contains(marker, StringComparison.OrdinalIgnoreCase)));
 
+		if (uploading is not null)
+		{
+			return Task.FromResult(Pass($"{uploading} uploads coverage to Codacy."));
+		}
+
 		var data = new Dictionary<string, object>
 		{
 			["workflow_count"] = workflows.Count
 		};
 
-		if (uploading is null)
-		{
-			AddAutomatedFix(context, workflows, data);
-		}
-
-		return Task.FromResult(uploading is not null
-			? Pass($"{uploading} uploads coverage to Codacy.")
-			: Fail(
-				workflows.Count == 0
-					? "No workflow files, so nothing uploads coverage to Codacy."
-					: $"None of the {workflows.Count} workflow file(s) uploads coverage to Codacy.",
-				new RuleAdvisory
-				{
-					Summary = "Upload coverage to Codacy from CI.",
-					Detail = """
-						This repository has tests but never sends their coverage anywhere, so Codacy
-						holds no figure for it and TST-10 grades it RED however well tested it is.
-
-						The reference implementation is the `coverage` job in
-						panoramicdata/PanoramicData.NugetManagement's .github/workflows/ci.yml. It runs
-						the tests with coverage, writes Cobertura, and uploads with
-						codacy/codacy-coverage-reporter-action using a CODACY_PROJECT_TOKEN secret.
-
-						The upload step should be continue-on-error, so a Codacy outage cannot turn a
-						passing test run red.
-
-						Do not do this if the tests cannot run in CI. A test project that calls a live
-						service CI does not have (a vendor portal, a database, a device) would only turn
-						the new job red. Such a repository should declare it instead, in
-						PanoramicData.NugetManagement.config.json:
-
-						  "projects": { "<Project>.Test.csproj": { "defaultTestingLevel": "None" } }
-
-						and this rule, CQ-07 and TST-10 then report not-applicable for it. Check the
-						existing ci.yml first: a comment explaining why there is no Test step is the
-						signal that this is the case.
-
-						The token is a separate problem: CQ-07 reports whether this repository has one,
-						and it cannot be created by editing files.
-						""",
-					Data = data
-				}));
+		AddAutomatedFix(context, workflows, data);
+		return Task.FromResult(FailNotUploading(workflows.Count, data));
 	}
 
+	private RuleResult FailNotUploading(int workflowCount, Dictionary<string, object> data)
+		=> Fail(
+			workflowCount == 0
+				? "No workflow files, so nothing uploads coverage to Codacy."
+				: $"None of the {workflowCount} workflow file(s) uploads coverage to Codacy.",
+			new RuleAdvisory
+			{
+				Summary = "Upload coverage to Codacy from CI.",
+				Detail = """
+					This repository has tests but never sends their coverage anywhere, so Codacy
+					holds no figure for it and TST-10 grades it RED however well tested it is.
+
+					The reference implementation is the `coverage` job in
+					panoramicdata/PanoramicData.NugetManagement's .github/workflows/ci.yml. It runs
+					the tests with coverage, writes Cobertura, and uploads with
+					codacy/codacy-coverage-reporter-action using a CODACY_PROJECT_TOKEN secret.
+
+					The upload step should be continue-on-error, so a Codacy outage cannot turn a
+					passing test run red.
+
+					Do not do this if the tests cannot run in CI. A test project that calls a live
+					service CI does not have (a vendor portal, a database, a device) would only turn
+					the new job red. Such a repository should declare it instead, in
+					PanoramicData.NugetManagement.config.json:
+
+					  "projects": { "<Project>.Test.csproj": { "defaultTestingLevel": "None" } }
+
+					and this rule, CQ-07 and TST-10 then report not-applicable for it. Check the
+					existing ci.yml first: a comment explaining why there is no Test step is the
+					signal that this is the case.
+
+					The token is a separate problem: CQ-07 reports whether this repository has one,
+					and it cannot be created by editing files.
+					""",
+				Data = data
+			});
+
 	/// <summary>
-	/// Names the workflow and test runner when — and only when — the edit is one that can be made safely.
+	/// Names the workflow and test runner when, and only when, the edit is one that can be made safely.
 	/// </summary>
 	/// <remarks>
 	/// The workflow editor declines anything it cannot edit with certainty, and the runner's collector
@@ -116,34 +118,30 @@ public class CodacyCoverageUploadRule : RuleBase
 	/// </remarks>
 	private static void AddAutomatedFix(RepositoryContext context, List<string> workflows, Dictionary<string, object> data)
 	{
-		var mtp = context.GetFileContent("global.json") is { } globalJson
-			&& globalJson.Contains(Standards.MtpTestRunnerName, StringComparison.OrdinalIgnoreCase);
-
-		var collector = mtp ? Standards.CodeCoveragePackage : Standards.VsTestCodeCoveragePackage;
 		if (context.FindCoverageTestProjectFiles().FirstOrDefault() is null)
 		{
 			return;
 		}
 
+		var mtp = context.GetFileContent("global.json") is { } globalJson
+			&& globalJson.Contains(Standards.MtpTestRunnerName, StringComparison.OrdinalIgnoreCase);
 		var runner = mtp ? CoverageRunner.MicrosoftTestingPlatform : CoverageRunner.VsTest;
-		if (!workflows.Any(path => context.GetFileContent(path) is { } text && CodacyCoverageWorkflowEditor.AddUpload(text, runner) is not null)
-			&& TryAddCoverageJob(context, workflows, runner, data))
+
+		var editable = workflows.FirstOrDefault(path => context.GetFileContent(path) is { } text
+			&& CodacyCoverageWorkflowEditor.AddUpload(text, runner) is not null);
+		if (editable is null)
 		{
+			TryAddCoverageJob(context, workflows, runner, data);
 			return;
 		}
 
-		foreach (var path in workflows)
-		{
-			if (context.GetFileContent(path) is { } content
-				&& CodacyCoverageWorkflowEditor.AddUpload(content, runner) is not null)
-			{
-				data["workflow_file"] = path;
-				data["coverage_runner"] = mtp ? "mtp" : "vstest";
-				AddCollectorData(context, collector, mtp, data);
-				return;
-			}
-		}
+		data["workflow_file"] = editable;
+		data["coverage_runner"] = mtp ? "mtp" : "vstest";
+		AddCollectorData(context, CollectorFor(mtp), mtp, data);
 	}
+
+	private static string CollectorFor(bool mtp)
+		=> mtp ? Standards.CodeCoveragePackage : Standards.VsTestCodeCoveragePackage;
 
 	/// <summary>
 	/// For a repository whose CI never runs its tests: names the workflow and test project a new
@@ -159,16 +157,16 @@ public class CodacyCoverageUploadRule : RuleBase
 			return false;
 		}
 
+		var mtp = runner == CoverageRunner.MicrosoftTestingPlatform;
 		foreach (var path in workflows)
 		{
 			if (context.GetFileContent(path) is { } content
 				&& CodacyCoverageWorkflowEditor.AddCoverageJob(content, runner, testProject) is not null)
 			{
 				data["workflow_file"] = path;
-				data["coverage_runner"] = runner == CoverageRunner.MicrosoftTestingPlatform ? "mtp" : "vstest";
+				data["coverage_runner"] = mtp ? "mtp" : "vstest";
 				data["test_project"] = testProject;
-			var mtp = runner == CoverageRunner.MicrosoftTestingPlatform;
-			AddCollectorData(context, mtp ? Standards.CodeCoveragePackage : Standards.VsTestCodeCoveragePackage, mtp, data);
+				AddCollectorData(context, CollectorFor(mtp), mtp, data);
 				return true;
 			}
 		}

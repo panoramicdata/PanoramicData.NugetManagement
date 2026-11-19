@@ -55,27 +55,13 @@ public class CodacyConfiguredRule : RuleBase
 			// No token means no API path to ask, so the repository's own files are the whole standard.
 			return HasLocalCodacyEvidence(context)
 				? Pass("Codacy is configured.")
-				: Fail(
-					"No Codacy configuration found (.codacy/ directory, .codacy.yml, or Codacy badge in README).",
-					new RuleAdvisory
-					{
-						Summary = "Set up Codacy integration and add .codacy/cli.sh or .codacy.yml.",
-						Detail = "No Codacy configuration was found. Set up Codacy integration at app.codacy.com and add a `.codacy.yml` or `.codacy/cli.sh` file to the repository root.",
-						Data = new() { ["expected_files"] = new[] { ".codacy.yml", ".codacy.yaml", ".codacy/cli.sh" } }
-					});
+				: FailNoLocalEvidence();
 		}
 
 		var parts = context.FullName.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 		if (parts.Length != 2)
 		{
-			return Fail(
-				$"Repository full name '{context.FullName}' is invalid for Codacy provider lookup.",
-				new RuleAdvisory
-				{
-					Summary = "Set RepositoryContext.FullName to 'organization/repository'.",
-					Detail = $"The repository full name `{context.FullName}` could not be split into organization/repository. Ensure `RepositoryContext.FullName` is in `owner/repo` format.",
-					Data = new() { ["full_name"] = context.FullName }
-				});
+			return FailInvalidName(context.FullName);
 		}
 
 		CodacyFileGradeReport report;
@@ -87,57 +73,23 @@ public class CodacyConfiguredRule : RuleBase
 		}
 		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
-			// An unreachable API leaves the question unanswered, not answered "yes". Local evidence — a
-			// .codacy.yml, or a badge in the README — says somebody once set Codacy up. It says nothing
-			// about whether the integration works today, and reporting it as a pass hid a token that
-			// could not see a single repository: 69 repositories showed green on the strength of a
-			// badge, so the split between pass and fail was by README content rather than by Codacy.
-			if (HasLocalCodacyEvidence(context))
-			{
-				return NotApplicable(
-					$"Codacy is configured locally, but the integration could not be evaluated: {ex.Message}");
-			}
-
-			return Fail(
-				$"Failed to reach Codacy to confirm the repository is set up: {ex.Message}",
-				new RuleAdvisory
-				{
-					Summary = "Verify Codacy token validity and repository/provider mapping (GitHub provider).",
-					Detail = $"An exception occurred when calling the Codacy API: `{ex.Message}`. Verify that the API token is valid and that the repository is correctly mapped to the GitHub provider. Alternatively, add a `.codacy.yml` file or Codacy badge to the README.",
-					Data = new() { ["exception"] = ex.Message }
-				});
+			// Local evidence says Codacy was once set up, not that the integration works today, so it cannot pass.
+			return HasLocalCodacyEvidence(context)
+				? NotApplicable($"Codacy is configured locally, but the integration could not be evaluated: {ex.Message}")
+				: FailUnreachable(ex.Message);
 		}
 
+		return EvaluateReport(context, report, parts[0], parts[1]);
+	}
+
+	private RuleResult EvaluateReport(RepositoryContext context, CodacyFileGradeReport report, string organization, string repository)
+	{
 		if (!report.IsTracked)
 		{
-			return Fail(
-				"Codacy does not know this repository — it has not been added.",
-				new RuleAdvisory
-				{
-					Summary = $"Add {context.FullName} to Codacy at app.codacy.com.",
-					Detail = $"""
-						Codacy holds no repository named `{parts[1]}` in `{parts[0]}`: both the file listing and
-						the repository endpoint answered 404 for that name.
-
-						Add it at https://app.codacy.com/gh/{parts[0]}/dashboard, then let the first analysis
-						of `{context.DefaultBranch}` finish.
-
-						If the repository is visibly there in Codacy, check the name for a case difference —
-						Codacy's paths are case-sensitive, and the dashboard takes a repository's identity from
-						the `RepositoryUrl` declared in its published package, which is where a wrong casing
-						enters. GitHub routes case-insensitively, so the typo surfaces here first.
-						""",
-					Data = new()
-					{
-						["repository"] = context.FullName,
-						["default_branch"] = context.DefaultBranch
-					}
-				});
+			return FailUntracked(context, organization, repository);
 		}
 
-		// An analysis in flight answers this rule's question — the integration is demonstrably working
-		// — and is why nothing is graded yet. Without this the rule read a first analysis still running
-		// as "analysed nothing" and told the reader to go and run the analysis that was already running.
+		// An analysis in flight shows the integration works, and is why nothing is graded yet.
 		if (report.AnalysisState is { IsAnalysing: true } analysing)
 		{
 			return Pass(
@@ -147,31 +99,10 @@ public class CodacyConfiguredRule : RuleBase
 
 		if (!report.GradedFiles.Any())
 		{
-			return Fail(
-				$"Codacy has the repository but has analysed nothing on {context.DefaultBranch}.",
-				new RuleAdvisory
-				{
-					Summary = $"Run a Codacy analysis of {context.DefaultBranch} for {context.FullName}.",
-					Detail = $"""
-						Codacy lists `{context.DefaultBranch}` but graded none of its files, so no analysis has
-						completed. A repository in this state looks configured from the outside while every
-						quality figure drawn from it is an absence rather than a measurement.
-
-						Check that `{context.DefaultBranch}` is enabled for analysis in the repository's Codacy
-						settings, and that a commit has been pushed since the integration was added.
-						""",
-					Data = new()
-					{
-						["repository"] = context.FullName,
-						["default_branch"] = context.DefaultBranch,
-						["listed_files"] = report.Files.Count
-					}
-				});
+			return FailNothingAnalysed(context, report.Files.Count);
 		}
 
-		// Which commit the analysis describes, and whether another is running, belong in this sentence:
-		// it is the one place that asserts the integration is working, and "has analysed main" without
-		// a date is a claim nothing keeps current.
+		// The one sentence asserting the integration works must say which commit it describes.
 		var freshness = CodacyFreshness.Describe(report.AnalysisState, context.HeadSha)
 			?? CodacyFreshness.DescribeLastAnalysis(report.AnalysisState);
 
@@ -179,6 +110,83 @@ public class CodacyConfiguredRule : RuleBase
 			? $"Codacy is configured and has analysed {context.DefaultBranch}."
 			: $"Codacy is configured and has analysed {context.DefaultBranch}. {freshness}");
 	}
+
+	private RuleResult FailNoLocalEvidence()
+		=> Fail(
+			"No Codacy configuration found (.codacy/ directory, .codacy.yml, or Codacy badge in README).",
+			new RuleAdvisory
+			{
+				Summary = "Set up Codacy integration and add .codacy/cli.sh or .codacy.yml.",
+				Detail = "No Codacy configuration was found. Set up Codacy integration at app.codacy.com and add a `.codacy.yml` or `.codacy/cli.sh` file to the repository root.",
+				Data = new() { ["expected_files"] = new[] { ".codacy.yml", ".codacy.yaml", ".codacy/cli.sh" } }
+			});
+
+	private RuleResult FailInvalidName(string fullName)
+		=> Fail(
+			$"Repository full name '{fullName}' is invalid for Codacy provider lookup.",
+			new RuleAdvisory
+			{
+				Summary = "Set RepositoryContext.FullName to 'organization/repository'.",
+				Detail = $"The repository full name `{fullName}` could not be split into organization/repository. Ensure `RepositoryContext.FullName` is in `owner/repo` format.",
+				Data = new() { ["full_name"] = fullName }
+			});
+
+	private RuleResult FailUnreachable(string message)
+		=> Fail(
+			$"Failed to reach Codacy to confirm the repository is set up: {message}",
+			new RuleAdvisory
+			{
+				Summary = "Verify Codacy token validity and repository/provider mapping (GitHub provider).",
+				Detail = $"An exception occurred when calling the Codacy API: `{message}`. Verify that the API token is valid and that the repository is correctly mapped to the GitHub provider. Alternatively, add a `.codacy.yml` file or Codacy badge to the README.",
+				Data = new() { ["exception"] = message }
+			});
+
+	private RuleResult FailUntracked(RepositoryContext context, string organization, string repository)
+		=> Fail(
+			"Codacy does not know this repository — it has not been added.",
+			new RuleAdvisory
+			{
+				Summary = $"Add {context.FullName} to Codacy at app.codacy.com.",
+				Detail = $"""
+					Codacy holds no repository named `{repository}` in `{organization}`: both the file listing and
+					the repository endpoint answered 404 for that name.
+
+					Add it at https://app.codacy.com/gh/{organization}/dashboard, then let the first analysis
+					of `{context.DefaultBranch}` finish.
+
+					If the repository is visibly there in Codacy, check the name for a case difference —
+					Codacy's paths are case-sensitive, and the dashboard takes a repository's identity from
+					the `RepositoryUrl` declared in its published package, which is where a wrong casing
+					enters. GitHub routes case-insensitively, so the typo surfaces here first.
+					""",
+				Data = new()
+				{
+					["repository"] = context.FullName,
+					["default_branch"] = context.DefaultBranch
+				}
+			});
+
+	private RuleResult FailNothingAnalysed(RepositoryContext context, int listedFiles)
+		=> Fail(
+			$"Codacy has the repository but has analysed nothing on {context.DefaultBranch}.",
+			new RuleAdvisory
+			{
+				Summary = $"Run a Codacy analysis of {context.DefaultBranch} for {context.FullName}.",
+				Detail = $"""
+					Codacy lists `{context.DefaultBranch}` but graded none of its files, so no analysis has
+					completed. A repository in this state looks configured from the outside while every
+					quality figure drawn from it is an absence rather than a measurement.
+
+					Check that `{context.DefaultBranch}` is enabled for analysis in the repository's Codacy
+					settings, and that a commit has been pushed since the integration was added.
+					""",
+				Data = new()
+				{
+					["repository"] = context.FullName,
+					["default_branch"] = context.DefaultBranch,
+					["listed_files"] = listedFiles
+				}
+			});
 
 	/// <summary>
 	/// Checks for local evidence of Codacy integration: config files
