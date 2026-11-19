@@ -3,7 +3,7 @@ using PanoramicData.NugetManagement.Models;
 namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
-/// Checks that RepositoryUrl is set in packable projects.
+/// Checks that RepositoryUrl is set in packable projects. Private repositories are skipped.
 /// </summary>
 public class RepositoryUrlSetRule : ProjectPropertySetRuleBase
 {
@@ -18,6 +18,12 @@ public class RepositoryUrlSetRule : ProjectPropertySetRuleBase
 
 	/// <inheritdoc />
 	public override AssessmentSeverity Severity => AssessmentSeverity.Error;
+
+	/// <inheritdoc />
+	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
+		=> context.IsPrivateRepository == true
+			? Task.FromResult(NotApplicable("The repository is private, so it should not publish a RepositoryUrl."))
+			: base.EvaluateAsync(context, cancellationToken);
 
 	/// <inheritdoc />
 	protected override string PropertyName => "RepositoryUrl";
