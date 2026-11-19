@@ -3,7 +3,7 @@ using PanoramicData.NugetManagement.Models;
 namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
-/// Checks that README.md contains a Codacy badge.
+/// Checks that README.md contains a Codacy badge. Private repositories are skipped.
 /// </summary>
 public class CodacyBadgeRule : RuleBase
 {
@@ -22,6 +22,12 @@ public class CodacyBadgeRule : RuleBase
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
+		// A private repository's Codacy dashboard is not public, so the badge is meaningless.
+		if (context.IsPrivateRepository == true)
+		{
+			return Task.FromResult(NotApplicable("The repository is private, so its Codacy dashboard is not public."));
+		}
+
 		var content = context.GetFileContent("README.md");
 		var orgName = context.FullName.Split('/')[0];
 		return Task.FromResult(Contains(content, "codacy")
