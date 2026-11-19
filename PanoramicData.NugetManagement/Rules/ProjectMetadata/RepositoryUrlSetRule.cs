@@ -20,6 +20,12 @@ public class RepositoryUrlSetRule : ProjectPropertySetRuleBase
 	public override AssessmentSeverity Severity => AssessmentSeverity.Error;
 
 	/// <inheritdoc />
+	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
+		=> context.IsPrivateRepository == true
+			? Task.FromResult(NotApplicable("The repository is private, so it should not publish a RepositoryUrl."))
+			: base.EvaluateAsync(context, cancellationToken);
+
+	/// <inheritdoc />
 	protected override string PropertyName => "RepositoryUrl";
 
 	/// <inheritdoc />
