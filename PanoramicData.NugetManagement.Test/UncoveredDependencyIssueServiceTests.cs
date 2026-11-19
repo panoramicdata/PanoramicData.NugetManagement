@@ -31,7 +31,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 
 		public Task<IReadOnlyList<GitHubIssueComment>> GetRepositoryCommentsPageAsync(
 			string owner, string name, int pageNumber, CancellationToken cancellationToken)
-			=> Task.FromResult<IReadOnlyList<GitHubIssueComment>>([]);
+		{
+			FakeArguments.Accept(owner, name, pageNumber, cancellationToken);
+			return Task.FromResult<IReadOnlyList<GitHubIssueComment>>([]);
+		}
 
 		public Task<IReadOnlyList<GitHubIssueComment>> GetCommentsForItemAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)
@@ -39,7 +42,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 
 		public Task<GitHubIssueThread> GetThreadAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)
-			=> throw new NotSupportedException("This double raises issues; it never reads one.");
+		{
+			FakeArguments.Accept(owner, name, issueNumber, cancellationToken);
+			throw new NotSupportedException("This double raises issues; it never reads one.");
+		}
 	}
 
 	/// <summary>A write port that records every call instead of making it.</summary>
@@ -55,6 +61,7 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 			string owner, string name, string title, string body,
 			IReadOnlyList<string> labels, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(labels, cancellationToken);
 			lock (Created)
 			{
 				Created.Add(($"{owner}/{name}", title, body));
@@ -65,6 +72,7 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 		public Task UpdateIssueBodyAsync(
 			string owner, string name, int number, string body, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(owner, name, cancellationToken);
 			lock (BodyUpdates)
 			{
 				BodyUpdates.Add((number, body));
@@ -82,7 +90,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 
 		public Task ClosePullRequestAsync(
 			string owner, string name, int number, CancellationToken cancellationToken)
-			=> Task.CompletedTask;
+		{
+			FakeArguments.Accept(owner, name, number, cancellationToken);
+			return Task.CompletedTask;
+		}
 
 		public Task<int> CreatePullRequestAsync(
 			string owner, string name, string head, string baseBranch, string title, string body, CancellationToken cancellationToken)
@@ -93,7 +104,10 @@ public class UncoveredDependencyIssueServiceTests(ITestOutputHelper output) : Te
 
 		public Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(
 			string owner, string name, string sha, CancellationToken cancellationToken)
-			=> throw new NotSupportedException();
+		{
+			FakeArguments.Accept(owner, name, sha, cancellationToken);
+			throw new NotSupportedException();
+		}
 
 		public Task MergePullRequestAsync(
 			string owner, string name, int number, string expectedHeadSha, CancellationToken cancellationToken)

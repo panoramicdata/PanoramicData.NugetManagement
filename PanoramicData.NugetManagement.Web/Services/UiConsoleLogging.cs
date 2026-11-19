@@ -84,7 +84,11 @@ public sealed class UiConsoleLoggerProvider(UiConsoleLogSink sink) : ILoggerProv
 	{
 		private readonly bool _included = categoryName.StartsWith(CategoryPrefix, StringComparison.Ordinal);
 
-		public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+		public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+		{
+			_ = state;
+			return null;
+		}
 
 		public bool IsEnabled(LogLevel logLevel)
 			=> _included && logLevel >= LogLevel.Information && sink.HasSubscribers;
@@ -96,6 +100,8 @@ public sealed class UiConsoleLoggerProvider(UiConsoleLogSink sink) : ILoggerProv
 			Exception? exception,
 			Func<TState, Exception?, string> formatter)
 		{
+			_ = eventId;
+
 			if (!IsEnabled(logLevel))
 			{
 				return;

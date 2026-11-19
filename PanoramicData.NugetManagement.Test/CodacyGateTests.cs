@@ -240,7 +240,10 @@ public class CodacyGateTests(ITestOutputHelper output) : TestWithOutput(output)
 	private sealed class FakeService(CodacyFileGradeReport report) : ICodacyFileGradeService
 	{
 		public Task<CodacyFileGradeReport> GetGradesAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> Task.FromResult(report);
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, branch, cancellationToken);
+			return Task.FromResult(report);
+		}
 	}
 
 	private sealed class ThrowingService : ICodacyFileGradeService

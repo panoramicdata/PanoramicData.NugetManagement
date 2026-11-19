@@ -45,7 +45,7 @@ public class DashboardCacheService
 	/// 3: the row is the repository, not the package, and ungoverned packages are held separately.
 	/// 4: rows carry their repository's open issues and pull requests.
 	/// </remarks>
-	public const int CurrentDiscoveryVersion = 4;
+	public static int CurrentDiscoveryVersion { get; } = 4;
 
 	/// <summary>
 	/// Initializes the cache service and loads any persisted state from disk.
@@ -404,6 +404,9 @@ public class DashboardCacheService
 			Type typeToConvert,
 			JsonSerializerOptions options)
 		{
+			_ = typeToConvert;
+			_ = options;
+
 			if (reader.TokenType != JsonTokenType.StartObject)
 			{
 				throw new JsonException();

@@ -29,6 +29,7 @@ public class IssueAnalysisSessionTests(ITestOutputHelper output) : TestWithOutpu
 			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(onDelta, cancellationToken);
 			ToolsOffered.Add(tools);
 			SystemPrompts.Add(systemPrompt);
 			Conversations.Add([.. conversation]);

@@ -29,6 +29,7 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 			string owner, string name, string title, string body,
 			IReadOnlyList<string> labels, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(labels, cancellationToken);
 			Calls.Add($"create:{owner}/{name}");
 			Created.Add((title, body));
 			return Task.FromResult(1);
@@ -37,6 +38,7 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 		public Task UpdateIssueBodyAsync(
 			string owner, string name, int number, string body, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(owner, name, body, cancellationToken);
 			Calls.Add($"update:{number}");
 			return Task.CompletedTask;
 		}
@@ -60,19 +62,29 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 
 		public Task<int> CreatePullRequestAsync(
 			string owner, string name, string head, string baseBranch, string title, string body, CancellationToken cancellationToken)
-			=> throw new NotSupportedException();
+		{
+			FakeArguments.Accept(owner, name, head, baseBranch, title, body, cancellationToken);
+			throw new NotSupportedException();
+		}
 
 		public Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(
 			string owner, string name, string sha, CancellationToken cancellationToken)
-			=> throw new NotSupportedException();
+		{
+			FakeArguments.Accept(owner, name, sha, cancellationToken);
+			throw new NotSupportedException();
+		}
 
 		public Task MergePullRequestAsync(
 			string owner, string name, int number, string expectedHeadSha, CancellationToken cancellationToken)
-			=> throw new NotSupportedException();
+		{
+			FakeArguments.Accept(owner, name, number, expectedHeadSha, cancellationToken);
+			throw new NotSupportedException();
+		}
 
 		public Task CloseIssueAsync(
 			string owner, string name, int number, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(owner, name, cancellationToken);
 			Calls.Add($"close-issue:{number}");
 			ClosedIssues.Add(number);
 			return Task.CompletedTask;
@@ -117,7 +129,10 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 
 		public Task<IReadOnlyList<GitHubIssueComment>> GetCommentsForItemAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)
-			=> Task.FromResult<IReadOnlyList<GitHubIssueComment>>([]);
+		{
+			FakeArguments.Accept(owner, name, issueNumber, cancellationToken);
+			return Task.FromResult<IReadOnlyList<GitHubIssueComment>>([]);
+		}
 
 		public Task<GitHubIssueThread> GetThreadAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)

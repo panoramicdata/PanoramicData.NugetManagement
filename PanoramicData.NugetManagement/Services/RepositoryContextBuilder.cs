@@ -123,7 +123,7 @@ public class RepositoryContextBuilder : IDisposable
 		fileContents.TryGetValue(NugetManagementRepositoryConfig.FileName, out var repoConfigRaw);
 		var repositoryConfig = NugetManagementRepositoryConfigParser.Parse(repoConfigRaw);
 
-		var actionsSecretNames = await ResolveActionsSecretNamesAsync(owner, repoName, cancellationToken)
+		var actionsSecretNames = await ResolveActionsSecretNamesAsync(owner, repoName)
 			.ConfigureAwait(false);
 
 		var lineCoveragePercent = await ResolveCoverageAsync(
@@ -198,8 +198,7 @@ public class RepositoryContextBuilder : IDisposable
 	/// </remarks>
 	private async Task<IReadOnlyList<string>?> ResolveActionsSecretNamesAsync(
 		string owner,
-		string repositoryName,
-		CancellationToken cancellationToken)
+		string repositoryName)
 	{
 		try
 		{
