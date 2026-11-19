@@ -19,6 +19,23 @@ public partial class PublishScriptMatchesMerakiRule : RuleBase
 	/// <inheritdoc />
 	public override AssessmentSeverity Severity => AssessmentSeverity.Error;
 
+	// Pushing the tag is not evidence that a package was published, so the script must also verify the release run (CI-11).
+	private static readonly string[] _requiredSnippets =
+	[
+		"git status --porcelain",
+		"git rev-parse --abbrev-ref HEAD",
+		"git fetch origin main --quiet",
+		"-t:GetBuildVersion",
+		"--getProperty:NuGetPackageVersion",
+		"git tag -l $version",
+		"git tag $version",
+		"git push origin $version",
+		"SkipPublishVerification",
+		"gh auth token",
+		"gh run watch",
+		"--exit-status"
+	];
+
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
@@ -28,144 +45,100 @@ public partial class PublishScriptMatchesMerakiRule : RuleBase
 		}
 
 		var content = context.GetFileContent("Publish.ps1");
-		if (content is null)
-		{
-			return Task.FromResult(Fail(
-				"Publish.ps1 not found.",
-				new RuleAdvisory
-				{
-					Summary = "Add standard Publish.ps1 matching the Meraki.Api tagging-and-trigger pattern",
-					Detail = "Copy the standard Publish.ps1 from Meraki.Api. It should check for a clean tree, verify the main branch, resolve the version via the Nerdbank.GitVersioning MSBuild target (`dotnet build -t:GetBuildVersion`), create and push the tag, and then wait for the release run and fail if it did not publish.",
-					Data = new()
-					{
-						["expected_path"] = "Publish.ps1",
-						["template_content"] = Standards.PublishPs1Content
-					}
-				}));
-		}
+		return Task.FromResult(content is null ? FailMissingScript() : EvaluateContent(content));
+	}
 
-		// The version must be resolved via the Nerdbank.GitVersioning MSBuild target,
-		// not the global 'nbgv' CLI tool, which fails when it is not on PATH (e.g. in
-		// fresh shells or CI runners without the global tool installed).
+	private RuleResult FailMissingScript()
+		=> Fail(
+			"Publish.ps1 not found.",
+			new RuleAdvisory
+			{
+				Summary = "Add standard Publish.ps1 matching the Meraki.Api tagging-and-trigger pattern",
+				Detail = "Copy the standard Publish.ps1 from Meraki.Api. It should check for a clean tree, verify the main branch, resolve the version via the Nerdbank.GitVersioning MSBuild target (`dotnet build -t:GetBuildVersion`), create and push the tag, and then wait for the release run and fail if it did not publish.",
+				Data = new()
+				{
+					["expected_path"] = "Publish.ps1",
+					["template_content"] = Standards.PublishPs1Content
+				}
+			});
+
+	private RuleResult EvaluateContent(string content)
+	{
+		// The global 'nbgv' CLI fails when it is not on PATH; the MSBuild target needs only the package.
 		if (Contains(content, "nbgv get-version"))
 		{
-			return Task.FromResult(Fail(
+			return ReplaceScript(
 				"Publish.ps1 resolves the version with the 'nbgv' CLI tool; use the Nerdbank.GitVersioning MSBuild target instead.",
-				new RuleAdvisory
-				{
-					Summary = "Replace the 'nbgv' CLI call in Publish.ps1 with the MSBuild GetBuildVersion target",
-					Detail = "The global 'nbgv' tool fails when it is not on PATH. Resolve the version with `dotnet build <project> -t:GetBuildVersion --getProperty:NuGetPackageVersion -p:TreatWarningsAsErrors=false` instead, which relies only on the referenced Nerdbank.GitVersioning package.",
-					Data = new()
-					{
-						["remediation_type"] = "replace_file_content",
-						["file"] = "Publish.ps1",
-						["new_content"] = Standards.PublishPs1Content
-					}
-				}));
+				"Replace the 'nbgv' CLI call in Publish.ps1 with the MSBuild GetBuildVersion target",
+				"The global 'nbgv' tool fails when it is not on PATH. Resolve the version with `dotnet build <project> -t:GetBuildVersion --getProperty:NuGetPackageVersion -p:TreatWarningsAsErrors=false` instead, which relies only on the referenced Nerdbank.GitVersioning package.");
 		}
 
-		// 'gh auth status' validates the token with an API call, so when GitHub is rate-limiting the
-		// account it reports "The token in keyring is invalid" and the script blocks a healthy login
-		// with a misleading instruction. 'gh auth token' only reads the stored credential.
+		// 'gh auth status' calls the API, so a rate limit reads as an invalid token; 'gh auth token' only reads the credential.
 		if (Contains(content, "gh auth status"))
 		{
-			return Task.FromResult(Fail(
+			return ReplaceScript(
 				"Publish.ps1 uses 'gh auth status', which reports a GitHub rate limit as an invalid token; use 'gh auth token' instead.",
-				new RuleAdvisory
-				{
-					Summary = "Replace 'gh auth status' in Publish.ps1 with 'gh auth token'",
-					Detail = "`gh auth status` makes an API call, so a GitHub rate limit makes it fail with \"The token in keyring is invalid\" and the script then wrongly tells the user to log in again. `gh auth token` reads only the stored credential and fails only when there is no login.",
-					Data = new()
-					{
-						["remediation_type"] = "replace_file_content",
-						["file"] = "Publish.ps1",
-						["new_content"] = Standards.PublishPs1Content
-					}
-				}));
+				"Replace 'gh auth status' in Publish.ps1 with 'gh auth token'",
+				"`gh auth status` makes an API call, so a GitHub rate limit makes it fail with \"The token in keyring is invalid\" and the script then wrongly tells the user to log in again. `gh auth token` reads only the stored credential and fails only when there is no login.");
 		}
 
-		var requiredSnippets = new[]
-		{
-			"git status --porcelain",
-			"git rev-parse --abbrev-ref HEAD",
-			"git fetch origin main --quiet",
-			"-t:GetBuildVersion",
-			"--getProperty:NuGetPackageVersion",
-			"git tag -l $version",
-			"git tag $version",
-			"git push origin $version",
-
-			// Pushing the tag is not evidence that a package was published. A script that stops there
-			// reports success whether the release run succeeded, failed or was refused outright — which
-			// is how nine repositories in the estate drifted up to 24 versions behind their newest tag,
-			// several of them for months. See CI-11, which catches the ones that already have.
-			"SkipPublishVerification",
-			"gh auth token",
-			"gh run watch",
-			"--exit-status"
-		};
-
-		var missing = requiredSnippets
+		var missing = _requiredSnippets
 			.Where(snippet => !Contains(content, snippet))
 			.ToList();
 
-		if (missing.Count == 0)
+		if (missing.Count > 0)
 		{
-			// A tag push that fails (a dropped connection, a DNS error) used to be followed straight away by
-			// "Tag x pushed", so the script went on to wait for a release run that could never appear, and the
-			// local tag left behind blocked the re-run with "Tag already exists". Seen on Rapid7.Api 3.0.34.
-			if (!PushResultChecked(content))
-			{
-				return Task.FromResult(Fail(
-					"Publish.ps1 does not check that the tag push succeeded, so a failed push is reported as 'Tag pushed'.",
-					new RuleAdvisory
-					{
-						Summary = "Check the tag push's exit code in Publish.ps1, retrying and removing the local tag on failure",
-						Detail = "After `git push origin $version`, the standard script tests `$LASTEXITCODE`, retries a failed push twice, and if it still fails removes the local tag (so a re-run is not blocked by \"Tag already exists\") and stops with an error instead of waiting for a release run that cannot appear.",
-						Data = new()
-						{
-							["remediation_type"] = "replace_file_content",
-							["file"] = "Publish.ps1",
-							["new_content"] = Standards.PublishPs1Content
-						}
-					}));
-			}
-
-			var forbidden = FindForbiddenContent(content);
-			return Task.FromResult(forbidden is null
-				? Pass("Publish.ps1 matches the Meraki.Api tagging-and-trigger standard.")
-				: Fail(
-					forbidden,
-					new RuleAdvisory
-					{
-						Summary = "Replace Publish.ps1 with the standard script, which Codacy's PSScriptAnalyzer passes",
-						Detail = "Codacy grades Publish.ps1 with PSScriptAnalyzer. `Write-Host` raises PSAvoidUsingWriteHost (the standard script uses `Write-Information` with `$InformationPreference = 'Continue'`), and any non-ASCII character in a file without a byte order mark raises PSUseBOMForUnicodeEncodedFile (the standard script is ASCII only).",
-						Data = new()
-						{
-							["remediation_type"] = "replace_file_content",
-							["file"] = "Publish.ps1",
-							["new_content"] = Standards.PublishPs1Content
-						}
-					}));
+			return FailMissingSnippets(missing);
 		}
 
-		return Task.FromResult(missing.Count == 0
+		// A failed tag push used to be reported as "Tag pushed", leaving a local tag that blocked the re-run.
+		if (!PushResultChecked(content))
+		{
+			return ReplaceScript(
+				"Publish.ps1 does not check that the tag push succeeded, so a failed push is reported as 'Tag pushed'.",
+				"Check the tag push's exit code in Publish.ps1, retrying and removing the local tag on failure",
+				"After `git push origin $version`, the standard script tests `$LASTEXITCODE`, retries a failed push twice, and if it still fails removes the local tag (so a re-run is not blocked by \"Tag already exists\") and stops with an error instead of waiting for a release run that cannot appear.");
+		}
+
+		var forbidden = FindForbiddenContent(content);
+		return forbidden is null
 			? Pass("Publish.ps1 matches the Meraki.Api tagging-and-trigger standard.")
-			: Fail(
-				"Publish.ps1 does not match the Meraki.Api standard.",
-				new RuleAdvisory
-				{
-					Summary = "Update Publish.ps1 to match the standard Meraki.Api tagging-and-trigger pattern",
-					Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: clean tree check, branch check, MSBuild version resolution (`-t:GetBuildVersion --getProperty:NuGetPackageVersion`), tag creation, tag push — and then verification that the release actually published: a `gh auth token` pre-flight before anything is pushed (not `gh auth status`, which makes an API call and reports a GitHub rate limit as an invalid token), `gh run watch --exit-status` on the run the tag triggered, and a `-SkipPublishVerification` switch for anyone who opts out deliberately.",
-					Data = new()
-					{
-						["remediation_type"] = "replace_file_content",
-						["file"] = "Publish.ps1",
-						["new_content"] = Standards.PublishPs1Content,
-						["missing_snippets"] = missing.ToArray()
-					}
-				}));
+			: ReplaceScript(
+				forbidden,
+				"Replace Publish.ps1 with the standard script, which Codacy's PSScriptAnalyzer passes",
+				"Codacy grades Publish.ps1 with PSScriptAnalyzer. `Write-Host` raises PSAvoidUsingWriteHost (the standard script uses `Write-Information` with `$InformationPreference = 'Continue'`), and any non-ASCII character in a file without a byte order mark raises PSUseBOMForUnicodeEncodedFile (the standard script is ASCII only).");
 	}
+
+	private RuleResult ReplaceScript(string message, string summary, string detail)
+		=> Fail(
+			message,
+			new RuleAdvisory
+			{
+				Summary = summary,
+				Detail = detail,
+				Data = new()
+				{
+					["remediation_type"] = "replace_file_content",
+					["file"] = "Publish.ps1",
+					["new_content"] = Standards.PublishPs1Content
+				}
+			});
+
+	private RuleResult FailMissingSnippets(List<string> missing)
+		=> Fail(
+			"Publish.ps1 does not match the Meraki.Api standard.",
+			new RuleAdvisory
+			{
+				Summary = "Update Publish.ps1 to match the standard Meraki.Api tagging-and-trigger pattern",
+				Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: clean tree check, branch check, MSBuild version resolution (`-t:GetBuildVersion --getProperty:NuGetPackageVersion`), tag creation, tag push — and then verification that the release actually published: a `gh auth token` pre-flight before anything is pushed (not `gh auth status`, which makes an API call and reports a GitHub rate limit as an invalid token), `gh run watch --exit-status` on the run the tag triggered, and a `-SkipPublishVerification` switch for anyone who opts out deliberately.",
+				Data = new()
+				{
+					["remediation_type"] = "replace_file_content",
+					["file"] = "Publish.ps1",
+					["new_content"] = Standards.PublishPs1Content,
+					["missing_snippets"] = missing.ToArray()
+				}
+			});
 
 	/// <summary>
 	/// Whether the statement after every <c>git push origin $version</c> tests its outcome (<c>$LASTEXITCODE</c> or

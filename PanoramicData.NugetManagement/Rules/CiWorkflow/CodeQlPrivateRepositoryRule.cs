@@ -41,6 +41,17 @@ public partial class CodeQlPrivateRepositoryRule : RuleBase
 			return Task.FromResult(Pass("The repository is public, so code scanning is available."));
 		}
 
+		var (unguarded, fixable) = FindUnguardedWorkflows(context);
+		if (unguarded.Count == 0)
+		{
+			return Task.FromResult(Pass("No CodeQL workflow runs in this private repository."));
+		}
+
+		return Task.FromResult(FailUnguarded(unguarded, fixable));
+	}
+
+	private static (List<string> Unguarded, string? Fixable) FindUnguardedWorkflows(RepositoryContext context)
+	{
 		var unguarded = new List<string>();
 		string? fixable = null;
 		foreach (var path in context.FilePaths.Where(IsWorkflow))
@@ -59,11 +70,11 @@ public partial class CodeQlPrivateRepositoryRule : RuleBase
 			}
 		}
 
-		if (unguarded.Count == 0)
-		{
-			return Task.FromResult(Pass("No CodeQL workflow runs in this private repository."));
-		}
+		return (unguarded, fixable);
+	}
 
+	private RuleResult FailUnguarded(List<string> unguarded, string? fixable)
+	{
 		var data = new Dictionary<string, object> { ["workflows"] = unguarded.ToArray() };
 		if (fixable is not null && unguarded.Count == 1)
 		{
@@ -73,14 +84,14 @@ public partial class CodeQlPrivateRepositoryRule : RuleBase
 			data["replacements"] = new[] { _jobReplacement };
 		}
 
-		return Task.FromResult(Fail(
+		return Fail(
 			$"{string.Join(", ", unguarded)} runs CodeQL in a private repository, where uploading results needs GitHub Advanced Security and fails without it.",
 			new RuleAdvisory
 			{
 				Summary = $"Guard the CodeQL job with `if: ${{{{ !{_guard} }}}}`.",
 				Detail = $"Add `if: ${{{{ !{_guard} }}}}` to the job in {string.Join(", ", unguarded)}. Code scanning in a private repository needs GitHub Advanced Security; without it every run fails after the analysis, at the upload step.",
 				Data = data
-			}));
+			});
 	}
 
 	private const string _jobPattern = @"(?m)^(jobs:[ \t]*)(\r?\n)([ \t]+)([\w-]+):[ \t]*(\r?\n)";

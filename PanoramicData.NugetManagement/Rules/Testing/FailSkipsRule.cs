@@ -36,42 +36,7 @@ public class FailSkipsRule : RuleBase
 
 		foreach (var projectFile in testProjects)
 		{
-			// Derive the directory prefix to locate xunit.runner.json alongside the project file
-			var projectDir = System.IO.Path.GetDirectoryName(projectFile)?.Replace('\\', '/').TrimEnd('/') ?? string.Empty;
-			var runnerConfigPath = string.IsNullOrEmpty(projectDir)
-				? "xunit.runner.json"
-				: $"{projectDir}/xunit.runner.json";
-
-			var content = context.GetFileContent(runnerConfigPath);
-
-			if (string.IsNullOrWhiteSpace(content))
-			{
-				missingOrInvalid.Add($"{projectFile}: xunit.runner.json not found");
-				runnerConfigsToFix.Add(runnerConfigPath);
-				continue;
-			}
-
-			var declared = TryReadFailSkips(content, out var failSkips);
-
-			// The advisory's own exception: an integration suite that skips when its service is absent.
-			if (declared && !failSkips && System.IO.Path.GetFileNameWithoutExtension(projectFile).Contains("Integration", StringComparison.OrdinalIgnoreCase))
-			{
-				continue;
-			}
-			if (declared && failSkips)
-			{
-				continue;
-			}
-
-			missingOrInvalid.Add($"{projectFile}: failSkips is not set to true");
-
-			// An explicit `false` is a decision somebody made — an integration suite that skips when
-			// credentials are absent, say. Flipping it silently is not a fix, so only a config that
-			// never mentions failSkips at all is filled in automatically.
-			if (!declared && IsJsonObject(content))
-			{
-				runnerConfigsToFix.Add(runnerConfigPath);
-			}
+			CheckProject(context, projectFile, missingOrInvalid, runnerConfigsToFix);
 		}
 
 		if (missingOrInvalid.Count == 0)
@@ -79,7 +44,54 @@ public class FailSkipsRule : RuleBase
 			return Task.FromResult(Pass("All test projects have xunit.runner.json with failSkips: true."));
 		}
 
-		return Task.FromResult(Fail(
+		return Task.FromResult(FailMissing(missingOrInvalid, runnerConfigsToFix));
+	}
+
+	private static void CheckProject(
+		RepositoryContext context,
+		string projectFile,
+		List<string> missingOrInvalid,
+		List<string> runnerConfigsToFix)
+	{
+		var runnerConfigPath = RunnerConfigPathFor(projectFile);
+		var content = context.GetFileContent(runnerConfigPath);
+
+		if (string.IsNullOrWhiteSpace(content))
+		{
+			missingOrInvalid.Add($"{projectFile}: xunit.runner.json not found");
+			runnerConfigsToFix.Add(runnerConfigPath);
+			return;
+		}
+
+		var declared = TryReadFailSkips(content, out var failSkips);
+		if (declared && (failSkips || IsIntegrationProject(projectFile)))
+		{
+			return;
+		}
+
+		missingOrInvalid.Add($"{projectFile}: failSkips is not set to true");
+
+		// An explicit `false` is a decision somebody made, so only a config that never mentions failSkips is filled in.
+		if (!declared && IsJsonObject(content))
+		{
+			runnerConfigsToFix.Add(runnerConfigPath);
+		}
+	}
+
+	private static string RunnerConfigPathFor(string projectFile)
+	{
+		var projectDir = System.IO.Path.GetDirectoryName(projectFile)?.Replace('\\', '/').TrimEnd('/') ?? string.Empty;
+		return string.IsNullOrEmpty(projectDir)
+			? "xunit.runner.json"
+			: $"{projectDir}/xunit.runner.json";
+	}
+
+	// The advisory's own exception: an integration suite that skips when its service is absent.
+	private static bool IsIntegrationProject(string projectFile)
+		=> System.IO.Path.GetFileNameWithoutExtension(projectFile).Contains("Integration", StringComparison.OrdinalIgnoreCase);
+
+	private RuleResult FailMissing(List<string> missingOrInvalid, List<string> runnerConfigsToFix)
+		=> Fail(
 			$"One or more test projects are missing failSkips configuration: {string.Join("; ", missingOrInvalid)}",
 			new RuleAdvisory
 			{
@@ -99,8 +111,7 @@ public class FailSkipsRule : RuleBase
 					set `failSkips: false` explicitly and document the reason in a comment or README.
 					""",
 				Data = BuildData(runnerConfigsToFix, missingOrInvalid.Count)
-			}));
-	}
+			});
 
 	/// <summary>
 	/// The config to write where a test project has none.
