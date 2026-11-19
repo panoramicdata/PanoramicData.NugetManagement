@@ -92,12 +92,28 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 			return Task.FromResult(NotApplicable("No workflow uses a versioned action."));
 		}
 
+		var (behind, checkedCount) = FindBehind(context, usages);
+		if (checkedCount == 0)
+		{
+			// Every action present belongs to a bespoke rule, which decides compliance, so this one has nothing to judge.
+			return Task.FromResult(NotApplicable(
+				"Every action used is one another rule already holds to a version."));
+		}
+
+		return Task.FromResult(behind.Count == 0
+			? Pass($"{checkedCount} action(s) are at or above the versions we use elsewhere.")
+			: FailBehind(behind));
+	}
+
+	private static (List<(string Action, int Used, string Floor)> Behind, int CheckedCount) FindBehind(
+		RepositoryContext context,
+		List<ActionUsage> usages)
+	{
 		var catalog = ActionVersionCatalog.Default;
 		var behind = new List<(string Action, int Used, string Floor)>();
 		var checkedCount = 0;
 
-		// The one file the bespoke CI rules read. Everything outside it is nobody's but ours, even for
-		// an action one of them claims.
+		// The one file the bespoke CI rules read; everything outside it is ours, even for a claimed action.
 		var ownedWorkflow = Normalise(CiWorkflowPathResolver.Resolve(context));
 
 		var actions = usages
@@ -107,72 +123,62 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 
 		foreach (var action in actions)
 		{
-			// A claimed action is its owning rule's business in the file that rule reads, and ours in
-			// every other workflow — where that rule cannot see it, cannot fail for it, and cannot fix
-			// it. Skipping the action outright is what left actions/checkout@v3 sitting in a repository's
-			// codeql-analysis.yml with two Dependabot pull requests open against it for months.
-			// Note that the remediation's globs still cover every workflow, so fixing a claimed action
-			// outside ci.yml also lifts ci.yml's copy of it. That is deliberate and safe: the pattern
-			// only matches versions below this floor, so it can raise a version but never lower one,
-			// and the owning rule's floor is the greater of its hardcoded default and the same learned
-			// value — so if it wants more, it still fails and takes it the rest of the way.
-			var relevant = ClaimedElsewhere(action)
-				? usages.Where(usage => !string.Equals(
-					Normalise(usage.WorkflowPath), ownedWorkflow, StringComparison.OrdinalIgnoreCase)).ToList()
-				: usages;
-
-			if (!relevant.Any(usage => Matches(usage, action)))
+			var (counted, found) = AssessAction(context, catalog, usages, ownedWorkflow, action);
+			checkedCount += counted ? 1 : 0;
+			if (found is { } entry)
 			{
-				continue;
+				behind.Add(entry);
 			}
-
-			checkedCount++;
-
-			// Learning takes the highest usage — the best we manage anywhere is the standard to hold
-			// everyone to. Failing takes the lowest, because one workflow left behind is still work.
-			var highest = relevant
-				.Where(usage => Matches(usage, action))
-				.Select(usage => usage.MajorVersion)
-				.Where(major => major is not null)
-				.Max();
-
-			if (highest is not null)
-			{
-				catalog.Observe(action, highest.Value, _noHardcodedFloor, context.FullName);
-			}
-
-			// Null when any usage is unreadable — a SHA pin or a branch. Rewriting one of those would
-			// replace a deliberate pin with a floating tag, so the action is left alone entirely.
-			var lowest = ActionUsageScanner.LowestMajorOf(relevant, action);
-			if (lowest is null)
-			{
-				continue;
-			}
-
-			var floor = catalog.GetFloorSpec(action, _noHardcodedFloor);
-			if (lowest >= GitHubActionVersion.ParseMajor(floor))
-			{
-				continue;
-			}
-
-			behind.Add((action, lowest.Value, floor));
 		}
 
-		if (checkedCount == 0)
+		return (behind, checkedCount);
+	}
+
+	private static (bool Counted, (string Action, int Used, string Floor)? Behind) AssessAction(
+		RepositoryContext context,
+		ActionVersionCatalog catalog,
+		List<ActionUsage> usages,
+		string ownedWorkflow,
+		string action)
+	{
+		// A claimed action is its owning rule's business in the file that rule reads, and ours in every other workflow.
+		var relevant = ClaimedElsewhere(action)
+			? usages.Where(usage => !string.Equals(
+				Normalise(usage.WorkflowPath), ownedWorkflow, StringComparison.OrdinalIgnoreCase)).ToList()
+			: usages;
+
+		if (!relevant.Any(usage => Matches(usage, action)))
 		{
-			// Every action present belongs to a bespoke rule, so this one has nothing to judge. Saying
-			// so is not the same as saying the repository is compliant — the owning rules decide that.
-			return Task.FromResult(NotApplicable(
-				"Every action used is one another rule already holds to a version."));
+			return (false, null);
 		}
 
-		if (behind.Count == 0)
+		// Learning takes the highest usage; failing takes the lowest, because one workflow left behind is still work.
+		var highest = relevant
+			.Where(usage => Matches(usage, action))
+			.Select(usage => usage.MajorVersion)
+			.Where(major => major is not null)
+			.Max();
+
+		if (highest is not null)
 		{
-			return Task.FromResult(Pass(
-				$"{checkedCount} action(s) are at or above the versions we use elsewhere."));
+			catalog.Observe(action, highest.Value, _noHardcodedFloor, context.FullName);
 		}
 
-		return Task.FromResult(Fail(
+		// Null when any usage is unreadable (a SHA pin or a branch): rewriting one would replace a deliberate pin.
+		var lowest = ActionUsageScanner.LowestMajorOf(relevant, action);
+		if (lowest is null)
+		{
+			return (true, null);
+		}
+
+		var floor = catalog.GetFloorSpec(action, _noHardcodedFloor);
+		return lowest >= GitHubActionVersion.ParseMajor(floor)
+			? (true, null)
+			: (true, (action, lowest.Value, floor));
+	}
+
+	private RuleResult FailBehind(List<(string Action, int Used, string Floor)> behind)
+		=> Fail(
 			string.Join("; ", behind.Select(b => $"{b.Action}@v{b.Used} is behind {b.Floor}")) + ".",
 			new RuleAdvisory
 			{
@@ -188,8 +194,7 @@ public class CiActionVersionFloorRule : RuleBase, IGovernsDependency
 					["replacements"] = behind.Select(b => ActionUsesPattern.Replacement(b.Floor)).ToArray(),
 					[_governedActionsKey] = behind.Select(b => b.Action).ToArray()
 				}
-			}));
-	}
+			});
 
 	private static bool Matches(ActionUsage usage, string action)
 		=> string.Equals(usage.Action, action, StringComparison.OrdinalIgnoreCase);
