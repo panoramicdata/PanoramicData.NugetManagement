@@ -148,7 +148,10 @@ public class CodacyIssuesRuleTests(ITestOutputHelper output) : TestWithOutput(ou
 	private sealed class FakeService(CodacyRepositoryReport report) : ICodacyIssueService
 	{
 		public Task<CodacyRepositoryReport> GetReportAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> Task.FromResult(report);
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, branch, cancellationToken);
+			return Task.FromResult(report);
+		}
 	}
 
 	private sealed class ThrowingService : ICodacyIssueService

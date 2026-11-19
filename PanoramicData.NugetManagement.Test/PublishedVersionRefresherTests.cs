@@ -111,6 +111,9 @@ public class PublishedVersionRefresherTests(ITestOutputHelper output) : TestWith
 	private sealed class ThrowingSource : IPublishedVersionSource
 	{
 		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
-			=> throw new HttpRequestException("nuget.org unreachable");
+		{
+			FakeArguments.Accept(packageId, cancellationToken);
+			throw new HttpRequestException("nuget.org unreachable");
+		}
 	}
 }

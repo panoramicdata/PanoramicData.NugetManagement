@@ -93,6 +93,10 @@ public class ReleaseRunRefresherTests(ITestOutputHelper output) : TestWithOutput
 		public Task<ReleaseRun?> GetReleaseRunAsync(
 			string repositoryFullName,
 			string tag,
-			CancellationToken cancellationToken) => throw new InvalidOperationException("GitHub is unreachable");
+			CancellationToken cancellationToken)
+		{
+			FakeArguments.Accept(repositoryFullName, tag, cancellationToken);
+			throw new InvalidOperationException("GitHub is unreachable");
+		}
 	}
 }

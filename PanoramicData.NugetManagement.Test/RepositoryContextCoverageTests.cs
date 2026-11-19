@@ -19,6 +19,7 @@ public class RepositoryContextCoverageTests
 			string? branch,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(apiToken, organizationName, branch, cancellationToken);
 			RequestedRepository = repositoryName;
 			return Task.FromResult(percent);
 		}

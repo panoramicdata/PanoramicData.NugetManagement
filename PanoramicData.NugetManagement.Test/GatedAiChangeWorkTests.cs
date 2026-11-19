@@ -36,6 +36,7 @@ public sealed class GatedAiChangeWorkTests(ITestOutputHelper output) : TestWithO
 
 		public async Task<AiFixOutcome> FixAsync(AiChangeRequest request, string? redTestFilter, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(request, redTestFilter);
 			Started.TrySetResult();
 			await Release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 			return new AiFixOutcome(true, 1, "done");

@@ -34,11 +34,15 @@ public class RepositoryIssueServiceTests(ITestOutputHelper output) : TestWithOut
 
 		public Task<IReadOnlyList<GitHubOpenItem>> GetOpenItemsAsync(
 			string owner, string name, CancellationToken cancellationToken)
-			=> Task.FromResult(items);
+		{
+			FakeArguments.Accept(owner, name, cancellationToken);
+			return Task.FromResult(items);
+		}
 
 		public Task<IReadOnlyList<GitHubIssueComment>> GetRepositoryCommentsPageAsync(
 			string owner, string name, int pageNumber, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(owner, name, cancellationToken);
 			PagesRequested = Math.Max(PagesRequested, pageNumber);
 			return Task.FromResult(pageNumber <= pages.Count ? pages[pageNumber - 1] : []);
 		}
@@ -46,6 +50,7 @@ public class RepositoryIssueServiceTests(ITestOutputHelper output) : TestWithOut
 		public Task<IReadOnlyList<GitHubIssueComment>> GetCommentsForItemAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(owner, name, cancellationToken);
 			ItemsFetchedIndividually.Add(issueNumber);
 			return Task.FromResult(
 				perItem is not null && perItem.TryGetValue(issueNumber, out var found) ? found : []);
