@@ -3,7 +3,7 @@ using PanoramicData.NugetManagement.Models;
 namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
-/// Checks that RepositoryUrl is set in packable projects.
+/// Checks that RepositoryUrl is set in packable projects. Private repositories are skipped.
 /// </summary>
 public class RepositoryUrlSetRule : ProjectPropertySetRuleBase
 {
