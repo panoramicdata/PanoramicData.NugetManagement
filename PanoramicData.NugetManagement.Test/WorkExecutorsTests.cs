@@ -271,19 +271,7 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 			NullLogger<DashboardCacheService>.Instance,
 			Path.Combine(_root, "dashboard-cache.json"));
 
-		var dashboard = new DashboardService(
-			new NuGetDiscoveryService(appSettings, new NuspecRepositoryResolver(new NoopHttpClientFactory(), NullLogger<NuspecRepositoryResolver>.Instance), NullLogger<NuGetDiscoveryService>.Instance),
-			new PublishedVersionRefresher(new NoopPublishedVersionSource()),
-			cache,
-			localRepo,
-			new RemediationRegistry(),
-			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
-			runtimeSettings,
-			new NuGetOwnedPackageCatalog(null),
-			new RuleWaiverCatalog(null),
-			appSettings,
-			new NoopCodacyAnalysisStateService(),
-			NullLogger<DashboardService>.Instance);
+		var dashboard = DashboardTestFactory.Create(appSettings, runtimeSettings, localRepo, cache);
 
 		var lanes = new WorkLaneService();
 		return new WorkExecutors(
@@ -316,19 +304,6 @@ public sealed class WorkExecutorsBuildOutcomeTests(ITestOutputHelper output) : T
 		}
 
 		GC.SuppressFinalize(this);
-	}
-
-	/// <summary>Never called: <see cref="DashboardService.BuildAsync"/> does not touch NuGet.</summary>
-	private sealed class NoopHttpClientFactory : IHttpClientFactory
-	{
-		public HttpClient CreateClient(string name) => new();
-	}
-
-	/// <summary>Never called: <see cref="DashboardService.BuildAsync"/> does not read published versions.</summary>
-	private sealed class NoopPublishedVersionSource : IPublishedVersionSource
-	{
-		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
-			=> Task.FromResult<string?>(null);
 	}
 }
 
@@ -371,7 +346,7 @@ public sealed class DashboardServiceCancellationTests(ITestOutputHelper output) 
 		using var cancellation = new CancellationTokenSource();
 		await cancellation.CancelAsync();
 
-		var act = () => CreateDashboardService().AssessLocalRepositoryAsync(row, cancellation.Token);
+		var act = () => CreateDashboardService().AssessLocalRepositoryAsync(row, cancellation.Token, null);
 
 		await act.Should().ThrowAsync<OperationCanceledException>(
 			"the caller's cancellation handling — the revert, and the runner marking the item Cancelled — cannot run if the stop is swallowed here");
@@ -394,22 +369,7 @@ public sealed class DashboardServiceCancellationTests(ITestOutputHelper output) 
 			NullLogger<DashboardCacheService>.Instance,
 			Path.Combine(_root, "dashboard-cache.json"));
 
-		return new DashboardService(
-			new NuGetDiscoveryService(
-				appSettings,
-				new NuspecRepositoryResolver(new NoopHttpClientFactory(), NullLogger<NuspecRepositoryResolver>.Instance),
-				NullLogger<NuGetDiscoveryService>.Instance),
-			new PublishedVersionRefresher(new NoopPublishedVersionSource()),
-			cache,
-			localRepo,
-			new RemediationRegistry(),
-			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
-			runtimeSettings,
-			new NuGetOwnedPackageCatalog(null),
-			new RuleWaiverCatalog(null),
-			appSettings,
-			new NoopCodacyAnalysisStateService(),
-			NullLogger<DashboardService>.Instance);
+		return DashboardTestFactory.Create(appSettings, runtimeSettings, localRepo, cache);
 	}
 
 	/// <inheritdoc />
@@ -425,18 +385,5 @@ public sealed class DashboardServiceCancellationTests(ITestOutputHelper output) 
 		}
 
 		GC.SuppressFinalize(this);
-	}
-
-	/// <summary>Never called: a cancelled assessment reaches nothing that talks to NuGet.</summary>
-	private sealed class NoopHttpClientFactory : IHttpClientFactory
-	{
-		public HttpClient CreateClient(string name) => new();
-	}
-
-	/// <summary>Never called: a cancelled assessment reaches nothing that reads published versions.</summary>
-	private sealed class NoopPublishedVersionSource : IPublishedVersionSource
-	{
-		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
-			=> Task.FromResult<string?>(null);
 	}
 }

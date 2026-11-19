@@ -235,7 +235,7 @@ public sealed class AutopilotPolicyStore
 
 		if (problem is not null)
 		{
-			_ledger.Append("autopilot", "policy_invalid", data: new { problem, fellBackTo = "default (disabled, dry-run)" });
+			_ledger.Append("autopilot", "policy_invalid", null, null, new { problem, fellBackTo = "default (disabled, dry-run)" });
 		}
 	}
 
@@ -294,7 +294,7 @@ public sealed class AutopilotPolicyStore
 			_hash = Hash(policy);
 
 			// After the swap, so the entry carries the hash of the policy it introduced.
-			_ledger.Append(actor, "policy_changed", data: new { reason, previousHash = previous, newHash = _hash, policy });
+			_ledger.Append(actor, "policy_changed", null, null, new { reason, previousHash = previous, newHash = _hash, policy });
 
 			return _hash;
 		}

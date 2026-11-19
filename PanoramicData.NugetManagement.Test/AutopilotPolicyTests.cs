@@ -177,7 +177,7 @@ public class AutopilotPolicyTests(ITestOutputHelper output) : TestWithOutput(out
 		change.Data.GetProperty("newHash").GetString().Should().Be(newHash);
 		change.Data.GetProperty("policy").GetProperty("enabled").GetBoolean().Should().BeTrue();
 
-		ledgerWithHash.Append("autopilot", "cycle_started").PolicyHash.Should().Be(newHash);
+		ledgerWithHash.Append("autopilot", "cycle_started", null, null, null).PolicyHash.Should().Be(newHash);
 	}
 
 	[Fact]

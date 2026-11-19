@@ -42,10 +42,13 @@ internal static class CodacyAnalysisStateMapper
 		{
 			IsAnalysing = overview?.IsAnalyzing == true || startedButNotEnded,
 			ProgressPercent = overview?.Progress,
-			StartedAt = overview?.StartedAt ?? (startedButNotEnded ? lastAnalysedCommit!.StartedAnalysis : null),
+			StartedAt = StartedAt(overview, lastAnalysedCommit, startedButNotEnded),
 			AnalysedSha = lastAnalysedCommit?.Sha,
 			AnalysedAtUtc = lastAnalysedCommit?.EndedAnalysis,
 			RetrievedAtUtc = now
 		};
 	}
+
+	private static DateTimeOffset? StartedAt(FirstAnalysisOverview? overview, Commit? lastAnalysedCommit, bool startedButNotEnded)
+		=> overview?.StartedAt ?? (startedButNotEnded ? lastAnalysedCommit!.StartedAnalysis : null);
 }

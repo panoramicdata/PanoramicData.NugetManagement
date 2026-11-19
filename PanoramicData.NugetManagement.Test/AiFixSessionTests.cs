@@ -43,6 +43,7 @@ public class AiFixSessionTests(ITestOutputHelper output) : TestWithOutput(output
 			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(tools, onDelta, cancellationToken);
 			SystemPrompts.Add(systemPrompt);
 			Conversations.Add([.. conversation]);
 
@@ -73,6 +74,7 @@ public class AiFixSessionTests(ITestOutputHelper output) : TestWithOutput(output
 			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(systemPrompt, conversation, tools, cancellationToken);
 			WasGivenASink = onDelta is not null;
 
 			foreach (var delta in deltas)

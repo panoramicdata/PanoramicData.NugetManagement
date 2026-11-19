@@ -54,7 +54,7 @@ public static class Standards
 	/// <summary>
 	/// The expected xunit.v3 package version.
 	/// </summary>
-	public const string XunitV3Version = "4.0.0";
+	public static string XunitV3Version { get; } = "4.0.0";
 
 	/// <summary>
 	/// The expected Microsoft.NET.Test.Sdk package version.
@@ -71,7 +71,7 @@ public static class Standards
 	/// The expected <see cref="CodeCoveragePackage"/> version. Shares a version line with
 	/// <see cref="MicrosoftNetTestSdkVersion"/>, though the two can be a release apart.
 	/// </summary>
-	public const string CodeCoverageVersion = "18.10.0";
+	public static string CodeCoverageVersion { get; } = "18.10.0";
 
 	/// <summary>
 	/// The code coverage collector for a repository still on VSTest, where
@@ -84,7 +84,7 @@ public static class Standards
 	/// The expected <see cref="VsTestCodeCoveragePackage"/> version, matching its nuget-floors.json
 	/// floor.
 	/// </summary>
-	public const string VsTestCodeCoverageVersion = "10.0.1";
+	public static string VsTestCodeCoverageVersion { get; } = "10.0.1";
 
 	/// <summary>
 	/// Coverlet packages that are inert under Microsoft.Testing.Platform: both hook the VSTest
@@ -98,13 +98,13 @@ public static class Standards
 	/// <summary>
 	/// The VSTest adapter for xUnit, unnecessary under Microsoft.Testing.Platform.
 	/// </summary>
-	public const string VsTestAdapterPackage = "xunit.runner.visualstudio";
+	public static string VsTestAdapterPackage { get; } = "xunit.runner.visualstudio";
 
 	/// <summary>
 	/// The expected AwesomeAssertions version. AwesomeAssertions is the API-compatible fork of
 	/// FluentAssertions, which from version 8 requires a paid Xceed licence for commercial use.
 	/// </summary>
-	public const string AwesomeAssertionsVersion = "9.6.0";
+	public static string AwesomeAssertionsVersion { get; } = "9.6.0";
 
 	/// <summary>
 	/// The expected AwesomeAssertions.Analyzers version.
@@ -115,12 +115,12 @@ public static class Standards
 	/// The minimum acceptable actions/checkout major version. Repositories at or above this pass;
 	/// the value is derived from the highest version in use across the organization's repositories.
 	/// </summary>
-	public const string LatestActionsCheckoutVersion = "v7";
+	public static string LatestActionsCheckoutVersion { get; } = "v7";
 
 	/// <summary>
 	/// The minimum acceptable actions/setup-dotnet major version (repositories at or above this pass).
 	/// </summary>
-	public const string LatestActionsSetupDotnetVersion = "v6";
+	public static string LatestActionsSetupDotnetVersion { get; } = "v6";
 
 	/// <summary>
 	/// The minimum acceptable actions/upload-artifact major version.
@@ -244,7 +244,7 @@ public static class Standards
 	/// <summary>
 	/// The standard CONTRIBUTING.md content for all repositories.
 	/// </summary>
-	public const string ContributingMdContent = """
+	public static string ContributingMdContent { get; } = """
 		# Contributing
 
 		Thank you for your interest in contributing to this project!
@@ -331,7 +331,7 @@ public static class Standards
 	/// <summary>
 	/// The standard version.json content for Nerdbank.GitVersioning.
 	/// </summary>
-	public const string VersionJsonContent = """
+	public static string VersionJsonContent { get; } = """
 		{
 		  "$schema": "https://raw.githubusercontent.com/dotnet/Nerdbank.GitVersioning/main/src/NerdBank.GitVersioning/version.schema.json",
 		  "version": "1.0",
@@ -393,7 +393,7 @@ public static class Standards
 	/// <summary>
 	/// The standard .editorconfig content for .NET repositories.
 	/// </summary>
-	public const string EditorConfigContent = """
+	public static string EditorConfigContent { get; } = """
 		root = true
 
 		[*]
@@ -466,7 +466,8 @@ public static class Standards
 	/// </summary>
 	public static string GetTrustedPublishingCiWorkflowContent(string nuGetUser)
 		=> string.Join("\n",
-		[
+		new[]
+		{
 				"name: CI",
 				string.Empty,
 				"on:",
@@ -531,7 +532,7 @@ public static class Standards
 				string.Empty,
 				"    - name: Push to NuGet",
 			 "      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json"
-		]);
+		});
 
 	/// <summary>
 	/// The standard .gitignore content for .NET repositories.
@@ -627,7 +628,7 @@ public static class Standards
 	/// <summary>
 	/// The marker AI-03 requires: the governance tool's name, present only where the About section is.
 	/// </summary>
-	public const string GovernanceToolName = "PanoramicData.NugetManagement";
+	public static string GovernanceToolName { get; } = "PanoramicData.NugetManagement";
 
 	/// <summary>
 	/// A short, deliberately unrevealing statement of who publishes the repository and how it is
@@ -648,7 +649,7 @@ public static class Standards
 	/// The version marker written into <see cref="ClaudeMdContent"/> and <see cref="AgentsMdContent"/>.
 	/// Bump this when either template's content changes materially.
 	/// </summary>
-	public const string AiInstructionsTemplateVersion = "1.3";
+	public static string AiInstructionsTemplateVersion { get; } = "1.3";
 
 	/// <summary>
 	/// The instruction AI-06 requires in CLAUDE.md and AGENTS.md. Agents add a co-author trailer to
@@ -784,7 +785,7 @@ public static class Standards
 	/// <summary>
 	/// The standard Publish.ps1 script content for tag-based publishing.
 	/// </summary>
-	public const string PublishPs1Content = """
+	public static string PublishPs1Content { get; } = """
 		param(
 			# Skips waiting for the release run. The tag is still pushed, but nothing confirms a package
 			# reached nuget.org; use it only if you are checking the run yourself.

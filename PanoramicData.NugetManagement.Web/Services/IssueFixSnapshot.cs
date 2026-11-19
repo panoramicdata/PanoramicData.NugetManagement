@@ -20,7 +20,7 @@ public sealed class IssueFixSnapshot
 
 	private readonly Dictionary<string, string?> _contents;
 
-	private IssueFixSnapshot(string root, Dictionary<string, string?> contents)
+	internal IssueFixSnapshot(string root, Dictionary<string, string?> contents)
 	{
 		_root = root;
 		_contents = contents;

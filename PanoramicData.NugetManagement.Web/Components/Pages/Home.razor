@@ -1154,7 +1154,7 @@ else
 			// The cache records what was cloned when it was written; the disk is the authority now.
 			// SetRows rather than Update: correcting a stale fact is not a refresh, and must not reset
 			// the staleness clock. The rows are reconciled on every load, so the disk copy keeps up.
-			if (await Dashboard.ReconcileLocalStateAsync(_rows) > 0)
+			if (await Dashboard.ReconcileLocalStateAsync(_rows, CancellationToken.None) > 0)
 			{
 				Cache.SetRows(_rows);
 			}
@@ -1416,7 +1416,7 @@ else
 	{
 		try
 		{
-			await Dashboard.RefreshLocalGitStatusAsync(row);
+			await Dashboard.RefreshLocalGitStatusAsync(row, CancellationToken.None);
 		}
 		catch (Exception ex)
 		{
@@ -1477,7 +1477,7 @@ else
 
 			try
 			{
-				await Dashboard.RefreshLocalGitStatusAsync(row);
+				await Dashboard.RefreshLocalGitStatusAsync(row, CancellationToken.None);
 			}
 			catch (Exception ex)
 			{
@@ -1514,7 +1514,7 @@ else
 	{
 		try
 		{
-			await Dashboard.RefreshCodacyAnalysisStateAsync(row);
+			await Dashboard.RefreshCodacyAnalysisStateAsync(row, CancellationToken.None);
 		}
 		catch (Exception ex)
 		{
@@ -2297,7 +2297,7 @@ else
 
 		try
 		{
-			var result = await LocalRepo.CheckRemoteAccessAsync($"https://github.com/{probeRepository}.git");
+			var result = await LocalRepo.CheckRemoteAccessAsync($"https://github.com/{probeRepository}.git", CancellationToken.None);
 			_gitAccessProblem = result.Access == GitRemoteAccess.Ok ? null : result;
 		}
 		catch (Exception ex)
@@ -5123,12 +5123,12 @@ else
 			if (_selectedRow.IsClonedLocally && _selectedRow.LocalPath is not null)
 			{
 				await Dashboard.AssessLocalRepositoryAsync(_selectedRow, CancellationToken.None, github);
-				await Dashboard.RefreshGitStatusAsync(_selectedRow);
+				await Dashboard.RefreshGitStatusAsync(_selectedRow, CancellationToken.None);
 				await AppendDirtyWorkingTreePreviewAsync();
 			}
 			else
 			{
-				await Dashboard.AssessRepositoryAsync(_selectedRow, github);
+				await Dashboard.AssessRepositoryAsync(_selectedRow, github, CancellationToken.None);
 			}
 
            await PersistSelectedRowUpdateAsync();
@@ -5321,7 +5321,7 @@ else
 			return;
 		}
 
-		var lines = await Dashboard.GetWorkingTreeStatusPreviewAsync(_selectedRow, maxLines: 3);
+		var lines = await Dashboard.GetWorkingTreeStatusPreviewAsync(_selectedRow, maxLines: 3, CancellationToken.None);
 		if (lines.Count == 0)
 		{
 			AppendConsole("ℹ️ Working tree is dirty but no git porcelain entries were captured.");
@@ -6993,7 +6993,7 @@ else
 		}
 
 		// Every row's LocalPath was built from the old root.
-		await Dashboard.ReconcileLocalStateAsync(_rows);
+		await Dashboard.ReconcileLocalStateAsync(_rows, CancellationToken.None);
 		Cache.SetRows(_rows);
 		await ReloadTreePreservingExpansionAsync();
 		ConfirmSettingSaved();

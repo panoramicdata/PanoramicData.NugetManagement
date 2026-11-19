@@ -52,7 +52,7 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 		// Codacy issues page reading zero. The finding has to say what is wrong and where.
 		var result = await Rule(Report(
 			File("src/A.cs", "A"),
-			File("Sample.Test/TaiTests.cs", "F", grade: 0, totalIssues: 0, complexity: 3, linesOfCode: 41, duplication: 36, numberOfClones: 5)))
+			File("Sample.Test/TaiTests.cs", "F", grade: 0, complexity: 3, linesOfCode: 41, duplication: 36, numberOfClones: 5)))
 			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
 
 		result.Message.Should().Contain("Sample.Test/TaiTests.cs");
@@ -69,7 +69,7 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 		// The whole reason CQ-06 exists: a reader looking at a Codacy issues page reading zero needs
 		// to be told the grade came from duplication, or the finding looks like a mistake.
 		var result = await Rule(Report(
-			File("Sample.Test/TaiTests.cs", "F", grade: 0, totalIssues: 0, duplication: 36, numberOfClones: 5)))
+			File("Sample.Test/TaiTests.cs", "F", grade: 0, duplication: 36, numberOfClones: 5)))
 			.EvaluateAsync(Context(Token()), TestContext.Current.CancellationToken);
 
 		result.Message.Should().Contain("36% duplication");
@@ -410,13 +410,19 @@ public class CodacyFileGradesRuleTests(ITestOutputHelper output) : TestWithOutpu
 	private sealed class ThrowingService : ICodacyFileGradeService
 	{
 		public Task<CodacyFileGradeReport> GetGradesAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> throw new InvalidOperationException("Codacy unreachable");
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, branch, cancellationToken);
+			throw new InvalidOperationException("Codacy unreachable");
+		}
 	}
 
 	private sealed class FakeIssueService(params CodacyIssue[] issues) : ICodacyIssueService
 	{
 		public Task<CodacyRepositoryReport> GetReportAsync(string apiToken, string organizationName, string repositoryName, string? branch, CancellationToken cancellationToken)
-			=> Task.FromResult(new CodacyRepositoryReport { IsTracked = true, Issues = issues });
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, branch, cancellationToken);
+			return Task.FromResult(new CodacyRepositoryReport { IsTracked = true, Issues = issues });
+		}
 	}
 
 	private sealed class ThrowingIssueService : ICodacyIssueService

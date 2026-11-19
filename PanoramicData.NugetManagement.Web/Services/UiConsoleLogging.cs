@@ -66,7 +66,7 @@ public sealed class UiConsoleLogSink
 public sealed class UiConsoleLoggerProvider(UiConsoleLogSink sink) : ILoggerProvider
 {
 	/// <summary>The category prefix whose log lines are mirrored into the in-app console.</summary>
-	public const string CategoryPrefix = "PanoramicData.NugetManagement";
+	public static string CategoryPrefix { get; } = "PanoramicData.NugetManagement";
 
 	/// <summary>Creates the logger for one category.</summary>
 	/// <param name="categoryName">The category being logged to.</param>
@@ -77,6 +77,7 @@ public sealed class UiConsoleLoggerProvider(UiConsoleLogSink sink) : ILoggerProv
 	/// <summary>Does nothing: the sink this provider writes to is owned by the container.</summary>
 	public void Dispose()
 	{
+		// The container owns the sink this provider writes to.
 	}
 
 	private sealed class UiConsoleLogger(string categoryName, UiConsoleLogSink sink) : ILogger

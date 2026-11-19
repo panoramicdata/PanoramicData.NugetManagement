@@ -81,7 +81,11 @@ public class ReleaseRunRefresherTests(ITestOutputHelper output) : TestWithOutput
 		public Task<ReleaseRun?> GetReleaseRunAsync(
 			string repositoryFullName,
 			string tag,
-			CancellationToken cancellationToken) => Task.FromResult(run);
+			CancellationToken cancellationToken)
+		{
+			FakeArguments.Accept(repositoryFullName, tag, cancellationToken);
+			return Task.FromResult(run);
+		}
 	}
 
 	private sealed class ThrowingReleaseRunSource : IReleaseRunSource

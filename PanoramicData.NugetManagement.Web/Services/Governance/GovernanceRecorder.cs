@@ -198,7 +198,7 @@ public sealed class GovernanceRecorder(
 				ActorFor(item),
 				"push",
 				repositoryFullName,
-				data: new { workItemId = item.Id, succeeded, refusalReason, sha, branch, files, packet, packetProblem });
+				null, new { workItemId = item.Id, succeeded, refusalReason, sha, branch, files, packet, packetProblem });
 		}
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
 		{
@@ -228,7 +228,7 @@ public sealed class GovernanceRecorder(
 			ActorFor(item),
 			"publish",
 			repositoryFullName,
-			data: new { workItemId = item.Id, succeeded, packageIds, latestTagBefore, nextVersion, failuresAtTheTime }));
+			null, new { workItemId = item.Id, succeeded, packageIds, latestTagBefore, nextVersion, failuresAtTheTime }));
 
 	/// <summary>
 	/// What a session changed: the diff of tracked files, and the content of new ones.

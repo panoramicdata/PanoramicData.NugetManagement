@@ -26,7 +26,7 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 	/// the remaining items one at a time. Bounds the cost of a repository with thousands of comments
 	/// on long-closed issues, without making any single answer less exact.
 	/// </summary>
-	public const int MaxSweepPages = 5;
+	public static int MaxSweepPages { get; } = 5;
 
 	private readonly IGitHubIssueApi _api = api;
 
@@ -55,37 +55,7 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 
 		// Whether the sweep read every comment the repository has, rather than stopping at the page
 		// budget. It decides whether the per-item fallback is needed at all.
-		var sweptEveryComment = false;
-
-		for (var page = 1; page <= MaxSweepPages && unresolved.Count > 0; page++)
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-
-			var comments = await _api
-				.GetRepositoryCommentsPageAsync(owner, name, page, cancellationToken)
-				.ConfigureAwait(false);
-
-			// An empty page means the comments ran out. Everything still unresolved at this point has
-			// provably never been answered by a maintainer, because the sweep has now seen every
-			// comment in the repository and none of them was one.
-			if (comments.Count == 0)
-			{
-				sweptEveryComment = true;
-				break;
-			}
-
-			foreach (var comment in comments)
-			{
-				if (!comment.IsFromMaintainer || !unresolved.Contains(comment.IssueNumber))
-				{
-					continue;
-				}
-
-				// Newest-first, so the first maintainer comment seen for an item is its latest.
-				replies[comment.IssueNumber] = comment.CreatedAtUtc;
-				unresolved.Remove(comment.IssueNumber);
-			}
-		}
+		var sweptEveryComment = await SweepCommentsAsync(owner, name, unresolved, replies, cancellationToken).ConfigureAwait(false);
 
 		// Only what the BUDGET could not reach is asked about directly, so that an item whose last
 		// maintainer comment lies beyond the swept pages still gets an exact answer rather than being
@@ -99,25 +69,7 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 		// extra requests per refresh, to re-learn what the sweep already knew.
 		if (!sweptEveryComment)
 		{
-			foreach (var number in items.Select(i => i.Number).Where(n => !replies.ContainsKey(n)))
-			{
-				cancellationToken.ThrowIfCancellationRequested();
-
-				var comments = await _api
-					.GetCommentsForItemAsync(owner, name, number, cancellationToken)
-					.ConfigureAwait(false);
-
-				var latest = comments
-					.Where(c => c.IsFromMaintainer)
-					.Select(c => (DateTimeOffset?)c.CreatedAtUtc)
-					.DefaultIfEmpty(null)
-					.Max();
-
-				if (latest is not null)
-				{
-					replies[number] = latest.Value;
-				}
-			}
+			await ResolveRemainderAsync(owner, name, items, replies, cancellationToken).ConfigureAwait(false);
 		}
 
 		return [.. items.Select(item => new RepositoryIssue
@@ -131,5 +83,67 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 			CreatedAtUtc = item.CreatedAtUtc,
 			LastMaintainerReplyUtc = replies.TryGetValue(item.Number, out var reply) ? reply : null
 		})];
+	}
+
+	private async Task<bool> SweepCommentsAsync(
+		string owner,
+		string name,
+		HashSet<int> unresolved,
+		Dictionary<int, DateTimeOffset> replies,
+		CancellationToken cancellationToken)
+	{
+		for (var page = 1; page <= MaxSweepPages && unresolved.Count > 0; page++)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var comments = await _api
+				.GetRepositoryCommentsPageAsync(owner, name, page, cancellationToken)
+				.ConfigureAwait(false);
+
+			// An empty page means the comments ran out. Everything still unresolved at this point has
+			// provably never been answered by a maintainer, because the sweep has now seen every
+			// comment in the repository and none of them was one.
+			if (comments.Count == 0)
+			{
+				return true;
+			}
+
+			foreach (var comment in comments.Where(c => c.IsFromMaintainer && unresolved.Contains(c.IssueNumber)))
+			{
+				// Newest-first, so the first maintainer comment seen for an item is its latest.
+				replies[comment.IssueNumber] = comment.CreatedAtUtc;
+				unresolved.Remove(comment.IssueNumber);
+			}
+		}
+
+		return false;
+	}
+
+	private async Task ResolveRemainderAsync(
+		string owner,
+		string name,
+		IReadOnlyList<GitHubOpenItem> items,
+		Dictionary<int, DateTimeOffset> replies,
+		CancellationToken cancellationToken)
+	{
+		foreach (var number in items.Select(i => i.Number).Where(n => !replies.ContainsKey(n)))
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var comments = await _api
+				.GetCommentsForItemAsync(owner, name, number, cancellationToken)
+				.ConfigureAwait(false);
+
+			var latest = comments
+				.Where(c => c.IsFromMaintainer)
+				.Select(c => (DateTimeOffset?)c.CreatedAtUtc)
+				.DefaultIfEmpty(null)
+				.Max();
+
+			if (latest is not null)
+			{
+				replies[number] = latest.Value;
+			}
+		}
 	}
 }

@@ -44,6 +44,7 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 		public Task CommentAsync(
 			string owner, string name, int number, string body, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(owner, name, cancellationToken);
 			Calls.Add($"comment:{number}");
 			Comments.Add((number, body));
 			return Task.CompletedTask;
@@ -90,23 +91,29 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 	{
 		public Task<IReadOnlyList<GitHubOpenItem>> GetOpenItemsAsync(
 			string owner, string name, CancellationToken cancellationToken)
-			=> Task.FromResult<IReadOnlyList<GitHubOpenItem>>(gapIssueFor is null
-				? []
-				: [
-					new GitHubOpenItem(
-						_gapIssueNumber,
-						"No auto-remediation for something",
-						false,
-						$"https://github.com/panoramicdata/PanoramicData.NugetManagement/issues/{_gapIssueNumber}",
-						"davidnmbond",
-						new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
-						UncoveredDependencyIssueService.MarkerFor(
-							new DependencyRef(DependencyEcosystem.GitHubActions, gapIssueFor)))
-				]);
+		{
+			FakeArguments.Accept(owner, name, cancellationToken);
+			return Task.FromResult<IReadOnlyList<GitHubOpenItem>>(gapIssueFor is null
+					? []
+					: [
+						new GitHubOpenItem(
+							_gapIssueNumber,
+							"No auto-remediation for something",
+							false,
+							$"https://github.com/panoramicdata/PanoramicData.NugetManagement/issues/{_gapIssueNumber}",
+							"davidnmbond",
+							new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+							UncoveredDependencyIssueService.MarkerFor(
+								new DependencyRef(DependencyEcosystem.GitHubActions, gapIssueFor)))
+					]);
+		}
 
 		public Task<IReadOnlyList<GitHubIssueComment>> GetRepositoryCommentsPageAsync(
 			string owner, string name, int pageNumber, CancellationToken cancellationToken)
-			=> Task.FromResult<IReadOnlyList<GitHubIssueComment>>([]);
+		{
+			FakeArguments.Accept(owner, name, pageNumber, cancellationToken);
+			return Task.FromResult<IReadOnlyList<GitHubIssueComment>>([]);
+		}
 
 		public Task<IReadOnlyList<GitHubIssueComment>> GetCommentsForItemAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)
@@ -114,9 +121,12 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 
 		public Task<GitHubIssueThread> GetThreadAsync(
 			string owner, string name, int issueNumber, CancellationToken cancellationToken)
-			=> throw new NotSupportedException(
+		{
+			FakeArguments.Accept(owner, name, issueNumber, cancellationToken);
+			throw new NotSupportedException(
 				"Dependabot triage reads titles and bodies it already has; threads belong to the "
 					+ "analysis of human-raised issues, which is a different pass.");
+		}
 	}
 
 	private static DependabotTriage Triage(

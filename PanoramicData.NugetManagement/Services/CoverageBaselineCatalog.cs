@@ -33,7 +33,7 @@ public sealed class CoverageBaselineCatalog
 	};
 
 	/// <summary>The file this catalogue is persisted to, relative to a repository root.</summary>
-	public const string FileName = "coverage-baseline.json";
+	public static string FileName { get; } = "coverage-baseline.json";
 
 	/// <summary>
 	/// Initializes a new instance, loading any persisted baselines.

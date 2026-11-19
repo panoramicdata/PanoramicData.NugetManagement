@@ -82,7 +82,7 @@ public class RepositoryBuildStatusTests(ITestOutputHelper output) : TestWithOutp
 		return new NavTreeDataProvider(
 			cache,
 			new RuntimeSettingsService(settings, NullLogger<RuntimeSettingsService>.Instance),
-			settings).BuildNavItems();
+			settings, null).BuildNavItems();
 	}
 
 	private static NavItem RepositoryNode(List<NavItem> tree)

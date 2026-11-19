@@ -21,20 +21,20 @@ public sealed record FileCoverage(string Path, IReadOnlyDictionary<int, bool> Li
 		var missed = Lines.Where(line => !line.Value).Select(line => line.Key).Order().ToList();
 		var parts = new List<string>();
 
-		for (var i = 0; i < missed.Count;)
+		var i = 0;
+		while (i < missed.Count)
 		{
-			var start = missed[i];
+			var start = missed[i++];
 			var end = start;
 
-			while (i + 1 < missed.Count && missed[i + 1] == end + 1)
+			while (i < missed.Count && missed[i] == end + 1)
 			{
-				end = missed[++i];
+				end = missed[i++];
 			}
 
 			parts.Add(start == end
 				? start.ToString(CultureInfo.InvariantCulture)
 				: $"{start.ToString(CultureInfo.InvariantCulture)}-{end.ToString(CultureInfo.InvariantCulture)}");
-			i++;
 		}
 
 		return string.Join(", ", parts);
@@ -277,7 +277,7 @@ public static partial class CoverageMeasurement
 				// Built first, in the normal environment: restoring packages may need this machine's NuGet
 				// configuration, which the test run below deliberately does not get.
 				var (built, buildText) = await LocalRepoService
-					.RunCommandWithStreamingAsync(cloneRoot, "dotnet", ["build", project, "--nologo", "--verbosity", "quiet"], onOutput, cancellationToken)
+					.RunCommandWithStreamingAsync(cloneRoot, "dotnet", ["build", project, "--nologo", "--verbosity", "quiet"], onOutput, cancellationToken, null)
 					.ConfigureAwait(false);
 
 				if (!built)
@@ -307,7 +307,7 @@ public static partial class CoverageMeasurement
 				try
 				{
 					(ok, text) = await LocalRepoService
-						.RunCommandWithStreamingAsync(cloneRoot, "dotnet", arguments, onOutput, timeout.Token, TestSandbox.Overrides())
+						.RunCommandWithStreamingAsync(cloneRoot, "dotnet", arguments, onOutput, timeout.Token, TestSandbox.Overrides(null))
 						.ConfigureAwait(false);
 				}
 				catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

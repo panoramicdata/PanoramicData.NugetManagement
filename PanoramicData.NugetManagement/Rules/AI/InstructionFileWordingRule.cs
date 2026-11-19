@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using PanoramicData.NugetManagement.Models;
 
 namespace PanoramicData.NugetManagement.Rules;
@@ -16,10 +15,8 @@ namespace PanoramicData.NugetManagement.Rules;
 /// Matching is case-sensitive on purpose, because the remediation's multi-file replace is.
 /// </para>
 /// </remarks>
-public class InstructionFileWordingRule : RuleBase
+public class InstructionFileWordingRule : InstructionFileRewriteRuleBase
 {
-	private static readonly string[] _files = ["CLAUDE.md", "AGENTS.md"];
-
 	/// <summary>
 	/// Each phrasing the earlier template used, paired with the current template's wording, so a fixed
 	/// file lands exactly on what a new repository gets.
@@ -48,49 +45,21 @@ public class InstructionFileWordingRule : RuleBase
 	public override AssessmentSeverity Severity => AssessmentSeverity.Info;
 
 	/// <inheritdoc />
-	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
-	{
-		var present = _files
-			.Select(file => (File: file, Content: context.GetFileContent(file)))
-			.Where(entry => entry.Content is not null)
-			.ToList();
+	protected override IReadOnlyList<(string Pattern, string Replacement)> Rewrites => _rewrites;
 
-		if (present.Count == 0)
-		{
-			return Task.FromResult(NotApplicable("No CLAUDE.md or AGENTS.md to check; AI-01 and AI-02 report the missing files."));
-		}
+	/// <inheritdoc />
+	protected override string PassMessage => "Instruction files follow the wording standard.";
 
-		var affected = present
-			.Select(entry => (entry.File, Rewrites: _rewrites
-				.Where(rewrite => Regex.IsMatch(entry.Content!, rewrite.Pattern, RegexOptions.None, TimeSpan.FromSeconds(2)))
-				.ToList()))
-			.Where(entry => entry.Rewrites.Count > 0)
-			.ToList();
+	/// <inheritdoc />
+	protected override string Detail
+		=> "The shared Panoramic Data instructions forbid an em dash in any generated text and ask that "
+			+ "a heading capitalise its first word only. The earlier template used both once. Reword those "
+			+ "two places as the current template does and leave the rest of the file as it is.";
 
-		if (affected.Count == 0)
-		{
-			return Task.FromResult(Pass("Instruction files follow the wording standard."));
-		}
+	/// <inheritdoc />
+	protected override string FailureMessage(string names, string verbSuffix)
+		=> $"{names} break{verbSuffix} the wording standard: an em dash, or a heading that capitalises more than its first word.";
 
-		// One pattern list for every file: a pattern a file does not contain is a no-op there.
-		var rewrites = affected.SelectMany(entry => entry.Rewrites).Distinct().ToList();
-		var names = string.Join(" and ", affected.Select(entry => entry.File));
-
-		return Task.FromResult(Fail(
-			$"{names} break{(affected.Count == 1 ? "s" : string.Empty)} the wording standard: an em dash, or a heading that capitalises more than its first word.",
-			new RuleAdvisory
-			{
-				Summary = $"Reword {names} to the wording standard.",
-				Detail = "The shared Panoramic Data instructions forbid an em dash in any generated text and ask that "
-					+ "a heading capitalise its first word only. The earlier template used both once. Reword those "
-					+ "two places as the current template does and leave the rest of the file as it is.",
-				Data = new()
-				{
-					["remediation_type"] = "replace_regex_in_files",
-					["globs"] = affected.Select(entry => entry.File).ToArray(),
-					["patterns"] = rewrites.Select(rewrite => rewrite.Pattern).ToArray(),
-					["replacements"] = rewrites.Select(rewrite => rewrite.Replacement).ToArray()
-				}
-			}));
-	}
+	/// <inheritdoc />
+	protected override string Summary(string names) => $"Reword {names} to the wording standard.";
 }

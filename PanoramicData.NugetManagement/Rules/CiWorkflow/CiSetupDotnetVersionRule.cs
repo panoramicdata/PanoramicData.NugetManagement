@@ -39,18 +39,7 @@ public partial class CiSetupDotnetVersionRule : RuleBase, IGovernsDependency
 		var content = context.GetFileContent(ciWorkflowPath);
 		if (content is null)
 		{
-			return Task.FromResult(Fail(
-				"CI workflow not found.",
-				new RuleAdvisory
-				{
-					Summary = $"Create `{ciWorkflowPath}` and use `actions/setup-dotnet@{Standards.LatestActionsSetupDotnetVersion}` with dotnet-version `{Standards.LatestDotNetVersionSpecifier}`",
-					Detail = $"Create `{ciWorkflowPath}` using `actions/setup-dotnet@{Standards.LatestActionsSetupDotnetVersion}` with `dotnet-version: {Standards.LatestDotNetVersionSpecifier}`.",
-					Data = new()
-					{
-						["expected_path"] = ciWorkflowPath,
-						["latest_sdk"] = Standards.LatestDotNetVersionSpecifier
-					}
-				}));
+			return Task.FromResult(WorkflowNotFound(ciWorkflowPath));
 		}
 
 		var floor = Services.ActionVersionCatalog.Default.GetFloorSpec("actions/setup-dotnet", Standards.LatestActionsSetupDotnetVersion);
@@ -192,4 +181,18 @@ public partial class CiSetupDotnetVersionRule : RuleBase, IGovernsDependency
 	private static bool IsWorkflow(string path)
 		=> path.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase)
 			&& (path.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase));
+
+	private RuleResult WorkflowNotFound(string ciWorkflowPath)
+		=> Fail(
+			"CI workflow not found.",
+			new RuleAdvisory
+			{
+				Summary = $"Create `{ciWorkflowPath}` and use `actions/setup-dotnet@{Standards.LatestActionsSetupDotnetVersion}` with dotnet-version `{Standards.LatestDotNetVersionSpecifier}`",
+				Detail = $"Create `{ciWorkflowPath}` using `actions/setup-dotnet@{Standards.LatestActionsSetupDotnetVersion}` with `dotnet-version: {Standards.LatestDotNetVersionSpecifier}`.",
+				Data = new()
+				{
+					["expected_path"] = ciWorkflowPath,
+					["latest_sdk"] = Standards.LatestDotNetVersionSpecifier
+				}
+			});
 }

@@ -50,7 +50,7 @@ public sealed class LocalRepoAiChangeGitTests : TestWithOutput, IDisposable
 
 	private static void Git(string directory, params string[] arguments)
 	{
-		var (ok, text) = LocalRepoService.RunCommandWithStreamingAsync(directory, "git", arguments).GetAwaiter().GetResult();
+		var (ok, text) = LocalRepoService.RunCommandWithStreamingAsync(directory, "git", arguments, null, CancellationToken.None, null).GetAwaiter().GetResult();
 		ok.Should().BeTrue($"git {string.Join(' ', arguments)} should work: {text}");
 	}
 
@@ -210,7 +210,7 @@ public sealed class LocalRepoAiChangeGitTests : TestWithOutput, IDisposable
 
 		sha.Should().HaveLength(40);
 		var (_, remoteBranches) = await LocalRepoService.RunCommandWithStreamingAsync(
-			_clone, "git", ["ls-remote", "--heads", "origin"], null, TestContext.Current.CancellationToken);
+			_clone, "git", ["ls-remote", "--heads", "origin"], null, TestContext.Current.CancellationToken, null);
 		remoteBranches.Should().Contain("refs/heads/ai/x");
 	}
 }

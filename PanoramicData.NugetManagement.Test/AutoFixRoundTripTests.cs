@@ -155,7 +155,8 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 	public async Task CI06_MovesEveryDotnetVersionWhateverTheLineEndings(string eol, string action, string version)
 	{
 		var workflow = string.Join(eol,
-		[
+		new[]
+		{
 			"jobs:",
 			"  build:",
 			"    steps:",
@@ -168,7 +169,7 @@ public class AutoFixRoundTripTests(ITestOutputHelper output) : TestWithOutput(ou
 			"      with:",
 			$"        dotnet-version: {version}",
 			string.Empty
-		]);
+		});
 
 		var fixedWorkflow = await FixAsync("CI-06", workflow);
 

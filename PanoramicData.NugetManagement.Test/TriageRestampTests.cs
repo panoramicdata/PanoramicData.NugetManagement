@@ -20,8 +20,8 @@ public class TriageRestampTests(ITestOutputHelper output) : TestWithOutput(outpu
 		CreatedAtUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
 	};
 
-	private static DependabotTriage Verdict(RepositoryIssue issue, DependabotVerdict verdict)
-		=> new(issue, null, verdict, $"reason for {issue.Number}", null);
+	private static DependabotTriage Verdict(RepositoryIssue issue, DependabotVerdict outcome)
+		=> new(issue, null, outcome, $"reason for {issue.Number}", null);
 
 	[Fact]
 	public void Restamp_RecordsEachVerdictAndItsReason()

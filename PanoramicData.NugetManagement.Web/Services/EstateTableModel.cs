@@ -173,8 +173,8 @@ public sealed class EstateTableModel
 	public static EstateTableModel Build(
 		IEnumerable<RepositoryDashboardRow> rows,
 		Func<string, bool> isExcluded,
-		string? filter = null,
-		EstateSortColumn sort = EstateSortColumn.Default,
+		string? filter,
+		EstateSortColumn sort,
 		bool descending = false,
 		AssessmentCategory? sortCategory = null)
 	{

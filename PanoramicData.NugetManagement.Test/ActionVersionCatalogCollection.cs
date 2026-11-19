@@ -20,7 +20,7 @@ namespace PanoramicData.NugetManagement.Test;
 /// </para>
 /// </remarks>
 [CollectionDefinition(Name)]
-public sealed class ActionVersionCatalogCollection
+public static class ActionVersionCatalogCollection
 {
 	/// <summary>The collection name. Referenced by every class that assigns the shared catalog.</summary>
 	public const string Name = "ActionVersionCatalog";

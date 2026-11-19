@@ -54,17 +54,17 @@ public class CodeCoverageCollectorRule : RuleBase
 			return Task.FromResult(EvaluateVsTestRepository(usesCpm, dirPackages, testProjectContents));
 		}
 
-		var pinnedInProps = PinsPackageVersion(dirPackages, Standards.CodeCoveragePackage);
+		var pinnedInProps = PinsPackageVersion(dirPackages, Standards.CodeCoveragePackage, false);
 
 		var referencedInTestProject = testProjectContents
-			.Any(tp => ReferencesPackageDirectly(tp.Content, Standards.CodeCoveragePackage));
+			.Any(tp => ReferencesPackageDirectly(tp.Content, Standards.CodeCoveragePackage, false));
 
 		// coverlet.collector and coverlet.msbuild both hook the VSTest target, which no longer runs.
 		// They fail quietly — "Zero tests ran", exit code 5 — so their presence reads as working
 		// coverage configuration while nothing is being collected.
 		var deadPackages = Standards.DeadCoverletPackages
-			.Where(p => PinsPackageVersion(dirPackages, p)
-				|| testProjectContents.Any(tp => ReferencesPackageDirectly(tp.Content, p)))
+			.Where(p => PinsPackageVersion(dirPackages, p, false)
+				|| testProjectContents.Any(tp => ReferencesPackageDirectly(tp.Content, p, false)))
 			.ToArray();
 
 		var collectorMissing = usesCpm
@@ -79,7 +79,7 @@ public class CodeCoverageCollectorRule : RuleBase
 		}
 
 		var projectsWithDeadPackages = testProjectContents
-			.Where(tp => Standards.DeadCoverletPackages.Any(p => ReferencesPackageDirectly(tp.Content, p)))
+			.Where(tp => Standards.DeadCoverletPackages.Any(p => ReferencesPackageDirectly(tp.Content, p, false)))
 			.Select(tp => tp.Project)
 			.ToArray();
 
@@ -193,9 +193,9 @@ public class CodeCoverageCollectorRule : RuleBase
 		string? dirPackages,
 		List<(string Project, string? Content)> testProjectContents)
 	{
-		var mtpPinnedInProps = PinsPackageVersion(dirPackages, Standards.CodeCoveragePackage);
+		var mtpPinnedInProps = PinsPackageVersion(dirPackages, Standards.CodeCoveragePackage, false);
 		var projectsWithMtpCollector = testProjectContents
-			.Where(tp => ReferencesPackageDirectly(tp.Content, Standards.CodeCoveragePackage))
+			.Where(tp => ReferencesPackageDirectly(tp.Content, Standards.CodeCoveragePackage, false))
 			.Select(tp => tp.Project)
 			.ToArray();
 
@@ -245,9 +245,9 @@ public class CodeCoverageCollectorRule : RuleBase
 					["package_name"] = Standards.VsTestCodeCoveragePackage,
 					["package_version"] = Standards.VsTestCodeCoverageVersion,
 					["uses_cpm"] = usesCpm,
-					["pinned_in_props"] = PinsPackageVersion(dirPackages, Standards.VsTestCodeCoveragePackage),
+					["pinned_in_props"] = PinsPackageVersion(dirPackages, Standards.VsTestCodeCoveragePackage, false),
 					["referenced_in_test_project"] = testProjectContents
-						.Any(tp => ReferencesPackageDirectly(tp.Content, Standards.VsTestCodeCoveragePackage)),
+						.Any(tp => ReferencesPackageDirectly(tp.Content, Standards.VsTestCodeCoveragePackage, false)),
 					["dead_packages"] = new[] { Standards.CodeCoveragePackage },
 					["projects"] = projectsWithMtpCollector,
 					// The project the collector came out of, so coverlet goes back where it was taken from.

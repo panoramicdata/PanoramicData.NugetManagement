@@ -3,9 +3,9 @@ using PanoramicData.NugetManagement.Models;
 namespace PanoramicData.NugetManagement.Rules;
 
 /// <summary>
-/// Checks that RepositoryUrl is set in packable projects.
+/// Checks that RepositoryUrl is set in packable projects. Private repositories are skipped.
 /// </summary>
-public class RepositoryUrlSetRule : RuleBase
+public class RepositoryUrlSetRule : ProjectPropertySetRuleBase
 {
 	/// <inheritdoc />
 	public override string RuleId => "META-02";
@@ -21,35 +21,21 @@ public class RepositoryUrlSetRule : RuleBase
 
 	/// <inheritdoc />
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
-	{
-		var notApplicable = PackagingCheckApplies(context, out var projects);
-		if (notApplicable is not null)
-		{
-			return Task.FromResult(notApplicable);
-		}
+		=> context.IsPrivateRepository == true
+			? Task.FromResult(NotApplicable("The repository is private, so it should not publish a RepositoryUrl."))
+			: base.EvaluateAsync(context, cancellationToken);
 
-		var missing = projects
-			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "RepositoryUrl"))
-			.ToList();
+	/// <inheritdoc />
+	protected override string PropertyName => "RepositoryUrl";
 
-		if (missing.Count > 0)
-		{
-			return Task.FromResult(Fail(
-				$"{string.Join(", ", missing)} do(es) not have RepositoryUrl set.",
-				new RuleAdvisory
-				{
-					Summary = "Add <RepositoryUrl>https://github.com/org/repo</RepositoryUrl> to the .csproj.",
-					Detail = $"These published projects do not have `<RepositoryUrl>` set: {string.Join(", ", missing)}. Add `<RepositoryUrl>https://github.com/org/repo</RepositoryUrl>` to a `<PropertyGroup>`.",
-					Data = new()
-					{
-						["projects"] = missing.ToArray(),
-						["remediation_type"] = "ensure_csproj_property",
-						["property_name"] = "RepositoryUrl",
-						["property_value"] = $"https://github.com/{context.FullName}"
-					}
-				}));
-		}
+	/// <inheritdoc />
+	protected override string Summary => "Add <RepositoryUrl>https://github.com/org/repo</RepositoryUrl> to the .csproj.";
 
-		return Task.FromResult(Pass($"All {projects.Count} published project(s) have RepositoryUrl set."));
-	}
+	/// <inheritdoc />
+	protected override string Detail(List<string> missing)
+		=> StandardDetail(missing, "<RepositoryUrl>https://github.com/org/repo</RepositoryUrl>");
+
+	/// <inheritdoc />
+	protected override Dictionary<string, object> AdvisoryData(RepositoryContext context, List<string> missing)
+		=> SetPropertyData(missing, $"https://github.com/{context.FullName}");
 }

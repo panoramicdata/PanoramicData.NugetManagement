@@ -18,7 +18,7 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public static class AgentApiTokenFile
 {
 	/// <summary>The file's name inside the application's folder.</summary>
-	public const string FileName = "agent-token.txt";
+	public static string FileName { get; } = "agent-token.txt";
 
 	/// <summary>The default location: the application's folder under the user's local application data.</summary>
 	public static string DefaultPath { get; } = Path.Combine(
@@ -30,7 +30,7 @@ public static class AgentApiTokenFile
 	/// The token in the file, or null when there is no file or nothing usable in it.
 	/// </summary>
 	/// <param name="path">The file to read; the default location when omitted.</param>
-	public static string? Read(string? path = null)
+	public static string? Read(string? path)
 	{
 		try
 		{

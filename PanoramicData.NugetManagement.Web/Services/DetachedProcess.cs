@@ -132,9 +132,9 @@ public sealed class DetachedProcess : IDisposable
 	{
 		var found = nint.Zero;
 
-		_ = EnumWindows((handle, lParam) =>
+		_ = EnumWindows((handle, _) =>
 		{
-			_ = GetWindowThreadProcessId(handle, out var windowProcessId);
+			GetWindowThreadProcessId(handle, out var windowProcessId);
 			if (windowProcessId != (uint)processId || !IsWindowVisible(handle) || GetWindow(handle, GwOwner) != nint.Zero)
 			{
 				return true;

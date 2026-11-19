@@ -21,7 +21,7 @@ public class DashboardCacheVersionTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void ACacheFromAnOlderDiscoveryVersionShouldBeDiscarded()
 	{
-		WriteCache(DashboardCacheService.DiscoveryVersion - 1);
+		WriteCache(DashboardCacheService.CurrentDiscoveryVersion - 1);
 
 		CreateService().GetCachedRows()
 			.Should().BeNull("rows produced by rules that no longer apply must not reach the screen");
@@ -30,7 +30,7 @@ public class DashboardCacheVersionTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void ACacheFromTheCurrentDiscoveryVersionShouldBeLoaded()
 	{
-		WriteCache(DashboardCacheService.DiscoveryVersion);
+		WriteCache(DashboardCacheService.CurrentDiscoveryVersion);
 
 		CreateService().GetCachedRows()
 			.Should().ContainSingle().Which.RepositoryFullName.Should().Be("panoramicdata/Meraki.Api");

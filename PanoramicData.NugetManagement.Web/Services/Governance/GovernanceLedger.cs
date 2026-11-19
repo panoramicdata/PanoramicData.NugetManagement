@@ -131,7 +131,7 @@ public sealed partial class GovernanceLedger
 	/// <param name="repository">The repository it concerns, if any.</param>
 	/// <param name="ruleId">The rule it concerns, if any.</param>
 	/// <param name="data">The entry's own fields; anything the JSON serialiser can write.</param>
-	public LedgerEntry Append(string actor, string kind, string? repository = null, string? ruleId = null, object? data = null)
+	public LedgerEntry Append(string actor, string kind, string? repository, string? ruleId, object? data)
 	{
 		var dataElement = JsonSerializer.SerializeToElement(data ?? new { }, _json);
 
@@ -281,7 +281,7 @@ public sealed partial class GovernanceLedger
 
 		if (removed.Count > 0)
 		{
-			Append("autopilot", "retention_applied", data: new { months, removed, lastHashRemoved = lastHash });
+			Append("autopilot", "retention_applied", null, null, new { months, removed, lastHashRemoved = lastHash });
 		}
 
 		return removed;

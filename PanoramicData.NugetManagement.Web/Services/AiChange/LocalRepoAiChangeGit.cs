@@ -255,7 +255,7 @@ public sealed class LocalRepoAiChangeGit(string clonePath, string? expectedIdent
 	}
 
 	private Task<(bool Success, string Output)> GitAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
-		=> LocalRepoService.RunCommandWithStreamingAsync(clonePath, "git", arguments, null, cancellationToken);
+		=> LocalRepoService.RunCommandWithStreamingAsync(clonePath, "git", arguments, null, cancellationToken, null);
 
 	private async Task<string> RequireAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
 	{

@@ -37,9 +37,9 @@ public class NuGetDiscoveryService
 	/// Returns package IDs with their latest versions and repository URLs.
 	/// </summary>
 	public async Task<List<NuGetPackageInfo>> DiscoverOrganizationPackagesAsync(
-		string? organization = null,
-		CancellationToken cancellationToken = default,
-		ICanonicalRepositoryLookup? canonicalNames = null)
+		string? organization,
+		CancellationToken cancellationToken,
+		ICanonicalRepositoryLookup? canonicalNames)
 	{
 		var owner = string.IsNullOrWhiteSpace(organization) ? _settings.NuGetOrganization : organization.Trim();
 		_logger.LogInformation("Discovering NuGet packages for owner '{Owner}'...", owner);
@@ -74,9 +74,7 @@ public class NuGetDiscoveryService
 				break;
 			}
 
-			// One small request per package. Sequentially that is a hundred-odd round trips in series;
-			// throttled at eight it is a few seconds, and the throttle is what keeps a burst from
-			// looking like an attack to the source.
+			// Throttled so a burst of per-package requests does not look like an attack.
 			var resolved = new NuGetPackageInfo[batch.Count];
 
 			await Parallel.ForEachAsync(

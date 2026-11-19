@@ -36,7 +36,7 @@ public sealed record NuGetFloorBump(string PackageId, string? From, string To, s
 public sealed class NuGetFloorCatalog
 {
 	/// <summary>The file this catalogue is persisted to, at the scanner repository root.</summary>
-	public const string FileName = "nuget-floors.json";
+	public static string FileName { get; } = "nuget-floors.json";
 
 	private readonly string? _filePath;
 	private readonly Dictionary<string, NuGetVersion> _frozenBaseline;
@@ -103,7 +103,7 @@ public sealed class NuGetFloorCatalog
 	/// <param name="packageId">The package identifier.</param>
 	/// <param name="version">The version the repository declares.</param>
 	/// <param name="repository">The repository that declares it.</param>
-	public void Observe(string packageId, string version, string? repository = null)
+	public void Observe(string packageId, string version, string? repository)
 	{
 		// Versions can be MSBuild properties rather than literals; those say nothing about the estate.
 		if (!NuGetVersion.TryParse(version, out var observed))

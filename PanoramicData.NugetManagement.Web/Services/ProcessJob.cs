@@ -83,7 +83,7 @@ internal sealed class ProcessJob : IDisposable
 	private static extern bool CloseHandle(nint handle);
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct BasicLimitInformation
+	private record struct BasicLimitInformation
 	{
 		public long PerProcessUserTimeLimit;
 		public long PerJobUserTimeLimit;
@@ -97,7 +97,7 @@ internal sealed class ProcessJob : IDisposable
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct IoCounters
+	private record struct IoCounters
 	{
 		public ulong ReadOperationCount;
 		public ulong WriteOperationCount;
@@ -108,7 +108,7 @@ internal sealed class ProcessJob : IDisposable
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct ExtendedLimitInformation
+	private record struct ExtendedLimitInformation
 	{
 		public BasicLimitInformation BasicLimitInformation;
 		public IoCounters IoInfo;

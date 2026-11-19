@@ -85,7 +85,7 @@ public class CodeCoverageBandRule : RuleBase, IRemotelyGraded
 	/// result, which is right for a rule with one outcome and wrong for a graded one. Constructing
 	/// the result here is what lets one rule paint three colours.
 	/// </remarks>
-	private RuleResult Band(string band, AssessmentSeverity severity, string message, double? line)
+	private RuleResult Band(string bandName, AssessmentSeverity severity, string message, double? line)
 		=> new()
 		{
 			RuleId = RuleId,
@@ -98,7 +98,7 @@ public class CodeCoverageBandRule : RuleBase, IRemotelyGraded
 			{
 				Summary = $"Raise line coverage to at least {GreenThreshold:N0}%.",
 				Detail = $"""
-					This repository is {band}. The estate grades line coverage in four bands: RED for no
+					This repository is {bandName}. The estate grades line coverage in four bands: RED for no
 					coverage at all, AMBER below {AmberCeiling:N0}%, BLUE below {GreenThreshold:N0}%, and
 					GREEN at or above {GreenThreshold:N0}%.
 
@@ -117,8 +117,8 @@ public class CodeCoverageBandRule : RuleBase, IRemotelyGraded
 				// sentinel: a consumer that reads 0 cannot tell "measured nothing" from "never
 				// measured", and those are different findings.
 				Data = line is { } measured
-					? new() { ["band"] = band, ["measured_line"] = measured }
-					: new() { ["band"] = band }
+					? new() { ["band"] = bandName, ["measured_line"] = measured }
+					: new() { ["band"] = bandName }
 			}
 		};
 }

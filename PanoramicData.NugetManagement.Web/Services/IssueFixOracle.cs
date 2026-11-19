@@ -33,7 +33,7 @@ public sealed class IssueFixOracle(
 	/// matters. The tail is kept rather than the head: compilers and test runners put their summary
 	/// last.
 	/// </remarks>
-	public const int MaxOutputCharacters = 4_000;
+	public static int MaxOutputCharacters { get; } = 4_000;
 
 	/// <summary>
 	/// Runs the check as the clone now stands.

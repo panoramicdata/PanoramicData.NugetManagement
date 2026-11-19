@@ -207,7 +207,7 @@ public class CoverageMeasurementTests(ITestOutputHelper output) : TestWithOutput
 	[Fact]
 	public void ParseFailedTests_ReadsBothRunnersWording()
 	{
-		var output = """
+		var captured = """
 			failed Lib.Tests.ClientTests.Calls_Live_Service (12ms)
 			  Xunit.XunitException: boom
 			Failed Lib.Tests.OtherTests.NeedsKey [14 ms]
@@ -216,7 +216,7 @@ public class CoverageMeasurementTests(ITestOutputHelper output) : TestWithOutput
 			  failed: 2
 			""";
 
-		CoverageMeasurement.ParseFailedTests(output)
+		CoverageMeasurement.ParseFailedTests(captured)
 			.Should().BeEquivalentTo(["Lib.Tests.ClientTests.Calls_Live_Service", "Lib.Tests.OtherTests.NeedsKey"]);
 	}
 
@@ -308,6 +308,7 @@ public class CoverageMeasurementTests(ITestOutputHelper output) : TestWithOutput
 			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(systemPrompt, conversation, tools, onDelta);
 			Turns++;
 			await Task.Delay(60, cancellationToken).ConfigureAwait(false);
 

@@ -96,7 +96,7 @@ public class RepositoryGitStateTests(ITestOutputHelper output) : TestWithOutput(
 
 	[Fact]
 	public void IsRecentlyConfirmedInSync_NeverChecked_IsNotTrusted()
-		=> RepositoryGitState.IsRecentlyConfirmedInSync(Row(syncCheckedAgo: null), Now).Should().BeFalse();
+		=> RepositoryGitState.IsRecentlyConfirmedInSync(Row(), Now).Should().BeFalse();
 
 	[Fact]
 	public void IsRecentlyConfirmedInSync_DirtyTreeMakesNoDifference_StillTrusted()

@@ -64,29 +64,42 @@ public static class PackageReferenceScanner
 		{
 			foreach (var element in XDocument.Parse(content).Descendants(elementName))
 			{
-				var packageId = element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value;
-				if (string.IsNullOrWhiteSpace(packageId))
+				if (ReadReference(element, elementName, filePath) is { } reference)
 				{
-					continue;
+					references.Add(reference);
 				}
-
-				var versionAttribute = element.Attribute("Version")?.Value;
-				var currentVersion = versionAttribute ?? element.Element("Version")?.Value;
-				if (string.IsNullOrWhiteSpace(currentVersion))
-				{
-					continue;
-				}
-
-				references.Add(new PackageVersionReference(
-					filePath,
-					packageId,
-					currentVersion,
-					versionAttribute is not null ? $"{elementName}Attribute" : $"{elementName}Element"));
 			}
 		}
 		catch
 		{
 			// A project that does not parse as XML has nothing to contribute; other files still do.
 		}
+	}
+
+	private static PackageVersionReference? ReadReference(XElement element, string elementName, string filePath)
+	{
+		if (PackageId(element) is not { } packageId || VersionOf(element) is not { } version)
+		{
+			return null;
+		}
+
+		return new PackageVersionReference(
+			filePath,
+			packageId,
+			version.Value,
+			version.IsAttribute ? $"{elementName}Attribute" : $"{elementName}Element");
+	}
+
+	private static string? PackageId(XElement element)
+	{
+		var packageId = element.Attribute("Include")?.Value ?? element.Attribute("Update")?.Value;
+		return string.IsNullOrWhiteSpace(packageId) ? null : packageId;
+	}
+
+	private static (string Value, bool IsAttribute)? VersionOf(XElement element)
+	{
+		var attribute = element.Attribute("Version")?.Value;
+		var value = attribute ?? element.Element("Version")?.Value;
+		return string.IsNullOrWhiteSpace(value) ? null : (value, attribute is not null);
 	}
 }

@@ -28,6 +28,7 @@ public sealed class GatedAiChangeWorkTests(ITestOutputHelper output) : TestWithO
 
 		public async Task<string?> WriteRedTestAsync(AiChangeRequest request, string? feedback, CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(request, feedback);
 			Started.TrySetResult();
 			await Release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 			return "FILTER";

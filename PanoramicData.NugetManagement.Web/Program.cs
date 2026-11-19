@@ -104,6 +104,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<RegressionGuardSer
 // Nothing else resolves the refresher, so without this the cache never moves after seeding and every
 // package the seed did not mention is a permanent cache miss.
 builder.Services.AddHostedService(sp => sp.GetRequiredService<NuGetVersionRefreshService>());
+builder.Services.AddScoped<DashboardStores>();
+builder.Services.AddScoped<DashboardWorkers>();
 builder.Services.AddScoped<DashboardService>();
 
 // Per-repository work lanes: one queue-and-runner pair application-wide, replacing the single
@@ -225,7 +227,7 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 // Authentication endpoints
-app.MapGet("/login", (HttpContext context) =>
+app.MapGet("/login", () =>
 {
 	if (!gitHubAuthConfigured)
 	{

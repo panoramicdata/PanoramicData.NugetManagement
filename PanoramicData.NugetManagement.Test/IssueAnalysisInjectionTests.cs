@@ -193,7 +193,7 @@ public class IssueAnalysisInjectionTests(ITestOutputHelper output) : TestWithOut
 			+ $"risks: {(verdict.Risks.Count == 0 ? "none" : string.Join(", ", verdict.Risks))}");
 		Output.WriteLine(verdict.Reasoning);
 
-		var fix = IssueAutonomyGate.MayFixAutomatically(verdict, "None", _root);
+		var fix = IssueAutonomyGate.MayFixAutomatically(verdict, "None", _root, null);
 		var answer = IssueAutonomyGate.MayAnswerAutomatically(verdict);
 
 		fix.Allowed.Should().BeFalse(

@@ -88,49 +88,13 @@ public class LocalRepositoryContextBuilder
 	/// <param name="localPath">Absolute path to the cloned repository root.</param>
 	/// <param name="repositoryFullName">The GitHub full name (e.g. "owner/repo").</param>
 	/// <param name="options">Per-repo assessment options.</param>
-	/// <param name="defaultBranch">The default branch name (used for context only).</param>
-	/// <param name="currentBranch">The currently checked out local branch when known.</param>
+	/// <param name="facts">What the caller already knows about the clone.</param>
 	/// <returns>A fully populated <see cref="RepositoryContext"/>.</returns>
-	/// <param name="latestTag">The newest version tag, when known, for CI-11.</param>
-	/// <param name="latestPublishedVersion">The newest version on nuget.org, when known, for CI-11.</param>
-	/// <param name="releaseRun">
-	/// The CI run for <paramref name="latestTag"/>, when known. Lets CI-11 stay quiet about a release
-	/// that is still in flight and gives CI-13 its subject.
-	/// </param>
-	/// <param name="headSha">
-	/// The commit HEAD points at, when known. Lets CQ-06 tell grades measured on the checked-out
-	/// commit from grades Codacy measured on an older one.
-	/// </param>
-	/// <param name="nextVersion">
-	/// The version a release from this clone would carry, when nbgv could be asked, for VER-05.
-	/// </param>
-	/// <param name="isConfirmedInSyncWithOrigin">
-	/// Whether this clone was recently confirmed to match origin. VER-05 reports nothing without it,
-	/// because a stale clone's own commits look exactly like work waiting to be released.
-	/// </param>
-	/// <param name="lineCoveragePercent">
-	/// The line coverage Codacy holds for the repository, resolved by the caller because the clone
-	/// cannot know it. Null leaves TST-10 reporting RED, so the local path must supply it.
-	/// </param>
-	/// <param name="isPrivateRepository">Whether the repository is private, or null when GitHub could not be asked.</param>
-	/// <param name="privateVulnerabilityReportingEnabled">
-	/// Whether GitHub private vulnerability reporting is on, resolved by the caller; null when unknown.
-	/// </param>
 	public RepositoryContext Build(
 		string localPath,
 		string repositoryFullName,
 		RepoOptions options,
-		string defaultBranch = "main",
-		string? currentBranch = null,
-		string? latestTag = null,
-		string? latestPublishedVersion = null,
-		ReleaseRun? releaseRun = null,
-		string? headSha = null,
-		string? nextVersion = null,
-		bool isConfirmedInSyncWithOrigin = false,
-		double? lineCoveragePercent = null,
-		bool? privateVulnerabilityReportingEnabled = null,
-		bool? isPrivateRepository = null)
+		LocalContextFacts facts)
 	{
 		var repoName = repositoryFullName.Contains('/')
 			? repositoryFullName.Split('/')[1]
@@ -147,21 +111,21 @@ public class LocalRepositoryContextBuilder
 		{
 			FullName = repositoryFullName,
 			Name = repoName,
-			DefaultBranch = defaultBranch,
-			CurrentBranch = currentBranch,
-			HeadSha = headSha,
+			DefaultBranch = facts.DefaultBranch,
+			CurrentBranch = facts.CurrentBranch,
+			HeadSha = facts.HeadSha,
 			Options = options,
 			FilePaths = filePaths,
 			FileContents = fileContents,
 			RepositoryConfig = repositoryConfig,
-			LatestTag = latestTag,
-			LatestPublishedVersion = latestPublishedVersion,
-			ReleaseRun = releaseRun,
-			NextVersion = nextVersion,
-			IsConfirmedInSyncWithOrigin = isConfirmedInSyncWithOrigin,
-			LineCoveragePercent = lineCoveragePercent,
-			PrivateVulnerabilityReportingEnabled = privateVulnerabilityReportingEnabled,
-			IsPrivateRepository = isPrivateRepository
+			LatestTag = facts.LatestTag,
+			LatestPublishedVersion = facts.LatestPublishedVersion,
+			ReleaseRun = facts.ReleaseRun,
+			NextVersion = facts.NextVersion,
+			IsConfirmedInSyncWithOrigin = facts.IsConfirmedInSyncWithOrigin,
+			LineCoveragePercent = facts.LineCoveragePercent,
+			PrivateVulnerabilityReportingEnabled = facts.PrivateVulnerabilityReportingEnabled,
+			IsPrivateRepository = facts.IsPrivateRepository
 		};
 	}
 

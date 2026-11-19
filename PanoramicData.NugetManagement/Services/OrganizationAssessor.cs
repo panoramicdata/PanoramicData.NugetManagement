@@ -47,11 +47,11 @@ public class OrganizationAssessor : IDisposable
 	/// <returns>The organization-level assessment result.</returns>
 	public async Task<OrganizationAssessmentResult> AssessAsync(
 		AssessmentOptions options,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken)
 	{
 		_logger.LogInformation("Starting assessment of organization '{Organization}'...", options.OrganizationName);
 
-		var repositories = await GetRepositoriesAsync(options, cancellationToken).ConfigureAwait(false);
+		var repositories = await GetRepositoriesAsync(options).ConfigureAwait(false);
 		_logger.LogInformation("Found {Count} repositories to assess.", repositories.Count);
 
 		var semaphore = new SemaphoreSlim(options.MaxConcurrency);
@@ -126,9 +126,7 @@ public class OrganizationAssessor : IDisposable
 		}
 	}
 
-	private async Task<IReadOnlyList<Repository>> GetRepositoriesAsync(
-		AssessmentOptions options,
-		CancellationToken _)
+	private async Task<IReadOnlyList<Repository>> GetRepositoriesAsync(AssessmentOptions options)
 	{
 		var allRepos = await _github.Repository.GetAllForOrg(options.OrganizationName).ConfigureAwait(false);
 
@@ -164,28 +162,7 @@ public class OrganizationAssessor : IDisposable
 		var ruleResults = new List<RuleResult>();
 		foreach (var rule in _rules)
 		{
-			// A waived rule is evaluated like any other and excused afterwards, so the verdict it would
-			// have given is still known and a waiver that has outlived its problem can be spotted.
-			try
-			{
-				var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
-				ruleResults.Add(RuleWaivers.Apply(result, repoOptions));
-			}
-			catch (Exception ex)
-			{
-				_logger.LogWarning(ex, "Rule {RuleId} threw for {FullName}", rule.RuleId, repository.FullName);
-				ruleResults.Add(RuleWaivers.Apply(
-					new RuleResult
-					{
-						RuleId = rule.RuleId,
-						RuleName = rule.RuleName,
-						Category = rule.Category,
-						Severity = rule.Severity,
-						Passed = false,
-						Message = $"Rule threw an exception: {ex.Message}"
-					},
-					repoOptions));
-			}
+			ruleResults.Add(await EvaluateRuleAsync(rule, context, repoOptions, repository.FullName, cancellationToken).ConfigureAwait(false));
 		}
 
 		_logger.LogInformation(
@@ -204,5 +181,36 @@ public class OrganizationAssessor : IDisposable
 			AssessedAtUtc = DateTimeOffset.UtcNow,
 			RuleResults = ruleResults
 		};
+	}
+
+	private async Task<RuleResult> EvaluateRuleAsync(
+		IRule rule,
+		RepositoryContext context,
+		RepoOptions repoOptions,
+		string repositoryFullName,
+		CancellationToken cancellationToken)
+	{
+		// A waived rule is evaluated like any other and excused afterwards, so the verdict it would
+		// have given is still known and a waiver that has outlived its problem can be spotted.
+		try
+		{
+			var result = await rule.EvaluateAsync(context, cancellationToken).ConfigureAwait(false);
+			return RuleWaivers.Apply(result, repoOptions);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Rule {RuleId} threw for {FullName}", rule.RuleId, repositoryFullName);
+			return RuleWaivers.Apply(
+				new RuleResult
+				{
+					RuleId = rule.RuleId,
+					RuleName = rule.RuleName,
+					Category = rule.Category,
+					Severity = rule.Severity,
+					Passed = false,
+					Message = $"Rule threw an exception: {ex.Message}"
+				},
+				repoOptions);
+		}
 	}
 }

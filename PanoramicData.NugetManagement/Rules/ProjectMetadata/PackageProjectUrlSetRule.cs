@@ -5,7 +5,7 @@ namespace PanoramicData.NugetManagement.Rules;
 /// <summary>
 /// Checks that PackageProjectUrl is set in packable projects.
 /// </summary>
-public class PackageProjectUrlSetRule : RuleBase
+public class PackageProjectUrlSetRule : ProjectPropertySetRuleBase
 {
 	/// <inheritdoc />
 	public override string RuleId => "META-04";
@@ -20,36 +20,16 @@ public class PackageProjectUrlSetRule : RuleBase
 	public override AssessmentSeverity Severity => AssessmentSeverity.Info;
 
 	/// <inheritdoc />
-	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
-	{
-		var notApplicable = PackagingCheckApplies(context, out var projects);
-		if (notApplicable is not null)
-		{
-			return Task.FromResult(notApplicable);
-		}
+	protected override string PropertyName => "PackageProjectUrl";
 
-		var missing = projects
-			.Where(csproj => !HasMsBuildProperty(context.GetFileContent(csproj), "PackageProjectUrl"))
-			.ToList();
+	/// <inheritdoc />
+	protected override string Summary => "Add <PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl> to the .csproj.";
 
-		if (missing.Count > 0)
-		{
-			return Task.FromResult(Fail(
-				$"{string.Join(", ", missing)} do(es) not have PackageProjectUrl set.",
-				new RuleAdvisory
-				{
-					Summary = "Add <PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl> to the .csproj.",
-					Detail = $"These published projects do not have `<PackageProjectUrl>` set: {string.Join(", ", missing)}. Add `<PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl>` to a `<PropertyGroup>`.",
-					Data = new()
-					{
-						["projects"] = missing.ToArray(),
-						["remediation_type"] = "ensure_csproj_property",
-						["property_name"] = "PackageProjectUrl",
-						["property_value"] = $"https://github.com/{context.FullName}"
-					}
-				}));
-		}
+	/// <inheritdoc />
+	protected override string Detail(List<string> missing)
+		=> StandardDetail(missing, "<PackageProjectUrl>https://github.com/org/repo</PackageProjectUrl>");
 
-		return Task.FromResult(Pass($"All {projects.Count} published project(s) have PackageProjectUrl set."));
-	}
+	/// <inheritdoc />
+	protected override Dictionary<string, object> AdvisoryData(RepositoryContext context, List<string> missing)
+		=> SetPropertyData(missing, $"https://github.com/{context.FullName}");
 }

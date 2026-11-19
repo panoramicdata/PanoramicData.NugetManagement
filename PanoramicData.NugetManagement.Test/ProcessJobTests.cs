@@ -48,7 +48,7 @@ public class ProcessJobTests
 			Environment.CurrentDirectory,
 			"cmd.exe",
 			["/c", "start /b ping -n 7271 127.0.0.1 >nul 2>&1 & ping -n 3 127.0.0.1 >nul"],
-			cancellationToken: TestContext.Current.CancellationToken);
+			null, TestContext.Current.CancellationToken, null);
 
 		success.Should().BeTrue();
 

@@ -37,6 +37,7 @@ public sealed class AiSessionChangeWorkTests(ITestOutputHelper output) : TestWit
 			Action<AiStreamDelta>? onDelta,
 			CancellationToken cancellationToken)
 		{
+			FakeArguments.Accept(systemPrompt, tools, onDelta, cancellationToken);
 			FirstTasks.Add(conversation[0].Content);
 
 			return Task.FromResult(new AiModelTurn(
@@ -65,7 +66,7 @@ public sealed class AiSessionChangeWorkTests(ITestOutputHelper output) : TestWit
 		bool checksPass = true,
 		FinishingModel? fixModel = null)
 	{
-		Task<AiRuleCheck> Check(CancellationToken _) => Task.FromResult(new AiRuleCheck(checksPass, "check"));
+		Func<CancellationToken, Task<AiRuleCheck>> check = _ => Task.FromResult(new AiRuleCheck(checksPass, "check"));
 
 		return new AiSessionChangeWork(
 			SessionFor(model),
@@ -73,8 +74,8 @@ public sealed class AiSessionChangeWorkTests(ITestOutputHelper output) : TestWit
 			"the report",
 			"Fix it.",
 			"system",
-			Check,
-			Check);
+			check,
+			check);
 	}
 
 	[Fact]

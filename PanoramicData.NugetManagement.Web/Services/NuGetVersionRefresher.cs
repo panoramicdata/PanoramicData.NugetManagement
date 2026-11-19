@@ -21,7 +21,7 @@ public sealed class NuGetVersionRefresher
 	/// slots that each complete in twenty milliseconds is two hundred requests a second at a service
 	/// nobody pays us to hammer, so the sweep is paced as well as capped.
 	/// </summary>
-	public const int DefaultRequestsPerSecond = 4;
+	public static int DefaultRequestsPerSecond { get; } = 4;
 
 	private readonly TimeSpan _minimumRequestSpacing;
 
@@ -35,6 +35,20 @@ public sealed class NuGetVersionRefresher
 	private readonly TimeProvider _timeProvider;
 	private readonly ILogger<NuGetVersionRefresher> _logger;
 
+	/// <summary>Initializes a new instance pacing requests at <see cref="DefaultRequestsPerSecond"/>.</summary>
+	/// <param name="cache">The cache to fill.</param>
+	/// <param name="lookup">Reads a package's latest stable version and publication date.</param>
+	/// <param name="timeProvider">The clock used to stamp genuine changes.</param>
+	/// <param name="logger">The logger.</param>
+	public NuGetVersionRefresher(
+		NuGetVersionCache cache,
+		Func<string, CancellationToken, Task<(string Version, DateTimeOffset Published)?>> lookup,
+		TimeProvider timeProvider,
+		ILogger<NuGetVersionRefresher> logger)
+		: this(cache, lookup, timeProvider, logger, DefaultRequestsPerSecond)
+	{
+	}
+
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NuGetVersionRefresher"/> class.
 	/// </summary>
@@ -43,14 +57,14 @@ public sealed class NuGetVersionRefresher
 	/// <param name="timeProvider">The clock used to stamp genuine changes.</param>
 	/// <param name="logger">The logger.</param>
 	/// <param name="requestsPerSecond">
-	/// The most requests to start per second; defaults to <see cref="DefaultRequestsPerSecond"/>.
+	/// The most requests to start per second; slower or faster than the default.
 	/// </param>
 	public NuGetVersionRefresher(
 		NuGetVersionCache cache,
 		Func<string, CancellationToken, Task<(string Version, DateTimeOffset Published)?>> lookup,
 		TimeProvider timeProvider,
 		ILogger<NuGetVersionRefresher> logger,
-		int requestsPerSecond = DefaultRequestsPerSecond)
+		int requestsPerSecond)
 	{
 		ArgumentOutOfRangeException.ThrowIfLessThan(requestsPerSecond, 1);
 

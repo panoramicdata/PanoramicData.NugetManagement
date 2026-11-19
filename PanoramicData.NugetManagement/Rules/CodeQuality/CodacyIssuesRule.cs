@@ -83,11 +83,16 @@ public sealed class CodacyIssuesRule : RuleBase, IRemotelyGraded
 			return Pass("Codacy reports no open issues.");
 		}
 
+		return BuildFailure(context, codacy.MaxIssueCount, report);
+	}
+
+	private RuleResult BuildFailure(RepositoryContext context, int hardCap, CodacyRepositoryReport report)
+	{
+		var issues = report.Issues;
 		var summary = CodacyReportFormatter.BuildSummary(issues);
 		var detail = CodacyReportFormatter.BuildDetailMarkdown(context.FullName, issues);
 		var data = CodacyReportFormatter.BuildAdvisoryData(issues);
 
-		var hardCap = codacy.MaxIssueCount;
 		var breached = hardCap > 0 && issues.Count > hardCap;
 		var severity = breached ? AssessmentSeverity.Error : AssessmentSeverity.Warning;
 

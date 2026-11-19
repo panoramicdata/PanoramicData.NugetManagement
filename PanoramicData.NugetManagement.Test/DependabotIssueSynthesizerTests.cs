@@ -46,7 +46,7 @@ public class DependabotIssueSynthesizerTests(ITestOutputHelper output) : TestWit
 	public void OneFindingPerDependency_NotPerPullRequest()
 	{
 		var results = DependabotIssueSynthesizer.Synthesize(Row(
-			PullRequest("Bump actions/checkout from 3 to 6", 1),
+			PullRequest("Bump actions/checkout from 3 to 6"),
 			PullRequest("Bump actions/checkout from 6 to 7", 2),
 			PullRequest("Bump github/codeql-action from 2 to 4", 3)));
 
@@ -110,7 +110,7 @@ public class DependabotIssueSynthesizerTests(ITestOutputHelper output) : TestWit
 	public void HumanPullRequestsAndPlainIssues_AreNotFindings()
 		=> DependabotIssueSynthesizer
 			.Synthesize(Row(
-				PullRequest("Bump actions/checkout from 3 to 6", 1, author: "davidbond"),
+				PullRequest("Bump actions/checkout from 3 to 6", author: "davidbond"),
 				PullRequest("Something is broken", 2, isPullRequest: false)))
 			.Should().BeEmpty();
 

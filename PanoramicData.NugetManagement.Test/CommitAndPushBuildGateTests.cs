@@ -45,10 +45,10 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		var headBefore = Git(Clone, "rev-parse", "HEAD");
 		var originBefore = Git(Origin, "rev-parse", "main");
 
-		var applied = await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), cancellationToken: TestContext.Current.CancellationToken);
+		var applied = await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), null, TestContext.Current.CancellationToken);
 		applied.Should().NotBeEmpty("the remediation has to have written something for the gate to have anything to refuse");
 
-		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", cancellationToken: TestContext.Current.CancellationToken);
+		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", null, TestContext.Current.CancellationToken);
 
 		push.Success.Should().BeFalse();
 		push.WasRefused.Should().BeTrue();
@@ -68,9 +68,9 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		var row = Row();
 		var originBefore = Git(Origin, "rev-parse", "main");
 
-		await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), cancellationToken: TestContext.Current.CancellationToken);
+		await dashboard.ApplyRuleRemediationAsync(row, SecurityMdMissing(), null, TestContext.Current.CancellationToken);
 
-		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", cancellationToken: TestContext.Current.CancellationToken);
+		var push = await dashboard.CommitAndPushAsync(row, "NuGet governance remediation for test", null, TestContext.Current.CancellationToken);
 
 		push.Success.Should().BeTrue(push.RefusalReason);
 		Git(Origin, "rev-parse", "main").Should().NotBe(originBefore);
@@ -88,7 +88,7 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		Git(Clone, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "broken already");
 		Git(Clone, "push", "-q", "origin", "main");
 
-		var push = await dashboard.CommitAndPushAsync(Row(), "NuGet governance remediation for test", cancellationToken: TestContext.Current.CancellationToken);
+		var push = await dashboard.CommitAndPushAsync(Row(), "NuGet governance remediation for test", null, TestContext.Current.CancellationToken);
 
 		push.WasRefused.Should().BeFalse(push.RefusalReason);
 	}
@@ -151,28 +151,13 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		var localRepo = new LocalRepoService(runtimeSettings, NullLogger<LocalRepoService>.Instance);
 		var cache = new DashboardCacheService(NullLogger<DashboardCacheService>.Instance, Path.Combine(_root, "dashboard-cache.json"));
 
-		return new DashboardService(
-			new NuGetDiscoveryService(
-				appSettings,
-				new NuspecRepositoryResolver(new NoopHttpClientFactory(), NullLogger<NuspecRepositoryResolver>.Instance),
-				NullLogger<NuGetDiscoveryService>.Instance),
-			new PublishedVersionRefresher(new NoopPublishedVersionSource()),
-			cache,
-			localRepo,
-			new RemediationRegistry(),
-			new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
-			runtimeSettings,
-			new NuGetOwnedPackageCatalog(null),
-			new RuleWaiverCatalog(null),
-			appSettings,
-			new NoopCodacyAnalysisStateService(),
-			NullLogger<DashboardService>.Instance);
+		return DashboardTestFactory.Create(appSettings, runtimeSettings, localRepo, cache);
 	}
 
 	private static string Git(string workingDirectory, params string[] arguments)
 	{
 		var (exitCode, output) = LocalRepoService
-			.RunCommandAsync(workingDirectory, "git", arguments)
+			.RunCommandAsync(workingDirectory, "git", arguments, CancellationToken.None)
 			.GetAwaiter()
 			.GetResult();
 
@@ -203,22 +188,5 @@ public sealed class CommitAndPushBuildGateTests(ITestOutputHelper output) : Test
 		}
 
 		GC.SuppressFinalize(this);
-	}
-
-	/// <summary>Never called: nothing here talks to NuGet.</summary>
-	private sealed class NoopHttpClientFactory : IHttpClientFactory
-	{
-		public HttpClient CreateClient(string name)
-			=> throw new InvalidOperationException($"No HTTP client was expected, but '{name}' was requested.");
-	}
-
-	/// <summary>Never called: nothing here reads published versions.</summary>
-	private sealed class NoopPublishedVersionSource : IPublishedVersionSource
-	{
-		public Task<string?> GetLatestPublishedVersionAsync(string packageId, CancellationToken cancellationToken)
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-			throw new InvalidOperationException($"No published-version lookup was expected, but '{packageId}' was asked for.");
-		}
 	}
 }

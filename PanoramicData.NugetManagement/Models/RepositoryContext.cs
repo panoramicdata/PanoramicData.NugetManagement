@@ -385,19 +385,8 @@ public class RepositoryContext
 				continue;
 			}
 
-			List<string?> analyzerReferences;
-			try
-			{
-				analyzerReferences = [.. XDocument.Parse(content)
-					.Descendants()
-					.Where(element => string.Equals(element.Name.LocalName, "ProjectReference", StringComparison.OrdinalIgnoreCase))
-					.Where(element => string.Equals(
-						element.Attribute("OutputItemType")?.Value?.Trim(),
-						"Analyzer",
-						StringComparison.OrdinalIgnoreCase))
-					.Select(element => element.Attribute("Include")?.Value)];
-			}
-			catch (XmlException)
+			var analyzerReferences = ReadAnalyzerReferences(content);
+			if (analyzerReferences is null)
 			{
 				continue;
 			}
@@ -420,6 +409,25 @@ public class RepositoryContext
 		}
 
 		return false;
+	}
+
+	private static List<string?>? ReadAnalyzerReferences(string content)
+	{
+		try
+		{
+			return [.. XDocument.Parse(content)
+				.Descendants()
+				.Where(element => string.Equals(element.Name.LocalName, "ProjectReference", StringComparison.OrdinalIgnoreCase))
+				.Where(element => string.Equals(
+					element.Attribute("OutputItemType")?.Value?.Trim(),
+					"Analyzer",
+					StringComparison.OrdinalIgnoreCase))
+				.Select(element => element.Attribute("Include")?.Value)];
+		}
+		catch (XmlException)
+		{
+			return null;
+		}
 	}
 
 	private static string NormalisePath(string path) => path.Replace('\\', '/').TrimStart('/');

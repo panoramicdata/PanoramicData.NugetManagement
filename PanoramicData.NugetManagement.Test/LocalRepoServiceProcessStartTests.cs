@@ -21,7 +21,7 @@ public class LocalRepoServiceProcessStartTests
 		var startInfo = LocalRepoService.BuildProcessStartInfo(
 			@"C:\repos\example",
 			"git",
-			["commit", "-m", "message with spaces"]);
+			["commit", "-m", "message with spaces"], null);
 
 		startInfo.Arguments.Should().BeEmpty();
 	}
@@ -32,7 +32,7 @@ public class LocalRepoServiceProcessStartTests
 	[InlineData("git", false)]
 	public void BuildProcessStartInfo_TurnsOffMsBuildNodeReuseForDotnetOnly(string fileName, bool expected)
 	{
-		var startInfo = LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", fileName, ["build"]);
+		var startInfo = LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", fileName, ["build"], null);
 
 		startInfo.Environment.ContainsKey("MSBUILDDISABLENODEREUSE").Should().Be(expected);
 		if (expected)
@@ -50,9 +50,9 @@ public class LocalRepoServiceProcessStartTests
 
 		try
 		{
-			LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", "dotnet", ["build"])
+			LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", "dotnet", ["build"], null)
 				.Environment.ContainsKey(name).Should().BeFalse("an inherited SDK path mixes two SDKs in one build");
-			LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", "git", ["status"])
+			LocalRepoService.BuildProcessStartInfo(@"C:\repos\example", "git", ["status"], null)
 				.Environment.ContainsKey(name).Should().BeTrue("only dotnet children are cleaned; git is left alone");
 		}
 		finally
@@ -74,7 +74,7 @@ public class LocalRepoServiceProcessStartTests
 		var startInfo = LocalRepoService.BuildProcessStartInfo(
 			@"C:\repos\example",
 			"git",
-			["commit", "-m", "has \"quotes\" and spaces"]);
+			["commit", "-m", "has \"quotes\" and spaces"], null);
 
 		startInfo.ArgumentList.Should().Equal("commit", "-m", "has \"quotes\" and spaces");
 	}
@@ -87,7 +87,7 @@ public class LocalRepoServiceProcessStartTests
 		var startInfo = LocalRepoService.BuildProcessStartInfo(
 			@"C:\repos\example",
 			"git",
-			["checkout", "-b", "--upload-pack=evil"]);
+			["checkout", "-b", "--upload-pack=evil"], null);
 
 		startInfo.ArgumentList.Should().Equal("checkout", "-b", "--upload-pack=evil");
 	}
@@ -98,7 +98,7 @@ public class LocalRepoServiceProcessStartTests
 		var startInfo = LocalRepoService.BuildProcessStartInfo(
 			@"C:\repos\example",
 			"git",
-			["status"]);
+			["status"], null);
 
 		startInfo.FileName.Should().Be("git");
 		startInfo.WorkingDirectory.Should().Be(@"C:\repos\example");

@@ -118,22 +118,7 @@ public sealed class CodacyIssueService : ICodacyIssueService
 					PageSize,
 					cancellationToken).ConfigureAwait(false);
 
-				if (response.Data is not null)
-				{
-					foreach (var issue in response.Data)
-					{
-						issues.Add(new CodacyIssue
-						{
-							FilePath = issue.FilePath ?? string.Empty,
-							Line = issue.LineNumber,
-							Message = issue.Message ?? string.Empty,
-							PatternId = issue.PatternInfo?.Id,
-							Category = issue.PatternInfo?.Category,
-							Severity = issue.PatternInfo?.SeverityLevel.ToString(),
-							Language = issue.Language
-						});
-					}
-				}
+				issues.AddRange((response.Data ?? []).Select(ToCodacyIssue));
 
 				cursor = response.Pagination?.Cursor;
 			}
@@ -146,4 +131,16 @@ public sealed class CodacyIssueService : ICodacyIssueService
 
 		return issues;
 	}
+
+	private static CodacyIssue ToCodacyIssue(Codacy.Api.Models.Issue issue)
+		=> new()
+		{
+			FilePath = issue.FilePath ?? string.Empty,
+			Line = issue.LineNumber,
+			Message = issue.Message ?? string.Empty,
+			PatternId = issue.PatternInfo?.Id,
+			Category = issue.PatternInfo?.Category,
+			Severity = issue.PatternInfo?.SeverityLevel.ToString(),
+			Language = issue.Language
+		};
 }

@@ -24,7 +24,7 @@ public static partial class TestSandbox
 	/// Environment overrides for a test process: a value to set, or null to remove the variable.
 	/// </summary>
 	/// <param name="environment">The environment to start from; the process's own when null.</param>
-	public static IReadOnlyDictionary<string, string?> Overrides(IDictionary<string, string?>? environment = null)
+	public static IReadOnlyDictionary<string, string?> Overrides(IDictionary<string, string?>? environment)
 	{
 		var overrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 

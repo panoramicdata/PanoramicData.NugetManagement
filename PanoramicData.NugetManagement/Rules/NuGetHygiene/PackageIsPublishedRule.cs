@@ -57,17 +57,7 @@ public class PackageIsPublishedRule : RuleBase
 			return earlyResult;
 		}
 
-		var unpublished = new List<string>();
-		foreach (var packageId in ResolvePackageIds(context, packableProjects))
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-
-			// Unknown is not unpublished: a nuget.org outage must not read as a repository defect.
-			if (await _publishedResolver(packageId, cancellationToken).ConfigureAwait(false) == false)
-			{
-				unpublished.Add(packageId);
-			}
-		}
+		var unpublished = await FindUnpublishedAsync(context, packableProjects, cancellationToken).ConfigureAwait(false);
 
 		if (unpublished.Count == 0)
 		{
@@ -108,5 +98,25 @@ public class PackageIsPublishedRule : RuleBase
 					["unpublished_packages"] = unpublished.ToArray()
 				}
 			});
+	}
+
+	private async Task<List<string>> FindUnpublishedAsync(
+		RepositoryContext context,
+		List<string> packableProjects,
+		CancellationToken cancellationToken)
+	{
+		var unpublished = new List<string>();
+		foreach (var packageId in ResolvePackageIds(context, packableProjects))
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			// Unknown is not unpublished: a nuget.org outage must not read as a repository defect.
+			if (await _publishedResolver(packageId, cancellationToken).ConfigureAwait(false) == false)
+			{
+				unpublished.Add(packageId);
+			}
+		}
+
+		return unpublished;
 	}
 }

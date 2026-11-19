@@ -147,7 +147,7 @@ public class RepositoryNavTreeTests(ITestOutputHelper output) : TestWithOutput(o
 		return new NavTreeDataProvider(
 			cache,
 			new RuntimeSettingsService(settings, NullLogger<RuntimeSettingsService>.Instance),
-			settings).BuildNavItems();
+			settings, null).BuildNavItems();
 	}
 
 	/// <inheritdoc />

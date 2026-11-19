@@ -34,7 +34,7 @@ public static class IssueReplyTemplate
 	public static int MaxReasonLength { get; } = 300;
 
 	/// <summary>The most the "what would help" slot may run to.</summary>
-	public const int MaxWhatWouldHelpLength = 300;
+	public static int MaxWhatWouldHelpLength { get; } = 300;
 
 	/// <summary>
 	/// Assembles a reply, or refuses to.

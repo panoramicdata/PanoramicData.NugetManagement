@@ -41,7 +41,7 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 		var ledger = NewLedger();
 
 		var first = ledger.Append("autopilot", "cycle_started", "o/r", "TST-10", new { note = "a" });
-		var second = ledger.Append("autopilot", "cycle_ended", "o/r");
+		var second = ledger.Append("autopilot", "cycle_ended", "o/r", null, null);
 
 		first.Seq.Should().Be(1);
 		first.PrevHash.Should().Be(GovernanceLedger.Genesis);
@@ -54,9 +54,9 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	public void Verify_OnAnUntouchedLedger_IsIntact()
 	{
 		var ledger = NewLedger();
-		ledger.Append("autopilot", "push", "o/r", data: new { sha = "abc" });
-		ledger.Append("claude-review", "review_verdict", "o/r", data: new { suitability = "fit" });
-		ledger.Append("user", "policy_changed");
+		ledger.Append("autopilot", "push", "o/r", null, new { sha = "abc" });
+		ledger.Append("claude-review", "review_verdict", "o/r", null, new { suitability = "fit" });
+		ledger.Append("user", "policy_changed", null, null, null);
 
 		var result = ledger.Verify();
 
@@ -74,9 +74,9 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	public void Verify_DetectsAnEditedEntry_AndNamesIt()
 	{
 		var ledger = NewLedger();
-		ledger.Append("autopilot", "push", "o/r", data: new { sha = "abc123" });
-		ledger.Append("autopilot", "push", "o/r", data: new { sha = "def456" });
-		ledger.Append("autopilot", "push", "o/r", data: new { sha = "789abc" });
+		ledger.Append("autopilot", "push", "o/r", null, new { sha = "abc123" });
+		ledger.Append("autopilot", "push", "o/r", null, new { sha = "def456" });
+		ledger.Append("autopilot", "push", "o/r", null, new { sha = "789abc" });
 
 		File.WriteAllText(OnlyFile(), File.ReadAllText(OnlyFile()).Replace("def456", "000000", StringComparison.Ordinal));
 
@@ -91,9 +91,9 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	public void Verify_DetectsADeletedEntry()
 	{
 		var ledger = NewLedger();
-		ledger.Append("autopilot", "a");
-		ledger.Append("autopilot", "b");
-		ledger.Append("autopilot", "c");
+		ledger.Append("autopilot", "a", null, null, null);
+		ledger.Append("autopilot", "b", null, null, null);
+		ledger.Append("autopilot", "c", null, null, null);
 
 		var lines = File.ReadAllLines(OnlyFile());
 		File.WriteAllLines(OnlyFile(), [lines[0], lines[2]]);
@@ -109,9 +109,9 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	public void Verify_DetectsReorderedEntries()
 	{
 		var ledger = NewLedger();
-		ledger.Append("autopilot", "a");
-		ledger.Append("autopilot", "b");
-		ledger.Append("autopilot", "c");
+		ledger.Append("autopilot", "a", null, null, null);
+		ledger.Append("autopilot", "b", null, null, null);
+		ledger.Append("autopilot", "c", null, null, null);
 
 		var lines = File.ReadAllLines(OnlyFile());
 		File.WriteAllLines(OnlyFile(), [lines[0], lines[2], lines[1]]);
@@ -123,7 +123,7 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	public void Verify_DetectsALineWithItsHashRemoved()
 	{
 		var ledger = NewLedger();
-		ledger.Append("autopilot", "a");
+		ledger.Append("autopilot", "a", null, null, null);
 
 		var line = File.ReadAllText(OnlyFile()).TrimEnd();
 		File.WriteAllText(OnlyFile(), line[..line.IndexOf(",\"hash\"", StringComparison.Ordinal)] + "}\n");
@@ -137,8 +137,8 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 		// Truncating the last entry cannot be seen from inside the chain: nothing after it names it. That is
 		// why the head hash is returned, to be compared with one recorded elsewhere.
 		var ledger = NewLedger();
-		ledger.Append("autopilot", "a");
-		var head = ledger.Append("autopilot", "b").Hash;
+		ledger.Append("autopilot", "a", null, null, null);
+		var head = ledger.Append("autopilot", "b", null, null, null).Hash;
 
 		var lines = File.ReadAllLines(OnlyFile());
 		File.WriteAllLines(OnlyFile(), [lines[0]]);
@@ -153,11 +153,11 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	public void ANewLedgerOverTheSameFolder_ExtendsTheChain()
 	{
 		var first = NewLedger();
-		first.Append("autopilot", "a");
-		var before = first.Append("autopilot", "b");
+		first.Append("autopilot", "a", null, null, null);
+		var before = first.Append("autopilot", "b", null, null, null);
 
 		var reopened = NewLedger();
-		var next = reopened.Append("autopilot", "c");
+		var next = reopened.Append("autopilot", "c", null, null, null);
 
 		next.Seq.Should().Be(3);
 		next.PrevHash.Should().Be(before.Hash);
@@ -169,7 +169,7 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	{
 		var ledger = NewLedger(policyHash: "abc123");
 
-		ledger.Append("autopilot", "push").PolicyHash.Should().Be("abc123");
+		ledger.Append("autopilot", "push", null, null, null).PolicyHash.Should().Be("abc123");
 		ledger.Query().Single().PolicyHash.Should().Be("abc123");
 	}
 
@@ -178,10 +178,10 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	{
 		var clock = new FixedClock(new DateTimeOffset(2026, 9, 30, 23, 0, 0, TimeSpan.Zero));
 		var ledger = NewLedger(clock);
-		ledger.Append("autopilot", "a");
+		ledger.Append("autopilot", "a", null, null, null);
 
 		clock.Now = new DateTimeOffset(2026, 10, 1, 1, 0, 0, TimeSpan.Zero);
-		ledger.Append("autopilot", "b");
+		ledger.Append("autopilot", "b", null, null, null);
 
 		Directory.EnumerateFiles(_folder).Select(Path.GetFileName).Order().Should()
 			.Equal("ledger-2026-09.jsonl", "ledger-2026-10.jsonl");
@@ -192,9 +192,9 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	public void Query_ReturnsNewestFirst_AndFilters()
 	{
 		var ledger = NewLedger();
-		ledger.Append("autopilot", "push", "o/a");
-		ledger.Append("autopilot", "publish", "o/b");
-		ledger.Append("autopilot", "push", "o/b");
+		ledger.Append("autopilot", "push", "o/a", null, null);
+		ledger.Append("autopilot", "publish", "o/b", null, null);
+		ledger.Append("autopilot", "push", "o/b", null, null);
 
 		ledger.Query().Select(e => e.Seq).Should().Equal(3, 2, 1);
 		ledger.Query(kind: "push").Select(e => e.Seq).Should().Equal(3, 1);
@@ -207,7 +207,7 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	public void Data_RoundTripsWhateverWasWritten()
 	{
 		var ledger = NewLedger();
-		ledger.Append("autopilot", "ai_session", data: new { Model = "qwen3.8:27b", Turns = 12, Files = new[] { "a.cs", "b.cs" } });
+		ledger.Append("autopilot", "ai_session", null, null, new { Model = "qwen3.8:27b", Turns = 12, Files = new[] { "a.cs", "b.cs" } });
 
 		var data = ledger.Query().Single().Data;
 
@@ -221,7 +221,7 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	{
 		var ledger = NewLedger();
 
-		Parallel.For(0, 200, i => ledger.Append("autopilot", "tick", data: new { i }));
+		Parallel.For(0, 200, i => ledger.Append("autopilot", "tick", null, null, new { i }));
 
 		var result = ledger.Verify();
 
@@ -234,10 +234,10 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	{
 		var clock = new FixedClock(new DateTimeOffset(2025, 1, 15, 0, 0, 0, TimeSpan.Zero));
 		var ledger = NewLedger(clock);
-		ledger.Append("autopilot", "old");
+		ledger.Append("autopilot", "old", null, null, null);
 
 		clock.Now = new DateTimeOffset(2026, 10, 15, 0, 0, 0, TimeSpan.Zero);
-		ledger.Append("autopilot", "recent");
+		ledger.Append("autopilot", "recent", null, null, null);
 
 		var removed = ledger.ApplyRetention(months: 12);
 
@@ -255,7 +255,7 @@ public class GovernanceLedgerTests(ITestOutputHelper output) : TestWithOutput(ou
 	{
 		var clock = new FixedClock(new DateTimeOffset(2026, 10, 15, 0, 0, 0, TimeSpan.Zero));
 		var ledger = NewLedger(clock);
-		ledger.Append("autopilot", "a");
+		ledger.Append("autopilot", "a", null, null, null);
 
 		ledger.ApplyRetention(months: 1).Should().BeEmpty();
 		ledger.Query().Should().ContainSingle();

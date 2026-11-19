@@ -17,7 +17,7 @@ internal sealed class FailArmyWorkingCopy : IDisposable
 	private const string _fixtureRelativePath =
 		"PanoramicData.NugetManagement.Test/Fixtures/PanoramicData.NugetFailArmy";
 
-	private FailArmyWorkingCopy(string root) => Root = root;
+	internal FailArmyWorkingCopy(string root) => Root = root;
 
 	/// <summary>The copy's root directory, which is what the toolbox is scoped to.</summary>
 	public string Root { get; }
