@@ -66,73 +66,79 @@ public class MtpTestRunnerRule : RuleBase
 			return Task.FromResult(NotApplicable("No test projects found; rule does not apply."));
 		}
 
-		// Only xunit.v3 repositories run on Microsoft.Testing.Platform. Declaring the runner in a
-		// repository still on VSTest would leave dotnet test finding nothing to run, so the rule
-		// waits for TST-02 to be satisfied first.
+		// Declaring the runner in a repository still on VSTest leaves dotnet test with nothing to run, so wait for TST-02.
 		if (!UsesMicrosoftTestingPlatform(context))
 		{
-			// Not merely inapplicable: an opt-in on a VSTest repository actively stops dotnet test
-			// finding anything to run. Governance remediation put these there, and this takes them
-			// back out.
-			var strandedRunner = ReadTestRunner(context.GetFileContent("global.json") ?? string.Empty);
-			return Task.FromResult(strandedRunner is null
-				? NotApplicable("No xunit.v3 reference found; the Microsoft.Testing.Platform opt-in does not apply.")
-				: Fail(
-					$"global.json declares test.runner '{strandedRunner}', but this repository's tests do not run on Microsoft.Testing.Platform, so dotnet test can find nothing to run.",
-					new RuleAdvisory
-					{
-						Summary = "Remove the test.runner opt-in, or migrate the tests to xunit.v3.",
-						Detail = """
-							The `test.runner` key tells `dotnet test` to use Microsoft.Testing.Platform. This
-							repository's tests do not run on it — they are still xunit v2 on VSTest — so the
-							opt-in leaves `dotnet test` with nothing it can execute.
-
-							Either remove the key, or migrate the test project to `xunit.v3`, after which the
-							opt-in becomes required rather than harmful (see TST-02).
-
-							If a governance remediation added this, removing it is the fix: the SDK pin and the
-							test runner are separate decisions, and only the first belongs to every repository.
-							""",
-						Data = new()
-						{
-							["remediation_type"] = "remove_json_property",
-							["file"] = "global.json",
-							["property_path"] = "test",
-							["current_value"] = strandedRunner
-						}
-					}));
+			return Task.FromResult(EvaluateVsTestRepository(context));
 		}
 
 		var content = context.GetFileContent("global.json");
-		if (string.IsNullOrWhiteSpace(content))
-		{
-			return Task.FromResult(Fail(
-				"global.json not found at repository root, so dotnet test cannot opt into Microsoft.Testing.Platform.",
-				new RuleAdvisory
+		return Task.FromResult(string.IsNullOrWhiteSpace(content)
+			? FailMissingGlobalJson()
+			: EvaluateRunner(ReadTestRunner(content)));
+	}
+
+	private RuleResult EvaluateVsTestRepository(RepositoryContext context)
+	{
+		var strandedRunner = ReadTestRunner(context.GetFileContent("global.json") ?? string.Empty);
+		return strandedRunner is null
+			? NotApplicable("No xunit.v3 reference found; the Microsoft.Testing.Platform opt-in does not apply.")
+			: FailStrandedRunner(strandedRunner);
+	}
+
+	private RuleResult FailStrandedRunner(string strandedRunner)
+		=> Fail(
+			$"global.json declares test.runner '{strandedRunner}', but this repository's tests do not run on Microsoft.Testing.Platform, so dotnet test can find nothing to run.",
+			new RuleAdvisory
+			{
+				Summary = "Remove the test.runner opt-in, or migrate the tests to xunit.v3.",
+				Detail = """
+					The `test.runner` key tells `dotnet test` to use Microsoft.Testing.Platform. This
+					repository's tests do not run on it — they are still xunit v2 on VSTest — so the
+					opt-in leaves `dotnet test` with nothing it can execute.
+
+					Either remove the key, or migrate the test project to `xunit.v3`, after which the
+					opt-in becomes required rather than harmful (see TST-02).
+
+					If a governance remediation added this, removing it is the fix: the SDK pin and the
+					test runner are separate decisions, and only the first belongs to every repository.
+					""",
+				Data = new()
 				{
-					Summary = $"Create global.json declaring test.runner: {Standards.MtpTestRunnerName}.",
-					Detail = _detail,
-					Data = new()
-					{
-						["expected_path"] = "global.json",
-						["template_content"] = Standards.GetGlobalJsonContent(includeTestRunner: true),
-						["test_runner"] = Standards.MtpTestRunnerName
-					}
-				}));
-		}
+					["remediation_type"] = "remove_json_property",
+					["file"] = "global.json",
+					["property_path"] = "test",
+					["current_value"] = strandedRunner
+				}
+			});
 
-		var runner = ReadTestRunner(content);
+	private RuleResult FailMissingGlobalJson()
+		=> Fail(
+			"global.json not found at repository root, so dotnet test cannot opt into Microsoft.Testing.Platform.",
+			new RuleAdvisory
+			{
+				Summary = $"Create global.json declaring test.runner: {Standards.MtpTestRunnerName}.",
+				Detail = _detail,
+				Data = new()
+				{
+					["expected_path"] = "global.json",
+					["template_content"] = Standards.GetGlobalJsonContent(includeTestRunner: true),
+					["test_runner"] = Standards.MtpTestRunnerName
+				}
+			});
 
+	private RuleResult EvaluateRunner(string? runner)
+	{
 		if (string.Equals(runner, Standards.MtpTestRunnerName, StringComparison.Ordinal))
 		{
-			return Task.FromResult(Pass($"global.json declares test.runner: {Standards.MtpTestRunnerName}."));
+			return Pass($"global.json declares test.runner: {Standards.MtpTestRunnerName}.");
 		}
 
 		var message = runner is null
 			? "global.json does not declare test.runner, so dotnet test still targets VSTest and fails on the .NET 10 SDK."
 			: $"global.json declares test.runner '{runner}', which the SDK rejects; the only accepted value is '{Standards.MtpTestRunnerName}'.";
 
-		return Task.FromResult(Fail(
+		return Fail(
 			message,
 			new RuleAdvisory
 			{
@@ -146,7 +152,7 @@ public class MtpTestRunnerRule : RuleBase
 					["property_value"] = Standards.MtpTestRunnerName,
 					["current_value"] = runner ?? string.Empty
 				}
-			}));
+			});
 	}
 
 	/// <summary>

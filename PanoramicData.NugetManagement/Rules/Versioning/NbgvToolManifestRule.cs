@@ -69,53 +69,60 @@ public partial class NbgvToolManifestRule : RuleBase
 
 		return Task.FromResult((others.Count, dependants.Count) switch
 		{
-			(0, 0) => Fail(
-				tools.Count == 0
-					? $"`{_manifestPath}` is committed but declares no tools at all."
-					: $"`{_manifestPath}` pins the nbgv CLI tool, which nothing in the repository invokes.",
-				new RuleAdvisory
-				{
-					Summary = $"Delete `{_manifestPath}`.",
-					Detail = tools.Count == 0
-						? $"`{_manifestPath}` declares no tools, so it does nothing except attract Dependabot "
-							+ "pull requests. Delete it."
-						: $"`{_manifestPath}` pins the `nbgv` CLI tool, but no script or workflow in this "
-							+ "repository invokes it — the version is resolved through the referenced "
-							+ "Nerdbank.GitVersioning package's MSBuild target instead. Delete the manifest so "
-							+ "Dependabot stops maintaining a tool nobody runs.",
-					Data = new()
-					{
-						["remediation_type"] = "delete_file",
-						["file"] = _manifestPath
-					}
-				}),
-
-			(> 0, _) => Fail(
-				$"`{_manifestPath}` declares the nbgv CLI tool alongside {string.Join(", ", others)}.",
-				new RuleAdvisory
-				{
-					Summary = $"Remove the `nbgv` entry from `{_manifestPath}`, keeping the other tools.",
-					Detail = $"`{_manifestPath}` declares `nbgv` as well as {string.Join(", ", others)}. Only "
-						+ "the `nbgv` entry should go — the version is resolved through the referenced "
-						+ "Nerdbank.GitVersioning package's MSBuild target — and the rest of the manifest is "
-						+ "not this rule's to discard."
-				}),
-
-			_ => Fail(
-				$"`{_manifestPath}` pins the nbgv CLI tool, and {string.Join(", ", dependants)} still depends on it.",
-				new RuleAdvisory
-				{
-					Summary = "Resolve the version through the Nerdbank.GitVersioning MSBuild target, then "
-						+ $"delete `{_manifestPath}`.",
-					Detail = $"{string.Join(", ", dependants)} runs the `nbgv` CLI or restores the manifest, so deleting "
-						+ $"`{_manifestPath}` on its own would break it. Change the script to resolve the "
-						+ "version with `dotnet build <project> -t:GetBuildVersion "
-						+ "--getProperty:NuGetPackageVersion -p:TreatWarningsAsErrors=false`, which relies only "
-						+ "on the referenced Nerdbank.GitVersioning package, drop any `dotnet tool restore` step "
-						+ "that only existed to fetch it, and then remove the manifest."
-				})
+			(0, 0) => FailUnusedManifest(tools.Count),
+			( > 0, _) => FailMixedManifest(others),
+			_ => FailDependedManifest(dependants)
 		});
 	}
+
+	private RuleResult FailUnusedManifest(int toolCount)
+		=> Fail(
+			toolCount == 0
+				? $"`{_manifestPath}` is committed but declares no tools at all."
+				: $"`{_manifestPath}` pins the nbgv CLI tool, which nothing in the repository invokes.",
+			new RuleAdvisory
+			{
+				Summary = $"Delete `{_manifestPath}`.",
+				Detail = toolCount == 0
+					? $"`{_manifestPath}` declares no tools, so it does nothing except attract Dependabot "
+						+ "pull requests. Delete it."
+					: $"`{_manifestPath}` pins the `nbgv` CLI tool, but no script or workflow in this "
+						+ "repository invokes it — the version is resolved through the referenced "
+						+ "Nerdbank.GitVersioning package's MSBuild target instead. Delete the manifest so "
+						+ "Dependabot stops maintaining a tool nobody runs.",
+				Data = new()
+				{
+					["remediation_type"] = "delete_file",
+					["file"] = _manifestPath
+				}
+			});
+
+	private RuleResult FailMixedManifest(List<string> others)
+		=> Fail(
+			$"`{_manifestPath}` declares the nbgv CLI tool alongside {string.Join(", ", others)}.",
+			new RuleAdvisory
+			{
+				Summary = $"Remove the `nbgv` entry from `{_manifestPath}`, keeping the other tools.",
+				Detail = $"`{_manifestPath}` declares `nbgv` as well as {string.Join(", ", others)}. Only "
+					+ "the `nbgv` entry should go — the version is resolved through the referenced "
+					+ "Nerdbank.GitVersioning package's MSBuild target — and the rest of the manifest is "
+					+ "not this rule's to discard."
+			});
+
+	private RuleResult FailDependedManifest(IReadOnlyCollection<string> dependants)
+		=> Fail(
+			$"`{_manifestPath}` pins the nbgv CLI tool, and {string.Join(", ", dependants)} still depends on it.",
+			new RuleAdvisory
+			{
+				Summary = "Resolve the version through the Nerdbank.GitVersioning MSBuild target, then "
+					+ $"delete `{_manifestPath}`.",
+				Detail = $"{string.Join(", ", dependants)} runs the `nbgv` CLI or restores the manifest, so deleting "
+					+ $"`{_manifestPath}` on its own would break it. Change the script to resolve the "
+					+ "version with `dotnet build <project> -t:GetBuildVersion "
+					+ "--getProperty:NuGetPackageVersion -p:TreatWarningsAsErrors=false`, which relies only "
+					+ "on the referenced Nerdbank.GitVersioning package, drop any `dotnet tool restore` step "
+					+ "that only existed to fetch it, and then remove the manifest."
+			});
 
 	/// <summary>
 	/// The tool names a manifest declares, or false when it does not read as one.
