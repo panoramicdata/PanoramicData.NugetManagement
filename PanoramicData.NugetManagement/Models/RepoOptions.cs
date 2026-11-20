@@ -47,8 +47,7 @@ public class RepoOptions
 
 	/// <summary>
 	/// The text expected to appear in the LICENSE file to confirm the license type.
-	/// Defaults to "{ExpectedLicense} License" (e.g. "MIT License").
-	/// When null, uses "{ExpectedLicense} License".
+	/// When null, it is derived from <see cref="ExpectedLicense"/> by <see cref="LicenseExpressions.FileMarkers"/>.
 	/// </summary>
 	public string? ExpectedLicenseFileText { get; set; }
 
@@ -87,9 +86,19 @@ public class RepoOptions
 	public PublishingOptions Publishing { get; set; } = new();
 
 	/// <summary>
-	/// Gets the text that should appear in the LICENSE file.
+	/// Gets the text that should appear in the LICENSE file, every marker joined with " and ".
 	/// </summary>
 	/// <returns>The expected license file text.</returns>
 	public string GetExpectedLicenseFileText()
-		=> ExpectedLicenseFileText ?? $"{ExpectedLicense} License";
+		=> string.Join(" and ", GetExpectedLicenseFileTexts());
+
+	/// <summary>
+	/// Gets every text the LICENSE file must contain: the explicit text when set, otherwise one marker
+	/// per licence the expression names.
+	/// </summary>
+	/// <returns>The expected license file texts.</returns>
+	public IReadOnlyList<string> GetExpectedLicenseFileTexts()
+		=> string.IsNullOrWhiteSpace(ExpectedLicenseFileText)
+			? LicenseExpressions.FileMarkers(ExpectedLicense)
+			: [ExpectedLicenseFileText.Trim()];
 }

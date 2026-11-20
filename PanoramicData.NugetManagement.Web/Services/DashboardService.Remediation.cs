@@ -100,7 +100,7 @@ public partial class DashboardService
 		foreach (var failure in ordered)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			ApplySingleRemediation(row.LocalPath!, failure, applied, onOutput);
+			ApplySingleRemediation(row, failure, applied, onOutput);
 		}
 	}
 
@@ -127,7 +127,7 @@ public partial class DashboardService
 		foreach (var failure in failures)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			ApplySingleRemediation(row.LocalPath!, failure, applied, onOutput);
+			ApplySingleRemediation(row, failure, applied, onOutput);
 		}
 
 		if (applied.Count == 0)
@@ -184,7 +184,7 @@ public partial class DashboardService
 			return applied;
 		}
 
-		ApplySingleRemediation(row.LocalPath, failure, applied, onOutput);
+		ApplySingleRemediation(row, failure, applied, onOutput);
 		return applied;
 	}
 
@@ -192,26 +192,65 @@ public partial class DashboardService
 	/// Applies a single remediation via the registry.
 	/// </summary>
 	private void ApplySingleRemediation(
-		string localPath,
+		RepositoryDashboardRow row,
 		RuleResult failure,
 		List<string> applied,
 		Action<string>? onOutput)
 	{
 		var remediation = RemediationRegistry.Get(failure.RuleId);
-		if (remediation is null || !remediation.CanRemediate(failure))
+		if (remediation is null || !remediation.CanRemediate(failure) || IsStaleLicenseAdvisory(row, failure, onOutput))
 		{
 			return;
 		}
 
 		try
 		{
-			remediation.Apply(localPath, failure, applied, onOutput);
+			remediation.Apply(row.LocalPath!, failure, applied, onOutput);
 		}
 		catch (Exception ex)
 		{
 			_logger.LogWarning(ex, "Failed remediation for rule {RuleId}", failure.RuleId);
 			onOutput?.Invoke($"❌ [{failure.RuleId}] Failed: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Whether a licence rule's advisory was written for a licence other than the one the repository is
+	/// now held to, so applying it would write the old licence back.
+	/// </summary>
+	private bool IsStaleLicenseAdvisory(RepositoryDashboardRow row, RuleResult failure, Action<string>? onOutput)
+	{
+		if (failure.Advisory is null || row.RepositoryFullName is null)
+		{
+			return false;
+		}
+
+		var current = _runtimeSettings.ResolveLicense(row.RepositoryFullName).License;
+		if (StaleLicenseAdvisoryLicense(failure, current) is not { } stated)
+		{
+			return false;
+		}
+
+		onOutput?.Invoke($"⚠️ [{failure.RuleId}] Skipped: assessed against licence {stated}, but {row.RepositoryFullName} is now held to {current}. Re-assess first.");
+		return true;
+	}
+
+	/// <summary>
+	/// The licence a stale licence advisory was assessed against, or null when it is current or names none.
+	/// </summary>
+	internal static string? StaleLicenseAdvisoryLicense(RuleResult failure, string currentLicense)
+	{
+		var stated = failure.Advisory is null
+			? []
+			: DataDrivenRemediation.ReadStrings(failure.Advisory.Data, "expected_license", "expected_license_type");
+
+		// COM-02 advisories cached before it named a licence would replace a kept licence note.
+		if (stated.Length == 0)
+		{
+			return string.Equals(failure.RuleId, "COM-02", StringComparison.OrdinalIgnoreCase) ? "unknown" : null;
+		}
+
+		return string.Equals(stated[0], currentLicense, StringComparison.OrdinalIgnoreCase) ? null : stated[0];
 	}
 
 	private Task<List<string>> ApplySingleRuleAsync(RepositoryDashboardRow row, string ruleId, Action<string>? onOutput)
@@ -221,7 +260,7 @@ public partial class DashboardService
 			.FirstOrDefault(rr => !rr.Passed && string.Equals(rr.RuleId, ruleId, StringComparison.OrdinalIgnoreCase));
 		if (fresh is not null && row.LocalPath is not null && IsAutoRemediable(fresh))
 		{
-			ApplySingleRemediation(row.LocalPath, fresh, applied, onOutput);
+			ApplySingleRemediation(row, fresh, applied, onOutput);
 		}
 
 		return Task.FromResult(applied);

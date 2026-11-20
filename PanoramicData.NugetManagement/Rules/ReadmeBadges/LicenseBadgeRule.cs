@@ -24,22 +24,62 @@ public class LicenseBadgeRule : RuleBase
 	{
 		var license = context.Options.ExpectedLicense;
 		var content = context.GetFileContent("README.md");
+		var badgeLine = LicenseExpressions.BadgeLine(license);
+		var found = LicenseExpressions.IsDefault(license)
+			? Contains(content, $"License: {license}") || Contains(content, $"license-{license}")
+			: LicenseExpressions.BadgeMarkers(license).Any(marker => HasMarker(content, marker));
 		return Task.FromResult(
-			Contains(content, $"License: {license}") || Contains(content, $"license-{license}")
+			found
 			? Pass($"License badge for \"{license}\" found in README.md.")
 			: Fail(
 				$"README.md does not contain a license badge for \"{license}\".",
 				new RuleAdvisory
 				{
 					Summary = $"Add a license badge (e.g. shields.io {license} badge) at the top of README.md.",
-					Detail = $"The `README.md` does not contain a license badge for `{license}`. Add a shields.io badge such as `[![License: {license}](https://img.shields.io/badge/License-{license}-yellow.svg)](https://opensource.org/licenses/{license})`.",
+					Detail = $"The `README.md` does not contain a license badge for `{license}`. Add a shields.io badge such as `{badgeLine}`.",
 					Data = new()
 					{
 						["file"] = "README.md",
 						["expected_license"] = license,
 						["remediation_type"] = "prepend_line",
-						["line_content"] = $"[![License: {license}](https://img.shields.io/badge/License-{license}-yellow.svg)](https://opensource.org/licenses/{license})"
+						["line_content"] = badgeLine
 					}
 				}));
+	}
+
+	// For an override the marker must end where the label does, or "License: GPL-3.0" would pass a "GPL-3.0-or-later" badge.
+	private static bool HasMarker(string? content, string marker)
+	{
+		if (content is null)
+		{
+			return false;
+		}
+
+		var index = content.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+		while (index >= 0)
+		{
+			if (EndsLabel(content, index + marker.Length, marker))
+			{
+				return true;
+			}
+
+			index = content.IndexOf(marker, index + 1, StringComparison.OrdinalIgnoreCase);
+		}
+
+		return false;
+	}
+
+	private static bool EndsLabel(string content, int end, string marker)
+	{
+		if (end >= content.Length)
+		{
+			return true;
+		}
+
+		// In a shields path a single dash ends the label; in alt text it is part of the SPDX id.
+		return content[end] == '-'
+			? !marker.StartsWith("License: ", StringComparison.OrdinalIgnoreCase)
+				&& (end + 1 >= content.Length || content[end + 1] != '-')
+			: content[end] is ']' or ')' or '"' or '\'' or '.' or '?' or '&' or '/' or '\r' or '\n';
 	}
 }

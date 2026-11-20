@@ -20,15 +20,17 @@ public partial class DashboardService
 	/// </remarks>
 	/// <param name="repositoryFullName">
 	/// The repository the options are for, as "owner/name". Its waivers are read from the estate's
-	/// committed catalogue; everything else is the same for every repository. Required rather than
+	/// committed catalogue and its licence from the overrides in runtime settings. Required rather than
 	/// defaulted, so a new caller has to decide which repository it is asking about instead of
 	/// silently getting one that is held to every rule.
 	/// </param>
 	private RepoOptions BuildRepoOptions(string? repositoryFullName)
 	{
+		var license = _runtimeSettings.ResolveLicense(repositoryFullName);
 		var repoOptions = new RepoOptions
 		{
-			ExpectedLicense = _settings.ExpectedLicense,
+			ExpectedLicense = license.License,
+			ExpectedLicenseFileText = license.LicenseFileText,
 			ExpectedCopyrightHolder = _settings.CopyrightHolder,
 			ExpertiseBannerTemplate = string.IsNullOrWhiteSpace(_settings.ExpertiseBannerTemplate)
 				? Standards.ExpertiseBannerTemplate
