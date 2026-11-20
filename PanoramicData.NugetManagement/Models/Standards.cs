@@ -280,6 +280,39 @@ public static class Standards
 		""";
 
 	/// <summary>
+	/// The heading of the last section of <see cref="ContributingMdContent"/>, the only one a repository may extend.
+	/// </summary>
+	public static string ContributingLicenseHeading { get; } = "## License";
+
+	/// <summary>
+	/// The standard CONTRIBUTING.md for a repository under <paramref name="license"/>: the standard text
+	/// for the default licence, otherwise the same guide with a licence sentence that names no licence it is not.
+	/// </summary>
+	/// <param name="license">The repository's SPDX licence expression.</param>
+	public static string ContributingMdContentFor(string license)
+		=> LicenseExpressions.IsDefault(license)
+			? ContributingMdContent
+			: WithContributingLineEndings($"{ContributingMdPreamble()}{ContributingLicenseHeading}\n\nBy contributing, you agree that your contributions will be licensed under the terms in [LICENSE](LICENSE) (SPDX: `{license}`).");
+
+	/// <summary>
+	/// Gives \n-separated text the line endings <see cref="ContributingMdContent"/> has, so a generated variant writes like the standard.
+	/// </summary>
+	/// <param name="text">Text with \n line endings.</param>
+	public static string WithContributingLineEndings(string text)
+		=> ContributingMdContent.Contains("\r\n", StringComparison.Ordinal)
+			? text.Replace("\n", "\r\n", StringComparison.Ordinal)
+			: text;
+
+	/// <summary>
+	/// Everything in <see cref="ContributingMdContent"/> before its licence section, with \n line endings.
+	/// </summary>
+	public static string ContributingMdPreamble()
+	{
+		var standard = ContributingMdContent.Replace("\r\n", "\n", StringComparison.Ordinal);
+		return standard[..standard.IndexOf(ContributingLicenseHeading, StringComparison.Ordinal)];
+	}
+
+	/// <summary>
 	/// The standard dependabot.yml content for all repositories.
 	/// </summary>
 	public static string DependabotYmlContent { get; } = """

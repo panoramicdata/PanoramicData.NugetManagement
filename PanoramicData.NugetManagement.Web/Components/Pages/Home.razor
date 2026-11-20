@@ -134,6 +134,7 @@ else
 															<button type="button" class="nav-org-action-btn" title="@(node.Data.IsExcluded ? "Bring this repository back into governance" : "Exclude this repository from governance")" @onclick="() => ToggleRepositoryExcludedAsync(repositoryFullName, node.Data.IsExcluded)" @onclick:stopPropagation @onmousedown:stopPropagation>
 																<i class="fas @(node.Data.IsExcluded ? "fa-eye" : "fa-eye-slash")"></i>
 															</button>
+															<button type="button" class="nav-org-action-btn @(_currentView == NavView.RepositorySettings && string.Equals(_repositorySettingsFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase) ? "active" : "")" title="Repository settings" @onclick="() => NavigateToRepositorySettingsAsync(repositoryFullName)" @onclick:stopPropagation @onmousedown:stopPropagation><i class="fas fa-cog"></i></button>
 														</span>
 													}
 													@if (AffectedRepoCountFor(node.Data) is { } affected)
@@ -254,7 +255,7 @@ else
 							@if (_orgSelected || _selectedRow is not null || _currentView == NavView.Settings || IsIssueView || IsEstateWide)
 							{
 								<span class="breadcrumb-sep">›</span>
-								@if (_orgSelected && _selectedRow is null && _currentView != NavView.Settings)
+								@if (_orgSelected && _selectedRow is null && !IsSettingsView)
 								{
 									<span class="breadcrumb-current">@CurrentOrganization</span>
 								}
@@ -294,7 +295,7 @@ else
 										<i class="@GetPackageHealthIcon(_selectedRow)"></i><span class="breadcrumb-repo-name">@_selectedRow.RepositoryName</span><span class="pkg-version">@PackagesSummary(_selectedRow)</span>
 									</a>
 								}
-								@if (_selectedRow.IsClonedLocally && _currentView != NavView.Settings)
+								@if (_selectedRow.IsClonedLocally && !IsSettingsView)
 								{
 									<span class="breadcrumb-sep">|</span>
 									@if (IsSelectedRowPorcelain)
@@ -356,7 +357,7 @@ else
 								@* Outside the clone guard: Codacy analyses the published branch, so this applies to a
 								   repository whether or not there is a clone here. Absent unless an analysis is
 								   actually running — the panel below is showing grades it is about to replace. *@
-								@if (_currentView != NavView.Settings
+								@if (!IsSettingsView
 									&& RepositoryStateBadges.CodacyAnalysisChip(_selectedRow.CodacyAnalysisState) is { } codacyChip)
 								{
 									<span class="breadcrumb-sep">|</span>
@@ -373,7 +374,7 @@ else
 									<span class="breadcrumb-current" title="@_selectedRuleId">@_selectedRuleId</span>
 								}
                            }
-							@if (_currentView == NavView.Settings)
+							@if (IsSettingsView)
 							{
 								<span class="breadcrumb-sep">›</span>
 								<span class="breadcrumb-current">Settings</span>
@@ -450,7 +451,7 @@ else
 											 Text="Sync"
 											 IconCssClass="fas fa-arrows-rotate"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.GitSync)"
-											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
+											 IsVisible="@(HasToolbarTarget && !IsSettingsView)"
 											 IsEnabled="@(IsEstateWide ? IsLocalStepEnabled(WorkflowStep.GitSync) : (IsSyncEnabled() && !IsStepQueueBlocked(WorkflowStep.GitSync)))"
 											 ToolTip="@GatedTooltip(WorkflowStep.GitSync, GetSyncTooltip())"
 											 Click="OnToolbarClick" />
@@ -509,7 +510,7 @@ else
 											 Text="@GetToolbarStepText(WorkflowStep.Build)"
 											 IconCssClass="@GetToolbarStepIconCss(WorkflowStep.Build, IsStepRunning(WorkflowStep.Build))"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Build)"
-											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
+											 IsVisible="@(HasToolbarTarget && !IsSettingsView)"
 											 IsEnabled="@IsLocalStepEnabled(WorkflowStep.Build)"
 											 ToolTip="@GatedTooltip(WorkflowStep.Build, WorkflowStepTooltip("Build the solution"))"
 											 Click="OnToolbarClick" />
@@ -523,7 +524,7 @@ else
 											 Text="@GetToolbarStepText(WorkflowStep.Test)"
 											 IconCssClass="@GetToolbarStepIconCss(WorkflowStep.Test, IsStepRunning(WorkflowStep.Test))"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Test)"
-											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
+											 IsVisible="@(HasToolbarTarget && !IsSettingsView)"
 											 IsEnabled="@IsLocalStepEnabled(WorkflowStep.Test)"
 											 ToolTip="@GatedTooltip(WorkflowStep.Test, WorkflowStepTooltip("Run unit tests"))"
 											 Click="OnToolbarClick" />
@@ -537,7 +538,7 @@ else
 											 Text="Commit & Push"
 											 IconCssClass="fas fa-cloud-upload-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
-											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
+											 IsVisible="@(HasToolbarTarget && !IsSettingsView)"
 											 IsEnabled="@IsCommitAndPushEnabled()"
 											 ToolTip="@GatedTooltip(WorkflowStep.CommitAndPush, GetCommitAndPushTooltip())"
 											 Click="OnToolbarClick" />
@@ -554,7 +555,7 @@ else
 										 Text="Publish"
 										 IconCssClass="fas fa-rocket"
 										 CssClass="@GetPublishCssClass()"
-										 IsVisible="@(_selectedRow is not null && _currentView != NavView.Settings)"
+										 IsVisible="@(_selectedRow is not null && !IsSettingsView)"
 										 IsEnabled="@(IsPublishEnabled() && !IsStepQueueBlocked(WorkflowStep.Publish))"
 										 ToolTip="@GatedTooltip(WorkflowStep.Publish, GetPublishTooltip())"
 										 Click="OnToolbarClick" />
@@ -570,7 +571,7 @@ else
 										</button>
 									</span>
 								}
-								@if (_selectedRow is not null && _currentView != NavView.Settings)
+								@if (_selectedRow is not null && !IsSettingsView)
 								{
 									<span style="display:inline-flex" title="@GetCombinedPromptTooltip()">
 										<button class="btn toolbar-action-btn"
@@ -991,7 +992,15 @@ else
 	private static readonly string AppInstanceId = Guid.NewGuid().ToString("N");
 	private readonly HashSet<string> _expandedNodeKeys = [];
 	private bool _restoringExpansion;
-	private bool ShowWorkflowFlow => _selectedRow is not null && _currentView != NavView.Settings;
+	private bool ShowWorkflowFlow => _selectedRow is not null && !IsSettingsView;
+
+	// A settings page acts on nothing, so it hides the workflow toolbar and the clone badges.
+	private bool IsSettingsView => _currentView is NavView.Settings or NavView.RepositorySettings;
+
+	// One draft for whichever settings page is open; each page refills it on arrival.
+	private LicenseOverride _licenseDraft = new();
+	private string? _licenseStatus;
+	private string? _repositorySettingsFullName;
 	private string? _selectedPackageId;
 	private AssessmentCategory? _selectedCategory;
 	private string? _selectedRuleId;
@@ -2723,6 +2732,7 @@ else
 		// Settings view so the breadcrumb reads Dashboard › Org › Settings.
 		await NavigateToOrgAsync(organization);
 		_selectedOrganization = organization;
+		LoadLicenseDraft(RuntimeSettings.GetOrganizationLicense(organization));
 		_currentView = NavView.Settings;
 		_selectedCategory = null;
 		_selectedRuleId = null;
@@ -2730,6 +2740,101 @@ else
 		_failedSteps.Clear();
 		_lastFailedWorkflowStep = null;
 		StateHasChanged();
+	}
+
+	private async Task NavigateToRepositorySettingsAsync(string repositoryFullName)
+	{
+		// Same shape as the organisation's cog: focus the node, then switch its view to settings.
+		await SelectNavNodeAsync(NavTreeDataProvider.RepoKey(repositoryFullName), NavView.RepositoryDetail);
+		if (!string.Equals(_selectedRow?.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase))
+		{
+			_selectedRow = _rows.FirstOrDefault(row => string.Equals(row.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase))
+				?? _selectedRow;
+		}
+
+		_repositorySettingsFullName = repositoryFullName;
+		LoadLicenseDraft(RuntimeSettings.GetRepositoryLicense(repositoryFullName));
+		_currentView = NavView.RepositorySettings;
+		_selectedCategory = null;
+		_selectedRuleId = null;
+		StateHasChanged();
+	}
+
+	private void LoadLicenseDraft(LicenseOverride? stored)
+	{
+		_licenseDraft = new LicenseOverride { License = stored?.License, LicenseFileText = stored?.LicenseFileText };
+		_licenseStatus = null;
+	}
+
+	private static string DescribeLicenseSource(EffectiveLicense license, string? repositoryFullName) => license.Source switch
+	{
+		LicenseSource.Repository => "this repository's override",
+		LicenseSource.Organization => $"the {repositoryFullName?.Split('/')[0]} organisation",
+		LicenseSource.Application => "the application default",
+		_ => "configuration (appsettings)"
+	};
+
+	private static bool SameLicense(LicenseOverride? a, LicenseOverride? b)
+		=> string.Equals(a?.Normalised()?.License, b?.Normalised()?.License, StringComparison.Ordinal)
+			&& string.Equals(a?.Normalised()?.LicenseFileText, b?.Normalised()?.LicenseFileText, StringComparison.Ordinal);
+
+	private async Task SaveDefaultLicenseAsync()
+	{
+		var before = RuntimeSettings.DefaultLicense;
+		RuntimeSettings.SetDefaultLicense(_licenseDraft);
+		_licenseStatus = "✓ Saved";
+		if (!SameLicense(before, RuntimeSettings.DefaultLicense))
+		{
+			AppendConsole($"📜 Default licence is now {RuntimeSettings.ResolveInherited(null, LicenseSource.Organization).License}; re-assessing to apply it.");
+			await ReassessOrganizationAsync(null);
+		}
+	}
+
+	private async Task SaveOrganizationLicenseAsync()
+	{
+		var organization = CurrentOrganization;
+		var before = RuntimeSettings.GetOrganizationLicense(organization);
+		RuntimeSettings.SetOrganizationLicense(organization, _licenseDraft);
+		_licenseStatus = "✓ Saved";
+		if (!SameLicense(before, RuntimeSettings.GetOrganizationLicense(organization)))
+		{
+			AppendConsole($"📜 {organization} licence is now {RuntimeSettings.ResolveInherited($"{organization}/", LicenseSource.Repository).License}; re-assessing to apply it.");
+			await ReassessOrganizationAsync(organization);
+		}
+	}
+
+	private void SaveRepositoryLicense()
+	{
+		if (_repositorySettingsFullName is not { Length: > 0 } repositoryFullName)
+		{
+			return;
+		}
+
+		var before = RuntimeSettings.ResolveLicense(repositoryFullName);
+		RuntimeSettings.SetRepositoryLicense(repositoryFullName, _licenseDraft);
+		var after = RuntimeSettings.ResolveLicense(repositoryFullName);
+		_licenseStatus = "✓ Saved";
+		if (before == after)
+		{
+			return;
+		}
+
+		var row = _rows.FirstOrDefault(r => string.Equals(r.RepositoryFullName, repositoryFullName, StringComparison.OrdinalIgnoreCase));
+		if (row is null || RuntimeSettings.IsRepositoryExcluded(repositoryFullName))
+		{
+			AppendConsole($"📜 {repositoryFullName} is now held to {after.License}; it applies at its next assessment.");
+			return;
+		}
+
+		var title = $"Re-assess {row.RepositoryName}";
+		var queued = Lanes.Enqueue(
+			title,
+			WorkDescriptor.ForRepository(WorkKind.Reassess, row.Organization, repositoryFullName),
+			$"{WorkKind.Reassess}:{repositoryFullName}:",
+			WorkflowStep.Reassess,
+			_selectedNodeKey);
+		AppendConsole($"📜 {repositoryFullName} is now held to {after.License}.");
+		AppendConsole(DescribeQueued(queued, title));
 	}
 
 	private void NavigateToSelectedPackage()
@@ -2750,6 +2855,7 @@ else
 		// Refilled on each visit, so the page always opens showing what is stored rather than whatever was
 		// half-typed and abandoned last time.
 		LoadOllamaDraft();
+		LoadLicenseDraft(RuntimeSettings.DefaultLicense);
 
 		_currentView = NavView.AppSettings;
 		_selectedRow = null;
@@ -3368,6 +3474,9 @@ else
 			case NavView.AppSettings:
 				@RenderAppSettingsView()
 				break;
+			case NavView.RepositorySettings:
+				@RenderRepositorySettingsView()
+				break;
 			case NavView.Repositories:
 				@RenderEstateTable("Repositories")
 				break;
@@ -3851,9 +3960,13 @@ else
 
 			<h3 class="settings-section">Assessment defaults</h3>
 			<div class="settings-form">
-				<div class="form-group"><label>Expected License</label><input type="text" value="@settings.ExpectedLicense" readonly /></div>
 				<div class="form-group"><label>Copyright Holder</label><input type="text" value="@settings.CopyrightHolder" readonly /></div>
 			</div>
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				The licence every repository is held to unless its organisation's or its own cog says
+				otherwise. Saving a change re-assesses every organisation.
+			</p>
+			@RenderLicenseEditor(RuntimeSettings.ResolveInherited(null, LicenseSource.Application), "configuration (appsettings)", SaveDefaultLicenseAsync)
 
 			<h3 class="settings-section">Configured defaults</h3>
 			<p style="color: var(--text-secondary); font-size: 0.85rem;">
@@ -4145,6 +4258,65 @@ else
 		}
 	}
 
+	/// <summary>
+	/// The licence and LICENSE marker fields shared by the three settings pages. Blank inherits
+	/// <paramref name="inherited"/>, which the placeholders show.
+	/// </summary>
+	private RenderFragment RenderLicenseEditor(EffectiveLicense inherited, string inheritedFrom, Func<Task> onSave) => __builder =>
+	{
+		var draftLicense = _licenseDraft.License?.Trim();
+		var markerLicense = string.IsNullOrWhiteSpace(draftLicense) ? inherited.License : draftLicense;
+		var derivedMarker = string.IsNullOrWhiteSpace(draftLicense) && inherited.LicenseFileText is { Length: > 0 } inheritedMarker
+			? inheritedMarker
+			: string.Join(" + ", LicenseExpressions.FileMarkers(markerLicense));
+		<div class="settings-form">
+			<div class="form-group">
+				<label>Licence (SPDX expression)</label>
+				<input type="text" @bind="_licenseDraft.License" @bind:event="oninput" placeholder="@($"{inherited.License} (inherited)")" />
+				<span class="settings-hint">
+					Blank inherits @inherited.License from @inheritedFrom. Examples: MIT, Apache-2.0,
+					LGPL-2.1-or-later, MIT AND BSD-2-Clause. LIC-02, README-04 and COM-02 check against it.
+				</span>
+			</div>
+			<div class="form-group">
+				<label>LICENSE marker text</label>
+				<input type="text" @bind="_licenseDraft.LicenseFileText" placeholder="@derivedMarker" />
+				<span class="settings-hint">
+					What LIC-01 looks for in LICENSE. Blank uses @derivedMarker. Only MIT text can be written
+					by Fix; any other licence's LICENSE is never overwritten.
+				</span>
+			</div>
+			<div class="settings-path-row">
+				<button class="btn btn-sm btn-primary" @onclick="onSave">
+					<i class="fas fa-save"></i> Save
+				</button>
+				@if (_licenseStatus is { Length: > 0 })
+				{
+					<span class="settings-hint">@_licenseStatus</span>
+				}
+			</div>
+		</div>
+	};
+
+	private RenderFragment RenderRepositorySettingsView() => __builder =>
+	{
+		var repositoryFullName = _repositorySettingsFullName ?? string.Empty;
+		var effective = RuntimeSettings.ResolveLicense(repositoryFullName);
+		var inherited = RuntimeSettings.ResolveInherited(repositoryFullName, LicenseSource.Repository);
+		<div class="settings-view" style="padding: 1.5rem; max-width: 600px;">
+			<h2>⚙️ Settings: @repositoryFullName</h2>
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				Overrides for this repository alone. Saving a change re-assesses it.
+			</p>
+
+			<h3 class="settings-section">Licence</h3>
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				Currently held to <strong>@effective.License</strong>, from @DescribeLicenseSource(effective, repositoryFullName).
+			</p>
+			@RenderLicenseEditor(inherited, DescribeLicenseSource(inherited, repositoryFullName), () => { SaveRepositoryLicense(); return Task.CompletedTask; })
+		</div>
+	};
+
 	private RenderFragment RenderSettingsView() => __builder =>
 	{
 		// Read once rather than per attribute: the path feeds the field, the button's state and its tooltip.
@@ -4181,9 +4353,17 @@ else
 				under that account's name instead, since clones are filed by their owner on GitHub.
 			</p>
 
+			<h3 class="settings-section">Licence</h3>
 			<p style="color: var(--text-secondary); font-size: 0.85rem;">
-				Settings that apply to every organisation — licence, copyright, clone location, IDE —
-				are on the
+				Applies to repositories owned by @CurrentOrganization unless a repository sets its own on its
+				cog. Saving a change re-assesses the organisation.
+			</p>
+			@{ var inheritedByOrganization = RuntimeSettings.ResolveInherited($"{CurrentOrganization}/", LicenseSource.Organization); }
+			@RenderLicenseEditor(inheritedByOrganization, DescribeLicenseSource(inheritedByOrganization, null), SaveOrganizationLicenseAsync)
+
+			<p style="color: var(--text-secondary); font-size: 0.85rem;">
+				Settings that apply to every organisation (the default licence, copyright, clone location,
+				IDE) are on the
 				<a href="#" class="settings-link" @onclick="NavigateToAppSettings" @onclick:preventDefault>Application settings</a>
 				page.
 			</p>

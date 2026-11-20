@@ -403,6 +403,150 @@ public class RuntimeSettingsService
 	}
 
 	/// <summary>
+	/// The application-wide licence default set on the settings page, or null to use configuration.
+	/// </summary>
+	public LicenseOverride? DefaultLicense
+	{
+		get
+		{
+			lock (_lock)
+			{
+				return Copy(_runtimeSettings.DefaultLicense);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Sets the application-wide licence default and persists it; blank clears it.
+	/// </summary>
+	/// <param name="value">The default, or null.</param>
+	public void SetDefaultLicense(LicenseOverride? value)
+	{
+		lock (_lock)
+		{
+			_runtimeSettings.DefaultLicense = value?.Normalised();
+		}
+
+		SaveToDisk();
+	}
+
+	/// <summary>
+	/// An organisation's licence override, or null when it inherits.
+	/// </summary>
+	/// <param name="organization">The organisation name.</param>
+	public LicenseOverride? GetOrganizationLicense(string? organization)
+	{
+		lock (_lock)
+		{
+			return Lookup(_runtimeSettings.OrganizationLicenses, organization);
+		}
+	}
+
+	/// <summary>
+	/// Sets an organisation's licence override and persists it; blank clears it.
+	/// </summary>
+	/// <param name="organization">The organisation name.</param>
+	/// <param name="value">The override, or null.</param>
+	public void SetOrganizationLicense(string organization, LicenseOverride? value)
+		=> SetOverride(_runtimeSettings.OrganizationLicenses, organization, value);
+
+	/// <summary>
+	/// A repository's licence override, or null when it inherits.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public LicenseOverride? GetRepositoryLicense(string? repositoryFullName)
+	{
+		lock (_lock)
+		{
+			return Lookup(_runtimeSettings.RepositoryLicenses, repositoryFullName);
+		}
+	}
+
+	/// <summary>
+	/// Sets a repository's licence override and persists it; blank clears it.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	/// <param name="value">The override, or null.</param>
+	public void SetRepositoryLicense(string repositoryFullName, LicenseOverride? value)
+		=> SetOverride(_runtimeSettings.RepositoryLicenses, repositoryFullName, value);
+
+	/// <summary>
+	/// The licence a repository is held to: its own override, else its owner's, else the application
+	/// default, else configuration.
+	/// </summary>
+	/// <remarks>
+	/// The LICENSE marker comes from the level that supplied the licence or a more specific one, so an
+	/// organisation's marker never follows its licence onto a repository that has its own.
+	/// </remarks>
+	/// <param name="repositoryFullName">The repository, as "owner/name".</param>
+	public EffectiveLicense ResolveLicense(string? repositoryFullName)
+		=> Resolve(repositoryFullName, LicenseSource.Repository);
+
+	/// <summary>
+	/// What a level would inherit if it set nothing: the resolution of the levels below it.
+	/// </summary>
+	/// <param name="repositoryFullName">The repository, or for an organisation any "owner/" name.</param>
+	/// <param name="level">The level asking; must be above <see cref="LicenseSource.Configuration"/>.</param>
+	public EffectiveLicense ResolveInherited(string? repositoryFullName, LicenseSource level)
+		=> Resolve(repositoryFullName, level == LicenseSource.Configuration ? level : level - 1);
+
+	private EffectiveLicense Resolve(string? repositoryFullName, LicenseSource mostSpecific)
+	{
+		var owner = repositoryFullName?.Split('/')[0];
+		var allLevels = new List<(LicenseSource Source, LicenseOverride? Override)>
+		{
+			(LicenseSource.Repository, GetRepositoryLicense(repositoryFullName)),
+			(LicenseSource.Organization, GetOrganizationLicense(owner)),
+			(LicenseSource.Application, DefaultLicense),
+			(LicenseSource.Configuration, new LicenseOverride
+			{
+				License = string.IsNullOrWhiteSpace(_appSettings.ExpectedLicense)
+					? PanoramicData.NugetManagement.Models.Standards.LicenseType
+					: _appSettings.ExpectedLicense.Trim()
+			})
+		};
+
+		var levels = allLevels.Where(level => level.Source <= mostSpecific).ToList();
+		var supplier = levels.FindIndex(level => !string.IsNullOrWhiteSpace(level.Override?.License));
+		var marker = levels
+			.Take(supplier + 1)
+			.Select(level => level.Override?.LicenseFileText)
+			.FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+
+		return new EffectiveLicense(levels[supplier].Override!.License!, marker, levels[supplier].Source);
+	}
+
+	private static LicenseOverride? Copy(LicenseOverride? value)
+		=> value is null ? null : new LicenseOverride { License = value.License, LicenseFileText = value.LicenseFileText };
+
+	private static LicenseOverride? Lookup(Dictionary<string, LicenseOverride> overrides, string? key)
+		=> string.IsNullOrWhiteSpace(key) ? null : Copy(overrides.GetValueOrDefault(key.Trim()));
+
+	private void SetOverride(Dictionary<string, LicenseOverride> overrides, string key, LicenseOverride? value)
+	{
+		var trimmed = key?.Trim();
+		if (string.IsNullOrEmpty(trimmed))
+		{
+			return;
+		}
+
+		var normalised = value?.Normalised();
+		lock (_lock)
+		{
+			if (normalised is null)
+			{
+				overrides.Remove(trimmed);
+			}
+			else
+			{
+				overrides[trimmed] = normalised;
+			}
+		}
+
+		SaveToDisk();
+	}
+
+	/// <summary>
 	/// Removes an organisation and persists the list. Returns false when the organisation is not
 	/// present, or when it is the only one left — at least one organisation must remain, otherwise
 	/// the list would fall back to the configured organisation and the removal would appear to
@@ -453,6 +597,20 @@ public class RuntimeSettingsService
 		}
 	}
 
+	private static Dictionary<string, LicenseOverride> CaseInsensitive(Dictionary<string, LicenseOverride>? source)
+	{
+		var copy = new Dictionary<string, LicenseOverride>(StringComparer.OrdinalIgnoreCase);
+		foreach (var (key, value) in source ?? [])
+		{
+			if (value?.Normalised() is { } normalised)
+			{
+				copy[key] = normalised;
+			}
+		}
+
+		return copy;
+	}
+
 	private RuntimeSettings LoadFromDisk()
 	{
 		try
@@ -468,6 +626,10 @@ public class RuntimeSettingsService
 					// A settings file written before multi-organisation support, or one hand-edited to
 					// "Organizations": null, would otherwise leave the list null and throw on first use.
 					settings.Organizations ??= [];
+
+					// The deserialiser builds these with the default, case-sensitive comparer.
+					settings.OrganizationLicenses = CaseInsensitive(settings.OrganizationLicenses);
+					settings.RepositoryLicenses = CaseInsensitive(settings.RepositoryLicenses);
 
 					// Apply the persisted LocalReposRoot to AppSettings so
 					// LocalRepoService uses it from the start
@@ -514,7 +676,10 @@ public class RuntimeSettingsService
 					MaxConcurrentLanes = _runtimeSettings.MaxConcurrentLanes,
 					Ollama = _runtimeSettings.Ollama,
 					Organizations = [.. _runtimeSettings.Organizations],
-					ExcludedRepositories = [.. _runtimeSettings.ExcludedRepositories]
+					ExcludedRepositories = [.. _runtimeSettings.ExcludedRepositories],
+					DefaultLicense = Copy(_runtimeSettings.DefaultLicense),
+					OrganizationLicenses = CaseInsensitive(_runtimeSettings.OrganizationLicenses),
+					RepositoryLicenses = CaseInsensitive(_runtimeSettings.RepositoryLicenses)
 				};
 			}
 
@@ -593,4 +758,20 @@ public class RuntimeSettings
 	/// somebody else; that is exactly when governance must be told to leave it alone.
 	/// </remarks>
 	public List<string> ExcludedRepositories { get; set; } = [];
+
+	/// <summary>
+	/// The licence every repository is held to unless its organisation or itself says otherwise; null
+	/// uses <see cref="AppSettings.ExpectedLicense"/>.
+	/// </summary>
+	public LicenseOverride? DefaultLicense { get; set; }
+
+	/// <summary>
+	/// Licence overrides per organisation, by name.
+	/// </summary>
+	public Dictionary<string, LicenseOverride> OrganizationLicenses { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Licence overrides per repository, by full name.
+	/// </summary>
+	public Dictionary<string, LicenseOverride> RepositoryLicenses { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

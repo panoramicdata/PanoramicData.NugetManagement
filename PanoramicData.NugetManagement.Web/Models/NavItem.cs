@@ -279,5 +279,8 @@ public enum NavView
 	/// One work item: what it is doing, why it was queued, and everything it has said — including a
 	/// model's session, streamed as it happens.
 	/// </summary>
-	WorkItemDetail
+	WorkItemDetail,
+
+	/// <summary>Per-repository settings (the cog on a repository node), such as its licence override.</summary>
+	RepositorySettings
 }

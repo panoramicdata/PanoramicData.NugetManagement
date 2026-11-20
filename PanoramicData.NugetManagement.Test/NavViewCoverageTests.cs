@@ -42,6 +42,12 @@ public class NavViewCoverageTests(ITestOutputHelper output) : TestWithOutput(out
 	}
 
 	[Fact]
+	public void TheRepositorySettingsCogShouldHaveAViewToRender()
+		=> ReadRenderCurrentViewSwitch()
+			.Should().Contain("case NavView.RepositorySettings:",
+				"the cog on a repository node opens its settings, which must not be the getting-started text");
+
+	[Fact]
 	public void SelectingARepositoryShouldNotFallThroughToThePlaceholder()
 		=> ReadRenderCurrentViewSwitch()
 			.Should().Contain("case NavView.RepositoryDetail:",
