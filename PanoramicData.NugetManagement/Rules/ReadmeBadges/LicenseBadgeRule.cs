@@ -58,12 +58,7 @@ public class LicenseBadgeRule : RuleBase
 		var index = content.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
 		while (index >= 0)
 		{
-			var end = index + marker.Length;
-			// In a shields path a single dash ends the label; in alt text it is part of the SPDX id.
-			var isSingleDash = !marker.StartsWith("License: ", StringComparison.OrdinalIgnoreCase)
-				&& end < content.Length && content[end] == '-'
-				&& (end + 1 >= content.Length || content[end + 1] != '-');
-			if (end >= content.Length || isSingleDash || content[end] is ']' or ')' or '"' or '\'' or '.' or '?' or '&' or '/' or '\r' or '\n')
+			if (EndsLabel(content, index + marker.Length, marker))
 			{
 				return true;
 			}
@@ -72,5 +67,19 @@ public class LicenseBadgeRule : RuleBase
 		}
 
 		return false;
+	}
+
+	private static bool EndsLabel(string content, int end, string marker)
+	{
+		if (end >= content.Length)
+		{
+			return true;
+		}
+
+		// In a shields path a single dash ends the label; in alt text it is part of the SPDX id.
+		return content[end] == '-'
+			? !marker.StartsWith("License: ", StringComparison.OrdinalIgnoreCase)
+				&& (end + 1 >= content.Length || content[end + 1] != '-')
+			: content[end] is ']' or ')' or '"' or '\'' or '.' or '?' or '&' or '/' or '\r' or '\n';
 	}
 }
