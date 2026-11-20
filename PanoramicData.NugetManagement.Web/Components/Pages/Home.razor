@@ -506,8 +506,8 @@ else
 							}
 
 							<PDToolbarButton Key="build"
-											 Text="Build"
-											 IconCssClass="fas fa-hammer"
+											 Text="@GetToolbarStepText(WorkflowStep.Build)"
+											 IconCssClass="@GetToolbarStepIconCss(WorkflowStep.Build, IsStepRunning(WorkflowStep.Build))"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Build)"
 											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
 											 IsEnabled="@IsLocalStepEnabled(WorkflowStep.Build)"
@@ -520,8 +520,8 @@ else
 							}
 
 							<PDToolbarButton Key="test"
-											 Text="Test"
-											 IconCssClass="fas fa-flask"
+											 Text="@GetToolbarStepText(WorkflowStep.Test)"
+											 IconCssClass="@GetToolbarStepIconCss(WorkflowStep.Test, IsStepRunning(WorkflowStep.Test))"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.Test)"
 											 IsVisible="@(HasToolbarTarget && _currentView != NavView.Settings)"
 											 IsEnabled="@IsLocalStepEnabled(WorkflowStep.Test)"
@@ -4465,8 +4465,18 @@ else
 		await RefreshTableAsync();
 	}
 
-   private bool IsStepRunning(WorkflowStep step)
-		=> _activeWorkflowStep == step && (_isRunning || _isAssessing || _isLoading);
+	private bool IsStepRunning(WorkflowStep step)
+		=> (_activeWorkflowStep == step && (_isRunning || _isAssessing || _isLoading))
+			|| RunningQueuedStep == step;
+
+	// Without this a running Build or Test is a greyed button with no explanation, and Publish looks broken.
+	private WorkflowStep? RunningQueuedStep
+		=> _selectedRow?.RepositoryFullName is { Length: > 0 } name
+			? Lanes.ItemsFor($"repo:{name.ToLowerInvariant()}")
+				.FirstOrDefault(i => i.State == WorkItemState.Running
+					&& i.Step is not null
+					&& string.Equals(i.RepositoryFullName, name, StringComparison.OrdinalIgnoreCase))?.Step
+			: null;
 
 	/// <summary>
 	/// The earliest workflow step queued or running for the selected repository, or null when nothing
@@ -7454,6 +7464,11 @@ else
 	private string GetStepCssClassFull(WorkflowStep step)
 	{
 		var baseCss = GetStepCssClass(step);
+		if (IsStepRunning(step))
+		{
+			baseCss = $"{baseCss} toolbar-step-running";
+		}
+
 		if (CurrentAiClipboardCueStep == step)
 		{
 			baseCss = string.IsNullOrWhiteSpace(baseCss) ? "toolbar-ai-ready" : $"{baseCss} toolbar-ai-ready";

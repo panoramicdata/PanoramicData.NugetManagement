@@ -35,9 +35,11 @@ public partial class LocalRepoService
 
 		var combinedOutput = new List<string>();
 		var allPassed = true;
+		var projectNumber = 0;
 
 		foreach (var (projectPath, projectConfig) in testProjects)
 		{
+			projectNumber++;
 			if (projectConfig?.DefaultTestingLevel == ProjectTestingLevel.None)
 			{
 				onOutput?.Invoke($"⏭️ Skipping tests for {projectPath} (DefaultTestingLevel=None).");
@@ -46,6 +48,7 @@ public partial class LocalRepoService
 
 			var args = BuildTestArguments(path, projectPath, projectConfig, testClasses);
 
+			onOutput?.Invoke($"▶ Test project {projectNumber} of {testProjects.Count}: {projectPath}");
 			onOutput?.Invoke($"▶ dotnet {string.Join(' ', args)}");
 			var (success, output) = await RunCommandWithStreamingAsync(path, "dotnet", args, onOutput, cancellationToken, environment).ConfigureAwait(false);
 			combinedOutput.Add(output);
