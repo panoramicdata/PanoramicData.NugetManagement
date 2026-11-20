@@ -1,6 +1,7 @@
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Remediations;
+using PanoramicData.NugetManagement.Web.Services;
 
 namespace PanoramicData.NugetManagement.Test;
 
@@ -131,11 +132,27 @@ public class LicenseRuleOverrideTests(ITestOutputHelper output) : TestWithOutput
 	}
 
 	[Fact]
-	public async Task README04_UnderTheDefault_RejectsACompoundBadgeAndKeepsItsBadgeLine()
+	public async Task README04_UnderTheDefault_StillAcceptsABadgeThatStartsWithMit()
 	{
 		var result = await Evaluate("README-04", "MIT", ("README.md", $"{_jiraBadge}\n"));
 
-		result.Passed.Should().BeFalse("\"License: MIT\" is only the start of that badge's label");
+		result.Passed.Should().BeTrue("the default's check is unchanged, so a repository not yet overridden is not given a second badge");
+	}
+
+	[Fact]
+	public async Task README04_ForAnOverride_RejectsABadgeForALongerLicence()
+	{
+		var result = await Evaluate("README-04", "GPL-3.0", ("README.md", "[![License: GPL-3.0-or-later](x)](LICENSE)\n"));
+
+		result.Passed.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task README04_UnderTheDefault_KeepsItsBadgeLine()
+	{
+		var result = await Evaluate("README-04", "MIT", ("README.md", "# Title\n"));
+
+		result.Passed.Should().BeFalse();
 		result.Advisory!.Data["line_content"].Should().Be(
 			"[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)");
 	}
@@ -204,6 +221,26 @@ public class LicenseRuleOverrideTests(ITestOutputHelper output) : TestWithOutput
 		var fixedContent = (string)result.Advisory!.Data["new_content"];
 		fixedContent.Should().NotContain("MIT License").And.Contain(_lgpl);
 		(await Evaluate("COM-02", _lgpl, ("CONTRIBUTING.md", fixedContent))).Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task AFixAssessedAgainstAnOldLicence_IsStale()
+	{
+		var result = await Evaluate("LIC-02", "MIT", ("Lib/Lib.csproj", Csproj("LGPL-2.1-or-later")));
+
+		DashboardService.StaleLicenseAdvisoryLicense(result, _lgpl).Should().Be("MIT");
+		DashboardService.StaleLicenseAdvisoryLicense(result, "MIT").Should().BeNull();
+	}
+
+	[Fact]
+	public async Task ACachedContributingAdvisoryThatNamesNoLicence_IsStale()
+	{
+		var result = await Evaluate("COM-02", "MIT", ("CONTRIBUTING.md", "# Something else\n"));
+		DashboardService.StaleLicenseAdvisoryLicense(result, "MIT").Should().BeNull();
+
+		result.Advisory!.Data.Remove("expected_license");
+
+		DashboardService.StaleLicenseAdvisoryLicense(result, "MIT").Should().Be("unknown");
 	}
 
 	private static string Csproj(string license)

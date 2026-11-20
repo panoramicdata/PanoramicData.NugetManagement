@@ -25,8 +25,11 @@ public class LicenseBadgeRule : RuleBase
 		var license = context.Options.ExpectedLicense;
 		var content = context.GetFileContent("README.md");
 		var badgeLine = LicenseExpressions.BadgeLine(license);
+		var found = LicenseExpressions.IsDefault(license)
+			? Contains(content, $"License: {license}") || Contains(content, $"license-{license}")
+			: LicenseExpressions.BadgeMarkers(license).Any(marker => HasMarker(content, marker));
 		return Task.FromResult(
-			LicenseExpressions.BadgeMarkers(license).Any(marker => HasMarker(content, marker))
+			found
 			? Pass($"License badge for \"{license}\" found in README.md.")
 			: Fail(
 				$"README.md does not contain a license badge for \"{license}\".",
@@ -44,7 +47,7 @@ public class LicenseBadgeRule : RuleBase
 				}));
 	}
 
-	// The marker must end where the label does, or "License: MIT" would pass a "License: MIT AND BSD-2-Clause" badge.
+	// For an override the marker must end where the label does, or "License: GPL-3.0" would pass a "GPL-3.0-or-later" badge.
 	private static bool HasMarker(string? content, string marker)
 	{
 		if (content is null)
@@ -56,7 +59,9 @@ public class LicenseBadgeRule : RuleBase
 		while (index >= 0)
 		{
 			var end = index + marker.Length;
-			var isSingleDash = end < content.Length && content[end] == '-'
+			// In a shields path a single dash ends the label; in alt text it is part of the SPDX id.
+			var isSingleDash = !marker.StartsWith("License: ", StringComparison.OrdinalIgnoreCase)
+				&& end < content.Length && content[end] == '-'
 				&& (end + 1 >= content.Length || content[end + 1] != '-');
 			if (end >= content.Length || isSingleDash || content[end] is ']' or ')' or '"' or '\'' or '.' or '?' or '&' or '/' or '\r' or '\n')
 			{

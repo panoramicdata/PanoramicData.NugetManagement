@@ -225,15 +225,32 @@ public partial class DashboardService
 			return false;
 		}
 
-		var stated = DataDrivenRemediation.ReadStrings(failure.Advisory.Data, "expected_license", "expected_license_type");
 		var current = _runtimeSettings.ResolveLicense(row.RepositoryFullName).License;
-		if (stated.Length == 0 || string.Equals(stated[0], current, StringComparison.OrdinalIgnoreCase))
+		if (StaleLicenseAdvisoryLicense(failure, current) is not { } stated)
 		{
 			return false;
 		}
 
-		onOutput?.Invoke($"⚠️ [{failure.RuleId}] Skipped: assessed against licence {stated[0]}, but {row.RepositoryFullName} is now held to {current}. Re-assess first.");
+		onOutput?.Invoke($"⚠️ [{failure.RuleId}] Skipped: assessed against licence {stated}, but {row.RepositoryFullName} is now held to {current}. Re-assess first.");
 		return true;
+	}
+
+	/// <summary>
+	/// The licence a stale licence advisory was assessed against, or null when it is current or names none.
+	/// </summary>
+	internal static string? StaleLicenseAdvisoryLicense(RuleResult failure, string currentLicense)
+	{
+		var stated = failure.Advisory is null
+			? []
+			: DataDrivenRemediation.ReadStrings(failure.Advisory.Data, "expected_license", "expected_license_type");
+
+		// COM-02 advisories cached before it named a licence would replace a kept licence note.
+		if (stated.Length == 0)
+		{
+			return string.Equals(failure.RuleId, "COM-02", StringComparison.OrdinalIgnoreCase) ? "unknown" : null;
+		}
+
+		return string.Equals(stated[0], currentLicense, StringComparison.OrdinalIgnoreCase) ? null : stated[0];
 	}
 
 	private Task<List<string>> ApplySingleRuleAsync(RepositoryDashboardRow row, string ruleId, Action<string>? onOutput)
