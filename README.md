@@ -1,6 +1,6 @@
 # PanoramicData.NugetManagement
 
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/PLACEHOLDER)](https://app.codacy.com/gh/panoramicdata/PanoramicData.NugetManagement/dashboard)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/896c2da514fe4bcfbf271f54cbec908b)](https://app.codacy.com/gh/panoramicdata/PanoramicData.NugetManagement/dashboard)
 [![NuGet](https://img.shields.io/nuget/v/PanoramicData.NugetManagement)](https://www.nuget.org/packages/PanoramicData.NugetManagement)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 

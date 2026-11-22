@@ -6,7 +6,7 @@ namespace PanoramicData.NugetManagement.Test;
 public class CodacyBadgeRulePrivacyTests
 {
 	private const string _withoutBadge = "# Acme.Widget\n\nA widget.";
-	private const string _withBadge = "[![Codacy Badge](https://app.codacy.com/project/badge/grade/Acme.Widget)](https://app.codacy.com/gh/test-org/Acme.Widget/dashboard)\n# Acme.Widget";
+	private const string _withBadge = "[![Codacy Badge](https://app.codacy.com/project/badge/Grade/896c2da514fe4bcfbf271f54cbec908b)](https://app.codacy.com/gh/test-org/Acme.Widget/dashboard)\n# Acme.Widget";
 
 	[Fact]
 	public async Task PrivateRepository_WithoutBadge_IsNotApplicableAndOffersNoRemediation()
@@ -23,12 +23,12 @@ public class CodacyBadgeRulePrivacyTests
 		=> (await Evaluate(isPrivate: true, _withBadge)).IsApplicable.Should().BeFalse();
 
 	[Fact]
-	public async Task PublicRepository_WithoutBadge_StillFailsWithRemediationData()
+	public async Task PublicRepository_WithoutBadge_StillFails()
 	{
 		var result = await Evaluate(isPrivate: false, _withoutBadge);
 
 		result.Passed.Should().BeFalse();
-		result.Advisory!.Data["remediation_type"].Should().Be("prepend_line");
+		result.Advisory!.Data.Should().NotContainKey("remediation_type", "without a Codacy token the real badge id is unknown, so no badge can be written");
 	}
 
 	[Fact]
