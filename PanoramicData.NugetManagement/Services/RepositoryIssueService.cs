@@ -100,19 +100,19 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 				.GetRepositoryCommentsPageAsync(owner, name, page, cancellationToken)
 				.ConfigureAwait(false);
 
-			// An empty page means the comments ran out. Everything still unresolved at this point has
-			// provably never been answered by a maintainer, because the sweep has now seen every
-			// comment in the repository and none of them was one.
-			if (comments.Count == 0)
-			{
-				return true;
-			}
-
 			foreach (var comment in comments.Where(c => c.IsFromMaintainer && unresolved.Contains(c.IssueNumber)))
 			{
 				// Newest-first, so the first maintainer comment seen for an item is its latest.
 				replies[comment.IssueNumber] = comment.CreatedAtUtc;
 				unresolved.Remove(comment.IssueNumber);
+			}
+
+			// A short page means the comments ran out. Everything still unresolved at this point has
+			// provably never been answered by a maintainer, because the sweep has now seen every
+			// comment in the repository and none of them was one.
+			if (comments.Count < IGitHubIssueApi.CommentPageSize)
+			{
+				return true;
 			}
 		}
 

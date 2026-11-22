@@ -137,7 +137,7 @@ public class RepositoryIssueServiceTests(ITestOutputHelper output) : TestWithOut
 		// Full pages of comments on an unrelated issue, so the sweep never sees a short page that
 		// would signal the comments have run out; it must exhaust the page budget instead.
 		var unrelatedPages = Enumerable.Range(0, 20)
-			.Select(_ => (IReadOnlyList<GitHubIssueComment>)[Comment(999, TimeSpan.FromDays(1), maintainer: true)])
+			.Select(_ => (IReadOnlyList<GitHubIssueComment>)[.. Enumerable.Repeat(Comment(999, TimeSpan.FromDays(1), maintainer: true), IGitHubIssueApi.CommentPageSize)])
 			.ToList();
 
 		var api = new FakeApi(
@@ -176,6 +176,18 @@ public class RepositoryIssueServiceTests(ITestOutputHelper output) : TestWithOut
 			"panoramicdata", "Sample", TestContext.Current.CancellationToken);
 
 		api.PagesRequested.Should().Be(1, "a short page means the comments ran out");
+	}
+
+	[Fact]
+	public async Task AShortNonEmptyPageEndsTheSweepWithoutAnExtraRequest()
+	{
+		var api = new FakeApi([Item(1)], [[Comment(99, TimeSpan.FromDays(1), maintainer: true)]]);
+
+		await new RepositoryIssueService(api).GetOpenIssuesAsync(
+			"panoramicdata", "Sample", TestContext.Current.CancellationToken);
+
+		api.PagesRequested.Should().Be(1, "a page shorter than the page size is the last page");
+		api.ItemsFetchedIndividually.Should().BeEmpty();
 	}
 
 	[Fact]

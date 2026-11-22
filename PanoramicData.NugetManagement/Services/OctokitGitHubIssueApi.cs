@@ -56,7 +56,7 @@ public class OctokitGitHubIssueApi(IGitHubClient github) : IGitHubIssueApi
 
 		var options = new ApiOptions
 		{
-			PageSize = PageSize,
+			PageSize = IGitHubIssueApi.CommentPageSize,
 			PageCount = 1,
 			StartPage = pageNumber
 		};
