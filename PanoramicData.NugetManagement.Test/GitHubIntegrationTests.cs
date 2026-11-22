@@ -58,8 +58,7 @@ public class GitHubIntegrationTests : TestWithOutput
 	[Fact]
 	public async Task GitHubContextBuilder_ShouldFetchExpectedFiles_ForThisRepository()
 	{
-		var repository = await _github.Repository.Get("panoramicdata", "PanoramicData.NugetManagement");
-		var context = ExcludingFixturePaths(await _contextBuilder.BuildAsync(repository, new RepoOptions(), CancellationToken.None));
+		var context = ExcludingFixturePaths(await BuildContextAsync("PanoramicData.NugetManagement"));
 
 		context.FullName.Should().Be("panoramicdata/PanoramicData.NugetManagement");
 		context.FileExists("README.md").Should().BeTrue();
@@ -71,8 +70,7 @@ public class GitHubIntegrationTests : TestWithOutput
 	[Fact]
 	public async Task GitHubAssessment_ThisRepository_ShouldBeCompliant()
 	{
-		var repository = await _github.Repository.Get("panoramicdata", "PanoramicData.NugetManagement");
-		var context = ExcludingFixturePaths(await _contextBuilder.BuildAsync(repository, new RepoOptions(), CancellationToken.None));
+		var context = ExcludingFixturePaths(await BuildContextAsync("PanoramicData.NugetManagement"));
 		var failures = new List<RuleResult>();
 
 		foreach (var rule in RuleRegistry.Rules)
@@ -103,8 +101,7 @@ public class GitHubIntegrationTests : TestWithOutput
 	[Fact]
 	public async Task GitHubAssessment_FailArmyRepository_ShouldNotBeCompliant()
 	{
-		var repository = await _github.Repository.Get("panoramicdata", "PanoramicData.NugetFailArmy");
-		var context = await _contextBuilder.BuildAsync(repository, new RepoOptions(), CancellationToken.None);
+		var context = await BuildContextAsync("PanoramicData.NugetFailArmy");
 
 		var results = new List<RuleResult>();
 		foreach (var rule in RuleRegistry.Rules)
@@ -116,6 +113,13 @@ public class GitHubIntegrationTests : TestWithOutput
 		results.Count(r => !r.Passed && r.Severity is AssessmentSeverity.Critical or AssessmentSeverity.Error)
 			   .Should().BeGreaterThan(0, "the live FailArmy repository should have at least one critical- or error-level failure");
 	}
+
+	private Task<RepositoryContext> BuildContextAsync(string repositoryName)
+		=> GitHubRateLimitMessage.RunAsync(async () =>
+		{
+			var repository = await _github.Repository.Get("panoramicdata", repositoryName).ConfigureAwait(true);
+			return await _contextBuilder.BuildAsync(repository, new RepoOptions(), CancellationToken.None).ConfigureAwait(true);
+		});
 
 	private static RepositoryContext ExcludingFixturePaths(RepositoryContext context)
 	{
