@@ -1,4 +1,5 @@
-﻿using PanoramicData.NugetManagement.Services;
+﻿using System.Text.RegularExpressions;
+using PanoramicData.NugetManagement.Services;
 
 namespace PanoramicData.NugetManagement.Models;
 
@@ -652,22 +653,8 @@ public static class Standards
 	/// </summary>
 	public static string SharedSkillsCopilotInstructionsPath { get; } = "../PanoramicData.Skills/.github/skills/copilot-instructions.md";
 
-	/// <summary>
-	/// The heading of the section that says who Panoramic Data is and how the repository is governed.
-	/// AI-03 looks for the tool's name, which only this section carries.
-	/// </summary>
-	public static string AboutSectionHeading { get; } = "## About Panoramic Data";
-
-	/// <summary>
-	/// The marker AI-03 requires: the governance tool's name, present only where the About section is.
-	/// </summary>
-	public static string GovernanceToolName { get; } = "PanoramicData.NugetManagement";
-
-	/// <summary>
-	/// A short, deliberately unrevealing statement of who publishes the repository and how it is
-	/// managed. Written for any agent or contributor, so it names no people, systems or customers.
-	/// </summary>
-	public static string AboutSectionContent { get; } = """
+	/// <summary>The About section the v1.3 templates carried. It exists only to recognise those files.</summary>
+	private static string AboutSectionContent { get; } = """
 		## About Panoramic Data
 
 		Panoramic Data Limited is a software company. This repository is a NuGet package that it
@@ -679,32 +666,142 @@ public static class Standards
 		""";
 
 	/// <summary>
-	/// The version marker written into <see cref="ClaudeMdContent"/> and <see cref="AgentsMdContent"/>.
-	/// Bump this when either template's content changes materially.
-	/// </summary>
-	public static string AiInstructionsTemplateVersion { get; } = "1.3";
-
-	/// <summary>
-	/// The instruction AI-06 requires in CLAUDE.md and AGENTS.md. Agents add a co-author trailer to
-	/// every commit unless told not to, and Panoramic Data does not want them in its history.
+	/// The instruction AI-06 requires in AGENTS.md. Agents add a co-author trailer to every commit
+	/// unless told not to, and Panoramic Data does not want them in its history.
 	/// </summary>
 	public static string NoAiAttributionInstruction { get; } = "Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
 
+	/// <summary>The heading of the one section a public AGENTS.md may use to mention Panoramic Data.</summary>
+	public static string StaffSectionHeading { get; } = "## PanoramicData staff";
+
 	/// <summary>
-	/// The standard CLAUDE.md content: local Copilot instructions plus an <c>@import</c> of the shared
-	/// Panoramic Data skills. The <c>@import</c> syntax degrades gracefully: Claude Code simply skips
-	/// a path that does not resolve, so a contributor without access to the private
-	/// <c>PanoramicData.Skills</c> repository is unaffected.
+	/// The staff section of the public AGENTS.md template in PanoramicData.Skills (#2256), copied byte for
+	/// byte: this package is public and cannot read that private checkout. It is deliberately generic.
+	/// </summary>
+	public static string StaffSectionContent { get; } = """
+		## PanoramicData staff
+
+		PanoramicData staff have shared tooling in a private sibling checkout of PanoramicData.Skills. Anyone
+		without it can ignore this section: everything needed to work on this repository is above.
+		""";
+
+	/// <summary>
+	/// The standard AGENTS.md for a public repository: the one instructions file that Claude Code, Codex and
+	/// Copilot all read. It is standalone and mentions Panoramic Data only in the staff section.
 	/// </summary>
 	/// <remarks>
-	/// Structured with headings, an identity, boundaries, and tool notes (not just the bare
-	/// <c>@import</c> lines) because Codacy's Agentlinter grades instruction files on exactly those
-	/// things: a two-line file grades F even though the imports it points at are complete.
+	/// Structured with headings, an identity, boundaries, and tool notes because Codacy's Agentlinter
+	/// grades instruction files on exactly those things. It names no other file, because Agentlinter
+	/// reports a file name it cannot find in its workspace.
 	/// </remarks>
-	public static string ClaudeMdContent => $"""
+	public static string AgentsMdContent => $"""
+		# Agent instructions
+
+		## Identity
+
+		You are a careful, security-conscious contributor to this repository.
+
+		## Scope and boundaries
+
+		- Do not weaken `TreatWarningsAsErrors`, delete or skip tests to make a build pass, or bypass
+		  CI/CD checks.
+		- Do not commit secrets, credentials, or API tokens.
+		- Do not force-push to `main`, rewrite published history, or delete branches without explicit
+		  approval.
+		- {NoAiAttributionInstruction}
+
+		## Tools
+
+		- Build and test with `dotnet build` / `dotnet test`.
+		- Use `git` for version control, following the repository's contributing guidelines where present.
+
+		{StaffSectionContent}
+		""";
+
+	/// <summary>Whether <paramref name="content"/> carries the managed block that PanoramicData.Skills writes into its own repositories' AGENTS.md.</summary>
+	public static bool HasManagedBlock(string content)
+		=> content.Contains("<!-- BEGIN PanoramicData.Skills managed block", StringComparison.Ordinal);
+
+	/// <summary>
+	/// What a public AGENTS.md must not contain, once the generic staff section is set aside: a path into
+	/// the private checkout, an <c>@import</c> line, or a reference to its skills.
+	/// </summary>
+	public static IReadOnlyList<string> FindPublicAgentsMdLeaks(string content)
+	{
+		var text = Normalise(content).Replace(Normalise(StaffSectionContent), string.Empty, StringComparison.Ordinal);
+		var leaks = new List<string>();
+		foreach (var (pattern, description) in _publicLeakPatterns)
+		{
+			if (Regex.IsMatch(text, pattern, RegexOptions.None, TimeSpan.FromSeconds(2)))
+			{
+				leaks.Add(description);
+			}
+		}
+
+		return leaks;
+	}
+
+	private static readonly (string Pattern, string Description)[] _publicLeakPatterns =
+	[
+		(@"PanoramicData\.Skills", "names the private PanoramicData.Skills repository"),
+		(@"\.\./PanoramicData", "uses a path into a sibling PanoramicData checkout"),
+		(@"(?m)^\s*@\S", "has an @import line"),
+		(@"\.github/(skills|copilot-instructions)", "refers to shared skills or a copilot instructions file")
+	];
+
+	/// <summary>
+	/// Whether every line of <paramref name="content"/> is a line this tool wrote in a template it has
+	/// shipped, so that nothing a person wrote is lost when the file is replaced or deleted.
+	/// </summary>
+	/// <param name="content">The file's content.</param>
+	/// <param name="templates">The templates this tool has generated for that file.</param>
+	public static bool IsGeneratedByThisTool(string content, params string[] templates)
+	{
+		var allowed = new HashSet<string>(StringComparer.Ordinal);
+		foreach (var template in templates)
+		{
+			AddLines(allowed, template);
+			foreach (var (current, earlier) in _earlierPhrasings)
+			{
+				AddLines(allowed, template.Replace(current, earlier, StringComparison.Ordinal));
+			}
+		}
+
+		return Normalise(content)
+			.Split('\n')
+			.Select(line => line.Trim())
+			.Where(line => line.Length > 0)
+			.All(line => allowed.Contains(line) || Regex.IsMatch(line, @"^Version: \d+\.\d+$", RegexOptions.None, TimeSpan.FromSeconds(2)));
+
+		static void AddLines(HashSet<string> set, string text)
+		{
+			foreach (var line in Normalise(text).Split('\n'))
+			{
+				set.Add(line.Trim());
+			}
+		}
+	}
+
+	/// <summary>
+	/// Wordings the v1.2 templates used, each paired with the v1.3 text that replaced it. The em dash is
+	/// written as an escape so this file holds none.
+	/// </summary>
+	private static readonly (string Current, string Earlier)[] _earlierPhrasings =
+	[
+		("AGENTS.md and SECURITY.md", "AGENTS.md, SECURITY.md and CONTRIBUTING.md"),
+		("following the repository's contributing guidelines where present", "following `CONTRIBUTING.md` where present"),
+		("# Agent instructions", "# Agent Instructions"),
+		("starting work, as it documents", "starting work — it documents")
+	];
+
+	/// <summary>
+	/// The CLAUDE.md this tool wrote as template v1.3. It is no longer generated: while a CLAUDE.md exists,
+	/// Claude Code ignores AGENTS.md. Kept so that file can be recognised and deleted.
+	/// </summary>
+	public static string PreviousClaudeMdContent => $"""
 		# CLAUDE.md
 
-		Version: {AiInstructionsTemplateVersion}
+		Version: 1.3
 
 		## Identity
 
@@ -737,15 +834,13 @@ public static class Standards
 		""";
 
 	/// <summary>
-	/// The standard AGENTS.md content for agents (Codex and similar) that do not support Claude Code's
-	/// <c>@import</c> syntax. Unlike Claude Code's silent skip, these agents need to be told in prose
-	/// to treat the shared skills reference as optional, so a contributor without access to the
-	/// private <c>PanoramicData.Skills</c> repository is not blocked or told to stop.
+	/// The AGENTS.md this tool wrote as template v1.3, which told agents to read the private Skills
+	/// checkout. It is no longer generated, and is kept so that file can be recognised and replaced.
 	/// </summary>
-	public static string AgentsMdContent => $"""
+	public static string PreviousAgentsMdContent => $"""
 		# Agent instructions
 
-		Version: {AiInstructionsTemplateVersion}
+		Version: 1.3
 
 		Read `.github/copilot-instructions.md` for repository-specific conventions.
 
