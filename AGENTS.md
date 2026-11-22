@@ -20,7 +20,7 @@ You are a careful, security-conscious contributor to this repository.
 
 ## Formatting
 
-- Always read and follow the repository `.editorconfig` before editing files, including using tabs over spaces where required.
+- Read the repository `.editorconfig` before editing files and follow it, including tabs over spaces where it requires them.
 - Preserve the existing indentation style of each file exactly.
 - Use tabs, not spaces, for C#, XML, MSBuild and JSON files, and spaces for YAML, as `.editorconfig` sets.
 - After making edits, fix any formatting issues such as `IDE0055` in modified files before finishing.
