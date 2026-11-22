@@ -2004,7 +2004,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["README.md"] = "[![Codacy Badge](https://app.codacy.com/project/badge)](https://app.codacy.com)"
+			["README.md"] = "[![Codacy Badge](https://app.codacy.com/project/badge/Grade/896c2da514fe4bcfbf271f54cbec908b)](https://app.codacy.com)"
 		});
 
 		var result = await GetRule("README-02").EvaluateAsync(context, CancellationToken.None);
