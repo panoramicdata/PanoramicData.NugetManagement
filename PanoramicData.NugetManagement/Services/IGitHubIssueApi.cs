@@ -90,6 +90,11 @@ public record GitHubIssueThread(
 public interface IGitHubIssueApi
 {
 	/// <summary>
+	/// The size of a page of repository comments; a shorter page is the last one.
+	/// </summary>
+	public static int CommentPageSize { get; } = 100;
+
+	/// <summary>
 	/// Every open issue and pull request in a repository.
 	/// </summary>
 	/// <param name="owner">The repository owner.</param>

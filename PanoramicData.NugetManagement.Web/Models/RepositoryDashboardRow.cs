@@ -330,8 +330,10 @@ public class RepositoryDashboardRow
 	/// </remarks>
 	[JsonIgnore]
 	public IEnumerable<RepositoryIssue> StaleIssues
-		=> OpenIssues.Where(issue => issue.SeverityAt(DateTimeOffset.UtcNow)
-			is AssessmentSeverity.Error or AssessmentSeverity.Critical);
+		=> IssuesWithSeverityAt(DateTimeOffset.UtcNow, AssessmentSeverity.Error, AssessmentSeverity.Critical);
+
+	private IEnumerable<RepositoryIssue> IssuesWithSeverityAt(DateTimeOffset now, params AssessmentSeverity[] severities)
+		=> OpenIssues.Where(issue => severities.Contains(issue.SeverityAt(now)));
 
 	/// <summary>
 	/// Current remediation/operation status.
@@ -361,14 +363,14 @@ public class RepositoryDashboardRow
 	/// </summary>
 	public int TotalCriticals
 		=> (Assessment?.CriticalCount ?? 0)
-			+ OpenIssues.Count(i => i.SeverityAt(DateTimeOffset.UtcNow) == AssessmentSeverity.Critical);
+			+ IssuesWithSeverityAt(DateTimeOffset.UtcNow, AssessmentSeverity.Critical).Count();
 
 	/// <summary>
 	/// Total number of errors, including issues unanswered for between a week and a month.
 	/// </summary>
 	public int TotalErrors
 		=> (Assessment?.ErrorCount ?? 0)
-			+ OpenIssues.Count(i => i.SeverityAt(DateTimeOffset.UtcNow) == AssessmentSeverity.Error);
+			+ IssuesWithSeverityAt(DateTimeOffset.UtcNow, AssessmentSeverity.Error).Count();
 
 	/// <summary>
 	/// Total number of warnings.

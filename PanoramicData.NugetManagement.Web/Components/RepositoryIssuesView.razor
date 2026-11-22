@@ -153,7 +153,6 @@ else
 		=> issue.SeverityAt(DateTimeOffset.UtcNow) switch
 		{
 			AssessmentSeverity.Critical or AssessmentSeverity.Error => "text-danger",
-			AssessmentSeverity.Warning => "text-warning",
 			_ => "text-info"
 		};
 
