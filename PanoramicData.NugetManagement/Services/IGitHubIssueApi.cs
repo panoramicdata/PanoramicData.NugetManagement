@@ -92,7 +92,7 @@ public interface IGitHubIssueApi
 	/// <summary>
 	/// The size of a page of repository comments; a shorter page is the last one.
 	/// </summary>
-	public const int CommentPageSize = 100;
+	public static int CommentPageSize { get; } = 100;
 
 	/// <summary>
 	/// Every open issue and pull request in a repository.
