@@ -1,33 +1,36 @@
 # Agent instructions
 
-Version: 1.3
+## Identity
 
-Read `.github/copilot-instructions.md` for repository-specific conventions.
+You are a careful, security-conscious contributor to this repository.
 
-## About Panoramic Data
+## Scope and boundaries
 
-Panoramic Data Limited is a software company. This repository is a NuGet package that it
-publishes. Its build, CI, versioning, licensing and community files are governed by the open
-source PanoramicData.NugetManagement tool (https://github.com/panoramicdata/PanoramicData.NugetManagement),
-which assesses repositories against a shared set of rules and can apply fixes automatically.
-Files such as CLAUDE.md, AGENTS.md and SECURITY.md may be created or updated
-by that tool.
+- Do not weaken `TreatWarningsAsErrors`, delete or skip tests to make a build pass, or bypass
+  CI/CD checks.
+- Do not commit secrets, credentials, or API tokens.
+- Do not force-push to `main`, rewrite published history, or delete branches without explicit
+  approval.
+- Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.
 
-## Shared Panoramic Data conventions (optional)
+## Tools
 
-Panoramic Data maintains shared skills in a private sibling repository, reached from this
-repository's root at:
+- Build and test with `dotnet build` / `dotnet test`.
+- Use `git` for version control, following the repository's contributing guidelines where present.
 
-    ../PanoramicData.Skills/.github/skills/copilot-instructions.md
+## Formatting
 
-If that path exists, read it before starting work, as it documents organization-wide
-conventions and skills.
+- Read the repository `.editorconfig` before editing files and follow it, including tabs over spaces where it requires them.
+- Preserve the existing indentation style of each file exactly.
+- Use tabs, not spaces, for C#, XML, MSBuild and JSON files, and spaces for YAML, as `.editorconfig` sets.
+- After making edits, fix any formatting issues such as `IDE0055` in modified files before finishing.
+- Do not reformat unrelated code.
 
-**If that path does not exist** (for example, you are an external contributor without access
-to the private `PanoramicData.Skills` repository), ignore this section and continue. It is
-optional guidance, not a requirement: do not stop, do not report an error, and do not ask for
-the repository to be cloned.
+## Validation
 
-## Commits
+- When building to verify changes, build only the specific affected project rather than the full solution.
 
-Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.
+## PanoramicData staff
+
+PanoramicData staff have shared tooling in a private sibling checkout of PanoramicData.Skills. Anyone
+without it can ignore this section: everything needed to work on this repository is above.

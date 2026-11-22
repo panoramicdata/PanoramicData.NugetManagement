@@ -2805,51 +2805,86 @@ public class RuleEvaluationTests : TestWithOutput
 		result.Advisory!.Data.Should().NotContainKey("remediation_type");
 	}
 
-	// ── AI-01 ──────────────────────────────────────────────────────────
+	// ── AI-01 CLAUDE.md is absent ───────────────────────────────────────
 
 	[Fact]
-	public async Task AI01_ShouldPass_WhenClaudeMdReferencesSharedSkills()
+	public async Task AI01_ShouldPass_WhenNoClaudeMd()
 	{
-		var context = CreateContext(new Dictionary<string, string>
-		{
-			["CLAUDE.md"] = "# Mine\n@.github/copilot-instructions.md\n@../PanoramicData.Skills/.github/skills/copilot-instructions.md\n"
-		});
-
-		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
+		var result = await GetRule("AI-01").EvaluateAsync(CreateEmptyContext(), CancellationToken.None);
 		result.Passed.Should().BeTrue();
 	}
 
 	[Fact]
-	public async Task AI01_ShouldFail_WhenClaudeMdMissing()
+	public async Task AI01_ShouldOfferDeletion_WhenClaudeMdIsGeneratedByThisTool()
 	{
-		var context = CreateEmptyContext();
+		var context = CreateContext(new Dictionary<string, string> { ["CLAUDE.md"] = Standards.PreviousClaudeMdContent });
 
 		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
-		result.Advisory!.Data.Should().ContainKey("expected_path");
+		result.Advisory!.Data["remediation_type"].Should().Be("delete_file");
+		result.Advisory.Data["file"].Should().Be("CLAUDE.md");
 	}
 
 	[Fact]
-	public async Task AI01_ShouldFail_WhenClaudeMdDoesNotReferenceSharedSkills()
+	public async Task AI01_ShouldOfferDeletion_WhenClaudeMdIsTheEarlierV12Wording()
+	{
+		var v12 = Standards.PreviousClaudeMdContent
+			.Replace("Version: 1.3", "Version: 1.2")
+			.Replace("following the repository's contributing guidelines where present", "following `CONTRIBUTING.md` where present");
+		var context = CreateContext(new Dictionary<string, string> { ["CLAUDE.md"] = v12.Replace("\n", "\r\n") });
+
+		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
+		result.Advisory!.Data["remediation_type"].Should().Be("delete_file");
+	}
+
+	[Fact]
+	public async Task AI01_ShouldOfferDeletion_WhenClaudeMdIsTheLegacyTwoLineTemplate()
+	{
+		var context = CreateContext(new Dictionary<string, string> { ["CLAUDE.md"] = Standards.LegacyClaudeMdContent });
+
+		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
+		result.Advisory!.Data["remediation_type"].Should().Be("delete_file");
+	}
+
+	[Fact]
+	public async Task AI01_ShouldFailWithoutFix_WhenClaudeMdHoldsSomeoneElsesText()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["CLAUDE.md"] = "@.github/copilot-instructions.md\n"
+			["CLAUDE.md"] = Standards.PreviousClaudeMdContent + "\n- Always run the database seeder first.\n"
 		});
 
 		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
-		result.Advisory!.Data.Should().ContainKey("remediation_type");
+		result.Advisory!.Data.Should().NotContainKey("remediation_type");
 	}
 
-	// ── AI-02 ──────────────────────────────────────────────────────────
+	// ── AI-02 AGENTS.md follows the standard ────────────────────────────
 
 	[Fact]
-	public async Task AI02_ShouldPass_WhenAgentsMdReferencesSharedSkills()
+	public async Task AI02_ShouldOfferTemplate_WhenAgentsMdMissing()
+	{
+		var result = await GetRule("AI-02").EvaluateAsync(CreateEmptyContext(), CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["expected_path"].Should().Be("AGENTS.md");
+		result.Advisory.Data["template_content"].Should().Be(Standards.AgentsMdContent);
+	}
+
+	[Fact]
+	public async Task AI02_ShouldPass_WhenAgentsMdIsTheCurrentTemplate()
+	{
+		var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = Standards.AgentsMdContent });
+
+		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task AI02_ShouldPass_WhenAgentsMdCarriesTheSkillsManagedBlock()
 	{
 		var context = CreateContext(new Dictionary<string, string>
 		{
-			["AGENTS.md"] = "See ../PanoramicData.Skills/.github/skills/copilot-instructions.md if it exists."
+			["AGENTS.md"] = "<!-- BEGIN PanoramicData.Skills managed block. Edit it there. -->\n@../PanoramicData.Skills/.github/skills/copilot-instructions.md\n<!-- END PanoramicData.Skills managed block -->\n\n# Mine\n"
 		});
 
 		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
@@ -2857,95 +2892,95 @@ public class RuleEvaluationTests : TestWithOutput
 	}
 
 	[Fact]
-	public async Task AI02_ShouldFail_WhenAgentsMdMissing()
+	public async Task AI02_ShouldOfferReplacement_WhenAgentsMdIsAnEarlierGeneratedTemplate()
 	{
-		var context = CreateEmptyContext();
+		foreach (var generated in new[] { Standards.PreviousAgentsMdContent, Standards.LegacyAgentsMdContent })
+		{
+			var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = generated.Replace("\n", "\r\n") });
+
+			var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
+			result.Passed.Should().BeFalse();
+			result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
+			result.Advisory.Data["new_content"].Should().Be(Standards.AgentsMdContent);
+		}
+	}
+
+	[Theory]
+	[InlineData("See ../PanoramicData.Skills/.github/skills/copilot-instructions.md")]
+	[InlineData("@.github/copilot-instructions.md")]
+	[InlineData("Use the jira skill in PanoramicData.Skills for tickets.")]
+	public async Task AI02_ShouldFailWithoutFix_WhenHandWrittenAgentsMdMentionsInternalTooling(string line)
+	{
+		var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = "# Agent instructions\n\nBuild with dotnet.\n\n" + line + "\n" });
 
 		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
-		result.Advisory!.Data.Should().ContainKey("expected_path");
+		result.Advisory!.Data.Should().NotContainKey("remediation_type");
 	}
 
 	[Fact]
-	public async Task AI02_ShouldFail_WhenAgentsMdDoesNotReferenceSharedSkills()
+	public async Task AI02_ShouldPass_WhenHandWrittenAgentsMdIsPublicSafe()
 	{
-		var context = CreateContext(new Dictionary<string, string>
-		{
-			["AGENTS.md"] = "# Agent Instructions\n"
-		});
+		var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = "# Agent instructions\n\nBuild with `dotnet build`; tests need Docker.\n" });
 
 		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
-		result.Passed.Should().BeFalse();
-		result.Advisory!.Data.Should().ContainKey("remediation_type");
-	}
-
-	// ── AI-01 / AI-02 legacy templates ──────────────────────────────────
-
-	[Fact]
-	public async Task AI01_ShouldOfferReplacement_WhenClaudeMdIsTheGeneratedLegacyTemplate()
-	{
-		var context = CreateContext(new Dictionary<string, string>
-		{
-			["CLAUDE.md"] = Standards.LegacyClaudeMdContent
-		});
-
-		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
-		result.Passed.Should().BeFalse();
-		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
-	}
-
-	[Fact]
-	public async Task AI02_ShouldOfferReplacement_WhenAgentsMdIsTheGeneratedLegacyTemplate()
-	{
-		var context = CreateContext(new Dictionary<string, string>
-		{
-			["AGENTS.md"] = Standards.LegacyAgentsMdContent.Replace("\r\n", "\n").Replace("\n", "\r\n")
-		});
-
-		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
-		result.Passed.Should().BeFalse();
-		result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
-	}
-
-	[Fact]
-	public async Task AI01_ShouldNotReplace_WhenClaudeMdIsHandWritten()
-	{
-		var context = CreateContext(new Dictionary<string, string>
-		{
-			["CLAUDE.md"] = "# Mine\n" + Standards.LegacyClaudeMdContent
-		});
-
-		var result = await GetRule("AI-01").EvaluateAsync(context, CancellationToken.None);
-		result.Passed.Should().BeTrue();
-	}
-
-	// ── AI-03 ───────────────────────────────────────────────────────────
-
-	[Fact]
-	public async Task AI03_ShouldPass_WhenCurrentTemplate()
-	{
-		var context = CreateContext(new Dictionary<string, string> { ["CLAUDE.md"] = Standards.ClaudeMdContent });
-
-		var result = await GetRule("AI-03").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeTrue();
 	}
 
 	[Fact]
-	public async Task AI03_ShouldFail_WhenClaudeMdLacksTheAboutSection()
+	public void PublicTemplate_ShouldMentionPanoramicDataOnlyInTheStaffSection()
 	{
-		var context = CreateContext(new Dictionary<string, string> { ["CLAUDE.md"] = "# CLAUDE.md\n" });
+		var withoutStaff = Standards.AgentsMdContent[..Standards.AgentsMdContent.IndexOf("## PanoramicData staff", StringComparison.Ordinal)];
 
-		var result = await GetRule("AI-03").EvaluateAsync(context, CancellationToken.None);
+		withoutStaff.Should().NotContain("PanoramicData").And.NotContain("Panoramic Data").And.NotContain("../").And.NotContain("@");
+		Standards.AgentsMdContent.Should().Contain(Standards.NoAiAttributionInstruction)
+			.And.NotContain("—")
+			.And.NotContain("CONTRIBUTING.md")
+			.And.Contain("# Agent instructions");
+		Standards.FindPublicAgentsMdLeaks(Standards.AgentsMdContent).Should().BeEmpty();
+	}
+
+	// ── AI-03 to AI-05 retired ──────────────────────────────────────────
+
+	[Theory]
+	[InlineData("AI-03")]
+	[InlineData("AI-04")]
+	[InlineData("AI-05")]
+	public void RetiredAiRules_ShouldNotBeRegistered(string ruleId)
+		=> RuleRegistry.Rules.Select(rule => rule.RuleId).Should().NotContain(ruleId);
+
+	// ── AI-06 AGENTS.md forbids AI attribution ──────────────────────────
+
+	[Fact]
+	public async Task AI06_ShouldPass_WhenAgentsMdHasTheInstruction()
+	{
+		var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = Standards.AgentsMdContent });
+
+		var result = await GetRule("AI-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task AI06_ShouldOfferAppend_WhenAgentsMdLacksTheInstruction()
+	{
+		var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = "# Agent instructions\n\nBuild with dotnet.\n" });
+
+		var result = await GetRule("AI-06").EvaluateAsync(context, CancellationToken.None);
 		result.Passed.Should().BeFalse();
 		result.Advisory!.Data["remediation_type"].Should().Be("append_line");
+		result.Advisory.Data["file"].Should().Be("AGENTS.md");
 	}
 
 	[Fact]
-	public async Task AI03_ShouldBeNotApplicable_WhenClaudeMdMissing()
+	public async Task AI06_ShouldBeNotApplicable_WhenAgentsMdMissingOrManagedBySkills()
 	{
-		var result = await GetRule("AI-03").EvaluateAsync(CreateEmptyContext(), CancellationToken.None);
-		result.Passed.Should().BeTrue();
-		result.IsApplicable.Should().BeFalse();
+		var managed = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = "<!-- BEGIN PanoramicData.Skills managed block. -->\n" });
+
+		foreach (var context in new[] { CreateEmptyContext(), managed })
+		{
+			var result = await GetRule("AI-06").EvaluateAsync(context, CancellationToken.None);
+			result.IsApplicable.Should().BeFalse();
+		}
 	}
 
 	// ── COM-01 legacy / COM-05 ──────────────────────────────────────────

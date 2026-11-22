@@ -52,7 +52,7 @@ Create these files at minimum.
 - `.github/workflows/ci.yml`
 - `.github/workflows/codeql.yml`
 - `.github/dependabot.yml`
-- `.github/copilot-instructions.md` (optional but recommended)
+- `AGENTS.md` (the single instructions file; no `CLAUDE.md`, which would make Claude Code ignore it)
 
 ### Project structure
 
