@@ -22,6 +22,7 @@ public partial class PublishScriptMatchesMerakiRule : RuleBase
 	// Pushing the tag is not evidence that a package was published, so the script must also verify the release run (CI-11).
 	private static readonly string[] _requiredSnippets =
 	[
+		"Set-Location -LiteralPath $PSScriptRoot",
 		"git status --porcelain",
 		"git rev-parse --abbrev-ref HEAD",
 		"git fetch origin main --quiet",
@@ -54,7 +55,7 @@ public partial class PublishScriptMatchesMerakiRule : RuleBase
 			new RuleAdvisory
 			{
 				Summary = "Add standard Publish.ps1 matching the Meraki.Api tagging-and-trigger pattern",
-				Detail = "Copy the standard Publish.ps1 from Meraki.Api. It should check for a clean tree, verify the main branch, resolve the version via the Nerdbank.GitVersioning MSBuild target (`dotnet build -t:GetBuildVersion`), create and push the tag, and then wait for the release run and fail if it did not publish.",
+				Detail = "Copy the standard Publish.ps1 from Meraki.Api. It should start with `Set-Location -LiteralPath $PSScriptRoot` so it always acts on its own repository, check for a clean tree, verify the main branch, resolve the version via the Nerdbank.GitVersioning MSBuild target (`dotnet build -t:GetBuildVersion`), create and push the tag, and then wait for the release run and fail if it did not publish.",
 				Data = new()
 				{
 					["expected_path"] = "Publish.ps1",
@@ -130,7 +131,7 @@ public partial class PublishScriptMatchesMerakiRule : RuleBase
 			new RuleAdvisory
 			{
 				Summary = "Update Publish.ps1 to match the standard Meraki.Api tagging-and-trigger pattern",
-				Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: clean tree check, branch check, MSBuild version resolution (`-t:GetBuildVersion --getProperty:NuGetPackageVersion`), tag creation, tag push — and then verification that the release actually published: a `gh auth token` pre-flight before anything is pushed (not `gh auth status`, which makes an API call and reports a GitHub rate limit as an invalid token), `gh run watch --exit-status` on the run the tag triggered, and a `-SkipPublishVerification` switch for anyone who opts out deliberately.",
+				Detail = "Ensure Publish.ps1 contains all standard checks and tag operations: `Set-Location -LiteralPath $PSScriptRoot` first (so running it by full path from another repository cannot tag that repository), clean tree check, branch check, MSBuild version resolution (`-t:GetBuildVersion --getProperty:NuGetPackageVersion`), tag creation, tag push — and then verification that the release actually published: a `gh auth token` pre-flight before anything is pushed (not `gh auth status`, which makes an API call and reports a GitHub rate limit as an invalid token), `gh run watch --exit-status` on the run the tag triggered, and a `-SkipPublishVerification` switch for anyone who opts out deliberately.",
 				Data = new()
 				{
 					["remediation_type"] = "replace_file_content",

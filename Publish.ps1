@@ -6,6 +6,9 @@ param(
 
 $InformationPreference = 'Continue'
 
+# Act on this script's own repository, whatever directory it was started from.
+Set-Location -LiteralPath $PSScriptRoot
+
 # Ensure we are on the main branch
 $branch = git rev-parse --abbrev-ref HEAD
 if ($branch -ne 'main') {

@@ -873,6 +873,7 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		var ps1 = """
 			param([switch]$SkipPublishVerification)
+			Set-Location -LiteralPath $PSScriptRoot
 			$status = git status --porcelain
 			$branch = git rev-parse --abbrev-ref HEAD
 			git fetch origin main --quiet
@@ -901,6 +902,7 @@ public class RuleEvaluationTests : TestWithOutput
 		// left behind then blocked the re-run.
 		var ps1 = """
 			param([switch]$SkipPublishVerification)
+			Set-Location -LiteralPath $PSScriptRoot
 			$status = git status --porcelain
 			$branch = git rev-parse --abbrev-ref HEAD
 			git fetch origin main --quiet
@@ -939,6 +941,7 @@ public class RuleEvaluationTests : TestWithOutput
 		// 'gh auth status' calls the API, so a GitHub rate limit makes it claim the token is invalid.
 		var ps1 = """
 			param([switch]$SkipPublishVerification)
+			Set-Location -LiteralPath $PSScriptRoot
 			$status = git status --porcelain
 			$branch = git rev-parse --abbrev-ref HEAD
 			git fetch origin main --quiet
@@ -965,6 +968,30 @@ public class RuleEvaluationTests : TestWithOutput
 	{
 		PanoramicData.NugetManagement.Rules.PublishScriptMatchesMerakiRule.PushResultChecked(Standards.PublishPs1Content).Should().BeTrue();
 		Standards.PublishPs1Content.Should().Contain("git tag -d $version");
+	}
+
+	[Fact]
+	public void PublishPs1Template_SetsItsLocationBeforeRunningAnyGitCommand()
+	{
+		var template = Standards.PublishPs1Content;
+		var location = template.IndexOf("Set-Location -LiteralPath $PSScriptRoot", StringComparison.Ordinal);
+		location.Should().BeGreaterThan(-1);
+		location.Should().BeLessThan(template.IndexOf("git ", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task CI09_ShouldFail_WhenPublishPs1DoesNotSetItsLocation()
+	{
+		var ps1 = Standards.PublishPs1Content.Replace("Set-Location -LiteralPath $PSScriptRoot", "# no location");
+		var context = CreateContext(new Dictionary<string, string>
+		{
+			["Publish.ps1"] = ps1
+		});
+
+		var result = await GetRule("CI-09").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse("run from another repository's folder it would tag that repository");
+		result.Advisory!.Data["missing_snippets"].Should().BeOfType<string[]>()
+			.Which.Should().Contain("Set-Location -LiteralPath $PSScriptRoot");
 	}
 
 	[Fact]
