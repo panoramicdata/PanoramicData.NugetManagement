@@ -13,7 +13,10 @@ public class CodacyBadgeRuleTests
 	private sealed class FakeBadgeService(CodacyBadgeInfo? info, Exception? failure = null) : ICodacyBadgeService
 	{
 		public Task<CodacyBadgeInfo> GetBadgeAsync(string apiToken, string organizationName, string repositoryName, CancellationToken cancellationToken)
-			=> failure is null ? Task.FromResult(info!) : throw failure;
+		{
+			FakeArguments.Accept(apiToken, organizationName, repositoryName, cancellationToken);
+			return failure is null ? Task.FromResult(info!) : throw failure;
+		}
 	}
 
 	private static readonly CodacyBadgeInfo _enrolled = new(true, _realBadge);
