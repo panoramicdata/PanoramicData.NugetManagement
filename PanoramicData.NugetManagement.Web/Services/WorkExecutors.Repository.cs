@@ -326,10 +326,11 @@ public sealed partial class WorkExecutors
 
 		try
 		{
+			var github = await CreateGitHubClientAsync().ConfigureAwait(false);
 			var freshRows = await dashboard.DiscoverPackagesAsync(
 				null,
 				cancellationToken,
-				await CreateGitHubClientAsync().ConfigureAwait(false)).ConfigureAwait(false);
+				github).ConfigureAwait(false);
 			SayUnreadNuspecs();
 
 			var existingByRepository = (cache.GetCachedRows() ?? [])
@@ -346,6 +347,14 @@ public sealed partial class WorkExecutors
 			}
 
 			cache.Update(freshRows);
+
+			var rateLimit = github.GetLastApiInfo()?.RateLimit;
+			var pause = GitHubQuotaFloor.PauseMessage(rateLimit?.Remaining, rateLimit?.Reset);
+			if (pause is not null)
+			{
+				Say($"⚠️ Refreshed {freshRows.Count} packages but did not queue re-assessments. {pause}");
+				return;
+			}
 
 			var assessable = freshRows
 				.Where(r => r.IsGoverned)
