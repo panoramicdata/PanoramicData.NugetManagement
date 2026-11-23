@@ -24,7 +24,7 @@ PanoramicData.NugetManagement connects to a GitHub organization, examines each r
 - **Testing** — Test project existence, xUnit v3, Microsoft.Testing.Platform test runner, code coverage
 - **Serialization** — System.Text.Json preferred over Newtonsoft
 - **HTTP Clients** — Refit preferred for REST APIs (not required of GraphQL clients)
-- **Licensing** — MIT LICENSE, PackageLicenseExpression, Copyright
+- **Licensing** — MIT LICENSE, PackageLicenseExpression, Copyright (including no per-project Copyright override, LIC-05)
 - **README & Badges** — Codacy, NuGet, License badges
 - **Repository Hygiene** — .gitignore, NeutralResourcesLanguage
 - **Project Metadata** — PackageId, RepositoryUrl, Authors, PackageProjectUrl, PackageIcon

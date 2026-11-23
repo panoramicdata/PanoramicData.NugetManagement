@@ -40,6 +40,7 @@ public abstract class DataDrivenRemediation : IRemediation
 		["remove_packagereference_versions"] = [["projects"]],
 		["remove_packagereference"] = [["package_name"], ["projects"]],
 		["remove_packagereferences"] = [["removals"]],
+		["remove_xml_property"] = [["property_name"], ["projects"]],
 		["add_json_array_items"] = [["file"], ["array_property"], ["items"]],
 		["delete_file"] = [["file"]]
 	};
@@ -89,6 +90,7 @@ public abstract class DataDrivenRemediation : IRemediation
 						or "remove_packagereference_versions"
 						or "remove_packagereference"
 						or "remove_packagereferences"
+						or "remove_xml_property"
 						or "add_json_array_items"
 						or "delete_file";
 		}
@@ -161,6 +163,7 @@ public abstract class DataDrivenRemediation : IRemediation
 		["add_json_array_items"] = DataDrivenJsonHandlers.AddJsonArrayItems,
 		["remove_packagereference"] = DataDrivenPackagesHandlers.RemovePackageReference,
 		["remove_packagereferences"] = DataDrivenPackagesHandlers.RemovePackageReferences,
+		["remove_xml_property"] = DataDrivenPackagesHandlers.RemoveXmlProperty,
 		["delete_file"] = DataDrivenFilesHandlers.DeleteFile,
 	};
 
