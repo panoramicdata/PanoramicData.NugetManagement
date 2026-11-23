@@ -474,12 +474,12 @@ public partial class DashboardService
 
 			StoreAssessment(row, context, results);
 
-			await RefreshInboxIfPossibleAsync(row, github, cancellationToken).ConfigureAwait(false);
+			var inboxWarning = await RefreshInboxIfPossibleAsync(row, github, cancellationToken).ConfigureAwait(false);
 
 			PreviewTriage(row, context, results);
 
 			row.Status = PackageStatus.Assessed;
-			row.StatusMessage = $"{row.TotalFailures} issue(s) found (local).";
+			row.StatusMessage = $"{row.TotalFailures} issue(s) found (local)." + (inboxWarning is null ? string.Empty : $" {inboxWarning}");
 		}
 		catch (OperationCanceledException)
 		{
@@ -584,20 +584,40 @@ public partial class DashboardService
 		return results;
 	}
 
-	private async Task RefreshInboxIfPossibleAsync(RepositoryDashboardRow row, IGitHubClient? github, CancellationToken cancellationToken)
+	/// <summary>
+	/// Reads the inbox for a local assessment. A rate limit, secondary limit or authorisation failure
+	/// here must not discard rules that have already been evaluated, so it is returned as a warning
+	/// and the inbox is left unknown (grey) instead.
+	/// </summary>
+	internal async Task<string?> RefreshInboxIfPossibleAsync(RepositoryDashboardRow row, IGitHubClient? github, CancellationToken cancellationToken)
 	{
 		// The local path is the one every actively-worked repository takes, so without this it
 		// would be exactly those repositories whose inbox was never read.
 		if (github is null)
 		{
-			return;
+			return null;
 		}
 
 		var identityParts = row.RepositoryFullName!.Split('/');
-		if (identityParts.Length == 2)
+		if (identityParts.Length != 2)
+		{
+			return null;
+		}
+
+		try
 		{
 			await RefreshOpenIssuesAsync(row, github, identityParts[0], identityParts[1], cancellationToken)
 				.ConfigureAwait(false);
+			return null;
+		}
+		catch (Exception ex) when (ex is RateLimitExceededException or AuthorizationException
+			|| (ex is ApiException api && IsSecondaryRateLimit(api)))
+		{
+			_logger.LogWarning(ex, "Could not refresh the inbox for {Repo}; it will show as unknown.", row.RepositoryFullName);
+			row.OpenIssuesKnown = false;
+			return ex is AuthorizationException
+				? "(Inbox not refreshed: GitHub authentication failed.)"
+				: "(Inbox not refreshed: GitHub rate limit reached.)";
 		}
 	}
 }
