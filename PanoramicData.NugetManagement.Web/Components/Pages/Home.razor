@@ -1609,13 +1609,32 @@ else
 			string.Equals(r.Organization, CurrentOrganization, StringComparison.OrdinalIgnoreCase))];
 
 	/// <summary>
-	/// The repositories an estate-wide press of a step would act on.
+	/// The ticked repositories a step may act on, whether or not they have anything for it to do.
 	/// </summary>
-	private List<RepositoryDashboardRow> EstateTargets(WorkflowStep step)
+	private List<RepositoryDashboardRow> EstateEligible(WorkflowStep step)
 	{
 		EnsureSelectionIsCurrent();
 		return ToolbarScope.Targets(EstateCandidates, step, RuntimeSettings.IsRepositoryExcluded, _selection);
 	}
+
+	/// <summary>
+	/// The repositories an estate-wide press of a step would act on: eligible, and not known to have
+	/// nothing to do.
+	/// </summary>
+	private List<RepositoryDashboardRow> EstateTargets(WorkflowStep step)
+		=> [.. EstateEligible(step).Where(row => EstateWork.HasWork(step, row, Dashboard.IsAutoRemediable, DateTimeOffset.UtcNow))];
+
+	/// <summary>
+	/// What an estate-wide press of a step will do, and what it leaves out.
+	/// </summary>
+	private string DescribeEstateWork(WorkflowStep step, string stepName)
+		=> EstateWork.Describe(
+			step,
+			stepName,
+			EstateEligible(step),
+			_selection.Count,
+			Dashboard.IsAutoRemediable,
+			DateTimeOffset.UtcNow);
 
 	/// <summary>
 	/// Whether a step that works on a local clone can run: for one repository, or for however many the
@@ -1669,8 +1688,19 @@ else
 	{
 		ReportDroppedTicks();
 
-		AppendConsole(ToolbarScope.DescribeSelection(stepName, targets.Count, _selection.Count));
+		AppendConsole(DescribeEstateWork(step, stepName));
+		QueueEach(kind, step, stepName, targets);
+	}
 
+	/// <summary>
+	/// Queues one item per repository in <paramref name="targets"/>, without announcing it.
+	/// </summary>
+	private void QueueEach(
+		WorkKind kind,
+		WorkflowStep step,
+		string stepName,
+		IReadOnlyList<RepositoryDashboardRow> targets)
+	{
 		foreach (var row in targets)
 		{
 			// The same lane key shape QueueForSelectedRepository uses, so an estate-wide press folds
@@ -4687,10 +4717,7 @@ else
 		var queuedBlock = FirstQueuedStep is { } queued && WorkflowGate.IsBlocked(step, queued);
 		if (IsEstateWide && !queuedBlock && !(ToolbarScope.FallsBackToWholeOrganisation(step) && TickedCount == 0))
 		{
-			return ToolbarScope.DescribeSelection(
-				GetWorkflowStepDisplayName(step),
-				EstateTargets(step).Count,
-				TickedCount);
+			return DescribeEstateWork(step, GetWorkflowStepDisplayName(step));
 		}
 
 		if (FirstQueuedStep is not { } blocking || !WorkflowGate.IsBlocked(step, blocking))
@@ -5006,7 +5033,7 @@ else
 	/// The ticked repositories that have something only a local model can do.
 	/// </summary>
 	private List<RepositoryDashboardRow> EstateAiFixRows()
-		=> [.. EstateTargets(WorkflowStep.Fix).Where(row => AiFixTargets.WorkCount(row, Remediations) > 0)];
+		=> [.. EstateEligible(WorkflowStep.Fix).Where(row => AiFixTargets.WorkCount(row, Remediations) > 0)];
 
 	/// <summary>
 	/// The human-raised issues in the selected repository that no analysis has judged yet.
@@ -5123,7 +5150,7 @@ else
 	/// </summary>
 	private async Task FixWithAiAcrossEstateAsync()
 	{
-		var targets = EstateTargets(WorkflowStep.Fix);
+		var targets = EstateEligible(WorkflowStep.Fix);
 		var withWork = targets.Where(row => AiFixTargets.WorkCount(row, Remediations) > 0).ToList();
 
 		ReportDroppedTicks();
@@ -5355,8 +5382,14 @@ else
 			// above give: a fix that moves a version is what turns a still-valid pull request into one
 			// triage can close. Two passes rather than one interleaved loop so every repository's fix
 			// is queued before any of its triage, matching the single-repository order exactly.
-			QueueAcrossEstate(WorkKind.FixAll, WorkflowStep.Fix, "Fix");
-			QueueAcrossEstate(WorkKind.TriageDependabot, WorkflowStep.Fix, "Triage Dependabot");
+			var eligible = EstateEligible(WorkflowStep.Fix);
+			ReportDroppedTicks();
+			AppendConsole(DescribeEstateWork(WorkflowStep.Fix, "Fix"));
+
+			QueueEach(WorkKind.FixAll, WorkflowStep.Fix, "Fix",
+				[.. eligible.Where(row => EstateWork.RemediationCount(row, Dashboard.IsAutoRemediable) > 0)]);
+			QueueEach(WorkKind.TriageDependabot, WorkflowStep.Fix, "Triage Dependabot",
+				[.. eligible.Where(row => EstateWork.DependabotPullRequestCount(row) > 0)]);
 			return;
 		}
 
@@ -5675,9 +5708,7 @@ else
 			return false;
 		}
 
-		// Estate-wide, there is no one repository to ask about remediable rules or a Dependabot inbox.
-		// Having somewhere to run is the gate; each repository's own item decides what to do when it
-		// reaches the front of its lane.
+		// Estate-wide, the gate is at least one ticked repository with an auto-fix or a Dependabot backlog.
 		if (IsEstateWide)
 		{
 			return EstateTargets(WorkflowStep.Fix).Count > 0;
