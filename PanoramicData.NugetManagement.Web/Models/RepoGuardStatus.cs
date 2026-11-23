@@ -27,6 +27,9 @@ public enum GuardState
 	/// </summary>
 	VerificationInconclusive,
 
+	/// <summary>Our change broke the build; the first failing commit is named and nothing was reverted.</summary>
+	RegressionDetected,
+
 	/// <summary>An error occurred while verifying or rolling back.</summary>
 	Error
 }

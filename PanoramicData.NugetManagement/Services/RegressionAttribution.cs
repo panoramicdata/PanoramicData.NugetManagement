@@ -16,6 +16,36 @@ public static class RegressionAttribution
 			&& subject.Contains("governance remediation", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
+	/// Bisects our consecutive commits to the first one at which the build fails.
+	/// </summary>
+	/// <param name="ourCommitsNewestFirst">Our run of commits at HEAD, newest first. HEAD is known to fail.</param>
+	/// <param name="buildsAtCommit">Whether the build succeeds at the given commit hash.</param>
+	/// <returns>The earliest commit of the run that does not build.</returns>
+	public static async Task<(string Hash, string Subject)> FindFirstBreakingCommitAsync(
+		IReadOnlyList<(string Hash, string Subject)> ourCommitsNewestFirst,
+		Func<string, Task<bool>> buildsAtCommit)
+	{
+		var oldestFirst = ourCommitsNewestFirst.Reverse().ToList();
+		var low = 0;
+		var high = oldestFirst.Count - 1;
+
+		while (low < high)
+		{
+			var middle = (low + high) / 2;
+			if (await buildsAtCommit(oldestFirst[middle].Hash).ConfigureAwait(false))
+			{
+				low = middle + 1;
+			}
+			else
+			{
+				high = middle;
+			}
+		}
+
+		return oldestFirst[low];
+	}
+
+	/// <summary>
 	/// Given the recent commits (newest first), identifies the run of consecutive commits at HEAD
 	/// that this tool authored.
 	/// </summary>
