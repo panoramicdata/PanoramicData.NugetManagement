@@ -19,6 +19,37 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	public void IsGovernanceCommit_MatchesOnlyOurRemediations(string subject, bool expected)
 		=> RegressionAttribution.IsGovernanceCommit(subject).Should().Be(expected);
 
+	[Theory]
+	[InlineData(0, "h4")]
+	[InlineData(1, "h3")]
+	[InlineData(2, "h2")]
+	[InlineData(3, "h1")]
+	public async Task FindFirstBreakingCommitAsync_NamesTheSingleCommitThatBrokeTheBuild(int goodCount, string expected)
+	{
+		// Newest first. The first `goodCount` commits from the oldest end still build.
+		var commits = new (string Hash, string Subject)[]
+		{
+			("h1", "chore: apply A governance remediations"),
+			("h2", "chore: apply B governance remediations"),
+			("h3", "chore: apply C governance remediations"),
+			("h4", "chore: apply D governance remediations")
+		};
+		var oldestFirst = commits.Reverse().Select(c => c.Hash).ToList();
+		var built = new List<string>();
+
+		var culprit = await RegressionAttribution.FindFirstBreakingCommitAsync(
+			commits,
+			hash =>
+			{
+				built.Add(hash);
+				return Task.FromResult(oldestFirst.IndexOf(hash) < goodCount);
+			});
+
+		// goodCount 0 means the oldest commit (h4) is the culprit, and so on up to h1 at goodCount 3.
+		culprit.Hash.Should().Be(expected);
+		built.Should().NotContain("h1", "HEAD is already known to fail, so it is never rebuilt");
+	}
+
 	[Fact]
 	public void Identify_FindsConsecutiveOursFromHead()
 	{

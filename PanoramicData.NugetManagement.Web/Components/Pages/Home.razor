@@ -6709,6 +6709,7 @@ else
 				{
 					GuardState.Verified => $"🛡️ {status.RepositoryFullName}: build verified after our change.",
 					GuardState.RegressionReverted => $"↩️ {status.RepositoryFullName}: our change broke the build and has been reverted.",
+					GuardState.RegressionDetected => $"🛑 {status.RepositoryFullName}: {status.Message}",
 					GuardState.BuildFailingNotOurs => $"⚠️ {status.RepositoryFullName}: build was already failing before our change.",
 					GuardState.Error => $"⚠️ {status.RepositoryFullName}: the guard could not verify the build — {status.Message}",
 					_ => null
@@ -6750,6 +6751,7 @@ else
 	private static string GuardMarkerTooltip(GuardState state) => state switch
 	{
 		GuardState.RegressionReverted => "Our change broke the build and was reverted",
+		GuardState.RegressionDetected => "Our change broke the build; nothing was reverted, see the console",
 		GuardState.BuildFailingNotOurs => "This repository's build was already failing",
 		_ => "The build guard could not verify this repository"
 	};

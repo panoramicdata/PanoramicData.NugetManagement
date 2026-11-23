@@ -16,7 +16,6 @@ public sealed class RegressionGuardService(
 	ILogger<RegressionGuardService> logger) : BackgroundService
 {
 	private const int MaxConcurrentBuilds = 2;
-	private const string RevertMessage = "revert: auto-rollback governance remediation (build regression)";
 
 	private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
 	private readonly ConcurrentDictionary<string, RepoGuardStatus> _statuses = new(StringComparer.OrdinalIgnoreCase);
@@ -107,18 +106,20 @@ public sealed class RegressionGuardService(
 			return;
 		}
 
-		// Confirmed regression from our commits — revert them and push.
-		logger.LogWarning("Regression guard: our {Count} commit(s) broke {Repo}; reverting.", ourCount, repositoryFullName);
-		var revert = await localRepo.RevertRangeAndPushAsync(repositoryFullName, lastGoodRef, RevertMessage, null, cancellationToken).ConfigureAwait(false);
-		SetStatus(repositoryFullName,
-			revert.Success ? GuardState.RegressionReverted : GuardState.Error,
-			revert.Success
-				? $"Regression detected — reverted {ourCount} of our commit(s) and pushed. The build is green again; investigate the reverted change (it is a bug in our remediation)."
-				: $"Regression detected but the automatic revert failed: {Truncate(revert.Output)}");
-	}
+		// Confirmed regression from our commits. Nothing is reverted: a range revert took unrelated
+		// remediations with it (#80). Name the first commit that fails and leave the decision visible.
+		var culprit = await RegressionAttribution.FindFirstBreakingCommitAsync(
+			[.. commits.Take(ourCount)],
+			async hash => (await localRepo.BuildAtCommitAsync(repositoryFullName, hash, null, cancellationToken).ConfigureAwait(false)).Success).ConfigureAwait(false);
 
-	private static string Truncate(string value)
-		=> string.IsNullOrEmpty(value) || value.Length <= 300 ? value : value[..300] + "…";
+		logger.LogWarning(
+			"Regression guard: {Repo} fails to build from {Hash} ({Subject}); nothing reverted.",
+			repositoryFullName, culprit.Hash, culprit.Subject);
+		SetStatus(repositoryFullName, GuardState.RegressionDetected,
+			$"Regression detected: the build first fails at commit {culprit.Hash} ('{culprit.Subject}'). "
+			+ $"{ourCount} of our governance commit(s) sit above the last good build. Nothing has been reverted; "
+			+ "revert or fix that commit by hand.");
+	}
 
 	private void SetStatus(string repositoryFullName, GuardState state, string message)
 	{

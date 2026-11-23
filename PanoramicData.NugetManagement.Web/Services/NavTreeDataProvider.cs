@@ -259,7 +259,7 @@ public partial class NavTreeDataProvider : DataProviderBase<NavItem>
 				// the console, which narrates them as they happen. A revert is different in kind: it
 				// means work the user did has been taken away, and that must still be visible once the
 				// console has scrolled.
-				.Where(status => status.State is GuardState.RegressionReverted)
+				.Where(status => status.State is GuardState.RegressionReverted or GuardState.RegressionDetected)
 				.GroupBy(status => status.RepositoryFullName, StringComparer.OrdinalIgnoreCase)
 				.ToDictionary(
 					group => group.Key,
