@@ -113,21 +113,7 @@ public static class EstateWork
 
 		if (step == WorkflowStep.Fix)
 		{
-			var blocked = eligible.Where(row => HasBlockedRemediations(row, isAutoRemediable)).ToList();
-			if (blocked.Count > 0)
-			{
-				sentences.Add($"Auto-fixes in {Names(blocked)} wait until {(blocked.Count == 1 ? "it is" : "they are")} "
-					+ "on main and not behind origin.");
-			}
-
-			var unknown = withoutWork.Except(blocked).Where(row => row.Assessment is null || !row.OpenIssuesKnown).ToList();
-			if (unknown.Count > 0)
-			{
-				sentences.Add($"{unknown.Count} {Repositories(unknown.Count)} {(unknown.Count == 1 ? "is" : "are")} "
-					+ "not fully assessed yet, so Fix cannot tell what to do there: Re-assess first.");
-			}
-
-			withoutWork = [.. withoutWork.Except(blocked).Except(unknown)];
+			withoutWork = DescribeFixLeftOut(eligible, withoutWork, isAutoRemediable, sentences);
 		}
 
 		if (withoutWork.Count > 0)
@@ -142,6 +128,30 @@ public static class EstateWork
 		}
 
 		return string.Join(" ", sentences);
+	}
+
+	// Says which repositories Fix is blocked in or cannot judge, and returns those that truly have nothing to fix.
+	private static List<RepositoryDashboardRow> DescribeFixLeftOut(
+		IReadOnlyList<RepositoryDashboardRow> eligible,
+		List<RepositoryDashboardRow> withoutWork,
+		Func<RuleResult, bool> isAutoRemediable,
+		List<string> sentences)
+	{
+		var blocked = eligible.Where(row => HasBlockedRemediations(row, isAutoRemediable)).ToList();
+		if (blocked.Count > 0)
+		{
+			sentences.Add($"Auto-fixes in {Names(blocked)} wait until {(blocked.Count == 1 ? "it is" : "they are")} "
+				+ "on main and not behind origin.");
+		}
+
+		var unknown = withoutWork.Except(blocked).Where(row => row.Assessment is null || !row.OpenIssuesKnown).ToList();
+		if (unknown.Count > 0)
+		{
+			sentences.Add($"{unknown.Count} {Repositories(unknown.Count)} {Is(unknown.Count)} "
+				+ "not fully assessed yet, so Fix cannot tell what to do there: Re-assess first.");
+		}
+
+		return [.. withoutWork.Except(blocked).Except(unknown)];
 	}
 
 	private static string DescribeFix(
