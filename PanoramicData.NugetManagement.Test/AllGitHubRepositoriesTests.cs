@@ -138,11 +138,21 @@ public class AllGitHubRepositoriesTests(ITestOutputHelper output) : TestWithOutp
 	}
 
 	[Fact]
-	public void APackagedForkShouldBeShownAndMarked()
+	public void APublishedForkShouldBeShownAndGoverned()
 	{
 		var packages = new List<NuGetPackageInfo> { Package("Upstream", "https://github.com/panoramicdata/Upstream") };
 
 		var (rows, _) = Build(packages, Listed(Repo("panoramicdata/Upstream", isFork: true)));
+
+		var row = rows.Should().ContainSingle().Which;
+		row.IsFork.Should().BeTrue();
+		row.AutoExclusionReason.Should().BeNull("a fork we publish from is ours to govern");
+	}
+
+	[Fact]
+	public void AnUnpublishedForkDeclaringAPackageIdShouldBeShownAndMarked()
+	{
+		var (rows, _) = Build([], Listed(Repo("panoramicdata/Upstream", isFork: true, declared: ["Upstream"])));
 
 		rows.Should().ContainSingle().Which.AutoExclusionReason.Should().Be("fork");
 	}

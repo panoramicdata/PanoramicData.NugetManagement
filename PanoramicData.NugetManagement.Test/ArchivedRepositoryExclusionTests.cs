@@ -25,9 +25,30 @@ public class ArchivedRepositoryExclusionTests
 		=> RepositoryDashboardRow.NameMarksArchived("archived-org/Meraki.Api").Should().BeFalse("only the repository's own name counts");
 
 	[Fact]
-	public void AForkIsStillExcludedAsAFork()
-		=> new RepositoryDashboardRow { RepositoryFullName = "panoramicdata/Thing", IsFork = true }
+	public void AForkThatPublishesNothingIsStillExcludedAsAFork()
+		=> new RepositoryDashboardRow { RepositoryFullName = "panoramicdata/Thing", IsFork = true, DeclaredPackageIds = ["Thing"] }
 			.AutoExclusionReason.Should().Be("fork");
+
+	[Fact]
+	public void AForkThatPublishesOurPackagesIsGoverned()
+		=> new RepositoryDashboardRow
+		{
+			RepositoryFullName = "panoramicdata/PanoramicData.EPPlus",
+			IsFork = true,
+			Packages = [new PublishedPackage { PackageId = "PanoramicData.EPPlus", LatestVersion = "11.0.59" }]
+		}
+			.AutoExclusionReason.Should().BeNull("a fork we publish from has become our own code");
+
+	[Fact]
+	public void AnArchivedForkThatPublishesOurPackagesIsStillExcludedAsArchived()
+		=> new RepositoryDashboardRow
+		{
+			RepositoryFullName = "panoramicdata/PanoramicData.EPPlus",
+			IsFork = true,
+			IsArchived = true,
+			Packages = [new PublishedPackage { PackageId = "PanoramicData.EPPlus" }]
+		}
+			.AutoExclusionReason.Should().Be("archived");
 
 	[Theory]
 	[InlineData(true, "excluded by a person")]
