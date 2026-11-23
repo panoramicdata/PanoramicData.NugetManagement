@@ -90,8 +90,9 @@ public class RepositoryDashboardRow
 	public bool IsArchived { get; set; }
 
 	/// <summary>
-	/// Whether GitHub reports the repository as a fork. A fork is shown but excluded: it is somebody
-	/// else's code carried in our organisation, not ours to hold to our rules.
+	/// Whether GitHub reports the repository as a fork. A fork that publishes nothing is shown but
+	/// excluded: it is somebody else's code carried in our organisation, not ours to hold to our rules.
+	/// A fork we publish packages from is governed like any other repository: its code has become ours.
 	/// </summary>
 	public bool IsFork { get; set; }
 
@@ -111,11 +112,14 @@ public class RepositoryDashboardRow
 
 	/// <summary>
 	/// Why this repository is excluded without anyone having asked — "archived" or "fork" — or null
-	/// when it is not.
+	/// when it is not. A fork that publishes our packages is not excluded: PanoramicData.EPPlus and
+	/// PanoramicData.ECharts are forks only in GitHub's history, and are released and maintained by us.
 	/// </summary>
 	[JsonIgnore]
 	public string? AutoExclusionReason
-		=> IsArchived || NameMarksArchived(RepositoryFullName) ? "archived" : IsFork ? "fork" : null;
+		=> IsArchived || NameMarksArchived(RepositoryFullName) ? "archived"
+			: IsFork && IsUnpackaged ? "fork"
+			: null;
 
 	/// <summary>
 	/// Whether the repository's name says it is archived, for repositories renamed to say so whether or not GitHub was told.
