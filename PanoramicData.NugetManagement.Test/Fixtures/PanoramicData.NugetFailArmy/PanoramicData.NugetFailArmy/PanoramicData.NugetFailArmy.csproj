@@ -6,6 +6,8 @@
          and can then fail. Without this the fixture publishes nothing and they are skipped. -->
     <IsPackable>true</IsPackable>
     <!-- ImplicitUsings deliberately absent so BLD-03 fails. -->
+    <!-- Overrides the shared Copyright, so LIC-05 fails. -->
+    <Copyright>Panoramic Data Limited 2025</Copyright>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <WarningLevel>0</WarningLevel>
   </PropertyGroup>
