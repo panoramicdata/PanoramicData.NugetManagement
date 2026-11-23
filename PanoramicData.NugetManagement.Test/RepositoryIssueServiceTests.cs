@@ -70,6 +70,27 @@ public class RepositoryIssueServiceTests(ITestOutputHelper output) : TestWithOut
 		=> new(issueNumber, Now - ago, maintainer);
 
 	[Fact]
+	public async Task AnUnattributableCommentFallsBackToAskingItemByItem()
+	{
+		// Issue number 0 is what the adapter yields for a comment URL it cannot parse. The sweep must
+		// not treat the short page as proof that nobody answered item 1.
+		var api = new FakeApi(
+			[Item(1)],
+			[[Comment(0, TimeSpan.FromDays(1), maintainer: true)]],
+			new Dictionary<int, IReadOnlyList<GitHubIssueComment>>
+			{
+				[1] = [Comment(1, TimeSpan.FromDays(1), maintainer: true)]
+			});
+		var service = new RepositoryIssueService(api);
+
+		var result = await service.GetOpenIssuesAsync(
+			"panoramicdata", "Sample", TestContext.Current.CancellationToken);
+
+		api.ItemsFetchedIndividually.Should().Equal(1);
+		result.Single().LastMaintainerReplyUtc.Should().Be(Now - TimeSpan.FromDays(1));
+	}
+
+	[Fact]
 	public async Task OpenIssuesAndPullRequestsBothAppearWithTheirKind()
 	{
 		var api = new FakeApi([Item(1), Item(2, isPullRequest: true)], [[]]);

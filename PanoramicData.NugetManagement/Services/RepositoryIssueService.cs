@@ -92,6 +92,8 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 		Dictionary<int, DateTimeOffset> replies,
 		CancellationToken cancellationToken)
 	{
+		var sawUnattributable = false;
+
 		for (var page = 1; page <= MaxSweepPages && unresolved.Count > 0; page++)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
@@ -107,12 +109,16 @@ public class RepositoryIssueService(IGitHubIssueApi api)
 				unresolved.Remove(comment.IssueNumber);
 			}
 
+			// A comment whose issue could not be identified may be the answer to any open item, so the
+			// sweep cannot claim to have seen every reply and the per-item fallback must run.
+			sawUnattributable |= comments.Any(c => c.IssueNumber <= 0);
+
 			// A short page means the comments ran out. Everything still unresolved at this point has
 			// provably never been answered by a maintainer, because the sweep has now seen every
 			// comment in the repository and none of them was one.
 			if (comments.Count < IGitHubIssueApi.CommentPageSize)
 			{
-				return true;
+				return !sawUnattributable;
 			}
 		}
 
