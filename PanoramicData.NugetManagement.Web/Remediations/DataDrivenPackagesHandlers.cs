@@ -77,6 +77,17 @@ internal static class DataDrivenPackagesHandlers
 		}
 	}
 
+	internal static void RemoveXmlProperty(string localPath, RuleResult result, Dictionary<string, object> data, List<string> applied, Action<string>? onOutput)
+	{
+		if (data["property_name"] is string name)
+		{
+			foreach (var project in DataDrivenRemediation.ReadStrings(data, "projects"))
+			{
+				RemediationHelpers.RemoveXmlProperty(localPath, project, name, result, applied, onOutput);
+			}
+		}
+	}
+
 	internal static void RemovePackageReferences(string localPath, RuleResult result, Dictionary<string, object> data, List<string> applied, Action<string>? onOutput)
 	{
 		// Each entry is "project|package": the pairs the rule proved are pruned, never a whole
