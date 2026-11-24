@@ -41,7 +41,7 @@ public sealed class DocCommentRemediatorTests : IDisposable
 	private sealed class ThrowingModel : IDocCommentModel
 	{
 		public Task<string> AskAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
-			=> throw new HttpRequestException("connection refused");
+			=> throw new HttpRequestException($"connection refused ({systemPrompt.Length}, {userPrompt.Length}, {cancellationToken.IsCancellationRequested})");
 	}
 
 	private string Write(string relative, string text, bool bom = false)
