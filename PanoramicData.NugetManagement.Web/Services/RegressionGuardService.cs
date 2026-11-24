@@ -135,10 +135,9 @@ public sealed class RegressionGuardService(
 	/// </summary>
 	private async Task NameCulpritAsync(string repositoryFullName, Attribution attribution, CancellationToken cancellationToken)
 	{
-		async Task<bool> BuildsAsync(string reference)
-			=> (await localRepo.BuildAtCommitAsync(repositoryFullName, reference, null, cancellationToken).ConfigureAwait(false)).Success;
-
-		var (culprit, isOurs) = await RegressionAttribution.NameCulpritAsync(attribution, BuildsAsync).ConfigureAwait(false);
+		var (culprit, isOurs) = await RegressionAttribution
+			.NameCulpritAsync(attribution, reference => BuildsAtAsync(repositoryFullName, reference, cancellationToken))
+			.ConfigureAwait(false);
 		if (!isOurs)
 		{
 			SetStatus(repositoryFullName, GuardState.BuildFailingNotOurs,
@@ -155,6 +154,10 @@ public sealed class RegressionGuardService(
 			+ $"{attribution.Ours.Count} of our governance commit(s) sit above the last good build. Nothing has been reverted; "
 			+ "revert or fix that commit by hand.");
 	}
+
+	private async Task<bool> BuildsAtAsync(string repositoryFullName, string reference, CancellationToken cancellationToken)
+		=> (await localRepo.BuildAtCommitAsync(repositoryFullName, reference, null, cancellationToken).ConfigureAwait(false)).Success;
+
 	private void SetStatus(string repositoryFullName, GuardState state, string message)
 	{
 		var status = _statuses.AddOrUpdate(
