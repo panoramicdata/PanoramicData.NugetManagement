@@ -57,49 +57,131 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	}
 
 	[Fact]
-	public void Identify_FindsConsecutiveOursFromHead()
+	public void Identify_CollectsOursAcrossAHumanCommit()
 	{
 		GitCommit[] commits =
 		[
-			new("h1", "chore: apply CQ-05 governance remediation"),
-			new("h2", "chore: apply LIC-01 governance remediation"),
-			new("h3", "feat: unrelated earlier work"),
-			new("h4", "chore: apply OLD governance remediation")
+			new("h1", "NuGet governance remediation for o/r"),
+			new("h2", "fix: a human commit on top of ours"),
+			new("h3", "NuGet governance remediation for o/r"),
+			new("h4", "feat: unrelated earlier work")
 		];
 
-		var (count, lastGood) = RegressionAttribution.Identify(commits);
+		var attribution = RegressionAttribution.Identify(commits);
 
-		count.Should().Be(2, "only the two commits at HEAD are consecutively ours");
-		lastGood.Should().Be("h2~1", "last-good is the parent of the earliest of our consecutive commits");
+		attribution.Ours.Select(c => c.Hash).Should().Equal("h1", "h3");
+		attribution.LastGoodRef.Should().Be("h3~1", "the control is the parent of the earliest of ours");
+		attribution.LastGoodVerified.Should().BeFalse();
 	}
 
 	[Fact]
-	public void Identify_TipNotOurs_ReturnsNothing()
+	public void Identify_HumanCommitOnTop_IsNoLongerNotOurs()
 	{
 		GitCommit[] commits =
 		[
 			new("h1", "feat: someone else's change"),
-			new("h2", "chore: apply CQ-05 governance remediation")
+			new("h2", "NuGet governance remediation for o/r")
 		];
 
-		var (count, lastGood) = RegressionAttribution.Identify(commits);
-
-		count.Should().Be(0);
-		lastGood.Should().BeNull();
+		RegressionAttribution.Identify(commits).Ours.Select(c => c.Hash).Should().Equal("h2");
 	}
 
 	[Fact]
-	public void Identify_AllOurs_RevertsWholeRun()
+	public void Identify_NoneOurs_ReturnsNothing()
+	{
+		GitCommit[] commits = [new("h1", "feat: a"), new("h2", "feat: b")];
+
+		var attribution = RegressionAttribution.Identify(commits);
+
+		attribution.Ours.Should().BeEmpty();
+		attribution.LastGoodRef.Should().BeNull();
+	}
+
+	[Fact]
+	public void Identify_StopsAtTheLastVerifiedCommit_AndUsesItAsTheControl()
 	{
 		GitCommit[] commits =
 		[
-			new("h1", "chore: apply A governance remediation"),
-			new("h2", "chore: apply B governance remediation")
+			new("h1", "NuGet governance remediation for o/r"),
+			new("h2", "fix: human"),
+			new("h3", "NuGet governance remediation for o/r"),
+			new("h4", "NuGet governance remediation for o/r")
 		];
 
-		var (count, lastGood) = RegressionAttribution.Identify(commits);
+		var attribution = RegressionAttribution.Identify(commits, "h3");
 
-		count.Should().Be(2);
-		lastGood.Should().Be("h2~1");
+		attribution.Ours.Select(c => c.Hash).Should().Equal("h1");
+		attribution.LastGoodRef.Should().Be("h3");
+		attribution.LastGoodVerified.Should().BeTrue("a commit seen building green needs no control build");
+	}
+
+	[Fact]
+	public void Identify_VerifiedHashOutsideTheWindow_FallsBackToTheControlBuild()
+	{
+		GitCommit[] commits = [new("h1", "NuGet governance remediation for o/r")];
+
+		var attribution = RegressionAttribution.Identify(commits, "gone");
+
+		attribution.LastGoodRef.Should().Be("h1~1");
+		attribution.LastGoodVerified.Should().BeFalse();
+	}
+
+	[Fact]
+	public void Identify_VerifiedCommitAtTheTip_LeavesNothingToBlame()
+	{
+		GitCommit[] commits = [new("h1", "NuGet governance remediation for o/r")];
+
+		RegressionAttribution.Identify(commits, "h1").Ours.Should().BeEmpty();
+	}
+
+	[Theory]
+	[InlineData(false, true)]
+	[InlineData(true, false)]
+	public async Task NameCulpritAsync_BlamesUsOnlyWhenTheCommitBeforeTheCulpritBuilds(bool parentFails, bool expectedOurs)
+	{
+		// Newest first: h1 and h3 are ours, h2 is a human commit between them. h3 builds, h1 does not.
+		var attribution = new Attribution([new("h1", "ours"), new("h3", "ours")], "h3~1", false, true);
+
+		var (culprit, isOurs) = await RegressionAttribution.NameCulpritAsync(
+			attribution,
+			reference => Task.FromResult(reference switch
+			{
+				"h3" => true,
+				"h1~1" => !parentFails,
+				_ => false
+			}));
+
+		culprit.Hash.Should().Be("h1");
+		isOurs.Should().Be(expectedOurs);
+	}
+
+	[Fact]
+	public async Task NameCulpritAsync_WhenTheEarliestOfOursFails_NeedsNoParentBuild()
+	{
+		var attribution = new Attribution([new("h1", "ours")], "h1~1", false, true);
+		var asked = new List<string>();
+
+		var (culprit, isOurs) = await RegressionAttribution.NameCulpritAsync(
+			attribution,
+			reference =>
+			{
+				asked.Add(reference);
+				return Task.FromResult(false);
+			});
+
+		culprit.Hash.Should().Be("h1");
+		isOurs.Should().BeTrue("the control build already proved its parent");
+		asked.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task NameCulpritAsync_WhenTheNewestOfOursBuildsUnderAHumanCommit_BlamesNobodyOfOurs()
+	{
+		var attribution = new Attribution([new("h2", "ours")], "h2~1", false, false);
+
+		var (culprit, isOurs) = await RegressionAttribution.NameCulpritAsync(attribution, reference => Task.FromResult(reference == "h2"));
+
+		culprit.Hash.Should().Be("h2");
+		isOurs.Should().BeFalse("the human commit above it broke the build, not our commit");
 	}
 }
