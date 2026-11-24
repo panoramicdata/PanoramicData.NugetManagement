@@ -130,7 +130,7 @@ public sealed class DocCommentRemediator(IDocCommentModel model, int maxFileChar
 		try
 		{
 			var answers = DocResponseParser.Parse(
-				await model.AskAsync(DocCommentPrompt.System, DocCommentPrompt.BuildUser(relative, text, slots), cancellationToken).ConfigureAwait(false))
+				await model.AskAsync(DocCommentPrompt.SystemPrompt, DocCommentPrompt.BuildUser(relative, text, slots), cancellationToken).ConfigureAwait(false))
 				.ToDictionary(kv => kv.Key, kv => kv.Value);
 
 			var bad = slots.Where(s => !answers.TryGetValue(s.Id, out var block) || DocBlockValidator.Reject(block, s) is not null).ToList();
@@ -138,7 +138,7 @@ public sealed class DocCommentRemediator(IDocCommentModel model, int maxFileChar
 			if (bad.Count > 0)
 			{
 				var retry = DocResponseParser.Parse(
-					await model.AskAsync(DocCommentPrompt.System, DocCommentPrompt.BuildUser(relative, text, bad), cancellationToken).ConfigureAwait(false));
+					await model.AskAsync(DocCommentPrompt.SystemPrompt, DocCommentPrompt.BuildUser(relative, text, bad), cancellationToken).ConfigureAwait(false));
 
 				foreach (var slot in bad.Where(s => retry.ContainsKey(s.Id)))
 				{

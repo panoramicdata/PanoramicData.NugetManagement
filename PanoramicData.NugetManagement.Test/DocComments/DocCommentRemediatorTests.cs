@@ -26,8 +26,11 @@ public sealed class DocCommentRemediatorTests : IDisposable
 	{
 		public List<string> Prompts { get; } = [];
 
+		public List<string> Systems { get; } = [];
+
 		public Task<string> AskAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
 		{
+			Systems.Add(systemPrompt);
 			Prompts.Add(userPrompt);
 
 			return Task.FromResult(reply(userPrompt));
@@ -128,6 +131,7 @@ public sealed class DocCommentRemediatorTests : IDisposable
 
 		results.Should().HaveCount(4).And.OnlyContain(r => r.Skipped != null && r.Skipped.Contains("generated"));
 		model.Prompts.Should().BeEmpty("generated code must not even be sent to the model");
+		model.Systems.Should().BeEmpty();
 	}
 
 	[Fact]
@@ -188,6 +192,9 @@ public sealed class DocCommentRemediatorTests : IDisposable
 		reply.Should().Contain("@@@ 1");
 		chat.ToolCount.Should().Be(0, "the model proposes text only; it is never given a way to act");
 		chat.System.Should().Be("sys");
+		chat.Roles.Should().Equal("user");
+		chat.Streamed.Should().BeFalse();
+		chat.Cancellable.Should().BeTrue("the caller's token is passed through");
 	}
 
 	private sealed class RecordingChat(string text) : IChatModel
@@ -195,6 +202,12 @@ public sealed class DocCommentRemediatorTests : IDisposable
 		public int ToolCount { get; private set; } = -1;
 
 		public string? System { get; private set; }
+
+		public string[] Roles { get; private set; } = [];
+
+		public bool Streamed { get; private set; } = true;
+
+		public bool Cancellable { get; private set; }
 
 		public Task<AiModelTurn> NextAsync(
 			string systemPrompt,
@@ -205,6 +218,9 @@ public sealed class DocCommentRemediatorTests : IDisposable
 		{
 			ToolCount = tools.Count;
 			System = systemPrompt;
+			Roles = [.. conversation.Select(m => m.Role)];
+			Streamed = onDelta is not null;
+			Cancellable = cancellationToken.CanBeCanceled;
 
 			return Task.FromResult(new AiModelTurn(text, []));
 		}

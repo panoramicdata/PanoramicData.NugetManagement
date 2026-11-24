@@ -28,7 +28,12 @@ public static partial class DocResponseParser
 			{
 				var id = int.Parse(marker.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
 
-				current = blocks.ContainsKey(id) ? null : (blocks[id] = []);
+				current = blocks.ContainsKey(id) ? null : [];
+
+				if (current is not null)
+				{
+					blocks[id] = current;
+				}
 			}
 			else if (current is not null && IsDocLine(line))
 			{

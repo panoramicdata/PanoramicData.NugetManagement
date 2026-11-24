@@ -8,7 +8,7 @@ namespace PanoramicData.NugetManagement.Web.Services.DocComments;
 public static class DocCommentPrompt
 {
 	/// <summary>The fixed instructions.</summary>
-	public const string System = """
+	public static string SystemPrompt { get; } = """
 		You write XML documentation comments for the public members of a C# library. The reader is a
 		developer using IntelliSense.
 
