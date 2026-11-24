@@ -11,7 +11,12 @@ public static class RegressionAttribution
 	/// the fallback for commits made before it existed. Deliberately does NOT match our revert commits,
 	/// so an auto-rollback is never itself rolled back.
 	/// </summary>
-	public static bool IsGovernanceCommit(string subject, string? remediationTrailer = null)
+	public static bool IsGovernanceCommit(string subject) => IsGovernanceCommit(subject, null);
+
+	/// <inheritdoc cref="IsGovernanceCommit(string)"/>
+	/// <param name="subject">The commit subject.</param>
+	/// <param name="remediationTrailer">The value of the governance trailer, or null when the commit has none.</param>
+	public static bool IsGovernanceCommit(string subject, string? remediationTrailer)
 		=> !string.IsNullOrWhiteSpace(remediationTrailer)
 			|| GovernanceCommitMessage.IsRemediationSubject(subject)
 			|| (!string.IsNullOrWhiteSpace(subject)

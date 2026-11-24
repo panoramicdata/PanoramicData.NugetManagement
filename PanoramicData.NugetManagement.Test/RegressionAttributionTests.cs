@@ -33,13 +33,13 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	public async Task FindFirstBreakingCommitAsync_NamesTheSingleCommitThatBrokeTheBuild(int goodCount, string expected)
 	{
 		// Newest first. The first `goodCount` commits from the oldest end still build.
-		var commits = new GitCommit[]
-		{
+		GitCommit[] commits =
+		[
 			new("h1", "chore: apply A governance remediations"),
 			new("h2", "chore: apply B governance remediations"),
 			new("h3", "chore: apply C governance remediations"),
 			new("h4", "chore: apply D governance remediations")
-		};
+		];
 		var oldestFirst = commits.Reverse().Select(c => c.Hash).ToList();
 		var built = new List<string>();
 
@@ -59,13 +59,13 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void Identify_FindsConsecutiveOursFromHead()
 	{
-		var commits = new GitCommit[]
-		{
+		GitCommit[] commits =
+		[
 			new("h1", "chore: apply CQ-05 governance remediation"),
 			new("h2", "chore: apply LIC-01 governance remediation"),
 			new("h3", "feat: unrelated earlier work"),
 			new("h4", "chore: apply OLD governance remediation")
-		};
+		];
 
 		var (count, lastGood) = RegressionAttribution.Identify(commits);
 
@@ -76,11 +76,11 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void Identify_TipNotOurs_ReturnsNothing()
 	{
-		var commits = new GitCommit[]
-		{
+		GitCommit[] commits =
+		[
 			new("h1", "feat: someone else's change"),
 			new("h2", "chore: apply CQ-05 governance remediation")
-		};
+		];
 
 		var (count, lastGood) = RegressionAttribution.Identify(commits);
 
@@ -91,11 +91,11 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void Identify_AllOurs_RevertsWholeRun()
 	{
-		var commits = new GitCommit[]
-		{
+		GitCommit[] commits =
+		[
 			new("h1", "chore: apply A governance remediation"),
 			new("h2", "chore: apply B governance remediation")
-		};
+		];
 
 		var (count, lastGood) = RegressionAttribution.Identify(commits);
 

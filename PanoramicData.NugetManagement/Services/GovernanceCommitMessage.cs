@@ -14,10 +14,10 @@ namespace PanoramicData.NugetManagement.Services;
 public static partial class GovernanceCommitMessage
 {
 	/// <summary>The trailer naming the rules a commit applied; its presence marks the commit as ours.</summary>
-	public const string TrailerKey = "Governance-Remediation";
+	public static string TrailerKey => "Governance-Remediation";
 
 	/// <summary>The trailer value written when no rule id was recorded.</summary>
-	public const string UnspecifiedRules = "unspecified";
+	public static string UnspecifiedRules => "unspecified";
 
 	private const string SubjectPrefix = "NuGet governance remediation for ";
 	private const int MaxListedFiles = 50;
@@ -90,19 +90,10 @@ public static partial class GovernanceCommitMessage
 
 		foreach (var line in unifiedDiff.Split('\n'))
 		{
-			var side = line.StartsWith('-') && !line.StartsWith("---", StringComparison.Ordinal) ? removed
-				: line.StartsWith('+') && !line.StartsWith("+++", StringComparison.Ordinal) ? added
-				: null;
-			if (side is null)
+			var side = SideOf(line, removed, added);
+			if (side is not null && TryReadPackage(line, out var id, out var version))
 			{
-				continue;
-			}
-
-			var include = IncludeAttribute().Match(line);
-			var version = VersionAttribute().Match(line);
-			if (include.Success && version.Success)
-			{
-				side[include.Groups["v"].Value] = version.Groups["v"].Value;
+				side[id] = version;
 			}
 		}
 
@@ -117,6 +108,25 @@ public static partial class GovernanceCommitMessage
 		];
 	}
 
+	private static Dictionary<string, string>? SideOf(string line, Dictionary<string, string> removed, Dictionary<string, string> added)
+	{
+		if (line.StartsWith('-') && !line.StartsWith("---", StringComparison.Ordinal))
+		{
+			return removed;
+		}
+
+		return line.StartsWith('+') && !line.StartsWith("+++", StringComparison.Ordinal) ? added : null;
+	}
+
+	private static bool TryReadPackage(string line, out string id, out string version)
+	{
+		var include = IncludeAttribute().Match(line);
+		var versionMatch = VersionAttribute().Match(line);
+		id = include.Groups["v"].Value;
+		version = versionMatch.Groups["v"].Value;
+
+		return include.Success && versionMatch.Success;
+	}
 	private static string RuleList(IReadOnlyCollection<string> ruleIds)
 	{
 		var clean = ruleIds
