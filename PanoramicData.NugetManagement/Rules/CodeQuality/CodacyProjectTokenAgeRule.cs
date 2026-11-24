@@ -15,7 +15,7 @@ namespace PanoramicData.NugetManagement.Rules;
 public class CodacyProjectTokenAgeRule : RuleBase
 {
 	/// <summary>Days after which the token is reported, about eleven months of its one-year life.</summary>
-	public const int DefaultWarnAfterDays = 335;
+	public static int DefaultWarnAfterDays => 335;
 
 	private const string SecretName = "CODACY_PROJECT_TOKEN";
 
@@ -82,34 +82,37 @@ public class CodacyProjectTokenAgeRule : RuleBase
 				$"{SecretName} is {ageDays.ToString(CultureInfo.InvariantCulture)} days old, inside the {threshold.ToString(CultureInfo.InvariantCulture)} day limit."));
 		}
 
-		var expired = ageDays >= 365;
+		var age = ageDays.ToString(CultureInfo.InvariantCulture);
 
 		return Task.FromResult(Fail(
-			expired
-				? $"{SecretName} is {ageDays.ToString(CultureInfo.InvariantCulture)} days old and has probably expired, so coverage may no longer reach Codacy."
-				: $"{SecretName} is {ageDays.ToString(CultureInfo.InvariantCulture)} days old and Codacy project tokens expire after a year.",
-			new RuleAdvisory
-			{
-				Summary = $"Replace the {SecretName} repository secret before the Codacy token expires.",
-				Detail = $$"""
-					Codacy project tokens last one year. The coverage upload is continue-on-error, so an
-					expired token fails quietly: CI stays green while Codacy receives nothing and TST-10
-					drifts to RED.
-
-					The {{SecretName}} secret's age is used as the token's age, since GitHub never returns its value.
-					Replacing the token is manual and needs the Codacy account credential, so no fix is
-					applied automatically. Mint a new token and write it to the secret with the codacy skill:
-
-					  dotnet ../PanoramicData.Skills/.github/skills/codacy/Codacy.cs create-repo-token --repo {org}/{repo} --set-github-secret
-
-					Re-assess afterwards: setting the secret resets this age.
-					""",
-				Data = new()
-				{
-					["secret_name"] = SecretName,
-					["age_days"] = ageDays,
-					["warn_after_days"] = threshold
-				}
-			}));
+			ageDays >= 365
+				? $"{SecretName} is {age} days old and has probably expired, so coverage may no longer reach Codacy."
+				: $"{SecretName} is {age} days old and Codacy project tokens expire after a year.",
+			Advisory(ageDays, threshold)));
 	}
+
+	private static RuleAdvisory Advisory(int ageDays, int threshold)
+		=> new()
+		{
+			Summary = $"Replace the {SecretName} repository secret before the Codacy token expires.",
+			Detail = $$"""
+				Codacy project tokens last one year. The coverage upload is continue-on-error, so an
+				expired token fails quietly: CI stays green while Codacy receives nothing and TST-10
+				drifts to RED.
+
+				The {{SecretName}} secret's age is used as the token's age, since GitHub never returns its value.
+				Replacing the token is manual and needs the Codacy account credential, so no fix is
+				applied automatically. Mint a new token and write it to the secret with the codacy skill:
+
+				  dotnet ../PanoramicData.Skills/.github/skills/codacy/Codacy.cs create-repo-token --repo {org}/{repo} --set-github-secret
+
+				Re-assess afterwards: setting the secret resets this age.
+				""",
+			Data = new()
+			{
+				["secret_name"] = SecretName,
+				["age_days"] = ageDays,
+				["warn_after_days"] = threshold
+			}
+		};
 }
