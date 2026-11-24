@@ -151,6 +151,9 @@ Once an App id is set, a problem with the App (no key, a refused exchange, no in
 runner never falls back to your token, because that would silently put the load back on the shared quota.
 Without the App's administration and secrets permissions, the private-vulnerability-reporting and
 Actions-secret-name checks report "unknown" instead of a value.
+CQ-09 reads the same secret metadata (names and last-updated dates, never values) and warns, as a warning, once the
+`CODACY_PROJECT_TOKEN` secret is older than `Codacy.TokenWarnAfterDays` (335 by default, about eleven months of the token's
+one-year life). It never replaces the token: mint one with the codacy skill's `create-repo-token --set-github-secret`.
 
 ### Recommended settings
 

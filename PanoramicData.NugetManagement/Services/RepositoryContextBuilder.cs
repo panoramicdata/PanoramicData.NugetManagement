@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
@@ -123,7 +123,7 @@ public class RepositoryContextBuilder : IDisposable
 		fileContents.TryGetValue(NugetManagementRepositoryConfig.FileName, out var repoConfigRaw);
 		var repositoryConfig = NugetManagementRepositoryConfigParser.Parse(repoConfigRaw);
 
-		var actionsSecretNames = await ResolveActionsSecretNamesAsync(owner, repoName)
+		var actionsSecrets = await ResolveActionsSecretsAsync(owner, repoName)
 			.ConfigureAwait(false);
 
 		var lineCoveragePercent = await ResolveCoverageAsync(
@@ -144,7 +144,10 @@ public class RepositoryContextBuilder : IDisposable
 			FilePaths = filePaths,
 			FileContents = fileContents,
 			RepositoryConfig = repositoryConfig,
-			ActionsSecretNames = actionsSecretNames,
+			ActionsSecretNames = actionsSecrets is null ? null : [.. actionsSecrets.Select(secret => secret.Name)],
+			ActionsSecretUpdatedAt = actionsSecrets?
+				.GroupBy(secret => secret.Name, StringComparer.OrdinalIgnoreCase)
+				.ToDictionary(group => group.Key, group => group.Max(secret => secret.UpdatedAt ?? secret.CreatedAt), StringComparer.OrdinalIgnoreCase),
 			LineCoveragePercent = lineCoveragePercent,
 			PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(_github, owner, repoName).ConfigureAwait(false),
 			IsPrivateRepository = repository.Private
@@ -189,14 +192,14 @@ public class RepositoryContextBuilder : IDisposable
 	}
 
 	/// <summary>
-	/// The names of the repository's Actions secrets, or null when they cannot be read.
+	/// The repository's Actions secrets (name and dates only), or null when they cannot be read.
 	/// </summary>
 	/// <remarks>
 	/// Names only; the API does not return values. Reading them needs admin rights on the repository,
 	/// which the assessing token may not have, so a failure here is an unanswered question rather
 	/// than an answer — CQ-07 renders null as "unknown" and never as "no token configured".
 	/// </remarks>
-	private async Task<IReadOnlyList<string>?> ResolveActionsSecretNamesAsync(
+	private async Task<IReadOnlyList<RepositorySecret>?> ResolveActionsSecretsAsync(
 		string owner,
 		string repositoryName)
 	{
@@ -206,7 +209,7 @@ public class RepositoryContextBuilder : IDisposable
 				.GetAll(owner, repositoryName)
 				.ConfigureAwait(false);
 
-			return [.. secrets.Secrets.Select(secret => secret.Name)];
+			return [.. secrets.Secrets];
 		}
 		catch (Exception ex) when (ex is not OperationCanceledException)
 		{

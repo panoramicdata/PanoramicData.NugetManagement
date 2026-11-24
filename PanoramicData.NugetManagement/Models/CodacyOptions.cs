@@ -1,4 +1,4 @@
-namespace PanoramicData.NugetManagement.Models;
+﻿namespace PanoramicData.NugetManagement.Models;
 
 /// <summary>
 /// Optional Codacy quality gate settings for a repository.
@@ -21,4 +21,10 @@ public class CodacyOptions
 	/// Maximum acceptable number of issues.
 	/// </summary>
 	public int MaxIssueCount { get; set; }
+
+	/// <summary>
+	/// Age in days after which the repository's CODACY_PROJECT_TOKEN secret is reported by CQ-09 as
+	/// due for replacement. Codacy project tokens last a year; the default leaves about a month.
+	/// </summary>
+	public int TokenWarnAfterDays { get; set; } = 335;
 }

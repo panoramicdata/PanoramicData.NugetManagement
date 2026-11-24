@@ -1,4 +1,4 @@
-using System.Xml;
+﻿using System.Xml;
 using System.Xml.Linq;
 
 namespace PanoramicData.NugetManagement.Models;
@@ -115,6 +115,12 @@ public class RepositoryContext
 	/// empty one reports every repository as misconfigured the moment a permission changes.
 	/// </remarks>
 	public IReadOnlyList<string>? ActionsSecretNames { get; init; }
+
+	/// <summary>
+	/// When each Actions secret was last created or updated, keyed by secret name, or null when it
+	/// could not be read. Metadata only; GitHub never returns values.
+	/// </summary>
+	public IReadOnlyDictionary<string, DateTimeOffset>? ActionsSecretUpdatedAt { get; init; }
 
 	/// <summary>
 	/// Whether GitHub private vulnerability reporting is switched on for this repository, or null when
