@@ -30,6 +30,7 @@ public sealed class DocCommentRemediatorTests : IDisposable
 
 		public Task<string> AskAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
 			Systems.Add(systemPrompt);
 			Prompts.Add(userPrompt);
 
