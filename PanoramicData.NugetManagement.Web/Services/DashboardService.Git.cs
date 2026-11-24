@@ -172,14 +172,21 @@ public partial class DashboardService
 		var buildRefusal = await VerifyChangesBuildAsync(row, repoIdentity, onOutput, cancellationToken).ConfigureAwait(false);
 		if (buildRefusal is not null)
 		{
+			if (buildRefusal.ChangesReverted)
+			{
+				row.RemediatedRuleIds.Clear();
+			}
+
 			return buildRefusal;
 		}
 
 		// Not cancellable: a push killed mid-ref-update cannot be tidied up afterwards.
-		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, onOutput, CancellationToken.None).ConfigureAwait(false);
+		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, [.. row.RemediatedRuleIds], onOutput, CancellationToken.None).ConfigureAwait(false);
 
 		if (success)
 		{
+			row.RemediatedRuleIds.Clear();
+
 			// Verified again in the background so a breakage the local build could not see is rolled back.
 			_regressionGuard.Enqueue(row.RepositoryFullName);
 

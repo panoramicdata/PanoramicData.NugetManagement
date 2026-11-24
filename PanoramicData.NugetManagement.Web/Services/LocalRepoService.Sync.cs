@@ -64,26 +64,28 @@ public partial class LocalRepoService
 	/// <summary>
 	/// Gets the most recent commits (hash + subject line), newest first.
 	/// </summary>
-	public async Task<IReadOnlyList<(string Hash, string Subject)>> GetRecentCommitsAsync(
+	public async Task<IReadOnlyList<GitCommit>> GetRecentCommitsAsync(
 		string repoIdentity,
 		int count,
 		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
+		var format = $"--pretty=format:%H%x1f%s%x1f%(trailers:key={GovernanceCommitMessage.TrailerKey},valueonly,separator=%x2C)%x1e";
 		var (ok, output) = await RunCommandWithStreamingAsync(
-			path, "git", ["log", "-n", count.ToString(System.Globalization.CultureInfo.InvariantCulture), "--pretty=format:%H%x1f%s"], null, cancellationToken, null).ConfigureAwait(false);
+			path, "git", ["log", "-n", count.ToString(System.Globalization.CultureInfo.InvariantCulture), format], null, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return [];
 		}
 
-		var commits = new List<(string Hash, string Subject)>();
-		foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		var commits = new List<GitCommit>();
+		foreach (var record in output.Split('\u001e', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
 		{
-			var parts = line.Split('\u001f', 2);
-			if (parts.Length == 2)
+			var parts = record.Split('\u001f');
+			if (parts.Length == 3)
 			{
-				commits.Add((parts[0].Trim(), parts[1].Trim()));
+				var trailer = parts[2].Trim();
+				commits.Add(new GitCommit(parts[0].Trim(), parts[1].Trim(), trailer.Length == 0 ? null : trailer));
 			}
 		}
 
@@ -184,12 +186,36 @@ public partial class LocalRepoService
 		return (ok, output);
 	}
 
+	private async Task<string> DescribeStagedChangeAsync(
+		string path,
+		string commitSubject,
+		IReadOnlyCollection<string> ruleIds,
+		CancellationToken cancellationToken)
+	{
+		var (namesOk, names) = await RunCommandWithStreamingAsync(path, "git", ["diff", "--cached", "--name-only"], null, cancellationToken, null).ConfigureAwait(false);
+		string[] projectFiles = ["*.csproj", "*.props", "*.targets"];
+		var (diffOk, diff) = await RunCommandWithStreamingAsync(path, "git", ["diff", "--cached", "-U0", "--", .. projectFiles], null, cancellationToken, null).ConfigureAwait(false);
+
+		var files = namesOk
+			? names.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			: [];
+		var moves = diffOk ? GovernanceCommitMessage.PackageMoves(diff) : [];
+
+		return GovernanceCommitMessage.Compose(commitSubject, ruleIds, files, moves);
+	}
+
 	/// <summary>
 	/// Commits all local changes, fetches from origin, rebases, and pushes.
 	/// </summary>
+	/// <param name="repoIdentity">The repository, as owner/name.</param>
+	/// <param name="commitSubject">The commit subject; the body and trailer are added from what is staged.</param>
+	/// <param name="ruleIds">The rules the change applied, for the commit body and trailer.</param>
+	/// <param name="onOutput">Receives the git output.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
 	public async Task<(bool Success, string Output)> CommitAndPushAsync(
 		string repoIdentity,
-		string commitMessage,
+		string commitSubject,
+		IReadOnlyCollection<string> ruleIds,
 		Action<string>? onOutput,
 		CancellationToken cancellationToken)
 	{
@@ -202,6 +228,8 @@ public partial class LocalRepoService
 		{
 			return (false, output);
 		}
+
+		var commitMessage = await DescribeStagedChangeAsync(path, commitSubject, ruleIds, cancellationToken).ConfigureAwait(false);
 
 		// Commit (allow empty commit to succeed gracefully)
 		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", commitMessage], onOutput, cancellationToken, null).ConfigureAwait(false);
