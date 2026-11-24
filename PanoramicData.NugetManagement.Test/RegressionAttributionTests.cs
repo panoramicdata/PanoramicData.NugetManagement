@@ -13,11 +13,17 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	[InlineData("chore: apply CodeQuality governance remediations", true)]
 	[InlineData("chore: apply governance remediations", true)]
 	[InlineData("revert: auto-rollback governance remediation (build regression)", false)] // our revert must NOT be re-reverted
+	[InlineData("NuGet governance remediation for panoramicdata/PanoramicData.NugetManagement", true)]
+	[InlineData("Revert \"NuGet governance remediation for panoramicdata/PanoramicData.NugetManagement\"", false)]
 	[InlineData("feat: add a new feature", false)]
 	[InlineData("chore: bump versions", false)]
 	[InlineData("", false)]
 	public void IsGovernanceCommit_MatchesOnlyOurRemediations(string subject, bool expected)
 		=> RegressionAttribution.IsGovernanceCommit(subject).Should().Be(expected);
+
+	[Fact]
+	public void IsGovernanceCommit_TrailerDecidesWhateverTheSubjectSays()
+		=> RegressionAttribution.IsGovernanceCommit("Tidy up", "CQ-05").Should().BeTrue();
 
 	[Theory]
 	[InlineData(0, "h4")]
@@ -27,13 +33,13 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	public async Task FindFirstBreakingCommitAsync_NamesTheSingleCommitThatBrokeTheBuild(int goodCount, string expected)
 	{
 		// Newest first. The first `goodCount` commits from the oldest end still build.
-		var commits = new (string Hash, string Subject)[]
-		{
-			("h1", "chore: apply A governance remediations"),
-			("h2", "chore: apply B governance remediations"),
-			("h3", "chore: apply C governance remediations"),
-			("h4", "chore: apply D governance remediations")
-		};
+		GitCommit[] commits =
+		[
+			new("h1", "chore: apply A governance remediations"),
+			new("h2", "chore: apply B governance remediations"),
+			new("h3", "chore: apply C governance remediations"),
+			new("h4", "chore: apply D governance remediations")
+		];
 		var oldestFirst = commits.Reverse().Select(c => c.Hash).ToList();
 		var built = new List<string>();
 
@@ -53,13 +59,13 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void Identify_FindsConsecutiveOursFromHead()
 	{
-		var commits = new (string Hash, string Subject)[]
-		{
-			("h1", "chore: apply CQ-05 governance remediation"),
-			("h2", "chore: apply LIC-01 governance remediation"),
-			("h3", "feat: unrelated earlier work"),
-			("h4", "chore: apply OLD governance remediation")
-		};
+		GitCommit[] commits =
+		[
+			new("h1", "chore: apply CQ-05 governance remediation"),
+			new("h2", "chore: apply LIC-01 governance remediation"),
+			new("h3", "feat: unrelated earlier work"),
+			new("h4", "chore: apply OLD governance remediation")
+		];
 
 		var (count, lastGood) = RegressionAttribution.Identify(commits);
 
@@ -70,11 +76,11 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void Identify_TipNotOurs_ReturnsNothing()
 	{
-		var commits = new (string Hash, string Subject)[]
-		{
-			("h1", "feat: someone else's change"),
-			("h2", "chore: apply CQ-05 governance remediation")
-		};
+		GitCommit[] commits =
+		[
+			new("h1", "feat: someone else's change"),
+			new("h2", "chore: apply CQ-05 governance remediation")
+		];
 
 		var (count, lastGood) = RegressionAttribution.Identify(commits);
 
@@ -85,11 +91,11 @@ public class RegressionAttributionTests(ITestOutputHelper output) : TestWithOutp
 	[Fact]
 	public void Identify_AllOurs_RevertsWholeRun()
 	{
-		var commits = new (string Hash, string Subject)[]
-		{
-			("h1", "chore: apply A governance remediation"),
-			("h2", "chore: apply B governance remediation")
-		};
+		GitCommit[] commits =
+		[
+			new("h1", "chore: apply A governance remediation"),
+			new("h2", "chore: apply B governance remediation")
+		];
 
 		var (count, lastGood) = RegressionAttribution.Identify(commits);
 

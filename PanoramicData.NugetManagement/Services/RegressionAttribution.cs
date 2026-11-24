@@ -6,14 +6,22 @@ namespace PanoramicData.NugetManagement.Services;
 public static class RegressionAttribution
 {
 	/// <summary>
-	/// Determines whether a commit subject is one this tool produced when applying a governance
-	/// remediation (and is therefore a candidate for automatic rollback). Deliberately does NOT match
-	/// our revert commits, so an auto-rollback is never itself rolled back.
+	/// Determines whether a commit is one this tool produced when applying a governance remediation.
+	/// The <see cref="GovernanceCommitMessage.TrailerKey"/> trailer decides when present; the subject is
+	/// the fallback for commits made before it existed. Deliberately does NOT match our revert commits,
+	/// so an auto-rollback is never itself rolled back.
 	/// </summary>
-	public static bool IsGovernanceCommit(string subject)
-		=> !string.IsNullOrWhiteSpace(subject)
-			&& subject.StartsWith("chore: apply", StringComparison.OrdinalIgnoreCase)
-			&& subject.Contains("governance remediation", StringComparison.OrdinalIgnoreCase);
+	public static bool IsGovernanceCommit(string subject) => IsGovernanceCommit(subject, null);
+
+	/// <inheritdoc cref="IsGovernanceCommit(string)"/>
+	/// <param name="subject">The commit subject.</param>
+	/// <param name="remediationTrailer">The value of the governance trailer, or null when the commit has none.</param>
+	public static bool IsGovernanceCommit(string subject, string? remediationTrailer)
+		=> !string.IsNullOrWhiteSpace(remediationTrailer)
+			|| GovernanceCommitMessage.IsRemediationSubject(subject)
+			|| (!string.IsNullOrWhiteSpace(subject)
+				&& subject.StartsWith("chore: apply", StringComparison.OrdinalIgnoreCase)
+				&& subject.Contains("governance remediation", StringComparison.OrdinalIgnoreCase));
 
 	/// <summary>
 	/// Bisects our consecutive commits to the first one at which the build fails.
@@ -21,8 +29,8 @@ public static class RegressionAttribution
 	/// <param name="ourCommitsNewestFirst">Our run of commits at HEAD, newest first. HEAD is known to fail.</param>
 	/// <param name="buildsAtCommit">Whether the build succeeds at the given commit hash.</param>
 	/// <returns>The earliest commit of the run that does not build.</returns>
-	public static async Task<(string Hash, string Subject)> FindFirstBreakingCommitAsync(
-		IReadOnlyList<(string Hash, string Subject)> ourCommitsNewestFirst,
+	public static async Task<GitCommit> FindFirstBreakingCommitAsync(
+		IReadOnlyList<GitCommit> ourCommitsNewestFirst,
 		Func<string, Task<bool>> buildsAtCommit)
 	{
 		var oldestFirst = ourCommitsNewestFirst.Reverse().ToList();
@@ -56,12 +64,12 @@ public static class RegressionAttribution
 	/// the tip commit was not authored by this tool (so the breakage is not ours to roll back).
 	/// </returns>
 	public static (int OurCount, string? LastGoodRef) Identify(
-		IReadOnlyList<(string Hash, string Subject)> commitsNewestFirst)
+		IReadOnlyList<GitCommit> commitsNewestFirst)
 	{
 		var ourCount = 0;
 		foreach (var commit in commitsNewestFirst)
 		{
-			if (!IsGovernanceCommit(commit.Subject))
+			if (!IsGovernanceCommit(commit.Subject, commit.RemediationTrailer))
 			{
 				break;
 			}

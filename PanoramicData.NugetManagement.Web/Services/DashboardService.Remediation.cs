@@ -205,7 +205,12 @@ public partial class DashboardService
 
 		try
 		{
+			var appliedBefore = applied.Count;
 			remediation.Apply(row.LocalPath!, failure, applied, onOutput);
+			if (applied.Count > appliedBefore)
+			{
+				row.RemediatedRuleIds.Add(failure.RuleId);
+			}
 		}
 		catch (Exception ex)
 		{

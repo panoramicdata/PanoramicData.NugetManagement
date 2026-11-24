@@ -152,7 +152,7 @@ public sealed partial class WorkExecutors
 
 		try
 		{
-			var commitMessage = $"NuGet governance remediation for {row.RepositoryFullName}";
+			var commitMessage = GovernanceCommitMessage.Subject(row.RepositoryFullName);
 			var push = await dashboard.CommitAndPushAsync(row, commitMessage, Say, cancellationToken).ConfigureAwait(false);
 
 			// Whatever the outcome: a refused or failed push is as much part of the record as a good one.

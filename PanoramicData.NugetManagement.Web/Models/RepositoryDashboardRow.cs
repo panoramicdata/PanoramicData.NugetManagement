@@ -103,6 +103,13 @@ public class RepositoryDashboardRow
 	public List<string> DeclaredPackageIds { get; set; } = [];
 
 	/// <summary>
+	/// The rules a remediation has written into the clone since the last push, named in the next
+	/// commit. Held in memory only: a restart loses the names, and the commit then says "unspecified".
+	/// </summary>
+	[JsonIgnore]
+	public HashSet<string> RemediatedRuleIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
 	/// Whether the repository publishes nothing to NuGet yet. Such a row came from a package id its
 	/// project files declare rather than from nuget.org; it is governed like any other, so it can be
 	/// brought up to standard before its first release.
