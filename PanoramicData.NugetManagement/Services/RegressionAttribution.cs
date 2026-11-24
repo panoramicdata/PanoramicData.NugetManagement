@@ -58,10 +58,6 @@ public static class RegressionAttribution
 	/// in the range, so a human commit pushed on top does not make the breakage "not ours".
 	/// </summary>
 	/// <param name="commitsNewestFirst">Recent commits, newest first.</param>
-	/// <param name="lastVerifiedHash">
-	/// The hash of the last commit known to build green, when there is one in memory. The range stops
-	/// there, and that commit is the control, so no control build is needed.
-	/// </param>
 	/// <returns>
 	/// Our commits in the range (newest first), and a git ref for the last known-good commit. When none
 	/// of the range is ours, <c>Ours</c> is empty and <c>LastGoodRef</c> is null.
@@ -71,7 +67,7 @@ public static class RegressionAttribution
 
 	/// <inheritdoc cref="Identify(IReadOnlyList{GitCommit})"/>
 	/// <param name="commitsNewestFirst">Recent commits, newest first.</param>
-	/// <param name="lastVerifiedHash">The last commit known to build green, or null.</param>
+	/// <param name="lastVerifiedHash">`n	/// The hash of the last commit known to build green, when there is one in memory. The range stops`n	/// there, and that commit is the control, so no control build is needed.`n	/// </param>
 	public static Attribution Identify(IReadOnlyList<GitCommit> commitsNewestFirst, string? lastVerifiedHash)
 	{
 		var verifiedIndex = lastVerifiedHash is null
@@ -95,7 +91,7 @@ public static class RegressionAttribution
 	/// Bisects our commits to the first that fails to build, then confirms its parent builds. When a
 	/// human commit sits between, the parent failing means the breakage is theirs, not ours.
 	/// </summary>
-	/// <param name="attribution">Our commits, as <see cref="Identify"/> returned them.</param>
+	/// <param name="attribution">Our commits, as <c>Identify</c> returned them.</param>
 	/// <param name="buildsAt">Whether the build succeeds at a git ref.</param>
 	/// <returns>The first failing commit of ours, and whether the breakage is attributable to us.</returns>
 	public static async Task<(GitCommit Culprit, bool IsOurs)> NameCulpritAsync(
