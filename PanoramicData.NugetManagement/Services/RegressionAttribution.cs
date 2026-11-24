@@ -54,36 +54,82 @@ public static class RegressionAttribution
 	}
 
 	/// <summary>
-	/// Given the recent commits (newest first), identifies the run of consecutive commits at HEAD
-	/// that this tool authored.
+	/// Given the recent commits (newest first), collects the ones this tool authored, wherever they sit
+	/// in the range, so a human commit pushed on top does not make the breakage "not ours".
 	/// </summary>
-	/// <param name="commitsNewestFirst">Recent commits as (hash, subject), newest first.</param>
+	/// <param name="commitsNewestFirst">Recent commits, newest first.</param>
 	/// <returns>
-	/// The number of our consecutive commits at HEAD, and a git ref for the last known-good commit
-	/// (the parent of the earliest of those). <c>OurCount</c> is 0 and <c>LastGoodRef</c> is null when
-	/// the tip commit was not authored by this tool (so the breakage is not ours to roll back).
+	/// Our commits in the range (newest first), and a git ref for the last known-good commit. When none
+	/// of the range is ours, <c>Ours</c> is empty and <c>LastGoodRef</c> is null.
 	/// </returns>
-	public static (int OurCount, string? LastGoodRef) Identify(
-		IReadOnlyList<GitCommit> commitsNewestFirst)
+	public static Attribution Identify(IReadOnlyList<GitCommit> commitsNewestFirst)
+		=> Identify(commitsNewestFirst, null);
+
+	/// <inheritdoc cref="Identify(IReadOnlyList{GitCommit})"/>
+	/// <param name="commitsNewestFirst">Recent commits, newest first.</param>
+	/// <param name="lastVerifiedHash">`n	/// The hash of the last commit known to build green, when there is one in memory. The range stops`n	/// there, and that commit is the control, so no control build is needed.`n	/// </param>
+	public static Attribution Identify(IReadOnlyList<GitCommit> commitsNewestFirst, string? lastVerifiedHash)
 	{
-		var ourCount = 0;
-		foreach (var commit in commitsNewestFirst)
+		var verifiedIndex = lastVerifiedHash is null
+			? -1
+			: IndexOfHash(commitsNewestFirst, lastVerifiedHash);
+		var range = verifiedIndex < 0 ? commitsNewestFirst : [.. commitsNewestFirst.Take(verifiedIndex)];
+		var ours = range.Where(commit => IsGovernanceCommit(commit.Subject, commit.RemediationTrailer)).ToList();
+
+		if (ours.Count == 0)
 		{
-			if (!IsGovernanceCommit(commit.Subject, commit.RemediationTrailer))
+			return new Attribution([], null, false, false);
+		}
+
+		var newestIsHead = ours[0].Hash == commitsNewestFirst[0].Hash;
+		return verifiedIndex >= 0
+			? new Attribution(ours, commitsNewestFirst[verifiedIndex].Hash, true, newestIsHead)
+			: new Attribution(ours, $"{ours[^1].Hash}~1", false, newestIsHead);
+	}
+
+	/// <summary>
+	/// Bisects our commits to the first that fails to build, then confirms its parent builds. When a
+	/// human commit sits between, the parent failing means the breakage is theirs, not ours.
+	/// </summary>
+	/// <param name="attribution">Our commits, as <c>Identify</c> returned them.</param>
+	/// <param name="buildsAt">Whether the build succeeds at a git ref.</param>
+	/// <returns>The first failing commit of ours, and whether the breakage is attributable to us.</returns>
+	public static async Task<(GitCommit Culprit, bool IsOurs)> NameCulpritAsync(
+		Attribution attribution,
+		Func<string, Task<bool>> buildsAt)
+	{
+		// The bisect assumes the newest of ours fails. That holds at the tip; under a human commit it
+		// has to be shown, or the human commit's breakage would be put down to us.
+		if (!attribution.NewestIsHead && await buildsAt(attribution.Ours[0].Hash).ConfigureAwait(false))
+		{
+			return (attribution.Ours[0], false);
+		}
+
+		var culprit = await FindFirstBreakingCommitAsync(attribution.Ours, buildsAt).ConfigureAwait(false);
+
+		// The earliest of ours has the control build (or the verified commit) as its parent.
+		var isEarliest = culprit.Hash == attribution.Ours[^1].Hash;
+		var parentBuilds = isEarliest || await buildsAt($"{culprit.Hash}~1").ConfigureAwait(false);
+
+		return (culprit, parentBuilds);
+	}
+	private static int IndexOfHash(IReadOnlyList<GitCommit> commits, string hash)
+	{
+		for (var index = 0; index < commits.Count; index++)
+		{
+			if (string.Equals(commits[index].Hash, hash, StringComparison.OrdinalIgnoreCase))
 			{
-				break;
+				return index;
 			}
-
-			ourCount++;
 		}
 
-		if (ourCount == 0)
-		{
-			return (0, null);
-		}
-
-		// The earliest of our consecutive commits is the last one counted; its parent is last-good.
-		var earliestOursHash = commitsNewestFirst[ourCount - 1].Hash;
-		return (ourCount, $"{earliestOursHash}~1");
+		return -1;
 	}
 }
+
+/// <summary>Which commits in a failing range are ours, and the commit to compare them against.</summary>
+/// <param name="Ours">Our commits in the range, newest first.</param>
+/// <param name="LastGoodRef">A git ref to build as the control, or null when none of the range is ours.</param>
+/// <param name="LastGoodVerified">Whether <paramref name="LastGoodRef"/> is already known to build, so it needs no control build.</param>
+/// <param name="NewestIsHead">Whether the newest of ours is the tip, which is known to fail; otherwise a human commit sits above it.</param>
+public sealed record Attribution(IReadOnlyList<GitCommit> Ours, string? LastGoodRef, bool LastGoodVerified, bool NewestIsHead);

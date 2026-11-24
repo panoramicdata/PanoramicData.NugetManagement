@@ -18,6 +18,7 @@ public sealed class RegressionGuardService(
 	private const int MaxConcurrentBuilds = 2;
 
 	private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
+	private readonly ConcurrentDictionary<string, string> _lastVerified = new(StringComparer.OrdinalIgnoreCase);
 	private readonly ConcurrentDictionary<string, RepoGuardStatus> _statuses = new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>Raised whenever a repository's guard status changes.</summary>
@@ -70,56 +71,92 @@ public sealed class RegressionGuardService(
 		SetStatus(repositoryFullName, GuardState.Building, "Building…");
 
 		var build = await localRepo.BuildWithRestoreAsync(repositoryFullName, null, cancellationToken).ConfigureAwait(false);
+		var commits = await localRepo.GetRecentCommitsAsync(repositoryFullName, 30, cancellationToken).ConfigureAwait(false);
 		if (build.Success)
 		{
+			if (commits.Count > 0)
+			{
+				_lastVerified[repositoryFullName] = commits[0].Hash;
+			}
+
 			SetStatus(repositoryFullName, GuardState.Verified, "Build succeeded after our change.");
 			return;
 		}
 
-		// Build failed — is it our change that broke it?
-		var commits = await localRepo.GetRecentCommitsAsync(repositoryFullName, 30, cancellationToken).ConfigureAwait(false);
-		var (ourCount, lastGoodRef) = RegressionAttribution.Identify(commits);
-		if (ourCount == 0 || lastGoodRef is null)
+		// Build failed. Is it our change that broke it? Our commits are collected wherever they sit in
+		// the range since the last green build, so a human commit on top does not hide them.
+		_lastVerified.TryGetValue(repositoryFullName, out var lastVerified);
+		var attribution = RegressionAttribution.Identify(commits, lastVerified);
+		if (attribution.Ours.Count == 0 || attribution.LastGoodRef is null)
 		{
 			SetStatus(repositoryFullName, GuardState.BuildFailingNotOurs,
-				"Build is failing, but the tip commit is not ours — not rolling back.");
+				"Build is failing, but none of the commits since the last good build are ours, so not rolling back.");
 			return;
 		}
 
-		// Build the last-good commit to confirm our commits are the cause.
-		var parentBuild = await localRepo.BuildAtCommitAsync(repositoryFullName, lastGoodRef, null, cancellationToken).ConfigureAwait(false);
-		if (!parentBuild.Success)
+		if (!attribution.LastGoodVerified
+			&& !await ControlBuildsAsync(repositoryFullName, attribution, cancellationToken).ConfigureAwait(false))
 		{
-			// The control build failing does NOT prove the breakage predates us. It is equally
-			// consistent with the toolchain being unavailable, or with a remediation that broke the
-			// build at every commit - pinning global.json to an uninstalled SDK fails HEAD and the
-			// control commit identically. Treating that as exoneration disables the guard exactly
-			// when the damage is worst, so it is reported as inconclusive and left visible.
-			logger.LogWarning(
-				"Regression guard: {Repo} is failing and the control build at {LastGood} also failed; "
-				+ "cannot attribute. Our {Count} commit(s) remain in place and need a human look.",
-				repositoryFullName, lastGoodRef, ourCount);
-			SetStatus(repositoryFullName, GuardState.VerificationInconclusive,
-				$"Build is failing and the control build at {lastGoodRef} also failed, so it could not be "
-				+ $"established whether our {ourCount} commit(s) caused it. They are still in place. "
-				+ "Check the toolchain on this host before assuming the breakage predates them.");
 			return;
 		}
 
-		// Confirmed regression from our commits. Nothing is reverted: a range revert took unrelated
-		// remediations with it (#80). Name the first commit that fails and leave the decision visible.
-		var culprit = await RegressionAttribution.FindFirstBreakingCommitAsync(
-			[.. commits.Take(ourCount)],
-			async hash => (await localRepo.BuildAtCommitAsync(repositoryFullName, hash, null, cancellationToken).ConfigureAwait(false)).Success).ConfigureAwait(false);
+		await NameCulpritAsync(repositoryFullName, attribution, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>Builds the control commit; a failing control is reported as inconclusive, not as exoneration.</summary>
+	private async Task<bool> ControlBuildsAsync(string repositoryFullName, Attribution attribution, CancellationToken cancellationToken)
+	{
+		var lastGoodRef = attribution.LastGoodRef!;
+		var parentBuild = await localRepo.BuildAtCommitAsync(repositoryFullName, lastGoodRef, null, cancellationToken).ConfigureAwait(false);
+		if (parentBuild.Success)
+		{
+			return true;
+		}
+
+		// The control build failing does NOT prove the breakage predates us. It is equally
+		// consistent with the toolchain being unavailable, or with a remediation that broke the
+		// build at every commit - pinning global.json to an uninstalled SDK fails HEAD and the
+		// control commit identically. Treating that as exoneration disables the guard exactly
+		// when the damage is worst, so it is reported as inconclusive and left visible.
+		logger.LogWarning(
+			"Regression guard: {Repo} is failing and the control build at {LastGood} also failed; "
+			+ "cannot attribute. Our {Count} commit(s) remain in place and need a human look.",
+			repositoryFullName, lastGoodRef, attribution.Ours.Count);
+		SetStatus(repositoryFullName, GuardState.VerificationInconclusive,
+			$"Build is failing and the control build at {lastGoodRef} also failed, so it could not be "
+			+ $"established whether our {attribution.Ours.Count} commit(s) caused it. They are still in place. "
+			+ "Check the toolchain on this host before assuming the breakage predates them.");
+		return false;
+	}
+
+	/// <summary>
+	/// Bisects our commits to the first that fails, then checks its parent builds: when a human commit
+	/// sits between, the parent failing means the breakage is theirs, not ours.
+	/// </summary>
+	private async Task NameCulpritAsync(string repositoryFullName, Attribution attribution, CancellationToken cancellationToken)
+	{
+		var (culprit, isOurs) = await RegressionAttribution
+			.NameCulpritAsync(attribution, reference => BuildsAtAsync(repositoryFullName, reference, cancellationToken))
+			.ConfigureAwait(false);
+		if (!isOurs)
+		{
+			SetStatus(repositoryFullName, GuardState.BuildFailingNotOurs,
+				$"The build already fails at the commit before {culprit.Hash} ('{culprit.Subject}'), "
+				+ "which is not a commit of ours, so the breakage is not attributed to us. Nothing has been reverted.");
+			return;
+		}
 
 		logger.LogWarning(
 			"Regression guard: {Repo} fails to build from {Hash} ({Subject}); nothing reverted.",
 			repositoryFullName, culprit.Hash, culprit.Subject);
 		SetStatus(repositoryFullName, GuardState.RegressionDetected,
 			$"Regression detected: the build first fails at commit {culprit.Hash} ('{culprit.Subject}'). "
-			+ $"{ourCount} of our governance commit(s) sit above the last good build. Nothing has been reverted; "
+			+ $"{attribution.Ours.Count} of our governance commit(s) sit above the last good build. Nothing has been reverted; "
 			+ "revert or fix that commit by hand.");
 	}
+
+	private async Task<bool> BuildsAtAsync(string repositoryFullName, string reference, CancellationToken cancellationToken)
+		=> (await localRepo.BuildAtCommitAsync(repositoryFullName, reference, null, cancellationToken).ConfigureAwait(false)).Success;
 
 	private void SetStatus(string repositoryFullName, GuardState state, string message)
 	{

@@ -41,10 +41,10 @@ public sealed class GovernanceCommitAttributionTests : IDisposable
 		await CommitAsRemediationAsync("SECURITY.md", "# Security\n", ["COM-01"]).ConfigureAwait(true);
 
 		var commits = await _localRepo.GetRecentCommitsAsync(Identity, 10, TestContext.Current.CancellationToken).ConfigureAwait(true);
-		var (count, lastGood) = RegressionAttribution.Identify(commits);
+		var attribution = RegressionAttribution.Identify(commits);
 
-		count.Should().Be(1, "the guard cannot attribute a regression to a commit it does not recognise");
-		lastGood.Should().Be($"{commits[0].Hash}~1");
+		attribution.Ours.Should().HaveCount(1, "the guard cannot attribute a regression to a commit it does not recognise");
+		attribution.LastGoodRef.Should().Be($"{commits[0].Hash}~1");
 	}
 
 	[Fact]
@@ -73,11 +73,28 @@ public sealed class GovernanceCommitAttributionTests : IDisposable
 
 		var commits = await _localRepo.GetRecentCommitsAsync(Identity, 10, TestContext.Current.CancellationToken).ConfigureAwait(true);
 
-		RegressionAttribution.Identify(commits).OurCount.Should().Be(1);
+		RegressionAttribution.Identify(commits).Ours.Should().HaveCount(1);
 	}
 
 	[Fact]
-	public async Task AHumanRevertOfOurCommit_IsNotOurs()
+	public async Task AHumanCommitOnTopOfOurs_DoesNotHideThem()
+	{
+		await CommitAsRemediationAsync("a.txt", "a\n", ["CQ-05"]).ConfigureAwait(true);
+		File.WriteAllText(Path.Combine(Clone, "human.txt"), "h\n");
+		Git(Clone, "add", "-A");
+		Git(Clone, "commit", "-q", "-m", "a human change");
+
+		var commits = await _localRepo.GetRecentCommitsAsync(Identity, 10, TestContext.Current.CancellationToken).ConfigureAwait(true);
+		var attribution = RegressionAttribution.Identify(commits);
+
+		commits[0].Subject.Should().Be("a human change");
+		attribution.Ours.Should().ContainSingle().Which.Hash.Should().Be(commits[1].Hash);
+		attribution.NewestIsHead.Should().BeFalse();
+		attribution.LastGoodRef.Should().Be($"{commits[1].Hash}~1");
+	}
+
+	[Fact]
+	public async Task AHumanRevertOfOurCommit_LeavesOursBelowTheTip()
 	{
 		await CommitAsRemediationAsync("a.txt", "a\n", ["CQ-05"]).ConfigureAwait(true);
 		Git(Clone, "revert", "--no-edit", "HEAD");
@@ -85,7 +102,9 @@ public sealed class GovernanceCommitAttributionTests : IDisposable
 		var commits = await _localRepo.GetRecentCommitsAsync(Identity, 10, TestContext.Current.CancellationToken).ConfigureAwait(true);
 
 		commits[0].Subject.Should().StartWith("Revert");
-		RegressionAttribution.Identify(commits).OurCount.Should().Be(0);
+		var attribution = RegressionAttribution.Identify(commits);
+		attribution.Ours.Should().ContainSingle("the original is still ours, but the revert above it is not");
+		attribution.NewestIsHead.Should().BeFalse("so the guard must show the original fails before blaming it");
 	}
 
 	private async Task CommitAsRemediationAsync(string file, string content, string[] ruleIds, string? subject = null)
