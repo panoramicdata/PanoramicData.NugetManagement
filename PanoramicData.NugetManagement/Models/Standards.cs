@@ -716,6 +716,7 @@ public static class Standards
 		- Use `git` for version control, following the repository's contributing guidelines where present.
 
 		{StaffSectionContent}
+
 		""";
 
 	/// <summary>Whether <paramref name="content"/> carries the managed block that PanoramicData.Skills writes into its own repositories' AGENTS.md.</summary>
