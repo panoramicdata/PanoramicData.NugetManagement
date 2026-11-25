@@ -60,3 +60,15 @@ Each item cost real debugging time in an earlier package (mostly Splunk.Api, 202
   - Probe the account read-only first (plan, counts, what returns 403) and tell the agents which features are off; tests for those assert the error mapping and are recorded as "unit-verified only".
 - **Resolving a vendor credential:** a KeePassXC entry's Username may be the login email, not the account id. List the accounts the token can reach (here `GET id.getharvest.com/api/v2/accounts`) and ask which one is disposable before any write.
 - **Browser work:** the shared `browser` skill drives a headed Chrome over CDP and handles no credentials. It can fill a vendor form once the user approves the wording, but only a form that needs no login: signing up for an account cannot be done by it, because the human has to enter the credentials, and Harvest's contact form (getharvest.com/contact) turns out to demand a Harvest sign-in before it shows the message fields. Check `fields`/`shot` after the first click to see whether a login appeared, then ask the human to sign in in the claimed window. Fill the form and leave the submit button to the human unless they said to send it.
+
+## A new package with no sandbox and a large API (ThreatStream.Api, 2026-11-25)
+
+- **`assess/Assess.cs` fails with NU1008 inside this repository** (central package management). Copy it to the session scratchpad and run it there. For a failed rule, also print `result.Advisory.Detail` and `.Data`: that is where the real Codacy badge id (README-02) and the exact Codacy finding (CQ-05) appear.
+- **The paragon's `Publish.ps1` can be stale** (Splunk.Api's failed CI-09). Copy Meraki.Api's, which is the standard the rule checks.
+- **`InventoryTests` copied from Splunk matches only GET, POST, DELETE and PUT.** Add PATCH when the API uses it, and keep the `/api/vN/` prefix in the path comparison.
+- **Write down which agent id is which** before sending any `SendMessage`: a brief meant for one category agent went to another, and needed a correcting message.
+- **Merge shared-type owners before borrowers**, then run a deliberate dedupe pass (observable models, async job shapes, reference types, entity-type enums, test kits): Codacy counts duplication across categories.
+- **Codacy Agentlinter grades `AGENTS.md`** for priority signals and for compound instructions (four actions in one bullet). The finding appears only after the push is analysed.
+- **Sonar S1313 does not fire on RFC 5737 documentation addresses** (192.0.2.x, 198.51.100.x, 203.0.113.x). Lizard miscounts a method whose body is a raw `$$"""` string, so build such strings by concatenation.
+- **Repeated Assess runs can exhaust the GitHub REST limit** (`Octokit.RateLimitExceededException`): check `gh api rate_limit` and wait for the reset. A locked KeePassXC makes the Codacy skill's broker time out, while Assess.cs still reads Codacy with its own token.
+- Python is not installed on this machine: edit with the Edit and Write tools or PowerShell.
