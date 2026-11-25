@@ -5,7 +5,7 @@ namespace PanoramicData.NugetManagement.Rules;
 /// <summary>
 /// Checks that no project file sets a Copyright holding only our own notice, which would override the
 /// shared Directory.Build.props value. A Copyright naming another holder is third-party attribution
-/// and is intentionally left alone.
+/// and is intentionally left alone. Project files in test-fixture folders are ignored.
 /// </summary>
 public class CopyrightOverrideRule : RuleBase
 {
@@ -25,7 +25,7 @@ public class CopyrightOverrideRule : RuleBase
 	public override Task<RuleResult> EvaluateAsync(RepositoryContext context, CancellationToken cancellationToken)
 	{
 		var projects = context.FilePaths
-			.Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+			.Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) && !GovernedPaths.IsTestFixture(path))
 			.ToList();
 
 		var holder = context.Options.ExpectedCopyrightHolder;
