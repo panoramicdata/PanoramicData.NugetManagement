@@ -15,7 +15,7 @@ public static class GovernedPaths
 	/// <param name="relativePath">The path relative to the repository root, with either separator.</param>
 	public static bool IsTestFixture(string relativePath)
 	{
-		var segments = relativePath.Split('/', '\\');
+		var segments = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.None);
 		return segments.Take(segments.Length - 1)
 			.Any(segment => _fixtureFolders.Contains(segment, StringComparer.OrdinalIgnoreCase));
 	}
