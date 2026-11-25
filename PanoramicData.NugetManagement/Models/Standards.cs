@@ -669,7 +669,13 @@ public static class Standards
 	/// The instruction AI-06 requires in AGENTS.md. Agents add a co-author trailer to every commit
 	/// unless told not to, and Panoramic Data does not want them in its history.
 	/// </summary>
-	public static string NoAiAttributionInstruction { get; } = "Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
+	public static string NoAiAttributionInstruction { get; } = "MUST NOT add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
+
+	/// <summary>
+	/// The wording of <see cref="NoAiAttributionInstruction"/> before it carried a priority signal. Files
+	/// generated with it still satisfy AI-06, and the earlier templates that used it stay recognisable.
+	/// </summary>
+	public static string LegacyNoAiAttributionInstruction { get; } = "Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
 
 	/// <summary>The heading of the one section a public AGENTS.md may use to mention Panoramic Data.</summary>
 	public static string StaffSectionHeading { get; } = "## PanoramicData staff";
@@ -703,17 +709,17 @@ public static class Standards
 
 		## Scope and boundaries
 
-		- Do not weaken `TreatWarningsAsErrors`, delete or skip tests to make a build pass, or bypass
+		- MUST NOT weaken `TreatWarningsAsErrors`, delete or skip tests to make a build pass, or bypass
 		  CI/CD checks.
-		- Do not commit secrets, credentials, or API tokens.
-		- Do not force-push to `main`, rewrite published history, or delete branches without explicit
+		- MUST NOT commit secrets, credentials, or API tokens.
+		- MUST NOT force-push to `main`, rewrite published history, or delete branches without explicit
 		  approval.
 		- {NoAiAttributionInstruction}
 
 		## Tools
 
-		- Build and test with `dotnet build` / `dotnet test`.
-		- Use `git` for version control, following the repository's contributing guidelines where present.
+		- SHOULD build and test with `dotnet build` / `dotnet test`.
+		- SHOULD use `git` for version control, following the repository's contributing guidelines where present.
 
 		{StaffSectionContent}
 
@@ -796,6 +802,35 @@ public static class Standards
 	];
 
 	/// <summary>
+	/// The standalone AGENTS.md this tool wrote before its bullets carried priority signals. Kept so a file
+	/// holding exactly this is still recognised as generated and replaced.
+	/// </summary>
+	public static string PreviousStandaloneAgentsMdContent => $"""
+		# Agent instructions
+
+		## Identity
+
+		You are a careful, security-conscious contributor to this repository.
+
+		## Scope and boundaries
+
+		- Do not weaken `TreatWarningsAsErrors`, delete or skip tests to make a build pass, or bypass
+		  CI/CD checks.
+		- Do not commit secrets, credentials, or API tokens.
+		- Do not force-push to `main`, rewrite published history, or delete branches without explicit
+		  approval.
+		- {LegacyNoAiAttributionInstruction}
+
+		## Tools
+
+		- Build and test with `dotnet build` / `dotnet test`.
+		- Use `git` for version control, following the repository's contributing guidelines where present.
+
+		{StaffSectionContent}
+
+		""";
+
+	/// <summary>
 	/// The CLAUDE.md this tool wrote as template v1.3. It is no longer generated: while a CLAUDE.md exists,
 	/// Claude Code ignores AGENTS.md. Kept so that file can be recognised and deleted.
 	/// </summary>
@@ -818,7 +853,7 @@ public static class Standards
 		- Do not commit secrets, credentials, or API tokens.
 		- Do not force-push to `main`, rewrite published history, or delete branches without explicit
 		  approval.
-		- {NoAiAttributionInstruction}
+		- {LegacyNoAiAttributionInstruction}
 
 		## Tools
 
@@ -864,7 +899,7 @@ public static class Standards
 
 		## Commits
 
-		{NoAiAttributionInstruction}
+		{LegacyNoAiAttributionInstruction}
 		""";
 
 	/// <summary>
