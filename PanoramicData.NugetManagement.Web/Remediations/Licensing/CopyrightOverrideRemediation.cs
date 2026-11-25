@@ -5,7 +5,7 @@ namespace PanoramicData.NugetManagement.Web.Remediations.Licensing;
 
 /// <summary>
 /// Removes our own Copyright from project files so the Directory.Build.props value applies. Re-reads
-/// each file and skips any whose value is third-party attribution, whatever the advisory lists.
+/// each file and skips test-fixture files and any whose value is third-party attribution, whatever the advisory lists.
 /// </summary>
 public sealed class CopyrightOverrideRemediation : DataDrivenRemediation
 {
@@ -28,7 +28,11 @@ public sealed class CopyrightOverrideRemediation : DataDrivenRemediation
 		var ours = new List<string>();
 		foreach (var project in ReadStrings(data, "projects"))
 		{
-			if (RepositoryFileText.Read(localPath, project) is var (text, _) && CopyrightOverrideClassifier.IsOwnOverride(text, holder))
+			if (GovernedPaths.IsTestFixture(project))
+			{
+				onOutput?.Invoke($"⏭️ [{result.RuleId}] {project} is test-fixture data - leaving it alone.");
+			}
+			else if (RepositoryFileText.Read(localPath, project) is var (text, _) && CopyrightOverrideClassifier.IsOwnOverride(text, holder))
 			{
 				ours.Add(project);
 			}
