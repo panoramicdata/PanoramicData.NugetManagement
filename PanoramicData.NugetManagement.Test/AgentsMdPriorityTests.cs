@@ -5,25 +5,33 @@ using PanoramicData.NugetManagement.Services;
 
 namespace PanoramicData.NugetManagement.Test;
 
-/// <summary>Guards the generated AGENTS.md against Agentlinter's "no priority signals" finding, and keeps earlier templates replaceable.</summary>
+/// <summary>Guards the generated AGENTS.md against Agentlinter's findings as measured, and keeps earlier templates replaceable.</summary>
 public class AgentsMdPriorityTests
 {
-	// The marker list is the one Codacy's Agentlinter uses for its "no priority signals" finding (case-sensitive).
-	private static readonly Regex _agentlinterPriorityMarker = new(@"\b(critical|important|must|required|optional|nice.?to.?have|priority|P[0-3]|MUST|SHOULD|MAY)\b", RegexOptions.None, TimeSpan.FromSeconds(2));
+	// Measured on a draft pull request against Codacy Agentlinter (2026-11-26): a priority statement plus three CRITICAL or
+	// IMPORTANT items cleared "no priority signals"; the MUST NOT and SHOULD wording cleared that finding but was reported as
+	// an undefined term and as an absolute rule without an escape hatch. Re-measure before relaxing these tests.
+	private static readonly Regex _priorityMarker = new(@"\b(CRITICAL|IMPORTANT)\b", RegexOptions.None, TimeSpan.FromSeconds(2));
+	private static readonly Regex _absoluteWord = new(@"\b(always|never|must|every|all|no exceptions)\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2));
 
 	[Fact]
-	public void PublicTemplate_ShouldGiveEveryInstructionBulletAPrioritySignal()
+	public void PublicTemplate_ShouldCarryAPriorityStatementAndAtLeastThreeMarkedItems()
 	{
-		var bullets = Standards.AgentsMdContent.Replace("\r\n", "\n").Split('\n')
-			.Where(line => line.StartsWith("- ", StringComparison.Ordinal))
-			.ToList();
+		var lines = Standards.AgentsMdContent.Replace("\r\n", "\n").Split('\n');
 
-		bullets.Should().NotBeEmpty();
-		bullets.Should().OnlyContain(line => _agentlinterPriorityMarker.IsMatch(line));
+		lines.Count(line => _priorityMarker.IsMatch(line)).Should().BeGreaterThanOrEqualTo(4);
+		lines.Should().Contain("IMPORTANT: Apply these in order, most important first.");
 	}
 
 	[Fact]
-	public async Task AI02_ShouldReplaceAFileGeneratedFromTheTemplateWithoutPrioritySignals()
+	public void PublicTemplate_ShouldAvoidTheAbsoluteWordsAgentlinterReports()
+	{
+		_absoluteWord.IsMatch(Standards.AgentsMdContent).Should().BeFalse();
+		Standards.AgentsMdContent.Should().NotContain("MUST").And.NotContain("SHOULD");
+	}
+
+	[Fact]
+	public async Task AI02_ShouldReplaceAFileGeneratedFromAnEarlierTemplate()
 	{
 		const string earlier = """
 			# Agent instructions
@@ -53,11 +61,17 @@ public class AgentsMdPriorityTests
 
 			""";
 
-		foreach (var text in new[] { earlier, earlier.Replace("\n", "\r\n"), Standards.PreviousStandaloneAgentsMdContent })
+		foreach (var text in new[]
+		{
+			earlier,
+			earlier.Replace("\n", "\r\n"),
+			Standards.PreviousStandaloneAgentsMdContent,
+			Standards.PreviousPriorityAgentsMdContent
+		})
 		{
 			var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = text });
 
-			var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
+			var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None).ConfigureAwait(true);
 			result.Passed.Should().BeFalse();
 			result.Advisory!.Data["remediation_type"].Should().Be("replace_file_content");
 			result.Advisory.Data["new_content"].Should().Be(Standards.AgentsMdContent);
@@ -67,10 +81,10 @@ public class AgentsMdPriorityTests
 	[Fact]
 	public async Task AI02_ShouldNotReplaceAnEarlierTemplateThatAPersonHasEdited()
 	{
-		var edited = Standards.PreviousStandaloneAgentsMdContent + "\nAlways run the Docker tests first.\n";
+		var edited = Standards.PreviousPriorityAgentsMdContent + "\nRun the Docker tests first.\n";
 		var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = edited });
 
-		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None);
+		var result = await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None).ConfigureAwait(true);
 		result.Advisory?.Data.ContainsKey("remediation_type").Should().NotBe(true);
 	}
 
@@ -79,10 +93,10 @@ public class AgentsMdPriorityTests
 	{
 		var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = Standards.AgentsMdContent });
 
-		(await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None)).Passed.Should().BeTrue();
-		(await GetRule("AI-06").EvaluateAsync(context, CancellationToken.None)).Passed.Should().BeTrue();
+		(await GetRule("AI-02").EvaluateAsync(context, CancellationToken.None).ConfigureAwait(true)).Passed.Should().BeTrue();
+		(await GetRule("AI-06").EvaluateAsync(context, CancellationToken.None).ConfigureAwait(true)).Passed.Should().BeTrue();
 		Standards.FindPublicAgentsMdLeaks(Standards.AgentsMdContent).Should().BeEmpty();
-		Standards.AgentsMdContent.Should().NotContain("\u2014").And.NotContain("CONTRIBUTING.md");
+		Standards.AgentsMdContent.Should().NotContain("—").And.NotContain("CONTRIBUTING.md");
 	}
 
 	[Fact]
@@ -90,7 +104,7 @@ public class AgentsMdPriorityTests
 	{
 		var context = CreateContext(new Dictionary<string, string> { ["AGENTS.md"] = "# Agent instructions\n\n- " + Standards.LegacyNoAiAttributionInstruction + "\n" });
 
-		(await GetRule("AI-06").EvaluateAsync(context, CancellationToken.None)).Passed.Should().BeTrue();
+		(await GetRule("AI-06").EvaluateAsync(context, CancellationToken.None).ConfigureAwait(true)).Passed.Should().BeTrue();
 	}
 
 	private static IRule GetRule(string ruleId)
