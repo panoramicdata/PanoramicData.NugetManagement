@@ -669,13 +669,19 @@ public static class Standards
 	/// The instruction AI-06 requires in AGENTS.md. Agents add a co-author trailer to every commit
 	/// unless told not to, and Panoramic Data does not want them in its history.
 	/// </summary>
-	public static string NoAiAttributionInstruction { get; } = "MUST NOT add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
+	public static string NoAiAttributionInstruction { get; } = "Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
 
 	/// <summary>
-	/// The wording of <see cref="NoAiAttributionInstruction"/> before it carried a priority signal. Files
-	/// generated with it still satisfy AI-06, and the earlier templates that used it stay recognisable.
+	/// The wording the earlier standalone templates used. It is the same text as
+	/// <see cref="NoAiAttributionInstruction"/>, kept as its own name so those templates stay recognisable.
 	/// </summary>
 	public static string LegacyNoAiAttributionInstruction { get; } = "Do not add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
+
+	/// <summary>
+	/// The MUST NOT wording of the instruction, used briefly by the template that Agentlinter reported
+	/// as an absolute rule. Files generated with it still satisfy AI-06 until AI-02 replaces them.
+	/// </summary>
+	public static string PriorityNoAiAttributionInstruction { get; } = "MUST NOT add `Co-Authored-By` trailers or other AI attribution to commit messages or pull requests.";
 
 	/// <summary>The heading of the one section a public AGENTS.md may use to mention Panoramic Data.</summary>
 	public static string StaffSectionHeading { get; } = "## PanoramicData staff";
@@ -699,8 +705,45 @@ public static class Standards
 	/// Structured with headings, an identity, boundaries, and tool notes because Codacy's Agentlinter
 	/// grades instruction files on exactly those things. It names no other file, because Agentlinter
 	/// reports a file name it cannot find in its workspace.
+	/// <para>
+	/// The wording is measured against Agentlinter on a draft pull request, not assumed. A priority
+	/// statement plus three CRITICAL or IMPORTANT items clears "no priority signals"; the RFC 2119 words
+	/// (MUST, SHOULD) clear it too but are reported as undefined terms and as absolute rules, so they are
+	/// not used. Re-measure before changing this text.
+	/// </para>
 	/// </remarks>
 	public static string AgentsMdContent => $"""
+		# Agent instructions
+
+		## Identity
+
+		You are a careful, security-conscious contributor to this repository.
+
+		## Scope and boundaries
+
+		IMPORTANT: Apply these in order, most important first.
+
+		- CRITICAL: Do not commit secrets, credentials, or API tokens.
+		- IMPORTANT: Do not weaken `TreatWarningsAsErrors`, delete or skip tests to make a build pass, or bypass
+		  CI/CD checks.
+		- IMPORTANT: Do not force-push to `main`, rewrite published history, or delete branches without explicit
+		  approval.
+		- {NoAiAttributionInstruction}
+
+		## Tools
+
+		- Build and test with `dotnet build` / `dotnet test`.
+		- Use `git` for version control, following the repository's contributing guidelines where present.
+
+		{StaffSectionContent}
+
+		""";
+
+	/// <summary>
+	/// The standalone AGENTS.md this tool wrote with MUST NOT and SHOULD bullets. Agentlinter reported four
+	/// findings on it, so it is replaced; kept so a file holding exactly this is recognised as generated.
+	/// </summary>
+	public static string PreviousPriorityAgentsMdContent => $"""
 		# Agent instructions
 
 		## Identity
@@ -714,7 +757,7 @@ public static class Standards
 		- MUST NOT commit secrets, credentials, or API tokens.
 		- MUST NOT force-push to `main`, rewrite published history, or delete branches without explicit
 		  approval.
-		- {NoAiAttributionInstruction}
+		- {PriorityNoAiAttributionInstruction}
 
 		## Tools
 

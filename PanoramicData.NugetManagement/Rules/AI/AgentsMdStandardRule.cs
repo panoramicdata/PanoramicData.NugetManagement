@@ -50,7 +50,7 @@ public class AgentsMdStandardRule : RuleBase
 			return Task.FromResult(Pass("AGENTS.md carries the PanoramicData.Skills managed block, which that repository audits."));
 		}
 
-		if (Standards.IsGeneratedByThisTool(content, Standards.PreviousAgentsMdContent, Standards.LegacyAgentsMdContent, Standards.PreviousStandaloneAgentsMdContent))
+		if (Standards.IsGeneratedByThisTool(content, Standards.PreviousAgentsMdContent, Standards.LegacyAgentsMdContent, Standards.PreviousStandaloneAgentsMdContent, Standards.PreviousPriorityAgentsMdContent))
 		{
 			return Task.FromResult(Fail(
 				"AGENTS.md is an earlier generated template that has since been replaced.",

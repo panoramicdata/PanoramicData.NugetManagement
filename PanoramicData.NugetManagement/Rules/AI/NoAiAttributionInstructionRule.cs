@@ -39,7 +39,8 @@ public class NoAiAttributionInstructionRule : RuleBase
 		}
 
 		return Task.FromResult((content.Contains(Standards.NoAiAttributionInstruction, StringComparison.Ordinal)
-			|| content.Contains(Standards.LegacyNoAiAttributionInstruction, StringComparison.Ordinal))
+			|| content.Contains(Standards.LegacyNoAiAttributionInstruction, StringComparison.Ordinal)
+			|| content.Contains(Standards.PriorityNoAiAttributionInstruction, StringComparison.Ordinal))
 			? Pass("AGENTS.md tells agents not to add AI attribution to commits.")
 			: Fail(
 				"AGENTS.md does not tell agents to leave `Co-Authored-By` trailers out of commits.",
