@@ -26,6 +26,11 @@ internal static class DataDrivenFilesHandlers
 		{
 			RemediationHelpers.CreateFile(localPath, paths[i], contents[i], result, applied, onOutput);
 		}
+
+		foreach (var line in DataDrivenRemediation.ReadStrings(data, "gitignore_lines"))
+		{
+			RemediationHelpers.AppendLine(localPath, ".gitignore", line, result, applied, onOutput);
+		}
 	}
 
 	internal static void ReplaceRegexInFiles(string localPath, RuleResult result, Dictionary<string, object> data, List<string> applied, Action<string>? onOutput)

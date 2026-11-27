@@ -90,7 +90,8 @@ internal static partial class RemediationHelpers
 		}
 
 		content += lineContent + Environment.NewLine;
-		File.WriteAllText(fullPath, content);
+		var hadBom = File.ReadAllBytes(fullPath) is [0xEF, 0xBB, 0xBF, ..];
+		File.WriteAllText(fullPath, content, new System.Text.UTF8Encoding(hadBom));
 		applied.Add(relativePath);
 		Say(onOutput, $"✅ [{result.RuleId}] Appended to {relativePath}");
 	}

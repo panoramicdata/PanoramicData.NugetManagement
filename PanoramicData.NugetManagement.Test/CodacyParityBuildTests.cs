@@ -118,6 +118,52 @@ public class CodacyParityBuildTests(ITestOutputHelper output) : TestWithOutput(o
 		applied.Should().BeEquivalentTo(new[] { CodacyParityStandards.TargetsPath, CodacyParityStandards.GlobalConfigPath });
 	}
 
+	[Theory]
+	[InlineData("build/")]
+	[InlineData("[Bb]uild/")]
+	[InlineData("/build")]
+	[InlineData("build/*")]
+	public async Task Fix_ShouldKeepTheBuildFilesTrackable_WhenGitignoreIgnoresTheBuildFolder(string ignoreLine)
+	{
+		Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+		Write(".gitignore", "bin/\n" + ignoreLine + "\nobj/\n");
+		RunGit("init", "-q");
+		var result = await EvaluateLocal().ConfigureAwait(true);
+
+		result.Advisory!.Data.Should().ContainKey("gitignore_lines");
+		new CodacyParityBuildRemediation().Apply(_root, result, [], null);
+
+		RunGit("check-ignore", "-q", CodacyParityStandards.GlobalConfigPath).Should().Be(1, "the parity config must not be ignored");
+		RunGit("check-ignore", "-q", CodacyParityStandards.CodeMetricsPath).Should().Be(1, "the metrics file must not be ignored");
+		RunGit("check-ignore", "-q", "build/output.dll").Should().Be(0, "other build output stays ignored");
+		(await EvaluateLocal().ConfigureAwait(true)).Passed.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task Fix_ShouldLeaveGitignoreAlone_WhenTheBuildFolderIsNotIgnored()
+	{
+		Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+		Write(".gitignore", "[Bb]in/\n[Oo]bj/\n");
+
+		var result = await EvaluateLocal().ConfigureAwait(true);
+		new CodacyParityBuildRemediation().Apply(_root, result, [], null);
+
+		result.Advisory!.Data.Should().NotContainKey("gitignore_lines");
+		File.ReadAllText(Path.Combine(_root, ".gitignore")).Should().Be("[Bb]in/\n[Oo]bj/\n");
+	}
+
+	[Fact]
+	public async Task Fix_ShouldKeepAByteOrderMark_WhenItEditsGitignore()
+	{
+		Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+		File.WriteAllText(Path.Combine(_root, ".gitignore"), "build/\n", new System.Text.UTF8Encoding(true));
+
+		var result = await EvaluateLocal().ConfigureAwait(true);
+		new CodacyParityBuildRemediation().Apply(_root, result, [], null);
+
+		File.ReadAllBytes(Path.Combine(_root, ".gitignore")).Take(3).Should().Equal(0xEF, 0xBB, 0xBF);
+	}
+
 	public void Dispose()
 	{
 		GC.SuppressFinalize(this);
@@ -147,6 +193,26 @@ public class CodacyParityBuildTests(ITestOutputHelper output) : TestWithOutput(o
 
 		return await RuleRegistry.Rules.Single(rule => rule.RuleId == "CQ-10")
 			.EvaluateAsync(context, CancellationToken.None).ConfigureAwait(true);
+	}
+
+	private async Task<RuleResult> EvaluateLocal()
+	{
+		var context = new LocalRepositoryContextBuilder(NullLogger<LocalRepositoryContextBuilder>.Instance)
+			.Build(_root, "panoramicdata/SomeRepo", new RepoOptions(), new LocalContextFacts());
+		return await new CodacyParityBuildRule().EvaluateAsync(context, CancellationToken.None).ConfigureAwait(true);
+	}
+
+	private int RunGit(params string[] arguments)
+	{
+		var start = new System.Diagnostics.ProcessStartInfo("git") { WorkingDirectory = _root, RedirectStandardOutput = true, RedirectStandardError = true };
+		foreach (var argument in arguments)
+		{
+			start.ArgumentList.Add(argument);
+		}
+
+		using var process = System.Diagnostics.Process.Start(start)!; // nosemgrep
+		process.WaitForExit();
+		return process.ExitCode;
 	}
 
 	private void Write(string relativePath, string content)
