@@ -192,6 +192,13 @@ public class RepositoryContextBuilder : IDisposable
 	/// response does not state one.
 	/// </summary>
 	public static bool? ParseSponsorshipsEnabled(string? json)
+		=> ReadJsonBoolean(json, "data", "repository", "hasSponsorshipsEnabled");
+
+	/// <summary>
+	/// The boolean at a path of object properties in a JSON document, or null when the document is not
+	/// JSON or any step is missing or of another kind.
+	/// </summary>
+	public static bool? ReadJsonBoolean(string? json, params string[] path)
 	{
 		if (string.IsNullOrWhiteSpace(json))
 		{
@@ -201,14 +208,16 @@ public class RepositoryContextBuilder : IDisposable
 		try
 		{
 			using var document = JsonDocument.Parse(json);
-			return document.RootElement.TryGetProperty("data", out var data)
-				&& data.ValueKind == JsonValueKind.Object
-				&& data.TryGetProperty("repository", out var repository)
-				&& repository.ValueKind == JsonValueKind.Object
-				&& repository.TryGetProperty("hasSponsorshipsEnabled", out var enabled)
-				&& enabled.ValueKind is JsonValueKind.True or JsonValueKind.False
-					? enabled.GetBoolean()
-					: null;
+			var element = document.RootElement;
+			foreach (var name in path)
+			{
+				if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element))
+				{
+					return null;
+				}
+			}
+
+			return element.ValueKind is JsonValueKind.True or JsonValueKind.False ? element.GetBoolean() : null;
 		}
 		catch (JsonException)
 		{

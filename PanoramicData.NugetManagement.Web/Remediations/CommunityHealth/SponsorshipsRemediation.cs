@@ -1,6 +1,6 @@
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using PanoramicData.NugetManagement.Models;
+using PanoramicData.NugetManagement.Services;
 using PanoramicData.NugetManagement.Web.Services;
 
 namespace PanoramicData.NugetManagement.Web.Remediations.CommunityHealth;
@@ -55,44 +55,39 @@ public sealed partial class SponsorshipsRemediation : IRemediation
 			return;
 		}
 
-		var (lookupExit, lookupOutput) = _runGh(localPath, ["api", $"repos/{repository}", "--jq", ".node_id"]);
-		var nodeId = lookupOutput.Trim();
-		if (lookupExit != 0 || !NodeIdPattern().IsMatch(nodeId))
+		var nodeId = TryGetNodeId(localPath, repository, onOutput);
+		if (nodeId is not null && TryEnable(localPath, repository, nodeId, onOutput))
 		{
-			onOutput?.Invoke($"❌ [COM-06] Could not read the node id of {repository}: {Describe(lookupOutput)}");
-			return;
+			applied.Add($"(sponsorships:{repository})");
+			onOutput?.Invoke($"✅ [COM-06] Switched on Sponsorships for {repository}");
 		}
-
-		var (exitCode, output) = _runGh(localPath, ["api", "graphql", "-f", $"query={Mutation}", "-f", $"id={nodeId}"]);
-		if (exitCode != 0 || !ParseUpdated(output))
-		{
-			onOutput?.Invoke(
-				$"❌ [COM-06] GitHub did not switch on Sponsorships for {repository} (admin rights are needed): {Describe(output)}");
-			return;
-		}
-
-		applied.Add($"(sponsorships:{repository})");
-		onOutput?.Invoke($"✅ [COM-06] Switched on Sponsorships for {repository}");
 	}
 
-	private static bool ParseUpdated(string output)
+	private string? TryGetNodeId(string localPath, string repository, Action<string>? onOutput)
 	{
-		try
+		var (exitCode, output) = _runGh(localPath, ["api", $"repos/{repository}", "--jq", ".node_id"]);
+		var nodeId = output.Trim();
+		if (exitCode == 0 && NodeIdPattern().IsMatch(nodeId))
 		{
-			using var document = JsonDocument.Parse(output);
-			return document.RootElement.TryGetProperty("data", out var data)
-				&& data.ValueKind == JsonValueKind.Object
-				&& data.TryGetProperty("updateRepository", out var update)
-				&& update.ValueKind == JsonValueKind.Object
-				&& update.TryGetProperty("repository", out var repository)
-				&& repository.ValueKind == JsonValueKind.Object
-				&& repository.TryGetProperty("hasSponsorshipsEnabled", out var enabled)
-				&& enabled.ValueKind == JsonValueKind.True;
+			return nodeId;
 		}
-		catch (JsonException)
+
+		onOutput?.Invoke($"❌ [COM-06] Could not read the node id of {repository}: {Describe(output)}");
+		return null;
+	}
+
+	private bool TryEnable(string localPath, string repository, string nodeId, Action<string>? onOutput)
+	{
+		var (exitCode, output) = _runGh(localPath, ["api", "graphql", "-f", $"query={Mutation}", "-f", $"id={nodeId}"]);
+		if (exitCode == 0
+			&& RepositoryContextBuilder.ReadJsonBoolean(output, "data", "updateRepository", "repository", "hasSponsorshipsEnabled") == true)
 		{
-			return false;
+			return true;
 		}
+
+		onOutput?.Invoke(
+			$"❌ [COM-06] GitHub did not switch on Sponsorships for {repository} (admin rights are needed): {Describe(output)}");
+		return false;
 	}
 
 	private static string Describe(string output)
