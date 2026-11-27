@@ -184,6 +184,44 @@ public static class CodacyParityStandards
 	/// <summary>Where the cyclomatic complexity threshold lives.</summary>
 	public static string CodeMetricsPath { get; } = "build/CodeMetricsConfig.txt";
 
+	/// <summary>
+	/// Lines that keep the two build files trackable when .gitignore ignores a <c>build</c> folder: git cannot re-include
+	/// a file whose parent folder is ignored, so the folder is re-included and its other contents ignored again.
+	/// </summary>
+	public static IReadOnlyList<string> GitignoreReincludeLines { get; } =
+	[
+		"!/build/",
+		"/build/*",
+		"!/build/codacy-parity.globalconfig",
+		"!/build/CodeMetricsConfig.txt"
+	];
+
+	/// <summary>True when .gitignore ignores a root <c>build</c> folder and does not yet re-include the parity files.</summary>
+	public static bool BuildFolderIgnored(string? gitignore)
+	{
+		if (string.IsNullOrEmpty(gitignore))
+		{
+			return false;
+		}
+
+		var lines = gitignore.Split('\n').Select(line => line.Trim()).ToList();
+		var ignored = false;
+		foreach (var line in lines.Where(line => line.Length > 0 && line[0] != '#'))
+		{
+			var negated = line[0] == '!';
+			var pattern = (negated ? line[1..] : line).TrimStart('/');
+			pattern = pattern.EndsWith("/**", StringComparison.Ordinal) ? pattern[..^3] : pattern;
+			pattern = pattern.EndsWith("/*", StringComparison.Ordinal) ? pattern[..^2] : pattern;
+			if (pattern.TrimEnd('/') is "build" or "[Bb]uild" or "[bB]uild")
+			{
+				ignored = !negated;
+			}
+		}
+
+		var reincluded = GitignoreReincludeLines.Skip(2).All(wanted => lines.Contains(wanted, StringComparer.Ordinal));
+		return ignored && !reincluded;
+	}
+
 	/// <summary>The SonarC# rules the Codacy coding standard enables.</summary>
 	public static IReadOnlyList<string> SonarRuleIds => _sonarRuleIds;
 

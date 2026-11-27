@@ -50,18 +50,24 @@ public class CodacyParityBuildRule : RuleBase
 			return Task.FromResult(Pass("The opt-in Codacy parity build is in place."));
 		}
 
+		var data = new Dictionary<string, object>
+		{
+			["remediation_type"] = "create_files",
+			["paths"] = missing.Select(m => m.Path).ToArray(),
+			["contents"] = missing.Select(m => m.Content).ToArray()
+		};
+		if (CodacyParityStandards.BuildFolderIgnored(context.GetFileContent(".gitignore")))
+		{
+			data["gitignore_lines"] = CodacyParityStandards.GitignoreReincludeLines.ToArray();
+		}
+
 		return Task.FromResult(Fail(
 			"The opt-in Codacy parity build is missing: " + string.Join(", ", missing.Select(m => m.Path)) + ".",
 			new RuleAdvisory
 			{
 				Summary = "Add the opt-in Codacy parity build.",
-				Detail = "Adds `Directory.Build.targets`, `build/codacy-parity.globalconfig` and `build/CodeMetricsConfig.txt`. `dotnet build -p:CodacyParity=true` then reports as warnings what Codacy's SonarC# and Lizard would flag; normal builds and CI are unchanged. Folders that `.codacy.yml` excludes (for example EF migrations) need their own `.editorconfig` with the same rules set to none.",
-				Data = new()
-				{
-					["remediation_type"] = "create_files",
-					["paths"] = missing.Select(m => m.Path).ToArray(),
-					["contents"] = missing.Select(m => m.Content).ToArray()
-				}
+				Detail = "Adds `Directory.Build.targets`, `build/codacy-parity.globalconfig` and `build/CodeMetricsConfig.txt`. `dotnet build -p:CodacyParity=true` then reports as warnings what Codacy's SonarC# and Lizard would flag; normal builds and CI are unchanged. Where `.gitignore` ignores a `build` folder, it also gains lines that keep those two files trackable. Folders that `.codacy.yml` excludes (for example EF migrations) need their own `.editorconfig` with the same rules set to none.",
+				Data = data
 			}));
 	}
 
