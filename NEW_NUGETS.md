@@ -38,6 +38,7 @@ Create these files at minimum.
 - `global.json`
 - `version.json`
 - `Directory.Build.props`
+- `Directory.Build.targets`, `build/codacy-parity.globalconfig` and `build/CodeMetricsConfig.txt` (the opt-in Codacy parity build, rule CQ-10: `dotnet build -p:CodacyParity=true` shows as warnings what Codacy would report)
 - `Directory.Packages.props`
 - `README.md`
 - `CONTRIBUTING.md`
