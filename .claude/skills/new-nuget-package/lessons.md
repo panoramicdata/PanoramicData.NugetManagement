@@ -72,3 +72,34 @@ Each item cost real debugging time in an earlier package (mostly Splunk.Api, 202
 - **Sonar S1313 does not fire on RFC 5737 documentation addresses** (192.0.2.x, 198.51.100.x, 203.0.113.x). Lizard miscounts a method whose body is a raw `$$"""` string, so build such strings by concatenation.
 - **Repeated Assess runs can exhaust the GitHub REST limit** (`Octokit.RateLimitExceededException`): check `gh api rate_limit` and wait for the reset. A locked KeePassXC makes the Codacy skill's broker time out, while Assess.cs still reads Codacy with its own token.
 - Python is not installed on this machine: edit with the Edit and Write tools or PowerShell.
+
+## Several APIs on several hosts, and an agent that hits a usage limit (Tenable.Api, 2026-11-27)
+
+- **One client per host and auth scheme, one shared core.** Put the shared settings on an abstract options base and
+  name it `<Vendor>ClientOptions`: HTTP-02 reads only files named `*ClientOptions.cs` for `bool IsReadOnly`, so a base
+  called `...OptionsBase` fails it. Give interfaces a product prefix (`IVmScans`, `IWasScans`): InventoryTests matches
+  rows by interface short name, so two products' `IScans` would silently merge.
+- **Redirects leak non-`Authorization` keys.** `SocketsHttpHandler` drops only `Authorization` when it follows a
+  redirect, so a key in `X-ApiKeys` or `x-api-key` goes to whatever host `Location` names. Set
+  `AllowAutoRedirect = false` for such clients and raise the 3xx as the API exception.
+- **Validate credentials for control characters.** Headers added with `TryAddWithoutValidation` let a CR LF in a key
+  inject a header of its own.
+- **Read-only mode needs a list of GETs that act**, not only an allow-list of read-only POSTs: test messages, certificate
+  regeneration. The user's rule: refuse what changes state or sends something; do **not** refuse a GET merely because it
+  returns credentials the caller can already reach.
+- **Keep read-only exceptions in one table of path templates** (`{id}` any segment, `{#}` numeric), not one regex class
+  per product: eight near-identical classes graded D to F on duplication. `Regex.Escape` escapes `#` as well as `{`, so
+  a `{#}` placeholder must be matched as `\{\#}`; the bug let `source/add` through as a read.
+- **Every merge conflicts in `docs/pending-categories.txt`.** Resolve it as main's lines minus the merged branch's
+  finished categories, never by keeping both sides.
+- **Moving properties into a base class reorders the JSON.** System.Text.Json writes derived-class properties first, so
+  pinned request bodies change order; update the expected string, do not weaken the assertion.
+- **Expect a dedupe pass after the largest category merges.** Repository-level Codacy was A with 0% duplication while 39
+  files were graded below A; read the `files` endpoint (limit at most 100, cursor paging), not just the summary.
+- **An agent can stop on the account's usage limit.** Its committed work survives; check the worktree for finished
+  but uncommitted files, review and commit them (the run skipped its safety review), carry on with phases that do not
+  depend on it, wait for the reset with a background `until` loop, then resume it with `SendMessage`, telling it what
+  changed on main.
+- **The full PanoramicData.Skills test suite runs live integration tests** that time out without credentials. For a
+  skill change, run the governance tests (`--filter` on DocumentedScriptsExist, DotnetOptionCollision, SkillIndexCoverage
+  and the like) and let the PR's CI run the rest. That project uses VSTest: `dotnet test <csproj>`, not `--project`.
