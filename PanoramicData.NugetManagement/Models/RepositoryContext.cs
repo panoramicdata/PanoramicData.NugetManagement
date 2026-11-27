@@ -130,6 +130,12 @@ public class RepositoryContext
 	public bool? PrivateVulnerabilityReportingEnabled { get; init; }
 
 	/// <summary>
+	/// Whether the repository's Sponsorships setting (the Sponsor button) is on, or null when it could
+	/// not be read. Without it the organisation FUNDING.yml shows nothing.
+	/// </summary>
+	public bool? SponsorshipsEnabled { get; init; }
+
+	/// <summary>
 	/// Whether the repository is private, or null when GitHub could not be asked. Null is an unanswered
 	/// question, never "public".
 	/// </summary>

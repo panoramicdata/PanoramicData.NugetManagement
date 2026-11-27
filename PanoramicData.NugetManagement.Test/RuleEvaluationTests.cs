@@ -3057,6 +3057,50 @@ public class RuleEvaluationTests : TestWithOutput
 		result.IsApplicable.Should().BeFalse();
 	}
 
+	// ── COM-06 ──────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task COM06_ShouldPass_WhenPublicAndEnabled()
+	{
+		var context = CreateContext([], sponsorships: true, isPrivate: false);
+
+		var result = await GetRule("COM-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task COM06_ShouldFailWithRepositoryInAdvisory_WhenPublicAndDisabled()
+	{
+		var context = CreateContext([], sponsorships: false, isPrivate: false);
+
+		var result = await GetRule("COM-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeFalse();
+		result.Advisory!.Data["repository"].Should().Be("test-org/test-repo");
+	}
+
+	[Theory]
+	[InlineData(null, false)]
+	[InlineData(false, true)]
+	[InlineData(false, null)]
+	public async Task COM06_ShouldBeNotApplicable_WhenUnknownOrNotKnownPublic(bool? sponsorships, bool? isPrivate)
+	{
+		var context = CreateContext([], sponsorships: sponsorships, isPrivate: isPrivate);
+
+		var result = await GetRule("COM-06").EvaluateAsync(context, CancellationToken.None);
+		result.Passed.Should().BeTrue();
+		result.IsApplicable.Should().BeFalse();
+	}
+
+	[Theory]
+	[InlineData("{\"data\":{\"repository\":{\"hasSponsorshipsEnabled\":true}}}", true)]
+	[InlineData("{\"data\":{\"repository\":{\"hasSponsorshipsEnabled\":false}}}", false)]
+	[InlineData("{\"data\":{\"repository\":null},\"errors\":[{\"message\":\"Not found\"}]}", null)]
+	[InlineData("not json", null)]
+	[InlineData("", null)]
+	public void SponsorshipsResponse_ShouldParseOnlyAnExplicitBoolean(string json, bool? expected)
+		=> RepositoryContextBuilder.ParseSponsorshipsEnabled(json).Should().Be(expected);
+
 	private static IRule GetRule(string ruleId)
 		=> RuleRegistry.Rules.Single(r => r.RuleId == ruleId);
 
@@ -3078,7 +3122,9 @@ public class RuleEvaluationTests : TestWithOutput
 		string defaultBranch = "main",
 		string? currentBranch = "main",
 		NugetManagementRepositoryConfig? config = null,
-		bool? privateVulnerabilityReporting = null) => new()
+		bool? privateVulnerabilityReporting = null,
+		bool? sponsorships = null,
+		bool? isPrivate = null) => new()
 		{
 			FullName = "test-org/test-repo",
 			Name = "test-repo",
@@ -3088,6 +3134,8 @@ public class RuleEvaluationTests : TestWithOutput
 			FilePaths = [.. files.Keys],
 			FileContents = files,
 			RepositoryConfig = config,
-			PrivateVulnerabilityReportingEnabled = privateVulnerabilityReporting
+			PrivateVulnerabilityReportingEnabled = privateVulnerabilityReporting,
+			SponsorshipsEnabled = sponsorships,
+			IsPrivateRepository = isPrivate
 		};
 }

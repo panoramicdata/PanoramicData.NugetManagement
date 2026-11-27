@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Headers;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
@@ -151,8 +152,77 @@ public class RepositoryContextBuilder : IDisposable
 				.ToDictionary(group => group.Key, group => group.Max(secret => secret.UpdatedAt ?? secret.CreatedAt), StringComparer.OrdinalIgnoreCase),
 			LineCoveragePercent = lineCoveragePercent,
 			PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(_github, owner, repoName).ConfigureAwait(false),
+			SponsorshipsEnabled = await ResolveSponsorshipsEnabledAsync(_github, owner, repoName).ConfigureAwait(false),
 			IsPrivateRepository = repository.Private
 		};
+	}
+
+	/// <summary>
+	/// Whether the repository's Sponsorships setting is on, or null when GitHub would not say.
+	/// </summary>
+	/// <remarks>Only GraphQL exposes this setting; the REST repository resource does not.</remarks>
+	public static async Task<bool?> ResolveSponsorshipsEnabledAsync(
+		IGitHubClient github,
+		string owner,
+		string repositoryName)
+	{
+		var body = JsonSerializer.Serialize(new
+		{
+			query = "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){hasSponsorshipsEnabled}}",
+			variables = new { owner, name = repositoryName }
+		});
+
+		try
+		{
+			var response = await github.Connection
+				.Post<string>(new Uri("graphql", UriKind.Relative), body, "application/json", "application/json")
+				.ConfigureAwait(false);
+
+			// Octokit leaves the typed Body empty for this response; only the raw body holds the JSON.
+			return ParseSponsorshipsEnabled(response.HttpResponse.Body as string);
+		}
+		catch (Exception ex) when (ex is ApiException or HttpRequestException)
+		{
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// The <c>hasSponsorshipsEnabled</c> value from a GraphQL repository response, or null when the
+	/// response does not state one.
+	/// </summary>
+	public static bool? ParseSponsorshipsEnabled(string? json)
+		=> ReadJsonBoolean(json, "data", "repository", "hasSponsorshipsEnabled");
+
+	/// <summary>
+	/// The boolean at a path of object properties in a JSON document, or null when the document is not
+	/// JSON or any step is missing or of another kind.
+	/// </summary>
+	public static bool? ReadJsonBoolean(string? json, params string[] path)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return null;
+		}
+
+		try
+		{
+			using var document = JsonDocument.Parse(json);
+			var element = document.RootElement;
+			foreach (var name in path)
+			{
+				if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element))
+				{
+					return null;
+				}
+			}
+
+			return element.ValueKind is JsonValueKind.True or JsonValueKind.False ? element.GetBoolean() : null;
+		}
+		catch (JsonException)
+		{
+			return null;
+		}
 	}
 
 	/// <summary>

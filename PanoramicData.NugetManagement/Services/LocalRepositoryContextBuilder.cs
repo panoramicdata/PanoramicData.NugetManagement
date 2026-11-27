@@ -126,6 +126,7 @@ public class LocalRepositoryContextBuilder
 			IsConfirmedInSyncWithOrigin = facts.IsConfirmedInSyncWithOrigin,
 			LineCoveragePercent = facts.LineCoveragePercent,
 			PrivateVulnerabilityReportingEnabled = facts.PrivateVulnerabilityReportingEnabled,
+			SponsorshipsEnabled = facts.SponsorshipsEnabled,
 			IsPrivateRepository = facts.IsPrivateRepository
 		};
 	}
