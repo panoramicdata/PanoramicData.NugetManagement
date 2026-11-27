@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Headers;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Octokit;
 using PanoramicData.NugetManagement.Models;
@@ -151,8 +152,68 @@ public class RepositoryContextBuilder : IDisposable
 				.ToDictionary(group => group.Key, group => group.Max(secret => secret.UpdatedAt ?? secret.CreatedAt), StringComparer.OrdinalIgnoreCase),
 			LineCoveragePercent = lineCoveragePercent,
 			PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(_github, owner, repoName).ConfigureAwait(false),
+			SponsorshipsEnabled = await ResolveSponsorshipsEnabledAsync(_github, owner, repoName).ConfigureAwait(false),
 			IsPrivateRepository = repository.Private
 		};
+	}
+
+	/// <summary>
+	/// Whether the repository's Sponsorships setting is on, or null when GitHub would not say.
+	/// </summary>
+	/// <remarks>Only GraphQL exposes this setting; the REST repository resource does not.</remarks>
+	public static async Task<bool?> ResolveSponsorshipsEnabledAsync(
+		IGitHubClient github,
+		string owner,
+		string repositoryName)
+	{
+		var body = JsonSerializer.Serialize(new
+		{
+			query = "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){hasSponsorshipsEnabled}}",
+			variables = new { owner, name = repositoryName }
+		});
+
+		try
+		{
+			var response = await github.Connection
+				.Post<string>(new Uri("graphql", UriKind.Relative), body, "application/json", "application/json")
+				.ConfigureAwait(false);
+
+			// Octokit leaves the typed Body empty for this response; only the raw body holds the JSON.
+			return ParseSponsorshipsEnabled(response.HttpResponse.Body as string);
+		}
+		catch (Exception ex) when (ex is ApiException or HttpRequestException)
+		{
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// The <c>hasSponsorshipsEnabled</c> value from a GraphQL repository response, or null when the
+	/// response does not state one.
+	/// </summary>
+	public static bool? ParseSponsorshipsEnabled(string? json)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return null;
+		}
+
+		try
+		{
+			using var document = JsonDocument.Parse(json);
+			return document.RootElement.TryGetProperty("data", out var data)
+				&& data.ValueKind == JsonValueKind.Object
+				&& data.TryGetProperty("repository", out var repository)
+				&& repository.ValueKind == JsonValueKind.Object
+				&& repository.TryGetProperty("hasSponsorshipsEnabled", out var enabled)
+				&& enabled.ValueKind is JsonValueKind.True or JsonValueKind.False
+					? enabled.GetBoolean()
+					: null;
+		}
+		catch (JsonException)
+		{
+			return null;
+		}
 	}
 
 	/// <summary>

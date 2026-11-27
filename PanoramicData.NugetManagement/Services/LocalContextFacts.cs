@@ -48,6 +48,9 @@ public sealed class LocalContextFacts
 	/// <summary>Gets whether GitHub private vulnerability reporting is on, resolved by the caller; null when unknown.</summary>
 	public bool? PrivateVulnerabilityReportingEnabled { get; init; }
 
+	/// <summary>Gets whether the repository's Sponsorships setting is on, resolved by the caller; null when unknown.</summary>
+	public bool? SponsorshipsEnabled { get; init; }
+
 	/// <summary>Gets whether the repository is private, or null when GitHub could not be asked.</summary>
 	public bool? IsPrivateRepository { get; init; }
 }

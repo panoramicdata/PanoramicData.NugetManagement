@@ -87,6 +87,15 @@ public partial class DashboardService
 			: await RepositoryContextBuilder.ResolvePrivateVulnerabilityReportingAsync(github, parts[0], parts[1]).ConfigureAwait(false);
 	}
 
+	/// <summary>Whether a repository's Sponsorships setting is on, or null when unknown.</summary>
+	private static async Task<bool?> ResolveSponsorshipsEnabledAsync(IGitHubClient? github, string repositoryFullName)
+	{
+		var parts = repositoryFullName.Split('/');
+		return github is null || parts.Length != 2
+			? null
+			: await RepositoryContextBuilder.ResolveSponsorshipsEnabledAsync(github, parts[0], parts[1]).ConfigureAwait(false);
+	}
+
 	/// <summary>The line coverage Codacy holds for a repository, or null when it cannot be read.</summary>
 	/// <remarks>The local clone cannot know this, so without it every locally assessed repository grades RED on TST-10.</remarks>
 	private static async Task<double?> ResolveLineCoverageAsync(
@@ -147,6 +156,7 @@ public partial class DashboardService
 						IsConfirmedInSyncWithOrigin = RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
 						LineCoveragePercent = await ResolveLineCoverageAsync(row.RepositoryFullName, repoOptions, "main", cancellationToken).ConfigureAwait(false),
 						PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName).ConfigureAwait(false),
+						SponsorshipsEnabled = await ResolveSponsorshipsEnabledAsync(github, row.RepositoryFullName).ConfigureAwait(false),
 						IsPrivateRepository = await ResolveIsPrivateAsync(github, row.RepositoryFullName).ConfigureAwait(false)
 					});
 		}
@@ -564,6 +574,7 @@ public partial class DashboardService
 				IsConfirmedInSyncWithOrigin = RepositoryGitState.IsRecentlyConfirmedInSync(row, DateTimeOffset.UtcNow),
 				LineCoveragePercent = await ResolveLineCoverageAsync(row.RepositoryFullName!, repoOptions, defaultBranch, cancellationToken).ConfigureAwait(false),
 				PrivateVulnerabilityReportingEnabled = await ResolvePrivateVulnerabilityReportingAsync(github, row.RepositoryFullName!).ConfigureAwait(false),
+				SponsorshipsEnabled = await ResolveSponsorshipsEnabledAsync(github, row.RepositoryFullName!).ConfigureAwait(false),
 				IsPrivateRepository = await ResolveIsPrivateAsync(github, row.RepositoryFullName!).ConfigureAwait(false)
 			});
 	}
