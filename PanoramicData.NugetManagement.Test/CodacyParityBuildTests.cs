@@ -210,7 +210,7 @@ public class CodacyParityBuildTests(ITestOutputHelper output) : TestWithOutput(o
 			start.ArgumentList.Add(argument);
 		}
 
-		using var process = System.Diagnostics.Process.Start(start)!; // nosemgrep: fixed "git" with an argument list, no shell
+		using var process = System.Diagnostics.Process.Start(start)!; // nosemgrep
 		process.WaitForExit();
 		return process.ExitCode;
 	}
