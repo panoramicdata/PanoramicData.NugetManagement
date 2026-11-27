@@ -37,6 +37,7 @@ public class RepositoryContextBuilder : IDisposable
 		".github/copilot-instructions.md",
 		"CONTRIBUTING.md",
 		"Directory.Build.props",
+		"Directory.Build.targets",
 		"Directory.Packages.props",
 		"global.json",
 		"LICENSE",

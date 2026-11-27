@@ -62,6 +62,7 @@ public class LocalRepositoryContextBuilder
 		".github/copilot-instructions.md",
 		"CONTRIBUTING.md",
 		"Directory.Build.props",
+		"Directory.Build.targets",
 		"Directory.Packages.props",
 		"global.json",
 		"LICENSE",

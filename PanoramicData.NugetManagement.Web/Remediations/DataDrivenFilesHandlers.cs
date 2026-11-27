@@ -13,6 +13,21 @@ internal static class DataDrivenFilesHandlers
 		}
 	}
 
+	internal static void CreateFiles(string localPath, RuleResult result, Dictionary<string, object> data, List<string> applied, Action<string>? onOutput)
+	{
+		var paths = DataDrivenRemediation.ReadStrings(data, "paths");
+		var contents = DataDrivenRemediation.ReadStrings(data, "contents");
+		if (paths.Length != contents.Length)
+		{
+			return;
+		}
+
+		for (var i = 0; i < paths.Length; i++)
+		{
+			RemediationHelpers.CreateFile(localPath, paths[i], contents[i], result, applied, onOutput);
+		}
+	}
+
 	internal static void ReplaceRegexInFiles(string localPath, RuleResult result, Dictionary<string, object> data, List<string> applied, Action<string>? onOutput)
 	{
 		var rrGlobs = DataDrivenRemediation.ReadStrings(data, "globs");
