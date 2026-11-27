@@ -38,7 +38,7 @@ Do the generation with a PowerShell script, and check the total row count agains
 ## 5. Bootstrap, core and exemplar
 
 1. **Create the repository from the paragon.** Copy `.editorconfig`, `.gitignore` (and add `/temp/`), `.gitattributes` (with `*.cs text eol=crlf`), `LICENSE`, `Publish.ps1`, `AGENTS.md` (the single instructions file, standalone: no CLAUDE.md, no reference to PanoramicData.Skills beyond its generic staff section), `coverage.config`, `.codacy.yml`, `global.json`, `version.json` (set the version line), `Directory.Build.props`, `.github/` (`dependabot.yml`, `workflows/codeql.yml` with setup-dotnet, and `workflows/ci.yml`), `CONTRIBUTING.md`, `SECURITY.md` (fix the repository URL), `docs/TESTING.md`, and `docker/Start-*TestInstance.ps1`. Adapt the names throughout. Put the latest stable version of every package in `Directory.Packages.props`.
-2. **Create three projects:** `<P>` (library), `<P>.Test` (unit tests, `failSkips: true`) and `<P>.IntegrationTest` (live tests, with a `UserSecretsId`). Also create `<P>.slnx` and an original icon: never a vendor logo.
+2. **Create three projects:** `<P>` (library), `<P>.Test` (unit tests, `failSkips: true`) and `<P>.IntegrationTest` (live tests, with a `UserSecretsId`). Also create `<P>.slnx` and an icon. When the user supplies the vendor's logo (ThreatStream and Tenable did), use it, rendering an SVG with the image-processing skill's `svg-to-png --size 128` and checking the PNG by eye; otherwise draw an original one.
 3. **Build the core, modelled on Splunk.Api:**
    - `<Vendor>Client` (a partial class, with one lazy `field ??= For<I...>()` property per interface, in a partial file per category)
    - options
