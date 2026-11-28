@@ -144,8 +144,9 @@ public class OctokitGitHubWriteApi(IGitHubClient github) : IGitHubWriteApi
 			var pullRequest = await _github.PullRequest.Get(owner, name, number).ConfigureAwait(false);
 			var body = JsonSerializer.Serialize(new
 			{
-				query = "mutation($id:ID!,$sha:GitObjectID!){enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:SQUASH,expectedHeadOid:$sha}){pullRequest{autoMergeRequest{enabledAt}}}}",
-				variables = new { id = pullRequest.NodeId, sha = expectedHeadSha }
+				query = "mutation($id:ID!,$sha:GitObjectID!,$headline:String!,$body:String!){enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:SQUASH,expectedHeadOid:$sha,commitHeadline:$headline,commitBody:$body}){pullRequest{autoMergeRequest{enabledAt}}}}",
+				// Explicit, so the governance trailer survives whatever the repository's squash message setting is.
+				variables = new { id = pullRequest.NodeId, sha = expectedHeadSha, headline = pullRequest.Title, body = SquashBody(pullRequest.Body, pullRequest.Title) }
 			});
 
 			var response = await _github.Connection
@@ -159,6 +160,25 @@ public class OctokitGitHubWriteApi(IGitHubClient github) : IGitHubWriteApi
 		{
 			return new AutoMergeResult(AutoMergeState.Refused, ex.Message);
 		}
+	}
+
+	/// <summary>The squash commit body: the pull request body without a first line repeating the title.</summary>
+	/// <param name="body">The pull request body, which holds the full commit message.</param>
+	/// <param name="title">The pull request title, used as the commit headline.</param>
+	public static string SquashBody(string? body, string title)
+	{
+		if (string.IsNullOrEmpty(body))
+		{
+			return string.Empty;
+		}
+
+		var normalised = body.Replace("\r\n", "\n", StringComparison.Ordinal);
+		var firstBreak = normalised.IndexOf('\n', StringComparison.Ordinal);
+		var firstLine = firstBreak < 0 ? normalised : normalised[..firstBreak];
+
+		return firstLine.Trim() == title.Trim()
+			? (firstBreak < 0 ? string.Empty : normalised[firstBreak..].TrimStart('\n'))
+			: normalised;
 	}
 
 	/// <summary>

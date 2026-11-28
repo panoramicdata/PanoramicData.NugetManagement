@@ -9,6 +9,22 @@ namespace PanoramicData.NugetManagement.Test;
 public class AutoMergeResponseTests(ITestOutputHelper output) : TestWithOutput(output)
 {
 	[Fact]
+	public void SquashBody_DropsTheRepeatedSubjectAndKeepsTheTrailer()
+		=> OctokitGitHubWriteApi.SquashBody("Fix CI-15\n\nBody line\n\nGovernance-Rules: CI-15", "Fix CI-15")
+			.Should().Be("Body line\n\nGovernance-Rules: CI-15");
+
+	[Theory]
+	[InlineData(null)]
+	[InlineData("")]
+	public void SquashBody_OfNoBody_IsEmpty(string? body)
+		=> OctokitGitHubWriteApi.SquashBody(body, "Fix CI-15").Should().BeEmpty();
+
+	[Fact]
+	public void SquashBody_WhoseFirstLineIsNotTheSubject_IsKeptWhole()
+		=> OctokitGitHubWriteApi.SquashBody("Other\n\nGovernance-Rules: CI-15", "Fix CI-15")
+			.Should().Be("Other\n\nGovernance-Rules: CI-15");
+
+	[Fact]
 	public void AnAutoMergeRequest_IsEnabled()
 		=> OctokitGitHubWriteApi.ParseAutoMergeResponse(
 				"""{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"autoMergeRequest":{"enabledAt":"2026-11-28T12:00:00Z"}}}}}""")
