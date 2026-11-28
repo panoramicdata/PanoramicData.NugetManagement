@@ -86,34 +86,55 @@ public class PushBuildGateTests
 	}
 
 	/// <summary>
-	/// The gate protects nothing if one push path can skip it. Every push goes through
-	/// DashboardService.CommitAndPushAsync, which builds before pushing, and none may opt out.
+	/// Branch protection rejects a push to main, so no git command in the app may attempt one: a bare
+	/// push sends the checked-out branch, which for a governance clone is main.
+	/// </summary>
+	[Theory]
+	[InlineData("\"push\", \"origin\", \"main\"")]
+	[InlineData("\"push\", \"-u\", \"origin\", \"main\"")]
+	[InlineData("[\"push\"]")]
+	public void NoGitCommandPushesMain(string arguments)
+	{
+		var offenders = WebSources()
+			.Where(entry => entry.Value.Contains(arguments, StringComparison.Ordinal))
+			.Select(entry => Path.GetFileName(entry.Key));
+
+		offenders.Should().BeEmpty("main changes only through a pull request");
+	}
+
+	/// <summary>
+	/// The gate protects nothing if one delivery path can skip it. Every governance branch is made by
+	/// DashboardService.CommitAndPushAsync, which builds before committing, and none may opt out.
 	/// </summary>
 	[Fact]
-	public void EveryPushIsBuiltFirst()
+	public void EveryPullRequestBranchIsBuiltFirst()
 	{
-		var webRoot = FindWebProject();
-		var sources = Directory
-			.EnumerateFiles(webRoot, "*.cs", SearchOption.AllDirectories)
-			.Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
-				&& !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
-			.ToDictionary(path => path, File.ReadAllText);
+		var sources = WebSources();
 
-		sources.Values.Sum(text => CountOf(text, "_localRepo.CommitAndPushAsync("))
-			.Should().Be(1, "a second place that pushes would not be built first");
+		sources.Values.Sum(text => CountOf(text, "_localRepo.CommitToPullRequestBranchAsync("))
+			.Should().Be(1, "a second place that delivers would not be built first");
 
 		var dashboard = sources.Single(entry => entry.Key.EndsWith("DashboardService.Git.cs", StringComparison.Ordinal)).Value;
 		var start = dashboard.IndexOf("public async Task<CommitAndPushOutcome> CommitAndPushAsync(", StringComparison.Ordinal);
 		start.Should().BeGreaterThan(0);
+		var end = dashboard.IndexOf("\n\t}", start, StringComparison.Ordinal);
 
 		var gate = dashboard.IndexOf("VerifyChangesBuildAsync(", start, StringComparison.Ordinal);
-		var push = dashboard.IndexOf("_localRepo.CommitAndPushAsync(", start, StringComparison.Ordinal);
-		gate.Should().BeGreaterThan(0, "the push path must build first");
-		gate.Should().BeLessThan(push, "the build must come before the push");
+		var delivery = dashboard.IndexOf("_localRepo.CommitToPullRequestBranchAsync(", start, StringComparison.Ordinal);
+		gate.Should().BeGreaterThan(0, "the delivery path must build first");
+		gate.Should().BeLessThan(delivery, "the build must come before the branch is made");
+		delivery.Should().BeLessThan(end, "the delivery must be inside the wrapper that builds");
 
 		sources.Values.Sum(text => CountOf(text, "verifyBuildFirst: false"))
-			.Should().Be(0, "no push path may opt out of the build");
+			.Should().Be(0, "no delivery path may opt out of the build");
 	}
+
+	private static Dictionary<string, string> WebSources()
+		=> Directory
+			.EnumerateFiles(FindWebProject(), "*.cs", SearchOption.AllDirectories)
+			.Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+				&& !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+			.ToDictionary(path => path, File.ReadAllText);
 
 	private static int CountOf(string text, string value)
 	{

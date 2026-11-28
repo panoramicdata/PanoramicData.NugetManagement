@@ -191,10 +191,10 @@ public static class EstateWork
 
 	private static string Action(WorkflowStep step, string stepName) => step switch
 	{
-		WorkflowStep.GitSync => "fetch, rebase and push",
+		WorkflowStep.GitSync => "fetch and fast-forward",
 		WorkflowStep.Build => "build",
 		WorkflowStep.Test => "run the tests of",
-		WorkflowStep.CommitAndPush => "commit and push",
+		WorkflowStep.CommitAndPush => "open a pull request into main for",
 		_ => $"run {stepName.ToLowerInvariant()} on"
 	};
 

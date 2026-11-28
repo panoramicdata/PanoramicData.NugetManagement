@@ -173,7 +173,7 @@ public class EstateWorkTests(ITestOutputHelper output) : TestWithOutput(output)
 		stale.SyncStatusCheckedAtUtc = null;
 
 		EstateWork.Describe(WorkflowStep.GitSync, "Git Sync", [stale, Row("Synced")], 2, Remediable, _now)
-			.Should().Be("Git Sync will fetch, rebase and push 1 repository not recently confirmed in sync with origin: Stale. "
+			.Should().Be("Git Sync will fetch and fast-forward 1 repository not recently confirmed in sync with origin: Stale. "
 				+ "1 repository is already in sync with origin.");
 	}
 

@@ -54,7 +54,7 @@ public partial class LocalRepoService
 	/// This is deliberately a directory of the app's own, and not the directory that holds the user's
 	/// working copies. It used to be the latter: the walk below found this application's repository and
 	/// returned its <em>parent</em>, so every clone, sync, commit and push the app performed happened
-	/// inside whatever the user had checked out there. Since <see cref="CommitAndPushAsync"/> stages with
+	/// inside whatever the user had checked out there. Since <see cref="CommitToPullRequestBranchAsync"/> stages with
 	/// <c>git add -A</c>, a bulk fix could commit and push the user's uncommitted work along with its own
 	/// changes, on whatever branch they happened to be on. Cloning into the app's own root keeps the two
 	/// apart, and lets clones be qualified by owner (see <see cref="GetLocalPath"/>) without dictating how

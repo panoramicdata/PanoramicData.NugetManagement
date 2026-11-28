@@ -120,13 +120,32 @@ internal sealed class FakeGitHubWriteApi : IGitHubWriteApi
 
 	public bool CreatePullRequestThrows { get; set; }
 
+	public string? PullRequestTitle { get; private set; }
+
+	public string? PullRequestBody { get; private set; }
+
+	public AutoMergeResult AutoMerge { get; set; } = new(AutoMergeState.Enabled, null);
+
+	public bool AutoMergeThrows { get; set; }
+
 	public Task<int> CreatePullRequestAsync(string owner, string name, string head, string baseBranch, string title, string body, CancellationToken cancellationToken)
 	{
 		Calls.Add($"pr:{head}->{baseBranch}");
+		PullRequestTitle = title;
+		PullRequestBody = body;
 
 		return CreatePullRequestThrows
 			? throw new InvalidOperationException("Validation Failed: no commits between main and the branch")
 			: Task.FromResult(7);
+	}
+
+	public Task<AutoMergeResult> EnableAutoMergeAsync(string owner, string name, int number, string expectedHeadSha, CancellationToken cancellationToken)
+	{
+		Calls.Add($"automerge:{number}:{expectedHeadSha}");
+
+		return AutoMergeThrows
+			? throw new InvalidOperationException("Something went wrong while executing your query")
+			: Task.FromResult(AutoMerge);
 	}
 
 	public Task<IReadOnlyList<CheckRunState>> GetCheckRunsAsync(string owner, string name, string sha, CancellationToken cancellationToken)

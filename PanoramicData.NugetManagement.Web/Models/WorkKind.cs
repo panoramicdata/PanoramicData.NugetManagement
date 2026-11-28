@@ -91,10 +91,10 @@ public enum WorkKind
 	/// </remarks>
 	TriageDependabot,
 
-	/// <summary>Pull and push one repository.</summary>
+	/// <summary>Fetch and fast-forward one repository; never pushes.</summary>
 	GitSync,
 
-	/// <summary>Commit and push one repository's working tree.</summary>
+	/// <summary>Commit one repository's working tree to a new branch and open a pull request into main.</summary>
 	CommitAndPush,
 
 	/// <summary>Publish one repository's packages.</summary>

@@ -46,8 +46,8 @@ public partial class DashboardService
 	}
 
 	/// <summary>
-	/// Syncs a local repository with remote (fetch, pull --rebase, push). Returns whether the clone
-	/// ended up in step with origin.
+	/// Brings a local repository up to date with remote (fetch, fast-forward); it never pushes. Returns
+	/// whether the sync worked.
 	/// </summary>
 	/// <remarks>
 	/// The result matters to callers that write to the clone afterwards: a failure here can mean there
@@ -133,16 +133,23 @@ public partial class DashboardService
 	}
 
 	/// <summary>
-	/// Commits all local changes, fetches, rebases on remote, and pushes.
+	/// Commits all local changes to a governance branch, pushes the branch and opens a pull request into
+	/// main that GitHub merges once the required checks pass. Main itself is never pushed.
 	/// Does not change the row status (preserves current workflow state).
 	/// </summary>
 	/// <remarks>
 	/// Refuses, and reverts the uncommitted changes, when the clone does not build with them. The token
-	/// stops the checks and the build only; the push itself is never cancelled.
+	/// stops the checks and the build only; the delivery itself is never cancelled.
 	/// </remarks>
+	/// <param name="row">The repository.</param>
+	/// <param name="commitMessage">The commit subject.</param>
+	/// <param name="github">Opens and merges the pull request.</param>
+	/// <param name="onOutput">Receives progress, including the pull request's URL.</param>
+	/// <param name="cancellationToken">Stops the checks and the build.</param>
 	public async Task<CommitAndPushOutcome> CommitAndPushAsync(
 		RepositoryDashboardRow row,
 		string commitMessage,
+		IGitHubWriteApi github,
 		Action<string>? onOutput,
 		CancellationToken cancellationToken)
 	{
@@ -181,26 +188,49 @@ public partial class DashboardService
 		}
 
 		// Not cancellable: a push killed mid-ref-update cannot be tidied up afterwards.
-		var (success, _) = await _localRepo.CommitAndPushAsync(repoIdentity, commitMessage, [.. row.RemediatedRuleIds], onOutput, CancellationToken.None).ConfigureAwait(false);
+		var delivery = await _localRepo.CommitToPullRequestBranchAsync(repoIdentity, commitMessage, [.. row.RemediatedRuleIds], onOutput, CancellationToken.None).ConfigureAwait(false);
 
-		if (success)
+		return await FinishDeliveryAsync(row, repoIdentity, delivery, github, onOutput, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Opens the pull request for a pushed branch and records where the clone now stands.
+	/// </summary>
+	/// <remarks>
+	/// No regression guard is queued: required CI on the pull request now keeps a breakage out of main,
+	/// and a guard run before the merge would build a main that does not yet hold the change.
+	/// </remarks>
+	private async Task<CommitAndPushOutcome> FinishDeliveryAsync(
+		RepositoryDashboardRow row,
+		string repoIdentity,
+		BranchDelivery delivery,
+		IGitHubWriteApi github,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		if (!delivery.Success)
 		{
-			row.RemediatedRuleIds.Clear();
-
-			// Verified again in the background so a breakage the local build could not see is rolled back.
-			_regressionGuard.Enqueue(row.RepositoryFullName);
-
-			// Refresh git status after push. The push itself establishes that we match origin, so no
-			// fetch is needed to know it — but it is knowledge with an age, like any other.
-			row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
-			row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
-			// Same reasoning: what was here has just gone to origin, so there is nothing left ahead of it.
-			row.HasUnpushedCommits = false;
-			row.IsSyncedWithOrigin = true;
-			row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
+			onOutput?.Invoke($"❌ Nothing was delivered for {row.RepositoryFullName}: {delivery.Output.Trim()}");
+			return CommitAndPushOutcome.Failed;
 		}
 
-		return success ? CommitAndPushOutcome.Pushed : CommitAndPushOutcome.Failed;
+		var outcome = delivery.NothingToDeliver
+			? CommitAndPushOutcome.NothingDelivered
+			: await PullRequestLander.OpenAndLandAsync(github, repoIdentity, delivery, onOutput).ConfigureAwait(false);
+
+		if (outcome.PullRequest is not null)
+		{
+			row.RemediatedRuleIds.Clear();
+		}
+
+		// Local main is origin's main again, so nothing is ahead of it; knowledge with an age, like any other.
+		row.CurrentBranch = await _localRepo.GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.IsWorkingTreeClean = await _localRepo.IsWorkingTreeCleanAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		row.HasUnpushedCommits = false;
+		row.IsSyncedWithOrigin = true;
+		row.SyncStatusCheckedAtUtc = DateTimeOffset.UtcNow;
+
+		return outcome;
 	}
 
 	// ── Repository identity: making sure we act on the repository we think we are ──

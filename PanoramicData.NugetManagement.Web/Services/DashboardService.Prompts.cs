@@ -316,13 +316,4 @@ public partial class DashboardService
 		var group = BuildIssueCentricView(rows).Categories.FirstOrDefault(c => c.Category == category);
 		return group is null ? string.Empty : CombinedRemediationPromptBuilder.ForCategory(group, onlyNonRemediable);
 	}
-
-	// ApplyRuleAcrossReposAsync, ApplyCategoryAcrossReposAsync and ApplyEverythingAcrossReposAsync used
-	// to live here — IssuesView's bulk actions called them directly, sequentially, one repository at a
-	// time. They are gone: a bulk action is now fanned out onto per-repository lanes (see
-	// IssuesView.RunConfirmedAsync and WorkFanOut.EnqueueRule), so nothing calls them any more.
-	// ApplyAcrossReposAsync (below), ApplySingleRuleAsync, RepoHasFailingRule and RepoHasFailingCategory
-	// are left in place despite now having no callers either: removing them cascades into
-	// BulkApplyOutcome/RepoApplyResult/RepoApplyPhase/RepoApplyStatus becoming unused too, which is a
-	// separate call to make.
 }

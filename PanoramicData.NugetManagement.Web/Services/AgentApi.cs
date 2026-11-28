@@ -80,10 +80,10 @@ public sealed class AgentWorkObserver
 /// <remarks>
 /// Exists so an agent can see what the tree shows and start the same work the buttons start, without a
 /// person relaying either. It is deliberately narrower than the UI. It reads state and transcripts, and
-/// queues only work that changes nothing outside the local clone — AI fix, re-assess, build, test,
-/// clone, and a refresh of the repository list (<c>POST /agent/refresh</c>). Commit and push, publish and every other outward-facing action are not reachable from here,
-/// and adding one should be a decision made in this file rather than a side effect of a new
-/// <see cref="WorkKind"/>.
+/// queues the kinds listed in its queueable table, among them git sync and commit-and-push, which opens a
+/// pull request into main rather than pushing to it. Publish and every other outward-facing action are
+/// not reachable from here, and adding one should be a decision made in this file rather than a side
+/// effect of a new <see cref="WorkKind"/>.
 /// <para>
 /// Three independent gates, all of which must hold: the API is only mapped when a token is configured,
 /// the caller must be on loopback, and the token must match in constant time.

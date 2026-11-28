@@ -11,7 +11,7 @@ namespace PanoramicData.NugetManagement.Web.Models;
 /// </remarks>
 public enum WorkflowStep
 {
-	/// <summary>Fetch, rebase and bring the local clone into line with origin.</summary>
+	/// <summary>Fetch and fast-forward the local clone to origin; never pushes.</summary>
 	GitSync,
 
 	/// <summary>Re-run the governance rules against the repository.</summary>
@@ -31,7 +31,7 @@ public enum WorkflowStep
 	/// <summary>Run the unit tests.</summary>
 	Test,
 
-	/// <summary>Commit what changed, then fetch, rebase and push to origin.</summary>
+	/// <summary>Commit what changed to a new branch and open a pull request into main.</summary>
 	CommitAndPush,
 
 	/// <summary>Tag and publish the package to NuGet.</summary>

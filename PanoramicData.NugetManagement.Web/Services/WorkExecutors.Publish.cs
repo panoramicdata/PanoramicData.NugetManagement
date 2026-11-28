@@ -13,7 +13,8 @@ namespace PanoramicData.NugetManagement.Web.Services;
 public sealed partial class WorkExecutors
 {
 	/// <summary>
-	/// Pulls and pushes one repository, then reports where its working tree stands.
+	/// Brings one repository up to date with origin, without pushing, then reports where its working
+	/// tree stands.
 	/// </summary>
 	/// <param name="item">The item naming the repository to sync.</param>
 	/// <param name="cancellationToken">Signalled when the user stops the item.</param>
@@ -85,9 +86,14 @@ public sealed partial class WorkExecutors
 		}
 	}
 
-	private void ReportPushed(WorkItem item, RepositoryDashboardRow row)
+	private void ReportDelivered(WorkItem item, RepositoryDashboardRow row, CommitAndPushOutcome push)
 	{
-		Say("✅ Changes committed and pushed");
+		var summary = push.PullRequest is { } pullRequest
+			? $"Delivered as pull request #{pullRequest.Number} into main: {pullRequest.Url}"
+			: "Nothing to deliver: the clone has nothing origin's main lacks.";
+
+		Say($"✅ {summary}");
+		item.Delivered = new DeliveredChange([], summary, push.PullRequest?.Url);
 		cache.UpsertRow(row);
 		item.Succeeded = true;
 
@@ -99,7 +105,7 @@ public sealed partial class WorkExecutors
 
 	private async Task HandleFailedPushAsync(WorkItem item, RepositoryDashboardRow row, CommitAndPushOutcome push, CancellationToken cancellationToken)
 	{
-		Say("❌ Commit and push failed");
+		Say(push.FailureReason is null ? "❌ Commit and push failed" : $"❌ Commit and push failed: {push.FailureReason}");
 		cache.UpsertRow(row);
 		item.Succeeded = false;
 
@@ -130,7 +136,7 @@ public sealed partial class WorkExecutors
 	}
 
 	/// <summary>
-	/// Commits and pushes one repository's working tree.
+	/// Commits one repository's working tree to a governance branch and opens a pull request into main.
 	/// </summary>
 	/// <remarks>
 	/// A guard's refusal used to be raised as a dialog, on the grounds that a console can be
@@ -148,22 +154,23 @@ public sealed partial class WorkExecutors
 			return;
 		}
 
-		Say("▶ Committing and pushing...");
+		Say("▶ Committing to a pull request branch...");
 
 		try
 		{
 			var commitMessage = GovernanceCommitMessage.Subject(row.RepositoryFullName);
-			var push = await dashboard.CommitAndPushAsync(row, commitMessage, Say, cancellationToken).ConfigureAwait(false);
+			var github = new OctokitGitHubWriteApi(await CreateGitHubClientAsync().ConfigureAwait(false));
+			var push = await dashboard.CommitAndPushAsync(row, commitMessage, github, Say, cancellationToken).ConfigureAwait(false);
 
 			// Whatever the outcome: a refused or failed push is as much part of the record as a good one.
 			if (governance is not null)
 			{
-				await governance.RecordPushAsync(item, row.RepositoryFullName, push.Success, push.RefusalReason, row.LocalPath, CancellationToken.None).ConfigureAwait(false);
+				await governance.RecordPushAsync(item, row.RepositoryFullName, push.Success, push.RefusalReason, row.LocalPath, push.PullRequest, CancellationToken.None).ConfigureAwait(false);
 			}
 
 			if (push.Success)
 			{
-				ReportPushed(item, row);
+				ReportDelivered(item, row, push);
 			}
 			else
 			{

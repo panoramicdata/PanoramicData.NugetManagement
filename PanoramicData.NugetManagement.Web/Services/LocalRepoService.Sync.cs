@@ -126,38 +126,9 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
-	/// Reverts every commit after <paramref name="lastGoodCommitHash"/> up to HEAD as a single revert
-	/// commit, then pushes. Used to automatically undo a regression we introduced. On revert conflict
-	/// the revert is aborted and failure is returned (no partial state is pushed).
-	/// </summary>
-	public async Task<(bool Success, string Output)> RevertRangeAndPushAsync(
-		string repoIdentity,
-		string lastGoodCommitHash,
-		string message,
-		Action<string>? onOutput,
-		CancellationToken cancellationToken)
-	{
-		var path = GetLocalPath(repoIdentity);
-
-		var (ok, output) = await RunCommandWithStreamingAsync(
-			path, "git", ["revert", "--no-edit", "--no-commit", $"{lastGoodCommitHash}..HEAD"], onOutput, cancellationToken, null).ConfigureAwait(false);
-		if (!ok)
-		{
-			await RunCommandWithStreamingAsync(path, "git", ["revert", "--abort"], onOutput, cancellationToken, null).ConfigureAwait(false);
-			return (false, output);
-		}
-
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", message], onOutput, cancellationToken, null).ConfigureAwait(false);
-		if (!ok)
-		{
-			return (false, output);
-		}
-
-		return await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken, null).ConfigureAwait(false);
-	}
-
-	/// <summary>
-	/// Syncs a local repository with its remote: fetch, pull (rebase), push.
+	/// Brings a local repository up to date with its remote: fetch, then fast-forward. Never pushes;
+	/// local commits that origin lacks are reported and left for Commit &amp; push to deliver as a pull
+	/// request.
 	/// </summary>
 	public async Task<(bool Success, string Output)> GitSyncAsync(
 		string repoIdentity,
@@ -167,23 +138,26 @@ public partial class LocalRepoService
 		var path = GetLocalPath(repoIdentity);
 		_logger.LogInformation("Git syncing {Path}", path);
 
-		// Fetch
-		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["fetch", "--prune"], onOutput, cancellationToken, null).ConfigureAwait(false);
+		var (ok, output) = await RunNetworkGitWithRetryAsync(path, ["fetch", "--prune"], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
-		// Pull with rebase
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["pull", "--rebase"], onOutput, cancellationToken, null).ConfigureAwait(false);
+		// Fast-forward only: a rebase would replay local commits, which only a pull request may deliver.
+		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["pull", "--ff-only"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
 			return (false, output);
 		}
 
-		// Push
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["push"], onOutput, cancellationToken, null).ConfigureAwait(false);
-		return (ok, output);
+		var ahead = await CountCommitsAsync(path, "@{u}..HEAD", cancellationToken).ConfigureAwait(false);
+		if (ahead > 0)
+		{
+			onOutput?.Invoke($"ℹ️ {ahead} local commit(s) are not on origin. Nothing was pushed: Commit & push will deliver them as a pull request.");
+		}
+
+		return (true, output);
 	}
 
 	private async Task<string> DescribeStagedChangeAsync(
@@ -205,14 +179,16 @@ public partial class LocalRepoService
 	}
 
 	/// <summary>
-	/// Commits all local changes, fetches from origin, rebases, and pushes.
+	/// Commits all local changes to a new governance branch, carrying any local commits origin lacks, and
+	/// pushes that branch. Main is never pushed: local main goes back to origin's, and the pull request
+	/// opened from the branch is how the change reaches it.
 	/// </summary>
 	/// <param name="repoIdentity">The repository, as owner/name.</param>
 	/// <param name="commitSubject">The commit subject; the body and trailer are added from what is staged.</param>
 	/// <param name="ruleIds">The rules the change applied, for the commit body and trailer.</param>
 	/// <param name="onOutput">Receives the git output.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-	public async Task<(bool Success, string Output)> CommitAndPushAsync(
+	public async Task<BranchDelivery> CommitToPullRequestBranchAsync(
 		string repoIdentity,
 		string commitSubject,
 		IReadOnlyCollection<string> ruleIds,
@@ -220,45 +196,141 @@ public partial class LocalRepoService
 		CancellationToken cancellationToken)
 	{
 		var path = GetLocalPath(repoIdentity);
-		_logger.LogInformation("Commit and push in {Path}", path);
+		_logger.LogInformation("Committing to a pull request branch in {Path}", path);
 
-		// Stage all changes
+		var current = await GetCurrentBranchAsync(repoIdentity, cancellationToken).ConfigureAwait(false);
+		if (!string.Equals(current, MainBranch, StringComparison.Ordinal))
+		{
+			return BranchDelivery.Failed($"Commit & push delivers from {MainBranch}, but {repoIdentity} has '{current}' checked out.");
+		}
+
 		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["add", "-A"], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
-			return (false, output);
+			return BranchDelivery.Failed(output);
 		}
 
-		var commitMessage = await DescribeStagedChangeAsync(path, commitSubject, ruleIds, cancellationToken).ConfigureAwait(false);
+		var (staged, _) = await RunCommandAsync(path, "git", ["diff", "--cached", "--quiet"], cancellationToken).ConfigureAwait(false);
+		var message = staged == 1 ? await DescribeStagedChangeAsync(path, commitSubject, ruleIds, cancellationToken).ConfigureAwait(false) : null;
 
-		// Commit (allow empty commit to succeed gracefully)
-		(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", commitMessage], onOutput, cancellationToken, null).ConfigureAwait(false);
+		(ok, output) = await RunNetworkGitWithRetryAsync(path, ["fetch", "--prune"], onOutput, cancellationToken).ConfigureAwait(false);
+		return ok
+			? await CommitOnNewBranchAndPushAsync(path, NewGovernanceBranchName(), message, onOutput, cancellationToken).ConfigureAwait(false)
+			: BranchDelivery.Failed(output);
+	}
+
+	private const string MainBranch = "main";
+
+	private const string OriginMain = "origin/main";
+
+	/// <summary>A unique branch name such as <c>gov/20261128-120000-a1b2c3</c>.</summary>
+	internal static string NewGovernanceBranchName()
+		=> $"gov/{DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture)}-{Guid.NewGuid().ToString("N")[..6]}";
+
+	private async Task<BranchDelivery> CommitOnNewBranchAndPushAsync(
+		string path,
+		string branch,
+		string? message,
+		Action<string>? onOutput,
+		CancellationToken cancellationToken)
+	{
+		// The branch starts at HEAD, so local commits origin lacks come along with the new one.
+		var (ok, output) = await RunCommandWithStreamingAsync(path, "git", ["checkout", "-b", branch], onOutput, cancellationToken, null).ConfigureAwait(false);
 		if (!ok)
 		{
-			// Check if "nothing to commit" — that's fine, continue with fetch/rebase/push
-			if (!output.Contains("nothing to commit", StringComparison.OrdinalIgnoreCase))
+			return BranchDelivery.Failed(output);
+		}
+
+		if (message is not null)
+		{
+			(ok, output) = await RunCommandWithStreamingAsync(path, "git", ["commit", "-m", message], onOutput, cancellationToken, null).ConfigureAwait(false);
+			if (!ok)
 			{
-				return (false, output);
+				await AbandonBranchAsync(path, branch, keepCommits: false, cancellationToken).ConfigureAwait(false);
+				return BranchDelivery.Failed(output);
 			}
 		}
 
-		// Fetch
-		(ok, output) = await RunNetworkGitWithRetryAsync(path, ["fetch", "--prune"], onOutput, cancellationToken).ConfigureAwait(false);
-		if (!ok)
+		var ahead = await CountCommitsAsync(path, $"{OriginMain}..HEAD", cancellationToken).ConfigureAwait(false);
+		if (ahead is not > 0)
 		{
-			return (false, output);
+			await AbandonBranchAsync(path, branch, keepCommits: true, cancellationToken).ConfigureAwait(false);
+			onOutput?.Invoke(ahead == 0 ? $"ℹ️ Nothing to deliver: the clone has nothing {OriginMain} lacks." : $"❌ Could not compare with {OriginMain}.");
+			return ahead == 0 ? BranchDelivery.Nothing : BranchDelivery.Failed($"Could not compare with {OriginMain}.");
 		}
 
-		// Rebase on top of remote
-		(ok, output) = await RunNetworkGitWithRetryAsync(path, ["pull", "--rebase"], onOutput, cancellationToken).ConfigureAwait(false);
+		return await PushBranchAsync(path, branch, onOutput, cancellationToken).ConfigureAwait(false);
+	}
+
+	private async Task<BranchDelivery> PushBranchAsync(string path, string branch, Action<string>? onOutput, CancellationToken cancellationToken)
+	{
+		var delivery = await DescribeHeadAsync(path, branch, cancellationToken).ConfigureAwait(false);
+
+		var (ok, output) = await RunNetworkGitWithRetryAsync(path, ["push", "-u", "origin", branch], onOutput, cancellationToken).ConfigureAwait(false);
 		if (!ok)
 		{
-			return (false, output);
+			// Back onto main, so the commit stays visible as unpushed and the next attempt carries it.
+			await AbandonBranchAsync(path, branch, keepCommits: true, cancellationToken).ConfigureAwait(false);
+			return BranchDelivery.Failed(output);
 		}
 
-		// Push
-		(ok, output) = await RunNetworkGitWithRetryAsync(path, ["push"], onOutput, cancellationToken).ConfigureAwait(false);
-		return (ok, output);
+		await ReturnMainToOriginAsync(path, branch, onOutput, cancellationToken).ConfigureAwait(false);
+		return delivery;
+	}
+
+	private static async Task<BranchDelivery> DescribeHeadAsync(string path, string branch, CancellationToken cancellationToken)
+	{
+		var (_, sha) = await RunCommandAsync(path, "git", ["rev-parse", "HEAD"], cancellationToken).ConfigureAwait(false);
+		var (_, subject) = await RunCommandAsync(path, "git", ["log", "-1", "--format=%s"], cancellationToken).ConfigureAwait(false);
+		var (_, message) = await RunCommandAsync(path, "git", ["log", "-1", "--format=%B"], cancellationToken).ConfigureAwait(false);
+
+		return new BranchDelivery
+		{
+			Success = true,
+			Branch = branch,
+			HeadSha = sha.Trim(),
+			Subject = subject.Trim(),
+			Message = message.Trim()
+		};
+	}
+
+	/// <summary>
+	/// Goes back to main without the branch. With <paramref name="keepCommits"/> main fast-forwards to
+	/// it first, so nothing committed is lost.
+	/// </summary>
+	private static async Task AbandonBranchAsync(string path, string branch, bool keepCommits, CancellationToken cancellationToken)
+	{
+		await RunCommandAsync(path, "git", ["checkout", MainBranch], cancellationToken).ConfigureAwait(false);
+
+		if (keepCommits)
+		{
+			await RunCommandAsync(path, "git", ["merge", "--ff-only", branch], cancellationToken).ConfigureAwait(false);
+		}
+
+		await RunCommandAsync(path, "git", ["branch", "-D", branch], cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Puts local main back on origin's main once the branch holding its commits is on origin.
+	/// </summary>
+	/// <remarks>
+	/// <c>reset --keep</c> rather than <c>--hard</c>: it keeps unrelated uncommitted edits, and refuses
+	/// rather than overwrite one. The local branch goes because its remote-tracking ref keeps the commit.
+	/// </remarks>
+	private static async Task ReturnMainToOriginAsync(string path, string branch, Action<string>? onOutput, CancellationToken cancellationToken)
+	{
+		var (checkout, checkoutOutput) = await RunCommandAsync(path, "git", ["checkout", MainBranch], cancellationToken).ConfigureAwait(false);
+		var (reset, resetOutput) = checkout == 0
+			? await RunCommandAsync(path, "git", ["reset", "--keep", OriginMain], cancellationToken).ConfigureAwait(false)
+			: (checkout, checkoutOutput);
+
+		if (reset != 0)
+		{
+			onOutput?.Invoke($"⚠️ {branch} is on origin, but local {MainBranch} could not be put back on {OriginMain}: {resetOutput.Trim()}");
+			return;
+		}
+
+		await RunCommandAsync(path, "git", ["branch", "-D", branch], cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>

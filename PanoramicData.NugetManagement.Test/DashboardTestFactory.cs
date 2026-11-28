@@ -30,7 +30,6 @@ internal static class DashboardTestFactory
 				new PublishedVersionRefresher(new NoopPublishedVersionSource()),
 				localRepo,
 				new RemediationRegistry(),
-				new RegressionGuardService(localRepo, NullLogger<RegressionGuardService>.Instance),
 				new NoopCodacyAnalysisStateService()),
 			NullLogger<DashboardService>.Instance);
 }

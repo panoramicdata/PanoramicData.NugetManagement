@@ -74,6 +74,13 @@ public class DependabotTriageRunnerTests(ITestOutputHelper output) : TestWithOut
 			throw new NotSupportedException();
 		}
 
+		public Task<AutoMergeResult> EnableAutoMergeAsync(
+			string owner, string name, int number, string expectedHeadSha, CancellationToken cancellationToken)
+		{
+			FakeArguments.Accept(owner, name, number, expectedHeadSha, cancellationToken);
+			throw new NotSupportedException();
+		}
+
 		public Task MergePullRequestAsync(
 			string owner, string name, int number, string expectedHeadSha, CancellationToken cancellationToken)
 		{

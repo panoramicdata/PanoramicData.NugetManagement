@@ -17,7 +17,6 @@ public partial class DashboardService
 	private readonly PublishedVersionRefresher _publishedVersions;
 	private readonly DashboardCacheService _cache;
 	private readonly LocalRepoService _localRepo;
-	private readonly RegressionGuardService _regressionGuard;
 	private readonly RuntimeSettingsService _runtimeSettings;
 	private readonly NuGetOwnedPackageCatalog _owned;
 	private readonly RuleWaiverCatalog _waivers;
@@ -49,7 +48,6 @@ public partial class DashboardService
 		_publishedVersions = workers.PublishedVersions;
 		_cache = stores.Cache;
 		_localRepo = workers.LocalRepo;
-		_regressionGuard = workers.RegressionGuard;
 		_runtimeSettings = stores.RuntimeSettings;
 		_owned = stores.Owned;
 		_waivers = stores.Waivers;

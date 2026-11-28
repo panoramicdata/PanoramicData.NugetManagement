@@ -6,10 +6,9 @@ using PanoramicData.NugetManagement.Web.Models;
 namespace PanoramicData.NugetManagement.Web.Services;
 
 /// <summary>
-/// A background build queue that verifies every repository we push a change to still compiles, and
-/// automatically rolls back (reverts + pushes) our commits when — and only when — they are proven to
-/// have broken the build. Repositories are built in the background with bounded concurrency so the UI
-/// stays responsive.
+/// A background build queue that verifies a repository still compiles and reports whether our commits
+/// are proven to have broken the build. It only reports; it never reverts or pushes. Repositories are
+/// built in the background with bounded concurrency so the UI stays responsive.
 /// </summary>
 public sealed class RegressionGuardService(
 	LocalRepoService localRepo,
@@ -28,7 +27,7 @@ public sealed class RegressionGuardService(
 	public IReadOnlyList<RepoGuardStatus> Statuses => [.. _statuses.Values.OrderByDescending(s => s.UpdatedUtc)];
 
 	/// <summary>
-	/// Queues a repository for build verification after we have pushed a change to it.
+	/// Queues a repository for build verification.
 	/// </summary>
 	public void Enqueue(string repositoryFullName)
 	{
