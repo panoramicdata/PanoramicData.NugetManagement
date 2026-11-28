@@ -535,7 +535,7 @@ else
 							}
 
 							<PDToolbarButton Key="commit-and-push"
-											 Text="Commit & Push"
+											 Text="Commit & PR"
 											 IconCssClass="fas fa-cloud-upload-alt"
 											 CssClass="@GetStepCssClassFull(WorkflowStep.CommitAndPush)"
 											 IsVisible="@(HasToolbarTarget && !IsSettingsView)"
@@ -4744,7 +4744,7 @@ else
 		WorkflowStep.FixWithAi => "Fix in IDE",
 		WorkflowStep.Build => "Build",
 		WorkflowStep.Test => "Test",
-		WorkflowStep.CommitAndPush => "Commit & Push",
+		WorkflowStep.CommitAndPush => "Commit & PR",
 		WorkflowStep.Publish => "Publish",
 		_ => step.ToString()
 	};
@@ -6319,35 +6319,15 @@ else
 	}
 
 	/// <summary>
-	/// Queues one rule of a bulk action fanned out across its repositories, or — when
-	/// <see cref="BulkRuleRequest.RuleId"/> is null — the trailing commit-and-push a multi-rule sweep
-	/// sends once every rule has been fanned out. That case is queued here rather than through
-	/// <see cref="WorkFanOut"/>, since it fixes nothing and <see cref="WorkFanOut.EnqueueRule"/> pairs
-	/// its push with a specific rule's fix.
+	/// Queues one rule of a bulk action fanned out across its repositories, or, when
+	/// <see cref="BulkRuleRequest.RuleId"/> is null, the trailing Commit &amp; push (one pull request per
+	/// repository) a multi-rule sweep sends once every rule has been fanned out.
 	/// </summary>
 	private void EnqueueBulkRule(BulkRuleRequest request)
 	{
 		if (request.RuleId is null)
 		{
-			var pushed = 0;
-			foreach (var repositoryFullName in request.RepositoryFullNames)
-			{
-				// Never folded: this is the one push a whole sweep's fixes land behind, so a repeat
-				// request finding one already pending must still queue its own — a fold here would
-				// silently drop the push for whichever rule enqueued second.
-				var item = Lanes.Enqueue(
-					$"Commit & push {repositoryFullName}",
-					WorkDescriptor.ForRepository(WorkKind.CommitAndPush, request.Organization, repositoryFullName),
-					$"commit-push:{repositoryFullName}",
-					WorkflowStep.CommitAndPush,
-					_selectedNodeKey,
-					foldDuplicates: false);
-
-				if (item is not null)
-				{
-					pushed++;
-				}
-			}
+			var pushed = FanOut.EnqueueTrailingPush(request.Organization, request.RepositoryFullNames, _selectedNodeKey);
 
 			AppendConsole($"⏳ Queued {request.Title} across {pushed} repositor{(pushed == 1 ? "y" : "ies")}.");
 			return;
@@ -7487,7 +7467,7 @@ else
 	private string GetCommitAndPushTooltip()
 		=> !IsEstateWide && IsSelectedRowPorcelain
 			? "Nothing to commit and nothing to push — the working tree is clean and in sync with origin"
-			: WorkflowStepTooltip("Commit changes, fetch, rebase and push to origin");
+			: WorkflowStepTooltip("Commit changes to a new branch and open a pull request into main, which merges once the required checks pass");
 
 	private bool IsGitSyncEnabled()
 		=> !_isRunning && _selectedRow?.IsWorkingTreeClean != false;
@@ -7499,7 +7479,7 @@ else
 			return "Working tree has uncommitted changes — commit or stash changes first";
 		}
 
-		return "Clone if needed, then fetch, pull --rebase, push";
+		return "Clone if needed, then fetch and fast-forward; never pushes";
 	}
 
 	private string GetFixInIdeTooltip()

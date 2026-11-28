@@ -150,43 +150,46 @@ public sealed class GovernanceRecorder(
 			new { workItemId = item.Id, count = applied.Count, applied }));
 
 	/// <summary>
-	/// Records a commit and push, successful or refused.
+	/// Records a Commit &amp; push, which delivers through a pull request, successful or refused.
 	/// </summary>
 	/// <param name="item">The work item.</param>
 	/// <param name="repositoryFullName">The repository.</param>
-	/// <param name="succeeded">Whether it was pushed.</param>
+	/// <param name="succeeded">Whether it was delivered, or there was nothing to deliver.</param>
 	/// <param name="refusalReason">Why a guard refused it, if one did.</param>
 	/// <param name="cloneRoot">The clone, from which the commit is described.</param>
+	/// <param name="pullRequest">The pull request it went to, or null when none was opened.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <remarks>
+	/// The commit is read by its sha, not from HEAD: once the branch is on origin the clone is back on
+	/// main, which does not hold it.
+	/// </remarks>
 	public async Task RecordPushAsync(
 		Models.WorkItem item,
 		string repositoryFullName,
 		bool succeeded,
 		string? refusalReason,
 		string? cloneRoot,
+		Models.PullRequestDelivery? pullRequest,
 		CancellationToken cancellationToken)
 	{
 		try
 		{
-			string? sha = null;
-			string? branch = null;
+			var sha = pullRequest?.HeadSha;
+			var branch = pullRequest?.Branch;
 			var files = new List<string>();
 			PacketReference? packet = null;
 			string? packetProblem = null;
 
-			if (succeeded && cloneRoot is not null)
+			if (succeeded && cloneRoot is not null && sha is not null)
 			{
-				sha = await GitAsync(cloneRoot, ["rev-parse", "HEAD"], cancellationToken).ConfigureAwait(false);
-				branch = await GitAsync(cloneRoot, ["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken).ConfigureAwait(false);
-
-				var names = await GitAsync(cloneRoot, ["show", "--name-only", "--format=", "HEAD"], cancellationToken).ConfigureAwait(false);
+				var names = await GitAsync(cloneRoot, ["show", "--name-only", "--format=", sha], cancellationToken).ConfigureAwait(false);
 				files.AddRange((names ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-				var patch = await GitAsync(cloneRoot, ["show", "--no-color", "--format=%H%n%s", "HEAD"], cancellationToken).ConfigureAwait(false);
+				var patch = await GitAsync(cloneRoot, ["show", "--no-color", "--format=%H%n%s", sha], cancellationToken).ConfigureAwait(false);
 
 				try
 				{
-					packet = packets.Write(new { kind = "push", repository = repositoryFullName, sha, branch, files, diff = Truncate(patch ?? string.Empty, MaxDiffCharacters) });
+					packet = packets.Write(new { kind = "push", repository = repositoryFullName, sha, branch, pullRequestNumber = pullRequest!.Number, files, diff = Truncate(patch ?? string.Empty, MaxDiffCharacters) });
 				}
 				catch (PacketRefusedException ex)
 				{
@@ -198,7 +201,21 @@ public sealed class GovernanceRecorder(
 				ActorFor(item),
 				"push",
 				repositoryFullName,
-				null, new { workItemId = item.Id, succeeded, refusalReason, sha, branch, files, packet, packetProblem });
+				null,
+				new
+				{
+					workItemId = item.Id,
+					succeeded,
+					refusalReason,
+					sha,
+					branch,
+					pullRequestNumber = pullRequest?.Number,
+					pullRequestUrl = pullRequest?.Url,
+					landing = pullRequest?.Landing.ToString(),
+					files,
+					packet,
+					packetProblem
+				});
 		}
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
 		{

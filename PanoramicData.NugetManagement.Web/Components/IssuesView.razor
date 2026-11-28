@@ -100,7 +100,7 @@
 								@if (rule.HasAutomatedRemediation)
 								{
 									<button class="btn btn-sm btn-primary" disabled="@(SelectedAffected(rule) == 0)" @onclick="() => ConfirmApplyRule(rule)" @onclick:stopPropagation @onmousedown:stopPropagation>
-										Apply &amp; push to @SelectedAffected(rule) repo(s)
+										Apply &amp; open pull requests in @SelectedAffected(rule) repo(s)
 									</button>
 								}
 								else
@@ -116,7 +116,7 @@
 						<span class="node-row repo-row @(IsRepoSelected(inst.RepositoryFullName) ? "" : "repo-deselected") @(_fixedInThisRun.Contains(inst.RepositoryFullName) ? "repo-fixed" : null)">
 							@if (_fixedInThisRun.Contains(inst.RepositoryFullName))
 							{
-								<i class="fas fa-check repo-fixed-tick" title="Fixed and pushed in this run"></i>
+								<i class="fas fa-check repo-fixed-tick" title="Fixed and delivered as a pull request in this run"></i>
 							}
 							else
 							{
@@ -151,18 +151,18 @@
 	<div class="modal-overlay" @onclick="CancelConfirm">
 		<div class="modal-box" @onclick:stopPropagation="true">
 			<h3><i class="fas fa-exclamation-triangle"></i> @_confirm.Title</h3>
-			<p>This will <strong>edit, commit and push to <code>main</code></strong> in the following @_confirm.Repos.Count repositor@(_confirm.Repos.Count == 1 ? "y" : "ies"):</p>
+			<p>This will <strong>edit, commit and open a pull request into <code>main</code></strong>, which merges once the required checks pass, in the following @_confirm.Repos.Count repositor@(_confirm.Repos.Count == 1 ? "y" : "ies"):</p>
 			<ul class="repo-list">
 				@foreach (var r in _confirm.Repos)
 				{
 					<li>@r</li>
 				}
 			</ul>
-			<p class="warn"><i class="fas fa-info-circle"></i> Each repo is synced and re-assessed first, then fixed, committed and pushed. The operation <strong>stops on the first failure</strong>.</p>
+			<p class="warn"><i class="fas fa-info-circle"></i> Each repo is synced and re-assessed first, then fixed and committed to a new branch, and a pull request into <code>main</code> is opened. Nothing is pushed to <code>main</code> directly.</p>
 			<div class="modal-actions">
 				<button class="btn btn-secondary" @onclick="CancelConfirm">Cancel</button>
 				<button class="btn btn-danger" @onclick="RunConfirmedAsync">
-					<i class="fas fa-bolt"></i> Confirm — push to @_confirm.Repos.Count repo(s)
+					<i class="fas fa-bolt"></i> Confirm: open pull requests in @_confirm.Repos.Count repo(s)
 				</button>
 			</div>
 		</div>

@@ -268,7 +268,8 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 
 	/// <summary>
 	/// Queues one rule's auto-fix against every affected repository, optionally following each fix
-	/// with a commit and push in the same lane. Returns how many repositories were queued.
+	/// with a Commit &amp; push (a pull request into main) in the same lane. Returns how many
+	/// repositories were queued.
 	/// </summary>
 	/// <param name="organization">The organisation the repositories belong to.</param>
 	/// <param name="ruleId">The rule to apply.</param>
@@ -304,19 +305,47 @@ public sealed class WorkFanOut(WorkLaneService lanes)
 			// repository without any coordination: the lane is the ordering.
 			if (push)
 			{
-				// Never folded, unlike the fix it follows. A second push costs nothing — there is simply
-				// nothing to commit — whereas a folded push leaves the repository fixed and unpushed, with
-				// an uncommitted change nobody is tracking. The asymmetry is why this one opts out.
-				lanes.Enqueue(
-					$"Commit & push {repositoryFullName}",
-					WorkDescriptor.ForRepository(WorkKind.CommitAndPush, organization, repositoryFullName),
-					$"commit-push:{repositoryFullName}:{ruleId}",
-					WorkflowStep.CommitAndPush,
-					consoleNodeKey,
-					foldDuplicates: false);
+				EnqueueTrailingPush(organization, repositoryFullName, consoleNodeKey);
 			}
 		}
 
 		return queued;
+	}
+
+	/// <summary>
+	/// Queues one Commit &amp; push at the end of each repository's lane, behind every fix queued so far,
+	/// so the action they belong to becomes one pull request. Returns how many were queued.
+	/// </summary>
+	/// <param name="organization">The organisation the repositories belong to.</param>
+	/// <param name="repositoryFullNames">The repositories to deliver.</param>
+	/// <param name="consoleNodeKey">The console the output belongs to.</param>
+	public int EnqueueTrailingPush(
+		string? organization,
+		IReadOnlyList<string> repositoryFullNames,
+		string? consoleNodeKey)
+		=> repositoryFullNames.Count(repositoryFullName => EnqueueTrailingPush(organization, repositoryFullName, consoleNodeKey));
+
+	/// <remarks>
+	/// Folded only into a pending push already at the tail: a second one straight after it would find
+	/// nothing to deliver. An earlier pending push is never moved behind a later fix, because a fix
+	/// refuses a clone with uncommitted changes and would then find the first fix still there.
+	/// </remarks>
+	private bool EnqueueTrailingPush(string? organization, string repositoryFullName, string? consoleNodeKey)
+	{
+		var descriptor = WorkDescriptor.ForRepository(WorkKind.CommitAndPush, organization, repositoryFullName);
+		var tail = lanes.ItemsFor(descriptor.LaneKey).LastOrDefault();
+
+		if (tail is { State: WorkItemState.Pending, Descriptor.Kind: WorkKind.CommitAndPush })
+		{
+			return false;
+		}
+
+		return lanes.Enqueue(
+			$"Commit & push {repositoryFullName}",
+			descriptor,
+			$"commit-push:{repositoryFullName}",
+			WorkflowStep.CommitAndPush,
+			consoleNodeKey,
+			foldDuplicates: false) is not null;
 	}
 }

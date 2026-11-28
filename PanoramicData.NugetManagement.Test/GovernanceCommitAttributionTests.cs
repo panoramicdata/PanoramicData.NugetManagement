@@ -9,11 +9,14 @@ namespace PanoramicData.NugetManagement.Test;
 
 /// <summary>
 /// The regression guard must recognise the commits the app really writes. Each test makes a real commit
-/// through <c>LocalRepoService.CommitAndPushAsync</c> with the subject the publish executor uses, reads
-/// it back with the guard's own log reader, and asks <see cref="RegressionAttribution"/>; nothing here
-/// is a hand-typed subject.
+/// through <c>LocalRepoService.CommitToPullRequestBranchAsync</c> with the subject the publish executor
+/// uses, reads it back with the guard's own log reader, and asks <see cref="RegressionAttribution"/>;
+/// nothing here is a hand-typed subject.
 /// </summary>
-/// <remarks>Real git, no network: the origin is a bare repository nested in the clone.</remarks>
+/// <remarks>
+/// Real git, no network: the origin is a bare repository nested in the clone. The pull request merging
+/// is stood in for by fast-forwarding main to the delivered commit, as a merge that keeps its message.
+/// </remarks>
 public sealed class GovernanceCommitAttributionTests : IDisposable
 {
 	private const string Owner = "panoramicdata";
@@ -55,9 +58,10 @@ public sealed class GovernanceCommitAttributionTests : IDisposable
 		Git(Clone, "commit", "-q", "-m", "seed packages");
 		File.WriteAllText(Path.Combine(Clone, "Directory.Packages.props"), "<Project><ItemGroup>\n<PackageVersion Include=\"Serilog\" Version=\"4.0.0\" />\n</ItemGroup></Project>\n");
 
-		var push = await _localRepo.CommitAndPushAsync(Identity, GovernanceCommitMessage.Subject(Identity), ["PKG-05", "CQ-05"], null, TestContext.Current.CancellationToken).ConfigureAwait(true);
+		var push = await _localRepo.CommitToPullRequestBranchAsync(Identity, GovernanceCommitMessage.Subject(Identity), ["PKG-05", "CQ-05"], null, TestContext.Current.CancellationToken).ConfigureAwait(true);
 
 		push.Success.Should().BeTrue(push.Output);
+		Git(Clone, "merge", "-q", "--ff-only", push.HeadSha!);
 		var body = Git(Clone, "log", "-1", "--format=%B");
 		body.Should().Contain("Rules: CQ-05, PKG-05");
 		body.Should().Contain("- Directory.Packages.props");
@@ -110,8 +114,9 @@ public sealed class GovernanceCommitAttributionTests : IDisposable
 	private async Task CommitAsRemediationAsync(string file, string content, string[] ruleIds, string? subject = null)
 	{
 		File.WriteAllText(Path.Combine(Clone, file), content);
-		var push = await _localRepo.CommitAndPushAsync(Identity, subject ?? GovernanceCommitMessage.Subject(Identity), ruleIds, null, TestContext.Current.CancellationToken).ConfigureAwait(true);
+		var push = await _localRepo.CommitToPullRequestBranchAsync(Identity, subject ?? GovernanceCommitMessage.Subject(Identity), ruleIds, null, TestContext.Current.CancellationToken).ConfigureAwait(true);
 		push.Success.Should().BeTrue(push.Output);
+		Git(Clone, "merge", "-q", "--ff-only", push.HeadSha!);
 	}
 
 	private void CreateClone()

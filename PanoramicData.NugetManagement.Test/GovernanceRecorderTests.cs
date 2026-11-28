@@ -264,22 +264,41 @@ public class GovernanceRecorderTests(ITestOutputHelper output) : TestWithOutput(
 	}
 
 	[Fact]
-	public async Task RecordPush_OfARealCommit_RecordsTheShaTheFilesAndAPacket()
+	public async Task RecordPush_OfAPullRequestDelivery_RecordsTheBranchCommitNotTheCheckout()
 	{
 		var (ledger, recorder, _) = Open();
 		var clone = await InitRepoAsync();
+		await LocalRepoService.RunCommandAsync(clone, "git", ["checkout", "-q", "-b", "gov/test"], TestContext.Current.CancellationToken);
 		await File.WriteAllTextAsync(Path.Combine(clone, "added.txt"), "x\n", TestContext.Current.CancellationToken);
 		await LocalRepoService.RunCommandAsync(clone, "git", ["add", "-A"], TestContext.Current.CancellationToken);
 		await LocalRepoService.RunCommandAsync(clone, "git", ["commit", "-q", "-m", "second"], TestContext.Current.CancellationToken);
+		var (_, headSha) = await LocalRepoService.RunCommandAsync(clone, "git", ["rev-parse", "HEAD"], TestContext.Current.CancellationToken);
+		await LocalRepoService.RunCommandAsync(clone, "git", ["checkout", "-q", "main"], TestContext.Current.CancellationToken);
+		var pullRequest = new PullRequestDelivery("gov/test", headSha.Trim(), 12, "https://github.com/o/Sample/pull/12", PullRequestLanding.AutoMergeEnabled, null);
 
-		await recorder.RecordPushAsync(Item("autopilot"), "o/Sample", true, null, clone, TestContext.Current.CancellationToken);
+		await recorder.RecordPushAsync(Item("autopilot"), "o/Sample", true, null, clone, pullRequest, TestContext.Current.CancellationToken);
 
 		var entry = ledger.Query(kind: "push").Single();
 		entry.Data.GetProperty("succeeded").GetBoolean().Should().BeTrue();
-		entry.Data.GetProperty("sha").GetString().Should().HaveLength(40);
-		entry.Data.GetProperty("branch").GetString().Should().Be("main");
+		entry.Data.GetProperty("sha").GetString().Should().Be(headSha.Trim());
+		entry.Data.GetProperty("branch").GetString().Should().Be("gov/test");
+		entry.Data.GetProperty("pullRequestNumber").GetInt32().Should().Be(12);
+		entry.Data.GetProperty("pullRequestUrl").GetString().Should().Be("https://github.com/o/Sample/pull/12");
 		entry.Data.GetProperty("files")[0].GetString().Should().Be("added.txt");
 		entry.Data.GetProperty("packet").GetProperty("relativePath").GetString().Should().EndWith(".json.gz");
+	}
+
+	[Fact]
+	public async Task RecordPush_WithNothingDelivered_RecordsNoCommit()
+	{
+		var (ledger, recorder, _) = Open();
+		var clone = await InitRepoAsync();
+
+		await recorder.RecordPushAsync(Item(), "o/Sample", true, null, clone, null, TestContext.Current.CancellationToken);
+
+		var entry = ledger.Query(kind: "push").Single();
+		entry.Data.GetProperty("succeeded").GetBoolean().Should().BeTrue();
+		entry.Data.GetProperty("sha").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
 	}
 
 	[Fact]
@@ -287,7 +306,7 @@ public class GovernanceRecorderTests(ITestOutputHelper output) : TestWithOutput(
 	{
 		var (ledger, recorder, _) = Open();
 
-		await recorder.RecordPushAsync(Item(), "o/Sample", false, "the clone is behind origin", null, TestContext.Current.CancellationToken);
+		await recorder.RecordPushAsync(Item(), "o/Sample", false, "the clone is behind origin", null, null, TestContext.Current.CancellationToken);
 
 		var entry = ledger.Query(kind: "push").Single();
 		entry.Data.GetProperty("succeeded").GetBoolean().Should().BeFalse();

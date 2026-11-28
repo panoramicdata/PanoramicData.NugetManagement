@@ -90,6 +90,49 @@ public class WorkFanOutTests(ITestOutputHelper output) : TestWithOutput(output)
 	}
 
 	[Fact]
+	public void EnqueueTrailingPush_AfterAMultiRuleSweep_QueuesOnePushBehindEveryFix()
+	{
+		var lanes = new WorkLaneService();
+		var fanOut = new WorkFanOut(lanes);
+
+		fanOut.EnqueueRule("panoramicdata", "TST-06", ["panoramicdata/A"], push: false, consoleNodeKey: null);
+		fanOut.EnqueueRule("panoramicdata", "COM-01", ["panoramicdata/A"], push: false, consoleNodeKey: null);
+		fanOut.EnqueueTrailingPush("panoramicdata", ["panoramicdata/A"], consoleNodeKey: null).Should().Be(1);
+
+		lanes.ItemsFor("repo:panoramicdata/a").Select(i => i.Descriptor.Kind).Should().Equal(
+			[WorkKind.FixRule, WorkKind.FixRule, WorkKind.CommitAndPush],
+			"one action, one pull request");
+	}
+
+	[Fact]
+	public void EnqueueTrailingPush_WhenAPushIsAlreadyLastInTheLane_QueuesNoSecond()
+	{
+		var lanes = new WorkLaneService();
+		var fanOut = new WorkFanOut(lanes);
+
+		fanOut.EnqueueRule("panoramicdata", "TST-06", ["panoramicdata/A"], push: true, consoleNodeKey: null);
+		fanOut.EnqueueTrailingPush("panoramicdata", ["panoramicdata/A"], consoleNodeKey: null).Should().Be(0);
+
+		lanes.ItemsFor("repo:panoramicdata/a").Select(i => i.Descriptor.Kind).Should().Equal(
+			[WorkKind.FixRule, WorkKind.CommitAndPush],
+			"a second pull request straight after the first would have nothing in it");
+	}
+
+	[Fact]
+	public void EnqueueRule_TwoSeparateRuleActionsOnOneRepository_DeliverEachFixBeforeTheNextStarts()
+	{
+		var lanes = new WorkLaneService();
+		var fanOut = new WorkFanOut(lanes);
+
+		fanOut.EnqueueRule("panoramicdata", "TST-06", ["panoramicdata/A"], push: true, consoleNodeKey: null);
+		fanOut.EnqueueRule("panoramicdata", "COM-01", ["panoramicdata/A"], push: true, consoleNodeKey: null);
+
+		// A fix refuses a dirty clone, so the first push cannot be moved behind the second fix.
+		lanes.ItemsFor("repo:panoramicdata/a").Select(i => i.Descriptor.Kind).Should().Equal(
+			WorkKind.FixRule, WorkKind.CommitAndPush, WorkKind.FixRule, WorkKind.CommitAndPush);
+	}
+
+	[Fact]
 	public void EnqueueRule_WithoutPush_QueuesOnlyTheFix()
 	{
 		var lanes = new WorkLaneService();

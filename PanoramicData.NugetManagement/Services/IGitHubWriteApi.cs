@@ -131,6 +131,23 @@ public interface IGitHubWriteApi
 		CancellationToken cancellationToken);
 
 	/// <summary>
+	/// Turns on squash auto-merge for a pull request, so GitHub merges it once its required checks pass,
+	/// provided its head is still the given commit.
+	/// </summary>
+	/// <param name="owner">The repository owner.</param>
+	/// <param name="name">The repository name.</param>
+	/// <param name="number">The pull request number.</param>
+	/// <param name="expectedHeadSha">The head commit that is to be merged.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>Whether GitHub accepted, and why not when it did not.</returns>
+	Task<AutoMergeResult> EnableAutoMergeAsync(
+		string owner,
+		string name,
+		int number,
+		string expectedHeadSha,
+		CancellationToken cancellationToken);
+
+	/// <summary>
 	/// Squash-merges a pull request, but only if its head is still the commit that was checked.
 	/// </summary>
 	/// <param name="owner">The repository owner.</param>

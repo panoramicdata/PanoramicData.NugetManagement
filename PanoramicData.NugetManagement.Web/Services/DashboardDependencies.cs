@@ -23,12 +23,10 @@ public sealed record DashboardStores(
 /// <param name="PublishedVersions">Reads what is published now.</param>
 /// <param name="LocalRepo">Clones and the git operations performed on them.</param>
 /// <param name="RemediationRegistry">Which rules can be fixed automatically.</param>
-/// <param name="RegressionGuard">Verifies pushes in the background.</param>
 /// <param name="CodacyAnalysisState">Whether Codacy is still analysing a repository.</param>
 public sealed record DashboardWorkers(
 	NuGetDiscoveryService Nuget,
 	PublishedVersionRefresher PublishedVersions,
 	LocalRepoService LocalRepo,
 	RemediationRegistry RemediationRegistry,
-	RegressionGuardService RegressionGuard,
 	ICodacyAnalysisStateService CodacyAnalysisState);

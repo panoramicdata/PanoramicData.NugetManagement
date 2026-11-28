@@ -50,7 +50,7 @@ public class DefaultBranchMainRule : RuleBase
 			new RuleAdvisory
 			{
 				Summary = "Use main as the default branch and local working branch.",
-				Detail = "Rename local `master` to `main`, push `main` to origin, switch to `main`, and set GitHub default branch to `main` using `gh repo edit --default-branch main`. If current branch is not `master`, refuse auto-fix and provide AI instructions.",
+				Detail = "Rename `master` to `main` on GitHub with the branch rename API (`gh api -X POST repos/{owner}/{name}/branches/master/rename -f new_name=main`), which also sets the default branch and retargets open pull requests, then rename the local branch and track `origin/main`. If current branch is not `master`, refuse auto-fix and provide AI instructions.",
 				Data = new()
 				{
 					["remediation_type"] = "rename_master_to_main",

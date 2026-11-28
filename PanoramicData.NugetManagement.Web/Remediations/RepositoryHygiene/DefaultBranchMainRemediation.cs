@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using PanoramicData.NugetManagement.Models;
 using PanoramicData.NugetManagement.Web.Services;
 
@@ -6,46 +7,56 @@ namespace PanoramicData.NugetManagement.Web.Remediations.RepositoryHygiene;
 /// <summary>
 /// Remediates repositories that still use master as default/local branch.
 /// </summary>
-public sealed class DefaultBranchMainRemediation : IRemediation
+/// <remarks>
+/// Renamed on GitHub through the branch rename API, which is atomic, sets the default branch and
+/// retargets open pull requests; nothing is pushed, so branch protection on main is no obstacle. The
+/// clone is brought into line afterwards. Success is recorded only when GitHub accepted the rename.
+/// </remarks>
+public sealed partial class DefaultBranchMainRemediation : IRemediation
 {
+	private readonly Func<string, string, IReadOnlyList<string>, (int ExitCode, string Output)> _run;
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="DefaultBranchMainRemediation"/> class.
+	/// </summary>
+	public DefaultBranchMainRemediation()
+		: this((workingDirectory, fileName, arguments) => LocalRepoService
+			.RunCommandAsync(workingDirectory, fileName, arguments, CancellationToken.None)
+			.GetAwaiter()
+			.GetResult())
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance with an explicit command runner (for testing).
+	/// </summary>
+	/// <param name="run">Runs a program (<c>git</c> or <c>gh</c>) in a working directory with the given arguments.</param>
+	internal DefaultBranchMainRemediation(Func<string, string, IReadOnlyList<string>, (int ExitCode, string Output)> run)
+		=> _run = run;
+
 	/// <inheritdoc />
 	public string RuleId => "REPO-06";
 
 	/// <inheritdoc />
 	public bool CanRemediate(RuleResult result)
-		=> !result.Passed && result.Advisory is not null;
+		=> !result.Passed && TryGetRepository(result) is not null;
 
 	/// <inheritdoc />
 	public void Apply(string localPath, RuleResult result, List<string> applied, Action<string>? onOutput)
 	{
-		if (result.Advisory is null)
+		var repository = TryGetRepository(result);
+		if (repository is null)
 		{
+			onOutput?.Invoke("❌ [REPO-06] The advisory names no valid owner/name repository, so nothing was renamed.");
 			return;
 		}
 
-		var repoFullName = TryGetString(result.Advisory.Data, "repo_full_name");
-
-		onOutput?.Invoke("ℹ️ [REPO-06] Starting default branch remediation (master -> main).");
-
-		if (!Run(localPath, "gh", ["--version"], out _))
-		{
-			onOutput?.Invoke("❌ [REPO-06] GitHub CLI (gh) is not available on PATH.");
-			return;
-		}
-
-		if (!Run(localPath, "git", ["branch", "--show-current"], out var branchOutput))
-		{
-			onOutput?.Invoke("❌ [REPO-06] Failed to determine current branch.");
-			return;
-		}
-
+		var (_, branchOutput) = _run(localPath, "git", ["branch", "--show-current"]);
 		var currentBranch = branchOutput.Trim();
-		onOutput?.Invoke($"ℹ️ [REPO-06] Current branch: {currentBranch}");
-
-		if (!string.Equals(currentBranch, "master", StringComparison.OrdinalIgnoreCase))
+		if (!string.Equals(currentBranch, "master", StringComparison.Ordinal))
 		{
 			onOutput?.Invoke($"❌ [REPO-06] Refusing auto-fix: current branch is '{currentBranch}', expected 'master'.");
-			foreach (var line in BuildAiFallbackInstructions(repoFullName, currentBranch))
+			foreach (var line in BuildAiFallbackInstructions(repository, currentBranch))
 			{
 				onOutput?.Invoke(line);
 			}
@@ -53,92 +64,54 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 			return;
 		}
 
-		var ghRepoViewArgs = string.IsNullOrWhiteSpace(repoFullName)
-			? new List<string> { "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner" }
-			: new List<string> { "repo", "view", repoFullName, "--json", "nameWithOwner", "-q", ".nameWithOwner" };
-
-		if (!Run(localPath, "gh", ghRepoViewArgs, out var ghRepoName))
+		var (exitCode, output) = _run(localPath, "gh", ["api", "-X", "POST", $"repos/{repository}/branches/master/rename", "-f", "new_name=main"]);
+		if (exitCode != 0)
 		{
-			onOutput?.Invoke("❌ [REPO-06] Pre-flight failed: gh cannot access this repository.");
+			onOutput?.Invoke($"❌ [REPO-06] GitHub refused to rename master to main for {repository} (admin rights are needed): {TrimOutput(output)}");
 			return;
 		}
 
-		repoFullName = string.IsNullOrWhiteSpace(repoFullName)
-			? ghRepoName.Trim()
-			: repoFullName;
-
-		onOutput?.Invoke($"ℹ️ [REPO-06] gh repo target: {repoFullName}");
-		onOutput?.Invoke($"✅ [REPO-06] Pre-flight gh access confirmed for {repoFullName}.");
-
-		_ = Run(localPath, "git", ["status", "--porcelain"], out var porcelainOutput);
-		if (!string.IsNullOrWhiteSpace(porcelainOutput))
-		{
-			onOutput?.Invoke("⚠️ [REPO-06] Working tree is not clean (git status --porcelain is not empty). Continuing as requested.");
-		}
-
-		if (!Run(localPath, "git", ["branch", "-m", "master", "main"], out var renameOutput))
-		{
-			onOutput?.Invoke($"❌ [REPO-06] Failed to rename branch master -> main. {TrimOutput(renameOutput)}");
-			return;
-		}
-
-		if (!Run(localPath, "git", ["push", "-u", "origin", "main"], out var pushOutput))
-		{
-			onOutput?.Invoke($"❌ [REPO-06] Failed to push main to origin. {TrimOutput(pushOutput)}");
-			return;
-		}
-
-		if (!Run(localPath, "git", ["checkout", "main"], out var checkoutOutput))
-		{
-			onOutput?.Invoke($"❌ [REPO-06] Failed to switch to main. {TrimOutput(checkoutOutput)}");
-			return;
-		}
-
-		onOutput?.Invoke($"ℹ️ [REPO-06] Updating GitHub default branch for {repoFullName}.");
-		if (!Run(localPath, "gh", ["repo", "edit", repoFullName ?? string.Empty, "--default-branch", "main"], out var ghEditOutput))
-		{
-			onOutput?.Invoke($"❌ [REPO-06] Failed to set GitHub default branch to main. {TrimOutput(ghEditOutput)}");
-			return;
-		}
-
-		if (!Run(localPath, "git", ["branch", "--show-current"], out var postBranch) ||
-			!string.Equals(postBranch.Trim(), "main", StringComparison.OrdinalIgnoreCase))
-		{
-			onOutput?.Invoke($"❌ [REPO-06] Post-flight failed: local current branch is '{postBranch.Trim()}', expected 'main'.");
-			return;
-		}
-
-		if (!Run(localPath, "gh", ["repo", "view", repoFullName ?? string.Empty, "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"], out var defaultBranchOutput) ||
-			!string.Equals(defaultBranchOutput.Trim(), "main", StringComparison.OrdinalIgnoreCase))
-		{
-			onOutput?.Invoke($"❌ [REPO-06] Post-flight failed: GitHub default branch is '{defaultBranchOutput.Trim()}', expected 'main'.");
-			return;
-		}
-
-		onOutput?.Invoke("✅ [REPO-06] Post-flight confirmed: local branch is main and GitHub default branch is main.");
-		applied.Add("(branch-default-main-remediation)");
+		applied.Add($"(branch-default-main-remediation:{repository})");
+		onOutput?.Invoke($"✅ [REPO-06] Renamed master to main on GitHub for {repository}.");
+		AlignClone(localPath, onOutput);
 	}
 
-	private static string? TryGetString(Dictionary<string, object> data, string key)
+	private void AlignClone(string localPath, Action<string>? onOutput)
 	{
-		if (data.TryGetValue(key, out var value) && value is string text)
+		string[][] steps =
+		[
+			["fetch", "--prune", "origin"],
+			["branch", "-m", "master", "main"],
+			["branch", "-u", "origin/main", "main"],
+			["remote", "set-head", "origin", "-a"]
+		];
+
+		foreach (var step in steps)
 		{
-			return text;
+			var (exitCode, output) = _run(localPath, "git", step);
+			if (exitCode != 0)
+			{
+				onOutput?.Invoke($"⚠️ [REPO-06] GitHub is renamed, but 'git {string.Join(' ', step)}' failed in the clone: {TrimOutput(output)}");
+				return;
+			}
 		}
 
-		return null;
+		onOutput?.Invoke("✅ [REPO-06] The clone now tracks origin/main.");
 	}
 
-	private static bool Run(string localPath, string fileName, IReadOnlyList<string> arguments, out string output)
-	{
-		var (exitCode, commandOutput) = LocalRepoService
-			.RunCommandAsync(localPath, fileName, arguments, CancellationToken.None)
-			.GetAwaiter()
-			.GetResult();
+	/// <summary>
+	/// The repository the advisory names, or null unless it is a plain owner/name. The value ends up in a
+	/// command line, so anything else is refused rather than escaped.
+	/// </summary>
+	private static string? TryGetRepository(RuleResult result)
+		=> result.Advisory?.Data.TryGetValue("repo_full_name", out var value) == true
+			&& value is string repository
+			&& OwnerNamePattern().IsMatch(repository)
+				? repository
+				: null;
 
-		output = commandOutput;
-		return exitCode == 0;
-	}
+	[GeneratedRegex(@"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")]
+	private static partial Regex OwnerNamePattern();
 
 	private static string TrimOutput(string output)
 	{
@@ -156,19 +129,15 @@ public sealed class DefaultBranchMainRemediation : IRemediation
 			: flattened[..300] + "...";
 	}
 
-	private static IEnumerable<string> BuildAiFallbackInstructions(string? repoFullName, string currentBranch)
-	{
-		repoFullName ??= "<owner/repo>";
-
-		return
+	private static IEnumerable<string> BuildAiFallbackInstructions(string repoFullName, string currentBranch)
+		=>
 		[
 			"✨ [REPO-06] AI instructions (manual remediation required):",
 			"1. Open Copilot Chat in your IDE.",
 			$"2. State that auto-fix was refused because branch is '{currentBranch}' instead of 'master'.",
 			"3. Ask Copilot to create a safe migration plan from the current branch state to main with no history loss.",
 			$"4. Include this repository: {repoFullName}",
-			"5. Require commands that verify gh access before and after changing default branch.",
+			"5. Prefer the GitHub branch rename API over pushing a new main, since main is protected.",
 			"6. Require post-flight checks for local branch == main and GitHub default branch == main."
 		];
-	}
 }
